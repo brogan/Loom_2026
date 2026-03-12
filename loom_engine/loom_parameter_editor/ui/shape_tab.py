@@ -1,0 +1,721 @@
+"""
+Shape configuration tab for the parameter editor.
+Provides UI for editing shapes.xml settings.
+"""
+from PyQt6.QtWidgets import (
+    QWidget, QVBoxLayout, QHBoxLayout, QFormLayout, QGroupBox,
+    QLineEdit, QSpinBox, QDoubleSpinBox, QComboBox, QTreeWidget,
+    QTreeWidgetItem, QPushButton, QSplitter, QLabel, QStackedWidget,
+    QMessageBox, QInputDialog, QScrollArea
+)
+from PyQt6.QtCore import pyqtSignal, Qt
+from models.shape_config import (
+    ShapeSourceType, Shape3DType, Vector2D,
+    ShapeDef, ShapeSet, ShapeLibrary
+)
+
+
+class ShapeTab(QWidget):
+    """Tab widget for editing shape configuration."""
+
+    modified = pyqtSignal()
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self._library = ShapeLibrary()
+        self._current_set: ShapeSet = None
+        self._current_shape: ShapeDef = None
+        self._updating = False
+        self._checking = False
+        self._subdivision_collection = None  # Reference to subdivision collection for dropdown
+        self._polygon_library = None  # Reference to polygon library for dropdown
+
+        self._setup_ui()
+        self._refresh_tree()
+
+    def _setup_ui(self):
+        """Set up the UI layout."""
+        main_layout = QHBoxLayout(self)
+
+        # Create splitter for left panel and right panel
+        splitter = QSplitter(Qt.Orientation.Horizontal)
+        main_layout.addWidget(splitter)
+
+        # Left panel - shape tree
+        left_panel = QWidget()
+        left_layout = QVBoxLayout(left_panel)
+
+        left_layout.addWidget(QLabel("Shape Library:"))
+
+        self.tree = QTreeWidget()
+        self.tree.setHeaderLabels(["Sel", "Name", "Type"])
+        self.tree.setColumnWidth(0, 35)
+        self.tree.setColumnWidth(1, 180)
+        self.tree.setColumnWidth(2, 80)
+        self.tree.currentItemChanged.connect(self._on_item_selected)
+        self.tree.itemChanged.connect(self._on_item_check_changed)
+        left_layout.addWidget(self.tree)
+
+        # Buttons for sets
+        set_btn_layout = QHBoxLayout()
+        self.add_set_btn = QPushButton("+ Set")
+        self.add_set_btn.clicked.connect(self._add_set)
+        set_btn_layout.addWidget(self.add_set_btn)
+
+        self.remove_set_btn = QPushButton("- Set")
+        self.remove_set_btn.clicked.connect(self._remove_set)
+        set_btn_layout.addWidget(self.remove_set_btn)
+        left_layout.addLayout(set_btn_layout)
+
+        # Buttons for shapes
+        shape_btn_layout = QHBoxLayout()
+        self.add_shape_btn = QPushButton("+ Shape")
+        self.add_shape_btn.clicked.connect(self._add_shape)
+        shape_btn_layout.addWidget(self.add_shape_btn)
+
+        self.remove_shape_btn = QPushButton("- Shape")
+        self.remove_shape_btn.clicked.connect(self._remove_shape)
+        shape_btn_layout.addWidget(self.remove_shape_btn)
+
+        self.duplicate_btn = QPushButton("Duplicate")
+        self.duplicate_btn.clicked.connect(self._duplicate_shape)
+        shape_btn_layout.addWidget(self.duplicate_btn)
+        left_layout.addLayout(shape_btn_layout)
+
+        # Delete Selected button
+        del_sel_layout = QHBoxLayout()
+        self.delete_selected_btn = QPushButton("Delete Selected")
+        self.delete_selected_btn.clicked.connect(self._delete_selected)
+        del_sel_layout.addWidget(self.delete_selected_btn)
+        del_sel_layout.addStretch()
+        left_layout.addLayout(del_sel_layout)
+
+        splitter.addWidget(left_panel)
+
+        # Right panel - properties editor in scroll area
+        right_panel = QScrollArea()
+        right_panel.setWidgetResizable(True)
+        right_content = QWidget()
+        right_layout = QVBoxLayout(right_content)
+
+        # Shape name
+        name_group = QGroupBox("Shape")
+        name_layout = QFormLayout(name_group)
+
+        self.name_edit = QLineEdit()
+        self.name_edit.textChanged.connect(self._on_name_changed)
+        name_layout.addRow("Name:", self.name_edit)
+
+        right_layout.addWidget(name_group)
+
+        # Polygon Source
+        source_group = QGroupBox("Polygon Source")
+        source_layout = QFormLayout(source_group)
+
+        self.source_type_combo = QComboBox()
+        # Items map: index 0 → POLYGON_SET, index 1 → INLINE_POINTS
+        # Regular polygons are now created in the Polygons tab and referenced by name
+        self.source_type_combo.addItems(["Polygon Set Reference", "Inline Points"])
+        self.source_type_combo.currentIndexChanged.connect(self._on_source_type_changed)
+        source_layout.addRow("Source Type:", self.source_type_combo)
+
+        # Source-specific widgets in a stacked widget
+        self.source_stack = QStackedWidget()
+
+        # Polygon set reference (includes both spline and regular polygon sets)
+        poly_ref_widget = QWidget()
+        poly_ref_layout = QFormLayout(poly_ref_widget)
+        self.polygon_set_combo = QComboBox()
+        self.polygon_set_combo.setEditable(True)
+        self.polygon_set_combo.setPlaceholderText("Name of PolygonSet from polygons.xml")
+        self.polygon_set_combo.currentTextChanged.connect(self._on_modified)
+        poly_ref_layout.addRow("Polygon Set:", self.polygon_set_combo)
+
+        # Refresh button for polygon sets
+        poly_refresh_layout = QHBoxLayout()
+        self.refresh_polygon_btn = QPushButton("Refresh List")
+        self.refresh_polygon_btn.clicked.connect(self._refresh_polygon_dropdown)
+        poly_refresh_layout.addStretch()
+        poly_refresh_layout.addWidget(self.refresh_polygon_btn)
+        poly_ref_layout.addRow("", poly_refresh_layout)
+
+        self.source_stack.addWidget(poly_ref_widget)
+
+        # Inline points (simplified - just show count)
+        inline_widget = QWidget()
+        inline_layout = QVBoxLayout(inline_widget)
+        self.inline_label = QLabel("Inline points not yet editable in UI")
+        inline_layout.addWidget(self.inline_label)
+        self.source_stack.addWidget(inline_widget)
+
+        source_layout.addRow(self.source_stack)
+        right_layout.addWidget(source_group)
+
+        # Subdivision Parameters Reference
+        subdiv_group = QGroupBox("Subdivision Parameters")
+        subdiv_layout = QFormLayout(subdiv_group)
+
+        self.subdiv_set_combo = QComboBox()
+        self.subdiv_set_combo.setEditable(True)  # Allow custom entry if not in list
+        self.subdiv_set_combo.setPlaceholderText("Name of SubdivisionParamsSet from subdivision.xml")
+        self.subdiv_set_combo.currentTextChanged.connect(self._on_modified)
+        subdiv_layout.addRow("Params Set:", self.subdiv_set_combo)
+
+        # Refresh button for subdivision sets
+        subdiv_refresh_layout = QHBoxLayout()
+        self.refresh_subdiv_btn = QPushButton("Refresh List")
+        self.refresh_subdiv_btn.clicked.connect(self._refresh_subdivision_dropdown)
+        subdiv_refresh_layout.addStretch()
+        subdiv_refresh_layout.addWidget(self.refresh_subdiv_btn)
+        subdiv_layout.addRow("", subdiv_refresh_layout)
+
+        right_layout.addWidget(subdiv_group)
+
+        # 3D Shape Generation (optional)
+        shape3d_group = QGroupBox("3D Shape Generation (Optional)")
+        shape3d_layout = QFormLayout(shape3d_group)
+
+        self.shape3d_combo = QComboBox()
+        self.shape3d_combo.addItems(["None", "Crystal", "Rect Prism", "Extrusion", "Grid Plane", "Grid Block"])
+        self.shape3d_combo.currentIndexChanged.connect(self._on_3d_type_changed)
+        shape3d_layout.addRow("3D Type:", self.shape3d_combo)
+
+        # 3D parameters
+        self.param1_spin = QSpinBox()
+        self.param1_spin.setRange(1, 100)
+        self.param1_spin.setValue(4)
+        self.param1_spin.valueChanged.connect(self._on_modified)
+        self.param1_label = QLabel("Param 1:")
+        shape3d_layout.addRow(self.param1_label, self.param1_spin)
+
+        self.param2_spin = QSpinBox()
+        self.param2_spin.setRange(1, 100)
+        self.param2_spin.setValue(4)
+        self.param2_spin.valueChanged.connect(self._on_modified)
+        self.param2_label = QLabel("Param 2:")
+        shape3d_layout.addRow(self.param2_label, self.param2_spin)
+
+        self.param3_spin = QSpinBox()
+        self.param3_spin.setRange(1, 100)
+        self.param3_spin.setValue(4)
+        self.param3_spin.valueChanged.connect(self._on_modified)
+        self.param3_label = QLabel("Param 3:")
+        shape3d_layout.addRow(self.param3_label, self.param3_spin)
+
+        right_layout.addWidget(shape3d_group)
+
+        # Transform
+        transform_group = QGroupBox("Transform")
+        transform_layout = QFormLayout(transform_group)
+
+        # Translation
+        trans_layout = QHBoxLayout()
+        self.trans_x_spin = QDoubleSpinBox()
+        self.trans_x_spin.setRange(-100.0, 100.0)
+        self.trans_x_spin.setDecimals(3)
+        self.trans_x_spin.valueChanged.connect(self._on_modified)
+        trans_layout.addWidget(QLabel("X:"))
+        trans_layout.addWidget(self.trans_x_spin)
+
+        self.trans_y_spin = QDoubleSpinBox()
+        self.trans_y_spin.setRange(-100.0, 100.0)
+        self.trans_y_spin.setDecimals(3)
+        self.trans_y_spin.valueChanged.connect(self._on_modified)
+        trans_layout.addWidget(QLabel("Y:"))
+        trans_layout.addWidget(self.trans_y_spin)
+        transform_layout.addRow("Translation:", trans_layout)
+
+        # Scale
+        scale_layout = QHBoxLayout()
+        self.scale_x_spin = QDoubleSpinBox()
+        self.scale_x_spin.setRange(0.001, 100.0)
+        self.scale_x_spin.setDecimals(3)
+        self.scale_x_spin.setValue(1.0)
+        self.scale_x_spin.valueChanged.connect(self._on_modified)
+        scale_layout.addWidget(QLabel("X:"))
+        scale_layout.addWidget(self.scale_x_spin)
+
+        self.scale_y_spin = QDoubleSpinBox()
+        self.scale_y_spin.setRange(0.001, 100.0)
+        self.scale_y_spin.setDecimals(3)
+        self.scale_y_spin.setValue(1.0)
+        self.scale_y_spin.valueChanged.connect(self._on_modified)
+        scale_layout.addWidget(QLabel("Y:"))
+        scale_layout.addWidget(self.scale_y_spin)
+        transform_layout.addRow("Scale:", scale_layout)
+
+        # Rotation
+        self.rotation_spin = QDoubleSpinBox()
+        self.rotation_spin.setRange(-360.0, 360.0)
+        self.rotation_spin.setDecimals(1)
+        self.rotation_spin.valueChanged.connect(self._on_modified)
+        transform_layout.addRow("Rotation:", self.rotation_spin)
+
+        right_layout.addWidget(transform_group)
+
+        right_layout.addStretch()
+        right_panel.setWidget(right_content)
+
+        splitter.addWidget(right_panel)
+        splitter.setSizes([280, 520])
+
+        # Initial state
+        self._update_3d_param_labels()
+
+    _SHAPE_TYPE_ABBREV = {
+        "POLYGON_SET": "PSET",
+        "REGULAR_POLYGON": "REG",
+        "INLINE_POINTS": "IPT",
+    }
+
+    def _refresh_tree(self):
+        """Refresh the shape tree."""
+        self._checking = True
+        self.tree.clear()
+        for shape_set in self._library.shape_sets:
+            set_item = QTreeWidgetItem(["", shape_set.name, "Set"])
+            set_item.setData(0, Qt.ItemDataRole.UserRole, ("set", shape_set))
+
+            for shape in shape_set.shapes:
+                abbrev = self._SHAPE_TYPE_ABBREV.get(shape.source_type.name, shape.source_type.name)
+                shape_item = QTreeWidgetItem(["", shape.name, abbrev])
+                shape_item.setData(0, Qt.ItemDataRole.UserRole, ("shape", shape))
+                shape_item.setFlags(shape_item.flags() | Qt.ItemFlag.ItemIsUserCheckable)
+                shape_item.setCheckState(0, Qt.CheckState.Unchecked)
+                set_item.addChild(shape_item)
+
+            self.tree.addTopLevelItem(set_item)
+            set_item.setExpanded(True)
+        self._checking = False
+
+        if self.tree.topLevelItemCount() > 0:
+            first = self.tree.topLevelItem(0)
+            if first.childCount() > 0:
+                self.tree.setCurrentItem(first.child(0))
+            else:
+                self.tree.setCurrentItem(first)
+
+    def _on_item_selected(self, current, previous):
+        """Handle tree item selection."""
+        if current is None:
+            self._current_set = None
+            self._current_shape = None
+            return
+
+        data = current.data(0, Qt.ItemDataRole.UserRole)
+        if data is None:
+            return
+
+        item_type, item_obj = data
+
+        if item_type == "set":
+            self._current_set = item_obj
+            self._current_shape = None
+            self._clear_shape_ui()
+        else:
+            self._current_shape = item_obj
+            # Find parent set
+            parent = current.parent()
+            if parent:
+                parent_data = parent.data(0, Qt.ItemDataRole.UserRole)
+                if parent_data:
+                    self._current_set = parent_data[1]
+            self._load_shape_to_ui(self._current_shape)
+
+    def _clear_shape_ui(self):
+        """Clear the shape editor UI."""
+        self._updating = True
+        try:
+            self.name_edit.clear()
+            self.source_type_combo.setCurrentIndex(0)
+            self.polygon_set_combo.setCurrentText("")
+            self.subdiv_set_combo.setCurrentText("")
+            self.shape3d_combo.setCurrentIndex(0)
+            self.param1_spin.setValue(4)
+            self.param2_spin.setValue(4)
+            self.param3_spin.setValue(4)
+            self.trans_x_spin.setValue(0)
+            self.trans_y_spin.setValue(0)
+            self.scale_x_spin.setValue(1)
+            self.scale_y_spin.setValue(1)
+            self.rotation_spin.setValue(0)
+        finally:
+            self._updating = False
+
+    def _load_shape_to_ui(self, shape: ShapeDef):
+        """Load a shape's values into the UI."""
+        self._updating = True
+        try:
+            self.name_edit.setText(shape.name)
+
+            # Source type — map enum to combo index
+            # POLYGON_SET (0) → combo 0, REGULAR_POLYGON (1) → combo 0 (show as reference),
+            # INLINE_POINTS (2) → combo 1
+            if shape.source_type == ShapeSourceType.INLINE_POINTS:
+                self.source_type_combo.setCurrentIndex(1)
+                self.source_stack.setCurrentIndex(1)
+            else:
+                # Both POLYGON_SET and legacy REGULAR_POLYGON show as polygon set reference
+                self.source_type_combo.setCurrentIndex(0)
+                self.source_stack.setCurrentIndex(0)
+                self.polygon_set_combo.setCurrentText(shape.polygon_set_name)
+
+            # Subdivision
+            self.subdiv_set_combo.setCurrentText(shape.subdivision_params_set_name)
+
+            # 3D type
+            self.shape3d_combo.setCurrentIndex(shape.shape_3d_type.value)
+            self.param1_spin.setValue(shape.shape_3d_param1)
+            self.param2_spin.setValue(shape.shape_3d_param2)
+            self.param3_spin.setValue(shape.shape_3d_param3)
+            self._update_3d_param_labels()
+
+            # Transform
+            self.trans_x_spin.setValue(shape.translate_x)
+            self.trans_y_spin.setValue(shape.translate_y)
+            self.scale_x_spin.setValue(shape.scale_x)
+            self.scale_y_spin.setValue(shape.scale_y)
+            self.rotation_spin.setValue(shape.rotation)
+        finally:
+            self._updating = False
+
+    def _save_ui_to_shape(self):
+        """Save UI values back to the current shape."""
+        if self._current_shape is None:
+            return
+
+        self._current_shape.name = self.name_edit.text()
+
+        # Source type — combo index 0 = POLYGON_SET, 1 = INLINE_POINTS
+        combo_idx = self.source_type_combo.currentIndex()
+        if combo_idx == 0:
+            self._current_shape.source_type = ShapeSourceType.POLYGON_SET
+            self._current_shape.polygon_set_name = self.polygon_set_combo.currentText()
+        else:
+            self._current_shape.source_type = ShapeSourceType.INLINE_POINTS
+
+        # Subdivision
+        self._current_shape.subdivision_params_set_name = self.subdiv_set_combo.currentText()
+
+        # 3D type
+        self._current_shape.shape_3d_type = Shape3DType(self.shape3d_combo.currentIndex())
+        self._current_shape.shape_3d_param1 = self.param1_spin.value()
+        self._current_shape.shape_3d_param2 = self.param2_spin.value()
+        self._current_shape.shape_3d_param3 = self.param3_spin.value()
+
+        # Transform
+        self._current_shape.translate_x = self.trans_x_spin.value()
+        self._current_shape.translate_y = self.trans_y_spin.value()
+        self._current_shape.scale_x = self.scale_x_spin.value()
+        self._current_shape.scale_y = self.scale_y_spin.value()
+        self._current_shape.rotation = self.rotation_spin.value()
+
+        # Update tree item text
+        current_item = self.tree.currentItem()
+        if current_item:
+            current_item.setText(1, self._current_shape.name)
+            abbrev = self._SHAPE_TYPE_ABBREV.get(self._current_shape.source_type.name, self._current_shape.source_type.name)
+            current_item.setText(2, abbrev)
+
+    def _update_3d_param_labels(self):
+        """Update 3D parameter labels based on selected type."""
+        shape_type = Shape3DType(self.shape3d_combo.currentIndex())
+
+        # Show/hide parameters based on type
+        show_params = shape_type != Shape3DType.NONE
+
+        self.param1_label.setVisible(show_params)
+        self.param1_spin.setVisible(show_params)
+        self.param2_label.setVisible(show_params and shape_type in [Shape3DType.GRID_PLANE, Shape3DType.GRID_BLOCK])
+        self.param2_spin.setVisible(show_params and shape_type in [Shape3DType.GRID_PLANE, Shape3DType.GRID_BLOCK])
+        self.param3_label.setVisible(shape_type == Shape3DType.GRID_BLOCK)
+        self.param3_spin.setVisible(shape_type == Shape3DType.GRID_BLOCK)
+
+        # Update labels
+        if shape_type == Shape3DType.CRYSTAL:
+            self.param1_label.setText("Horizontal Points:")
+        elif shape_type == Shape3DType.RECT_PRISM:
+            self.param1_label.setText("Horizontal Points:")
+        elif shape_type == Shape3DType.EXTRUSION:
+            self.param1_label.setText("Extrude Depth:")
+        elif shape_type == Shape3DType.GRID_PLANE:
+            self.param1_label.setText("Rows:")
+            self.param2_label.setText("Columns:")
+        elif shape_type == Shape3DType.GRID_BLOCK:
+            self.param1_label.setText("Rows:")
+            self.param2_label.setText("Columns:")
+            self.param3_label.setText("Layers:")
+
+    def _on_name_changed(self):
+        """Handle name change."""
+        if self._updating:
+            return
+        self._save_ui_to_shape()
+        self.modified.emit()
+
+    def _on_source_type_changed(self, index):
+        """Handle source type change."""
+        self.source_stack.setCurrentIndex(index)
+        if not self._updating:
+            self._save_ui_to_shape()
+            self.modified.emit()
+
+    def _on_3d_type_changed(self, index):
+        """Handle 3D type change."""
+        self._update_3d_param_labels()
+        if not self._updating:
+            self._save_ui_to_shape()
+            self.modified.emit()
+
+    def _on_modified(self):
+        """Handle any value change."""
+        if self._updating:
+            return
+        self._save_ui_to_shape()
+        self.modified.emit()
+
+    def _add_set(self):
+        """Add a new shape set."""
+        name, ok = QInputDialog.getText(self, "Add Shape Set", "Name:")
+        if ok and name:
+            # Check for duplicate name
+            if self._library.get(name):
+                QMessageBox.warning(self, "Duplicate Name", f"A shape set named '{name}' already exists.")
+                return
+
+            new_set = ShapeSet(name=name)
+            self._library.add(new_set)
+            self._refresh_tree()
+            # Select the new set
+            for i in range(self.tree.topLevelItemCount()):
+                item = self.tree.topLevelItem(i)
+                if item.text(0) == name:
+                    self.tree.setCurrentItem(item)
+                    break
+            self.modified.emit()
+
+    def _remove_set(self):
+        """Remove the selected shape set."""
+        if self._current_set is None:
+            return
+
+        result = QMessageBox.question(
+            self, "Remove Shape Set",
+            f"Remove shape set '{self._current_set.name}' and all its shapes?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+        )
+        if result == QMessageBox.StandardButton.Yes:
+            # Find and remove the set
+            for i, s in enumerate(self._library.shape_sets):
+                if s.name == self._current_set.name:
+                    self._library.remove(i)
+                    break
+            self._current_set = None
+            self._current_shape = None
+            self._refresh_tree()
+            self.modified.emit()
+
+    def _add_shape(self):
+        """Add a new shape to the current set."""
+        if self._current_set is None:
+            QMessageBox.warning(self, "No Set Selected", "Please select a shape set first.")
+            return
+
+        name, ok = QInputDialog.getText(self, "Add Shape", "Name:")
+        if ok and name:
+            # Check for duplicate name in this set
+            if self._current_set.get(name):
+                QMessageBox.warning(self, "Duplicate Name", f"A shape named '{name}' already exists in this set.")
+                return
+
+            new_shape = ShapeDef(name=name)
+            self._current_set.add(new_shape)
+            self._refresh_tree()
+            # Select the new shape
+            self._select_shape(self._current_set.name, name)
+            self.modified.emit()
+
+    def _remove_shape(self):
+        """Remove the selected shape."""
+        if self._current_shape is None or self._current_set is None:
+            return
+
+        result = QMessageBox.question(
+            self, "Remove Shape",
+            f"Remove shape '{self._current_shape.name}'?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+        )
+        if result == QMessageBox.StandardButton.Yes:
+            # Find and remove the shape
+            for i, s in enumerate(self._current_set.shapes):
+                if s.name == self._current_shape.name:
+                    self._current_set.remove(i)
+                    break
+            self._current_shape = None
+            self._refresh_tree()
+            self.modified.emit()
+
+    def _duplicate_shape(self):
+        """Duplicate the selected shape."""
+        if self._current_shape is None or self._current_set is None:
+            return
+
+        base_name = self._current_shape.name
+        counter = 1
+        while True:
+            new_name = f"{base_name}_{counter:03d}"
+            if not self._current_set.get(new_name):
+                break
+            counter += 1
+
+        # Create a copy
+        from dataclasses import replace
+        new_shape = replace(self._current_shape, name=new_name)
+        # Deep copy the inline points if any
+        new_shape.inline_points = [Vector2D(p.x, p.y) for p in self._current_shape.inline_points]
+
+        self._current_set.add(new_shape)
+        self._refresh_tree()
+        self._select_shape(self._current_set.name, new_name)
+        self.modified.emit()
+
+    def _on_item_check_changed(self, item, column):
+        """Handle checkbox toggle — prevent it from changing selection."""
+        if self._checking:
+            return
+
+    def _delete_selected(self):
+        """Delete all checked shape items."""
+        to_delete = []  # list of (shape_set, shape_index) tuples
+        for i in range(self.tree.topLevelItemCount()):
+            set_item = self.tree.topLevelItem(i)
+            set_data = set_item.data(0, Qt.ItemDataRole.UserRole)
+            if not set_data or set_data[0] != "set":
+                continue
+            shape_set = set_data[1]
+            for j in range(set_item.childCount()):
+                shape_item = set_item.child(j)
+                if shape_item.checkState(0) == Qt.CheckState.Checked:
+                    data = shape_item.data(0, Qt.ItemDataRole.UserRole)
+                    if data and data[0] == "shape":
+                        to_delete.append((shape_set, data[1]))
+
+        if not to_delete:
+            QMessageBox.information(self, "No Selection", "No items are checked for deletion.")
+            return
+
+        result = QMessageBox.question(
+            self, "Delete Selected",
+            f"Delete {len(to_delete)} checked shape(s)?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+        )
+        if result == QMessageBox.StandardButton.Yes:
+            for shape_set, shape in to_delete:
+                for idx, s in enumerate(shape_set.shapes):
+                    if s is shape:
+                        shape_set.remove(idx)
+                        break
+            self._current_shape = None
+            self._clear_shape_ui()
+            self._refresh_tree()
+            self.modified.emit()
+
+    def _select_shape(self, set_name: str, shape_name: str):
+        """Select a shape in the tree by set and shape name."""
+        for i in range(self.tree.topLevelItemCount()):
+            set_item = self.tree.topLevelItem(i)
+            if set_item.text(0) == set_name:
+                for j in range(set_item.childCount()):
+                    shape_item = set_item.child(j)
+                    if shape_item.text(0) == shape_name:
+                        self.tree.setCurrentItem(shape_item)
+                        return
+
+    def get_library(self) -> ShapeLibrary:
+        """Get the current library."""
+        return self._library
+
+    def set_library(self, library: ShapeLibrary) -> None:
+        """Set the library to display."""
+        self._library = library
+        self._refresh_tree()
+
+    def create_default_library(self) -> ShapeLibrary:
+        """Create a default library with one set and one shape."""
+        library = ShapeLibrary(name="MainLibrary")
+        default_set = ShapeSet(name="default")
+        default_shape = ShapeDef(
+            name="DefaultShape",
+            source_type=ShapeSourceType.POLYGON_SET,
+            polygon_set_name=""
+        )
+        default_set.add(default_shape)
+        library.add(default_set)
+        return library
+
+    def set_subdivision_collection(self, collection) -> None:
+        """Set the subdivision collection for populating the params set dropdown."""
+        self._subdivision_collection = collection
+        self._refresh_subdivision_dropdown()
+
+    def _refresh_subdivision_dropdown(self) -> None:
+        """Refresh the subdivision params set dropdown from the collection."""
+        # Block signals to prevent triggering _on_modified during refresh
+        self._updating = True
+        try:
+            # Remember current selection
+            current_text = self.subdiv_set_combo.currentText()
+
+            self.subdiv_set_combo.clear()
+
+            if self._subdivision_collection is not None:
+                # Get param set names from the collection
+                try:
+                    # Assuming the collection has params_sets attribute with SubdivisionParamsSet objects
+                    if hasattr(self._subdivision_collection, 'params_sets'):
+                        names = [ps.name for ps in self._subdivision_collection.params_sets]
+                        names.sort()
+                        self.subdiv_set_combo.addItems(names)
+                except Exception:
+                    pass  # Collection not accessible
+
+            # Restore previous selection if it exists
+            if current_text:
+                index = self.subdiv_set_combo.findText(current_text)
+                if index >= 0:
+                    self.subdiv_set_combo.setCurrentIndex(index)
+                else:
+                    # If not found, set as custom text
+                    self.subdiv_set_combo.setCurrentText(current_text)
+        finally:
+            self._updating = False
+
+    def set_polygon_library(self, library) -> None:
+        """Set the polygon library for populating the polygon set dropdown."""
+        self._polygon_library = library
+        self._refresh_polygon_dropdown()
+
+    def _refresh_polygon_dropdown(self) -> None:
+        """Refresh the polygon set dropdown from the polygon library."""
+        self._updating = True
+        try:
+            current_text = self.polygon_set_combo.currentText()
+            self.polygon_set_combo.clear()
+
+            if self._polygon_library is not None:
+                try:
+                    if hasattr(self._polygon_library, 'polygon_sets'):
+                        names = [ps.name for ps in self._polygon_library.polygon_sets]
+                        names.sort()
+                        self.polygon_set_combo.addItems(names)
+                except Exception:
+                    pass
+
+            if current_text:
+                index = self.polygon_set_combo.findText(current_text)
+                if index >= 0:
+                    self.polygon_set_combo.setCurrentIndex(index)
+                else:
+                    self.polygon_set_combo.setCurrentText(current_text)
+        finally:
+            self._updating = False

@@ -1,0 +1,72 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><title>Quick Reference</title>
+<style>
+  body { font-family: Arial, sans-serif; font-size: 13px; color: #222; background: #fafafa; margin: 0; padding: 20px 28px 40px; }
+  h1 { font-size: 21px; font-weight: bold; color: #1a1a2e; border-bottom: 2px solid #e0e4f0; padding-bottom: 10px; margin-top: 0; }
+  h2 { font-size: 16px; font-weight: bold; color: #1a1a2e; margin-top: 28px; border-bottom: 1px solid #e0e4f0; padding-bottom: 5px; }
+  h3 { font-size: 13px; font-weight: bold; color: #2c3060; margin-top: 18px; margin-bottom: 4px; }
+  h4 { font-size: 13px; font-weight: bold; color: #444; margin-top: 12px; margin-bottom: 3px; }
+  p { line-height: 1.6; margin: 7px 0; }
+  ul, ol { margin: 5px 0; padding-left: 20px; line-height: 1.65; }
+  li { margin-bottom: 2px; }
+  .note { background: #eef4ff; border-left: 4px solid #5b9cf6; padding: 9px 12px; margin: 12px 0; font-size: 12px; }
+  .warn { background: #fff8e6; border-left: 4px solid #f0a500; padding: 9px 12px; margin: 12px 0; font-size: 12px; }
+  table { border-collapse: collapse; width: 100%; margin: 10px 0; font-size: 12px; }
+  th { background: #f0f2f8; text-align: left; padding: 7px 10px; border: 1px solid #d8dce8; font-weight: bold; color: #333; }
+  td { padding: 6px 10px; border: 1px solid #e4e7f0; vertical-align: top; }
+  tr:nth-child(even) td { background: #f7f8fc; }
+  kbd { background: #eef; border: 1px solid #aac; border-radius: 3px; padding: 1px 5px; font-family: monospace; font-size: 11px; }
+  code { font-family: monospace; background: #eef; padding: 0 4px; border-radius: 3px; font-size: 11px; }
+  .chip { display: inline-block; background: #e8ecff; color: #3050b0; border-radius: 10px; padding: 1px 8px; font-size: 11px; font-weight: bold; margin: 1px 2px; }
+  .chip.orange { background: #fff0e0; color: #b05000; }
+  .chip.purple { background: #f5e8ff; color: #7020a0; }
+  .chip.yellow { background: #fdf8e0; color: #807000; }
+  .chip.blue   { background: #e0f0ff; color: #0050a0; }
+  .chip.red    { background: #ffe8e8; color: #a00020; }
+  .color-swatch { display: inline-block; width: 12px; height: 12px; border-radius: 2px; border: 1px solid rgba(0,0,0,0.2); vertical-align: middle; margin-right: 4px; }
+</style>
+</head><body>
+
+<h1>Quick Reference</h1>
+
+<h2>Keyboard Shortcuts</h2>
+<table>
+  <tr><th>Shortcut</th><th>Action</th></tr>
+  <tr><td><kbd>&#8984; Cmd</kbd> + <kbd>Z</kbd></td><td>Undo</td></tr>
+  <tr><td><kbd>&#8679; Shift</kbd> (tap, any selection mode)</td><td>Toggle current mode's sub-mode: Relational &harr; Discrete</td></tr>
+  <tr><td><kbd>&#8679; Shift</kbd> + click toolbar selection button</td><td>Activate mode in Discrete sub-mode (default is Relational)</td></tr>
+  <tr><td><kbd>&#8679; Shift</kbd> + drag (edge mode, edges selected)</td><td>Extrude selected edges</td></tr>
+  <tr><td><kbd>&#8679; Shift</kbd> + drag (any selection mode, no edges selected)</td><td>Rubber-band marquee selection</td></tr>
+</table>
+
+<h2>Mouse &amp; Modifier Summary</h2>
+<table>
+  <tr><th>Action</th><th>Modifier</th><th>Mode</th><th>Result</th></tr>
+  <tr><td>Click inside polygon</td><td>&mdash;</td><td>Point / Edge</td><td>Scope that polygon</td></tr>
+  <tr><td>Click inside polygon</td><td>&mdash;</td><td>Polygon</td><td>Select / deselect polygon</td></tr>
+  <tr><td>Click point</td><td>&mdash;</td><td>Point</td><td>Select point (clears prior selection)</td></tr>
+  <tr><td>Click point</td><td><kbd>&#8984; Cmd</kbd></td><td>Point</td><td>Add point to selection</td></tr>
+  <tr><td>Click edge</td><td>&mdash;</td><td>Edge</td><td>Select edge (clears prior selection)</td></tr>
+  <tr><td>Click edge</td><td><kbd>&#8984; Cmd</kbd></td><td>Edge</td><td>Add edge to selection</td></tr>
+  <tr><td>Drag selected item</td><td>&mdash;</td><td>Any</td><td>Translate selection</td></tr>
+  <tr><td>Shift + drag</td><td><kbd>&#8679; Shift</kbd></td><td>Edge (edges selected)</td><td>Extrude</td></tr>
+  <tr><td>Shift + drag</td><td><kbd>&#8679; Shift</kbd></td><td>Any other</td><td>Rubber-band marquee</td></tr>
+  <tr><td>Drag polygon near another</td><td>&mdash;</td><td>Polygon</td><td>Drag-to-weld detection (purple highlights)</td></tr>
+  <tr><td>Release after polygon drag</td><td>&mdash;</td><td>Polygon</td><td>Execute pending drag-to-weld</td></tr>
+  <tr><td>Click empty canvas</td><td>&mdash;</td><td>Any</td><td>Clear scope and selection</td></tr>
+</table>
+
+<h2>Highlight Colour Reference</h2>
+<table>
+  <tr><th>Colour</th><th>Meaning</th></tr>
+  <tr><td><span class="color-swatch" style="background:#6496ff"></span> Blue outline (4 px)</td><td>Polygon selected &mdash; Discrete mode</td></tr>
+  <tr><td><span class="color-swatch" style="background:#ff8c00"></span> Orange outline (4 px)</td><td>Polygon or edge selected &mdash; Relational mode</td></tr>
+  <tr><td><span class="color-swatch" style="background:#dc00ff"></span> Purple edge (5 px)</td><td>Edge is weldable, or live edge during extrude drag</td></tr>
+  <tr><td><span class="color-swatch" style="background:#ffff64"></span> Yellow dashed (2 px)</td><td>Polygon is scoped</td></tr>
+  <tr><td><span class="color-swatch" style="background:#6496ff;opacity:0.6"></span> Light blue fill</td><td>Rubber-band marquee selection rectangle</td></tr>
+  <tr><td><span class="color-swatch" style="background:#6496ff"></span> Blue dot</td><td>Anchor point selected &mdash; Discrete</td></tr>
+  <tr><td><span class="color-swatch" style="background:#fff;border:1px solid #888"></span> White dot</td><td>Control point selected &mdash; Discrete</td></tr>
+  <tr><td><span class="color-swatch" style="background:#dc3220"></span> Red dot</td><td>Anchor point selected &mdash; Relational</td></tr>
+  <tr><td><span class="color-swatch" style="background:#ffdc00"></span> Yellow dot</td><td>Control point selected &mdash; Relational</td></tr>
+</table>
+
+</body></html>

@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="ISO-8859-1"?>
+<!DOCTYPE animator SYSTEM "../dtd/animator.dtd">
+<animator>
+    <name>spin_scale</name>
+    <keys>
+        <key>
+            <duration>60.0</duration>
+            <tweenMode>TWEENING</tweenMode>
+            <easeMode>easeInOutSine</easeMode>
+            <oscillator>none</oscillator>
+            <scaleX>0.0</scaleX>
+            <scaleY>0.0</scaleY>
+            <rotationAngle>0.0</rotationAngle>
+            <rotationOffset>0.0</rotationOffset>
+            <transX>0.0</transX>
+            <transY>0.0</transY>
+            <renderer>F_blue_255</renderer>
+        </key>
+        <key>
+            <duration>60.0</duration>
+            <tweenMode>TWEENING</tweenMode>
+            <easeMode>easeInOutSine</easeMode>
+            <oscillator>none</oscillator>
+            <scaleX>3.0</scaleX>
+            <scaleY>3.0</scaleY>
+            <rotationAngle>720.0</rotationAngle>
+            <rotationOffset>0.0</rotationOffset>
+            <transX>0.0</transX>
+            <transY>0.0</transY>
+            <renderer>F_blue_255</renderer>
+        </key>
+    </keys>
+</animator>

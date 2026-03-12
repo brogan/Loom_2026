@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="ISO-8859-1"?>
+<!DOCTYPE polygonSet SYSTEM "../../dtd/polygonSet.dtd">
+<polygonSet>
+    <name>circle</name>
+    <shapeType>CUBIC_CURVE</shapeType>
+    <polygon>
+        <curve>
+            <point x="0.019000000000000017" y="-0.381"/>
+            <point x="0.22099999999999997" y="-0.381"/>
+            <point x="0.42000000000000004" y="-0.18"/>
+            <point x="0.41900000000000004" y="0.018000000000000016"/>
+        </curve>
+        <curve>
+            <point x="0.41900000000000004" y="0.018000000000000016"/>
+            <point x="0.42000000000000004" y="0.21999999999999997"/>
+            <point x="0.22099999999999997" y="0.42000000000000004"/>
+            <point x="0.020000000000000018" y="0.42000000000000004"/>
+        </curve>
+        <curve>
+            <point x="0.020000000000000018" y="0.42000000000000004"/>
+            <point x="-0.18" y="0.41800000000000004"/>
+            <point x="-0.379" y="0.21999999999999997"/>
+            <point x="-0.38" y="0.020000000000000018"/>
+        </curve>
+        <curve>
+            <point x="-0.38" y="0.020000000000000018"/>
+            <point x="-0.38" y="-0.179"/>
+            <point x="-0.181" y="-0.38"/>
+            <point x="0.019000000000000017" y="-0.381"/>
+        </curve>
+    </polygon>
+    <scaleX>1.0</scaleX>
+    <scaleY>1.0</scaleY>
+    <rotationAngle>0.0</rotationAngle>
+    <transX>0.5</transX>
+    <transY>0.5</transY>
+</polygonSet>

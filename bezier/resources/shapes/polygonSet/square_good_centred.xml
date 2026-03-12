@@ -1,0 +1,35 @@
+<polygonSet>
+    <name>square_good_centred.xml</name>
+    <shapeType>CUBIC_CURVE</shapeType>
+    <polygon>
+        <curve>
+            <point x="-0.4" y="-0.4"/>
+            <point x="-0.13" y="-0.4"/>
+            <point x="0.13" y="-0.4"/>
+            <point x="0.4" y="-0.4"/>
+        </curve>
+        <curve>
+            <point x="0.4" y="-0.4"/>
+            <point x="0.4" y="-0.13"/>
+            <point x="0.4" y="0.13"/>
+            <point x="0.4" y="0.4"/>
+        </curve>
+        <curve>
+            <point x="0.4" y="0.4"/>
+            <point x="0.13" y="0.4"/>
+            <point x="-0.13" y="0.4"/>
+            <point x="-0.4" y="0.4"/>
+        </curve>
+        <curve>
+            <point x="-0.4" y="0.4"/>
+            <point x="-0.4" y="0.13"/>
+            <point x="-0.4" y="-0.13"/>
+            <point x="-0.4" y="-0.4"/>
+        </curve>
+    </polygon>
+    <scaleX>1.0</scaleX>
+    <scaleY>1.0</scaleY>
+    <rotationAngle>0.0</rotationAngle>
+    <transX>0.5</transX>
+    <transY>0.5</transY>
+</polygonSet>

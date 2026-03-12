@@ -1,0 +1,13 @@
+<!ELEMENT renderer (name, mode, fillRed, fillGreen, fillBlue, fillAlpha, strokeRed, strokeGreen, strokeBlue, strokeAlpha, strokeWeight)>
+
+    <!ELEMENT name (#PCDATA)>
+    <!ELEMENT mode (#PCDATA)>
+    <!ELEMENT fillRed (#PCDATA)>
+    <!ELEMENT fillGreen (#PCDATA)>
+    <!ELEMENT fillBlue (#PCDATA)>
+    <!ELEMENT fillAlpha (#PCDATA)>
+    <!ELEMENT strokeRed (#PCDATA)>
+    <!ELEMENT strokeGreen (#PCDATA)>
+    <!ELEMENT strokeBlue (#PCDATA)>
+    <!ELEMENT strokeAlpha (#PCDATA)>
+    <!ELEMENT strokeWeight (#PCDATA)>

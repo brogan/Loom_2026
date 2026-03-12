@@ -1,0 +1,86 @@
+<?xml version="1.0" encoding="ISO-8859-1"?>
+<!DOCTYPE cubicCurve SYSTEM "../../dtd/cubicCurve.dtd">
+
+<cubicCurve>
+
+	<name>b_heart</name>
+	<shapeType>CUBIC_CURVE</shapeType>
+	<polyPoints>
+	
+		<polyPoint>
+			<x>0</x>
+			<y>-.5</y>
+		</polyPoint>
+		<polyPoint>
+			<x>.2</x>
+			<y>-1</y>
+		</polyPoint>
+		<polyPoint>
+			<x>.8</x>
+			<y>-1</y>
+		</polyPoint>
+		<polyPoint>
+			<x>1</x>
+			<y>-.5</y>
+		</polyPoint>
+		
+		<polyPoint>
+			<x>1</x>
+			<y>-.5</y>
+		</polyPoint>
+		<polyPoint>
+			<x>1.1</x>
+			<y>.25</y>
+		</polyPoint>
+		<polyPoint>
+			<x>0</x>
+			<y>.5</y>
+		</polyPoint>
+		<polyPoint>
+			<x>0</x>
+			<y>1</y>
+		</polyPoint>
+		
+		<polyPoint>
+			<x>0</x>
+			<y>1</y>
+		</polyPoint>
+		<polyPoint>
+			<x>0</x>
+			<y>.5</y>
+		</polyPoint>
+		<polyPoint>
+			<x>-1.1</x>
+			<y>.25</y>
+		</polyPoint>
+		<polyPoint>
+			<x>-1</x>
+			<y>-.5</y>
+		</polyPoint>
+		
+		<polyPoint>
+			<x>-1</x>
+			<y>-.5</y>
+		</polyPoint>
+		<polyPoint>
+			<x>-.8</x>
+			<y>-1</y>
+		</polyPoint>
+		<polyPoint>
+			<x>-.2</x>
+			<y>-1</y>
+		</polyPoint>
+		<polyPoint>
+			<x>0</x>
+			<y>-.5</y>
+		</polyPoint>
+		
+	</polyPoints>
+	<scaleX>.4</scaleX>
+	<scaleY>.4</scaleY>
+	<rotationAngle>0</rotationAngle>
+	<transX>.5</transX>
+	<transY>.5</transY>
+
+</cubicCurve>
+

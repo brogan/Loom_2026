@@ -1,0 +1,8 @@
+<!ELEMENT oval (name, shapeType, centerX, centerY, width, height)>
+
+    <!ELEMENT name (#PCDATA)>
+    <!ELEMENT shapeType (#PCDATA)>
+    <!ELEMENT centerX (#PCDATA)>
+    <!ELEMENT centerY (#PCDATA)>
+    <!ELEMENT width (#PCDATA)>
+    <!ELEMENT height (#PCDATA)>

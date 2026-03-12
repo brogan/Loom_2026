@@ -1,0 +1,33 @@
+# Scala / SBT build artifacts
+loom_engine/target/
+loom_engine/project/target/
+loom_engine/project/project/
+loom_engine/.bsp/
+
+# Java / IntelliJ build artifacts
+bezier/out/production/
+bezier/out/artifacts/
+bezier/*.iml
+bezier/.idea/
+
+# Python virtual environment
+loom_engine/loom_parameter_editor/.venv/
+
+# Python bytecode
+**/__pycache__/
+**/*.pyc
+**/*.pyo
+
+# macOS metadata
+.DS_Store
+**/.DS_Store
+
+# Log / temp files
+**/*.log
+**/nohup.out
+
+# Large user data / project outputs
+loom_engine/sketches/
+
+# SBT server socket
+loom_engine/.bloop/

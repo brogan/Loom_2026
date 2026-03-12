@@ -1,0 +1,36 @@
+<renderer name="RendererA">
+    <strokeWidth>.5</strokeWidth>
+    <strokeColor r="0" g="0" b="0" a="255"/>
+    <fillColor r="180" g="100" b="70" a="20"/>
+	<sizeTransforms>
+        <sizeTransform>
+            <param>strokewidth</param>
+            <kind>ran</kind>
+            <scale>poly</scale>
+            <motion>up</motion>
+			<min>2</min>
+			<max>10</max>
+			<inc>1</inc>
+            <cycle>constant</cycle>
+            <pauseMin>0</pauseMin>
+            <pauseMax>0</pauseMax>
+		</sizeTransform>
+	</sizeTransforms>
+	<colorTransforms>
+		<colorTransform>
+            <param>fill</param>
+            <kind>seq</kind>
+            <scale>poly</scale>
+            <motion>up</motion>
+			<min r="20" g="40" b="60" a="240"/>
+			<max r="90" g="110" b="130" a="255"/>
+			<inc r="1" g="1" b="2" a="1"/>
+            <cycle>constant</cycle>
+            <pauseMin>3</pauseMin>
+            <pauseMax>10</pauseMax>
+            <pauseChan>red</pauseChan>
+            <pauseColMin r="180" g="50" b="0" a="255"/>
+            <pauseColMax r="180" g="100" b="0" a="255"/>
+		</colorTransform>
+	</colorTransforms>
+</renderer>

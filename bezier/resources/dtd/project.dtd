@@ -1,0 +1,40 @@
+<!ELEMENT project (name, width, height, border_width, rows, cols, offset_x, offset_y, wrapping, grid_color, selection_color, central_axes_color, image_mode, image_path, sequence_path, image_color, image_drawing_mode, drawSets, redraw, background_color, render_mode, stroke_weight, export_path, file_prefix, quality_multiplier, visible_grid)>
+
+    <!ELEMENT name (#PCDATA)>
+    <!ELEMENT width (#PCDATA)>
+    <!ELEMENT height (#PCDATA)>
+    <!ELEMENT border_width (#PCDATA)>
+    <!ELEMENT rows (#PCDATA)>
+    <!ELEMENT cols (#PCDATA)>
+    <!ELEMENT offset_x (#PCDATA)>
+    <!ELEMENT offset_y (#PCDATA)>
+    <!ELEMENT wrapping (#PCDATA)>
+    <!ELEMENT grid_color (#PCDATA)>
+    <!ELEMENT selection_color (#PCDATA)>
+    <!ELEMENT central_axes_color (#PCDATA)>
+    <!ELEMENT image_mode (#PCDATA)>
+    <!ELEMENT image_path (#PCDATA)>
+    <!ELEMENT sequence_path (#PCDATA)>
+    <!ELEMENT image_color (#PCDATA)>
+    <!ELEMENT image_drawing_mode (#PCDATA)>
+    <!ELEMENT drawSets (drawSet+)>
+        <!ELEMENT drawSet (name, sequential_mode, animator, frames, drawer+)>
+           <!ELEMENT name (#PCDATA)>
+           <!ELEMENT sequential_mode (#PCDATA)>
+           <!ELEMENT animator (#PCDATA)>
+           <!ELEMENT frames (frame+)>
+              <!ELEMENT frame (#PCDATA)>
+    	   <!ELEMENT drawer (d_name, activate, animator, renderer, selected)>
+    		  <!ELEMENT d_name (#PCDATA)>
+    		  <!ELEMENT activate (#PCDATA)>
+    		  <!ELEMENT animator (#PCDATA)>
+    		  <!ELEMENT renderer (#PCDATA)>
+    		  <!ELEMENT selected (#PCDATA)>
+    <!ELEMENT redraw (#PCDATA)>
+    <!ELEMENT background_color (#PCDATA)>
+    <!ELEMENT render_mode (#PCDATA)>
+    <!ELEMENT stroke_weight (#PCDATA)>
+    <!ELEMENT export_path (#PCDATA)>
+    <!ELEMENT file_prefix (#PCDATA)>
+    <!ELEMENT quality_multiplier (#PCDATA)>
+    <!ELEMENT visible_grid (#PCDATA)>

@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="ISO-8859-1"?>
+<!DOCTYPE regularPolygon SYSTEM "../../dtd/regularPolygon.dtd">
+<regularPolygon>
+    <name>r_heptagon</name>
+    <shapeType>REGULAR_POLYGON</shapeType>
+    <totalPoints>7</totalPoints>
+    <internalRadius>0.5</internalRadius>
+    <offset>0.0</offset>
+    <scaleX>1.0</scaleX>
+    <scaleY>1.0</scaleY>
+    <rotationAngle>0.0</rotationAngle>
+    <transX>0.5</transX>
+    <transY>0.5</transY>
+</regularPolygon>

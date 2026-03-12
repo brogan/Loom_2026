@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="ISO-8859-1"?>
+<!DOCTYPE polygonSet SYSTEM "../../dtd/polygonSet.dtd">
+<polygonSet>
+    <name>SPHERE</name>
+    <shapeType>CUBIC_CURVE</shapeType>
+    <polygon>
+        <curve>
+            <point x="-0.4" y="0.0"/>
+            <point x="-0.4" y="-0.2"/>
+            <point x="-0.2" y="-0.4"/>
+            <point x="0.0" y="-0.4"/>
+        </curve>
+        <curve>
+            <point x="0.0" y="-0.4"/>
+            <point x="0.2" y="-0.4"/>
+            <point x="0.4" y="-0.2"/>
+            <point x="0.4" y="0.0"/>
+        </curve>
+        <curve>
+            <point x="0.4" y="0.0"/>
+            <point x="0.4" y="0.2"/>
+            <point x="0.2" y="0.4"/>
+            <point x="0.0" y="0.4"/>
+        </curve>
+        <curve>
+            <point x="0.0" y="0.4"/>
+            <point x="-0.2" y="0.4"/>
+            <point x="-0.4" y="0.2"/>
+            <point x="-0.4" y="0.0"/>
+        </curve>
+    </polygon>
+    <scaleX>1.0</scaleX>
+    <scaleY>1.0</scaleY>
+    <rotationAngle>0.0</rotationAngle>
+    <transX>0.5</transX>
+    <transY>0.5</transY>
+</polygonSet>

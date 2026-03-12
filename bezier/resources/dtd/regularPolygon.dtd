@@ -1,0 +1,12 @@
+<!ELEMENT regularPolygon (name, shapeType, totalPoints, internalRadius, offset, scaleX, scaleY, rotationAngle, transX, transY)>
+
+    <!ELEMENT name (#PCDATA)>
+    <!ELEMENT shapeType (#PCDATA)>
+    <!ELEMENT totalPoints (#PCDATA)>
+    <!ELEMENT internalRadius (#PCDATA)>
+    <!ELEMENT offset (#PCDATA)>
+    <!ELEMENT scaleX (#PCDATA)>
+    <!ELEMENT scaleY (#PCDATA)>
+    <!ELEMENT rotationAngle (#PCDATA)>
+    <!ELEMENT transX (#PCDATA)>
+    <!ELEMENT transY (#PCDATA)>  

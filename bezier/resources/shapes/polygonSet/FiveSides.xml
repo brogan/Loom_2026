@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="ISO-8859-1"?>
+<!DOCTYPE polygonSet SYSTEM "../../dtd/polygonSet.dtd">
+<polygonSet>
+    <name>FiveSides</name>
+    <shapeType>CUBIC_CURVE</shapeType>
+    <polygon>
+        <curve>
+            <point x="-0.38" y="-0.08000000000000002"/>
+            <point x="-0.2633333333333333" y="-0.18"/>
+            <point x="-0.1466666666666666" y="-0.28"/>
+            <point x="-0.030000000000000027" y="-0.38"/>
+        </curve>
+        <curve>
+            <point x="-0.030000000000000027" y="-0.38"/>
+            <point x="0.08333333333333337" y="-0.28"/>
+            <point x="0.19666666666666666" y="-0.18"/>
+            <point x="0.31000000000000005" y="-0.08000000000000002"/>
+        </curve>
+        <curve>
+            <point x="0.31000000000000005" y="-0.08000000000000002"/>
+            <point x="0.28" y="0.020000000000000018"/>
+            <point x="0.25" y="0.12"/>
+            <point x="0.21999999999999997" y="0.21999999999999997"/>
+        </curve>
+        <curve>
+            <point x="0.21999999999999997" y="0.21999999999999997"/>
+            <point x="0.053333333333333344" y="0.21999999999999997"/>
+            <point x="-0.11333333333333334" y="0.21999999999999997"/>
+            <point x="-0.28" y="0.21999999999999997"/>
+        </curve>
+        <curve>
+            <point x="-0.28" y="0.21999999999999997"/>
+            <point x="-0.31333333333333335" y="0.12"/>
+            <point x="-0.3466666666666667" y="0.020000000000000018"/>
+            <point x="-0.38" y="-0.08000000000000002"/>
+        </curve>
+    </polygon>
+    <scaleX>1.0</scaleX>
+    <scaleY>1.0</scaleY>
+    <rotationAngle>0.0</rotationAngle>
+    <transX>0.5</transX>
+    <transY>0.5</transY>
+</polygonSet>

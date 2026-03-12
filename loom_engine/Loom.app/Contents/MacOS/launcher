@@ -1,0 +1,9 @@
+#!/bin/bash
+# Loom Application Launcher - Opens in Terminal with 8GB heap
+
+osascript -e '
+tell application "Terminal"
+    activate
+    do script "cd /Users/broganbunt/Loom_2026/loom_engine && SBT_OPTS=\"-Xmx8G\" sbt run"
+end tell
+'

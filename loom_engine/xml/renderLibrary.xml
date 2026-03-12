@@ -1,0 +1,25 @@
+<renderSetLibrary name="Library">
+	<renderSet name="Set">
+		<renderer name="RendererA" mode="0" strokeWidth="1" strokeColor="0,0,0,255" fillColor="180,100,70,20">
+			<sizeTransforms>
+				<sizeTransform kind="random" motion="up" scale="poly">
+					<min>2</min>
+					<max>10</max>
+					<inc>1</inc>
+					<pause cycle="constant" pauseMin="0" pauseMax="0"/>
+				</sizeTransform>
+			</sizeTransforms>
+			<colorTransforms>
+				<colorTransform kind="1" motion="0" scale="poly">
+					<min r="20" g="40" b="60" a="240"/>
+					<max r="90" g="110" b="130" a="255"/>
+					<min r="1" g="1" b="2" a="1"/>
+					<pause cycle="pausing" pauseMin="0" pauseMax="10" pauseChan="red">
+						<pauseColMin r="180" g="50" b="0" a="255"/>
+						<pauseColMax r="180" g="100" b="0" a="255"/>
+					</pause>
+				</colorTransform>
+			</colorTransforms>
+		</renderer> 
+	</renderSet>
+</renderSetLibrary>

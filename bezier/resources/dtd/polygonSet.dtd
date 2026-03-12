@@ -1,0 +1,14 @@
+<!ELEMENT polygonSet (name, shapeType, polygon+, scaleX, scaleY, rotationAngle, transX, transY)>
+<!ELEMENT name (#PCDATA)>
+<!ELEMENT shapeType (#PCDATA)>
+<!ELEMENT polygon (curve+)>
+   <!ELEMENT curve (point+)>
+      <!ELEMENT point EMPTY>
+         <!ATTLIST point x CDATA #REQUIRED>
+         <!ATTLIST point y CDATA #REQUIRED>
+<!ELEMENT scaleX (#PCDATA)>
+<!ELEMENT scaleY (#PCDATA)>
+<!ELEMENT rotationAngle (#PCDATA)>
+<!ELEMENT transX (#PCDATA)>
+<!ELEMENT transY (#PCDATA)> 
+    

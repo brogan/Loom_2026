@@ -1,0 +1,11 @@
+<!ELEMENT oscillator (name, frequency, amplitude, minAmp, maxAmp, ampIncrement, incrementing, ampTipPoint, phase)>
+
+    <!ELEMENT name (#PCDATA)>
+    <!ELEMENT frequency (#PCDATA)>
+    <!ELEMENT amplitude (#PCDATA)>
+    <!ELEMENT minAmp (#PCDATA)>
+    <!ELEMENT maxAmp (#PCDATA)>
+    <!ELEMENT ampIncrement (#PCDATA)>
+    <!ELEMENT incrementing (#PCDATA)>
+    <!ELEMENT ampTipPoint (#PCDATA)>
+    <!ELEMENT phase (#PCDATA)>

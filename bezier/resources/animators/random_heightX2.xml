@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="ISO-8859-1"?>
+<!DOCTYPE animator SYSTEM "../dtd/animator.dtd">
+
+<animator>
+
+	<name>random_heightX2</name>
+	<keys>
+		<key>
+			<duration>180</duration>
+			<tweenMode>RANDOM</tweenMode>
+			<easeMode>LINEAR</easeMode>
+			<oscillator>none</oscillator>
+			<scaleX>1</scaleX>
+			<scaleY>2</scaleY>
+			<rotationAngle>0</rotationAngle>
+			<rotationOffset>0</rotationOffset>
+			<transX>0</transX>
+			<transY>0</transY>
+			<renderer>F_blue_255</renderer>
+		</key>
+	</keys>
+
+</animator>

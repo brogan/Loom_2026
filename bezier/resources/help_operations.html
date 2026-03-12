@@ -1,0 +1,144 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><title>Operations</title>
+<style>
+  body { font-family: Arial, sans-serif; font-size: 13px; color: #222; background: #fafafa; margin: 0; padding: 20px 28px 40px; }
+  h1 { font-size: 21px; font-weight: bold; color: #1a1a2e; border-bottom: 2px solid #e0e4f0; padding-bottom: 10px; margin-top: 0; }
+  h2 { font-size: 16px; font-weight: bold; color: #1a1a2e; margin-top: 28px; border-bottom: 1px solid #e0e4f0; padding-bottom: 5px; }
+  h3 { font-size: 13px; font-weight: bold; color: #2c3060; margin-top: 18px; margin-bottom: 4px; }
+  h4 { font-size: 13px; font-weight: bold; color: #444; margin-top: 12px; margin-bottom: 3px; }
+  p { line-height: 1.6; margin: 7px 0; }
+  ul, ol { margin: 5px 0; padding-left: 20px; line-height: 1.65; }
+  li { margin-bottom: 2px; }
+  .note { background: #eef4ff; border-left: 4px solid #5b9cf6; padding: 9px 12px; margin: 12px 0; font-size: 12px; }
+  .warn { background: #fff8e6; border-left: 4px solid #f0a500; padding: 9px 12px; margin: 12px 0; font-size: 12px; }
+  table { border-collapse: collapse; width: 100%; margin: 10px 0; font-size: 12px; }
+  th { background: #f0f2f8; text-align: left; padding: 7px 10px; border: 1px solid #d8dce8; font-weight: bold; color: #333; }
+  td { padding: 6px 10px; border: 1px solid #e4e7f0; vertical-align: top; }
+  tr:nth-child(even) td { background: #f7f8fc; }
+  kbd { background: #eef; border: 1px solid #aac; border-radius: 3px; padding: 1px 5px; font-family: monospace; font-size: 11px; }
+  code { font-family: monospace; background: #eef; padding: 0 4px; border-radius: 3px; font-size: 11px; }
+  .chip { display: inline-block; background: #e8ecff; color: #3050b0; border-radius: 10px; padding: 1px 8px; font-size: 11px; font-weight: bold; margin: 1px 2px; }
+  .chip.orange { background: #fff0e0; color: #b05000; }
+  .chip.purple { background: #f5e8ff; color: #7020a0; }
+  .chip.yellow { background: #fdf8e0; color: #807000; }
+  .chip.blue   { background: #e0f0ff; color: #0050a0; }
+  .chip.red    { background: #ffe8e8; color: #a00020; }
+  .color-swatch { display: inline-block; width: 12px; height: 12px; border-radius: 2px; border: 1px solid rgba(0,0,0,0.2); vertical-align: middle; margin-right: 4px; }
+</style>
+</head><body>
+
+<h1>Operations</h1>
+
+<h2>Scale &amp; Rotate</h2>
+
+<h3>Scale Slider</h3>
+<p>Drag the <b>Scale</b> slider below the canvas. Range &minus;100 to +100 maps to a scale factor of 0.0&ndash;2.0.</p>
+<h4>Scale Axis</h4>
+<ul>
+  <li><b>XY</b> (default) &mdash; proportional scale in both axes.</li>
+  <li><b>X only</b> &mdash; squeeze/stretch horizontally.</li>
+  <li><b>Y only</b> &mdash; squeeze/stretch vertically.</li>
+</ul>
+<h4>Scale Pivot</h4>
+<ul>
+  <li><b>Point mode</b> &mdash; centroid of selected points.</li>
+  <li><b>Edge mode</b> &mdash; centroid of selected edge anchors.</li>
+  <li><b>Polygon Relational</b> &mdash; shared centroid of all selected polygons.</li>
+  <li><b>Polygon Discrete</b> &mdash; each polygon scales around its own centroid independently.</li>
+  <li>Nothing selected &mdash; canvas centre.</li>
+</ul>
+
+<h3>Rotate Slider</h3>
+<p>Drag the <b>Rotation</b> slider. Range &minus;100 to +100 maps to &minus;180&deg; to +180&deg;.</p>
+<h4>Rotation Axis (radio buttons)</h4>
+<ul>
+  <li><b>Local</b> (default) &mdash; each polygon rotates about its own centroid.</li>
+  <li><b>Common</b> &mdash; all selected polygons orbit their shared centroid.</li>
+  <li><b>Absolute</b> &mdash; all polygons orbit the canvas centre (500, 500).</li>
+</ul>
+
+<h4>Slider Commit</h4>
+<p>Releasing the mouse commits the transformation, resets the slider to zero, and marks a new undo point.</p>
+
+<h2>Translate (Drag)</h2>
+<ul>
+  <li><b>Point mode</b> &mdash; drag any selected point to move all selected points.</li>
+  <li><b>Edge mode</b> &mdash; drag near a selected edge to move all selected edges.</li>
+  <li><b>Polygon mode</b> &mdash; drag inside a selected polygon to move all selected polygons.</li>
+</ul>
+<p>An undo snapshot is taken at the start of the first drag movement.</p>
+
+<h2>Flip &amp; Centre</h2>
+<p><b>Flip Horizontal</b> &mdash; mirrors selected polygons left/right around their collective centroid. If nothing is selected, all polygons are flipped.</p>
+<p><b>Flip Vertical</b> &mdash; mirrors selected polygons top/bottom around their collective centroid.</p>
+<p><b>Centre</b> &mdash; moves selected (or all) polygons so their collective centroid coincides with the canvas centre (500, 500).</p>
+
+<h2>Zoom In / Zoom Out</h2>
+<p>The Zoom toolbar buttons scale all polygon geometry around a pivot:</p>
+<table>
+  <tr><th></th><th>In</th><th>Out</th></tr>
+  <tr><td>Factor</td><td>&times;1.25</td><td>&times;0.8</td></tr>
+</table>
+<h4>Pivot Priority</h4>
+<ol>
+  <li>Centroid of selected points.</li>
+  <li>Centroid of selected edge anchor pairs.</li>
+  <li>Centroid of selected polygon centres.</li>
+  <li>Canvas centre (default when nothing is selected).</li>
+</ol>
+<div class="note">Zoom operates on coordinate values &mdash; it does not change the canvas view. Use it to scale the entire polygon set up or down.</div>
+
+<h2>Snap to Grid</h2>
+<p>Grid has 100&times;100 intersections over the 1000&times;1000 canvas (10 units per cell).</p>
+<p><b>Snap Anchors</b> &mdash; moves every anchor point to the nearest grid intersection. Control points are left unchanged.</p>
+<p><b>Snap Anchors &amp; Controls</b> &mdash; also recalculates control points after snapping anchors, maintaining smooth tangents at the new grid positions.</p>
+
+<h2>Welding</h2>
+<p>Welding links anchor points from two different polygons so they share a position and move together in Relational mode.</p>
+
+<h3>Explicit Weld (Edge Mode)</h3>
+<ol>
+  <li>Enter <b>Edge Selection Mode</b> and select <b>exactly two edges</b> (one from each polygon).</li>
+  <li>Both conditions must be met: midpoint distance &le; <b>80 px</b> and directions within ~<b>45&deg;</b> of parallel (|cos&theta;| &gt; 0.7).</li>
+  <li>When conditions are met, edges turn <span class="chip purple">purple</span> automatically.</li>
+  <li>Click the <b>Weld</b> toolbar button.</li>
+</ol>
+<p>Both anchor pairs snap to their midpoints, control-point pairs snap to their midpoints, and all four pairs are registered in the Weld Registry.</p>
+
+<h3>Drag-to-Weld (Polygon Mode)</h3>
+<p>While dragging in Polygon Selection Mode, edges meeting the 80 px / 45&deg; criteria turn <span class="chip purple">purple</span>. Release the mouse to weld them automatically.</p>
+
+<h3>Weld Registry &amp; Relational Mode</h3>
+<p>The Weld Registry is a bidirectional map of linked anchor pairs. In Relational sub-mode, moving one point moves all transitively linked points.</p>
+
+<h2>Extrude</h2>
+<p>Extrude creates a new edge from a selected edge by Shift-dragging, bridged by straight connector edges.</p>
+<h3>Procedure</h3>
+<ol>
+  <li>Enter <b>Edge Selection Mode</b> and select one or more edges.</li>
+  <li>Hold <kbd>&#8679; Shift</kbd> and begin dragging on the canvas.</li>
+  <li>A <span class="chip purple">purple duplicate</span> of the selected edge(s) follows the mouse.</li>
+  <li>Release the mouse.</li>
+</ol>
+<h3>Result</h3>
+<ul>
+  <li><b>New edge</b> &mdash; the dragged duplicate at the release position.</li>
+  <li><b>Left connector</b> &mdash; straight edge from original.anchor0 to new.anchor0.</li>
+  <li><b>Right connector</b> &mdash; straight edge from original.anchor1 to new.anchor1.</li>
+  <li><b>4 weld links</b> &mdash; each connector endpoint welded to the corresponding anchor.</li>
+</ul>
+<p>After release, the <b>new edge becomes the selected edge</b> &mdash; you can immediately Shift+drag again to chain extrusions.</p>
+
+<h2>Duplicate &amp; Delete</h2>
+<h3>Duplicate</h3>
+<ul>
+  <li><b>Polygon mode</b> &mdash; copies of all selected polygons, offset 20 px right and down.</li>
+  <li><b>Edge mode</b> &mdash; single-edge polygon copy of the selected edge, offset 20 px.</li>
+</ul>
+<h3>Delete Selected</h3>
+<ul>
+  <li><b>Polygon mode</b> &mdash; removes selected polygon managers and unregisters their weld links.</li>
+  <li><b>Edge mode</b> &mdash; removes selected curves from their parent polygon.</li>
+</ul>
+<p><b>Clear All</b> &mdash; removes every polygon and resets the weld registry. Undoable.</p>
+
+</body></html>

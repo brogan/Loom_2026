@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="ISO-8859-1"?>
+<!DOCTYPE renderer SYSTEM "../dtd/renderer.dtd">
+<renderer>
+    <name>PT_white_1_10</name>
+    <mode>RENDER_POINTS</mode>
+    <fillRed>250</fillRed>
+    <fillGreen>20</fillGreen>
+    <fillBlue>100</fillBlue>
+    <fillAlpha>200</fillAlpha>
+    <strokeRed>255</strokeRed>
+    <strokeGreen>255</strokeGreen>
+    <strokeBlue>255</strokeBlue>
+    <strokeAlpha>10</strokeAlpha>
+    <strokeWeight>1.0</strokeWeight>
+</renderer>

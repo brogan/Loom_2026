@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="ISO-8859-1"?>
+<!DOCTYPE polygonSet SYSTEM "../../dtd/polygonSet.dtd">
+<polygonSet>
+    <name>aad</name>
+    <shapeType>CUBIC_CURVE</shapeType>
+    <polygon>
+        <curve>
+            <point x="-0.08" y="-0.08"/>
+            <point x="-0.01" y="-0.08"/>
+            <point x="0.05" y="-0.08"/>
+            <point x="0.11" y="-0.08"/>
+        </curve>
+        <curve>
+            <point x="0.11" y="-0.08"/>
+            <point x="0.11" y="-0.01"/>
+            <point x="0.11" y="0.05"/>
+            <point x="0.11" y="0.11"/>
+        </curve>
+        <curve>
+            <point x="0.11" y="0.11"/>
+            <point x="0.05" y="0.11"/>
+            <point x="-0.01" y="0.11"/>
+            <point x="-0.08" y="0.11"/>
+        </curve>
+        <curve>
+            <point x="-0.08" y="0.11"/>
+            <point x="-0.08" y="0.05"/>
+            <point x="-0.08" y="-0.01"/>
+            <point x="-0.08" y="-0.08"/>
+        </curve>
+    </polygon>
+    <scaleX>1.0</scaleX>
+    <scaleY>1.0</scaleY>
+    <rotationAngle>0.0</rotationAngle>
+    <transX>0.5</transX>
+    <transY>0.5</transY>
+</polygonSet>

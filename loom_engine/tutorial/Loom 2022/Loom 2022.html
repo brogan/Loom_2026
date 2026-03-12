@@ -1,0 +1,1090 @@
+<!doctype html>
+<html>
+<head>
+	<meta charset="UTF-8">
+	<title>Loom 2022</title>
+</head>
+<body>
+<h1>Loom 2022</h1>
+
+<p><em>A quick and very rough guide</em></p>
+
+<h2>Introduction</h2>
+
+<p>What is Loom?</p>
+
+<p>Loom is a Scala based drawing engine. Loom can do a range of things. It can display 2D and 3D images, play audio, respond to serial input, etc. Any particular instantiation shapes a 'sketch', with its own subdirectory in the project and its own version of the 'MySketch' file.</p>
+
+<p>Developing from work I did a decade ago, Loom 2022 focuses on polygonal subdivision. It subdivides simple 2D geometrical shapes to produce more complex shapes. These shapes become sprites that are positioned on screen for drawing. Animation is possible but options are currently very limited. My interest has been in recursive subdivision, the transformation of created shapes and their high resolution rendering (as stills). There is scope for 2D shapes to gain an additional z dimension, but this requires maintenance - and really should begin with dedicated 3D models rather than simply adding depth data to 2D planes.</p>
+
+<p>Loom represents, for me, an exploratory space. I've left it without any GUI so that it can evolve organically as a piece of code and conceptual invention. My aim here is less to finalise the project than to provide a snapshot, indicating its key operations and features. The whole thing has become so complex that I need a guide for myself so that I don't lose track of how it works. This is a minimal and largely private overview. So be warned!</p>
+
+<p>One final introductory point. Loom is scarcely a conventionally useful bit of graphics software. Normally subdivision provides a means of modelling further detail in shapes. Here it simply produces visual patterns - curiously rendered drawings of geometry and things. Recently, however, I've come across a possibly use. Loom would work well for geometrically stylised UV mapping. The polygon sets could represent UV maps and subdivision could 'paint' the maps.</p>
+
+<figure>
+<img src="images/Sponge.png" alt="Loom 2022 render example" title="Loom example" />
+<figcaption>Loom 2022 render example</figcaption>
+</figure>
+
+<hr />
+
+<h2>Set Up</h2>
+
+<ol>
+<li>Download the project and place somewhere convenient on your system.</li>
+<li>Install all the necessary foundation code - Java, Scala and SBT (Homebrew makes this easy). I also use Sublime Text to write and edit my code. This gives me a system where I work in Sublime Text and then compile and run my code in SBT running in Terminal.</li>
+<li>From terminal CD into the Loom project directory on your HD: eg&gt; cd ~/Scala/Loom_SBT/Loom</li>
+<li><code>sbt</code> command to run SBT: sbt -J-Xmx2G (note extra flag setting larger heap size)</li>
+<li><code>run Subdivide config_default.xml</code> to run Loom. This runs the 'Subdivide' sketch, taking some basic configuration settings from the 'config_default' xml file in the 'Subdivide' sketch subdirectory.</li>
+<li>this opens up a JFrame that displays a JPanel of whatever it is that the current settings are enabling (usually some kind of subdivided shape).</li>
+<li>To develop your own shapes to subdivide you will need to install 'Bezier Draw' - this is a simple bezier drawing Java app that saves polygon sets for use in Loom 2022. One bit of awkwardness: you will need remove the 'doc type' definition from the xml file to make it work in Loom 2022. Loom 2022 does no 'doc type' verification, whereas 'Bezier Draw' follows Java standards and works with a DTD. Must adjust this, preferably so that my Scala code also references relevant DTD. This will mean that I can build a JavaFX, or possibly Electron, GUI frontend that links to the XML backend and to the running Scala application. But for the time being just get rid of the first two lines once you copy the xml file from Bezier Draw to Loom 2022:</li>
+</ol>
+
+<pre><code class="xml">&lt;?xml version=&quot;1.0&quot; encoding=&quot;ISO-8859-1&quot;?&gt;
+&lt;!DOCTYPE polygonSet SYSTEM &quot;../../dtd/polygonSet.dtd&quot;&gt;
+</code></pre>
+
+<hr />
+
+<h2>Directory Structure</h2>
+
+<p>The Loom project folder contains:</p>
+
+<ol>
+<li><strong>build.sbt</strong>: build file for SBT.</li>
+<li><strong>Lib</strong>: various libraries that Loom needs. THe most important are the scala libaries. The other libraries, 'librxtxSerial.jnlib' and 'RXTXcomm.jar' are only needed for microcontroller access to another sketch. Not using 'akka-actor.jar' anymore (I don't think). 'Easing.jar' is an Java animation interpellation library that I really should be using in the Subdivide sketch, but am not currently.</li>
+<li><strong>Project</strong>: SBT generated leave alone, but worth running <code>clean</code> command every often in SBT to get rid of old project builds, which can rapidly accumulate and take up a lot of space.</li>
+<li><strong>sketches</strong>: as mentioned above, these are the different instantiations of the Loom engine, each with different features. Note that the 'Subdivide' directory includes a folder for renders ('captures') that has separate folders for stills and video (a set of frames), a config directory, a projects directory (not used yet) and a resources folder. The latter contains subdirectories with different xml files representing different shapes (stick with 'polygonSet', which is what gets produced in 'Bezier Draw'). It also includes the overall 'MySketch.scala' file that provides the entry point to the project.</li>
+<li><strong>src</strong>: the source directory (org)</li>
+<li><strong>target</strong>: SBT again</li>
+<li><strong>tutorial</strong>: mainly old stuff so no longer relevant. 'Loom technical development' provides an overview of the subdivision engine, but describes the original straight line based system. You can still use this system, but it has largely been superseded by the current spline based system. The lingering advantage of the line system, however, is that it offers many different types of subdivision (described in the tutorial document). These can be recursively layered to create very complex subdivision. The spline system only offer quad and tri subdivision currently, but offers the capacity to deal with curved polygons and many more options for the transformation of shapes.</li>
+</ol>
+
+<hr />
+
+<h2>Concepts</h2>
+
+<p>My focus is on how 2D spline based polygonal subdivision is conceived within Loom 2022.</p>
+
+<p>Polygons are composed of splines. A rectangle, for example, is composed of four splines - one for each line in the shape. Each spline is composed of four points - two anchors at either end and two associated control points, which control the curvature of the line. I guess you could create a polygon with just two splines, but we tend to begin with three or more splines (sides). So, as I say, a rectangle is composed of four splines, which has 16 points altogether. The final anchor point on each spline has a sibling (and a shared location) that is the origin anchor point on the first spline.</p>
+
+<p>The overall geometrical hierarchy is has <strong>points</strong> at the base, then <strong>splines</strong> that are composed of four points, <strong>polygons</strong> that are composed of splines and then <strong>polygon sets</strong> that are composed of one or more polygons. Beyond this we also have <strong>collections</strong> of polygon sets, but more on that later.</p>
+
+<p>The subdivision of polygons can take many forms, but I have only implemented two:</p>
+
+<ol>
+<li><strong>quad</strong>: begin at the origin point on the poly, calculate the centre of the first line (side 1), then from there to the centre of the polygon (side 2), then out to the middle of the final side of the polygon (side 3) and back to the origin (side 4) (which is also the last point in the overall set of 16 points). Then on to the second point in the original polygon to calculate the next sub-poly. Etc. So the process proceeds in a circular fashion through each of the points in the original polygon to calculate a new polygon from each starting position. This method works for any polygon with two or more sides.</li>
+</ol>
+
+<p><img src="images/image003.png" alt="QUAD subdivision of Square!" title="QUAD" />
+<img src="images/image013.png" alt="QUAD subdivision of Triangle!" title="QUAD" /></p>
+
+<ol>
+<li><strong>tri</strong>: begin at the origin point again, but this time goes straight to the centre (side 1), then out to the penultimate spline's first anchor point (side 2), and then back to the origin (which is also the last point in the overall set of 12 points). Etc.</li>
+</ol>
+
+<p><img src="images/image005.png" alt="TRI subdivision of Square!" title="TRI" />
+<img src="images/image017.png" alt="TRI subdivision of Triangle!" title="TRI" /></p>
+
+<p>These two methods are pretty straightforward really. Where the complexity comes in lies in a number of factors:</p>
+
+<ol>
+<li>subdivisions can be applied <strong>recursively</strong> so that we can start with a single polygon and end up with many thousands of polygons once a handful of stages of subdivision is applied.</li>
+<li>the stages can involve the combination of <strong>different modes of subdivision</strong> - so you can switch from quad to tri and then back again as you like. There is scope to develop further modes, however they should be applicable in a generic manner to any given polygon with any number of sides.</li>
+<li>each cycle of subdivision can have different <strong>parameters</strong> that affect the nature of the subdivision. This can involve, for instance, calculating a random centre in each polygon, varying the 'middle' point on subdivided lines and applying complex polygon and point level transformations to the subdivided polygons. These transformations can either be fully specified or probabilistically randomised. You can have a subdivided shape in which, for instance, 7% of the polygons have had some minor random translation in their position or have been bulged outwards are their sides. Applied at scale across multiple polygons this can produce very complex patterns and shapes.</li>
+<li>all sorts of <strong>rendering</strong> parameters are also possible - lines, colours, transparency can all be varied either deliberately or with a level of (systematic) randomisation.</li>
+<li>There is also scope to <strong>animate</strong> shapes, which adds another dimension of complexity, although this requires further development and only works efficiently with less complex shapes.</li>
+</ol>
+
+<p>So far I have been using the term 'shape' informally, but within the system there is a distinction made between <strong>shapes</strong> and <strong>sprites</strong>. Shapes are conceived as abstract containers for sets of polygons. Shapes are concretely realised in sprites that have a position on screen and that can be transformed, animated and rendered. The subdivision process is applied to the shape (to expand the set of polygons) before sprites are created. You can actually bypass subdivision altogether if you like and just employ the basic polygons from Bezier Draw. This facilitates much speedier display and rendering.</p>
+
+<p>Overall, here is the overall process:</p>
+
+<ol>
+<li>configuration: define overall environment - screen size, etc.</li>
+<li>define a rendering library composed of a set of renderers and some rules for how rendering will be applied.</li>
+<li>load some polygon sets from the 'resources/polygonSets' folder</li>
+<li>define a set of subdivision parameters (if you wish)</li>
+<li>create a set of shapes from the polygon set</li>
+<li>apply the set of subdivisions to the set of shapes (each shape can have a different subdivision set applied)</li>
+<li>create a set of sprites that instantiate the shapes and have their own rendering set</li>
+<li>animate the sprites if you wish</li>
+<li>render the sprite to screen</li>
+<li>capture the images as stills (either a single image or as sequence of stills in an animation)</li>
+</ol>
+
+<hr />
+
+<h2>Configuration</h2>
+
+<p>The following details go into a configuration file, 'confi_default.xml', which is located in <code>Loom/sketches/Sudivide/config</code>.</p>
+
+<ol>
+<li><strong>name</strong>: String (the name of the sketch)</li>
+<li><strong>width</strong>: Integer (width of the screen/rendered image)</li>
+<li><strong>height</strong>: Integer (height of the screen/rendered image)</li>
+<li><strong>qualityMultiple</strong>: Integer. A value of 1 renders at 1 to 1 between screen width and height and render output. Higher values increase the pixel dimensions. A value of 12 creates a high resolution image for my purposes. Important to note that if you choose a higher value than 1 then the displayed output will only display the top left rectangular portion of the output at current width and height, so at 12 you will typically only see a white screen. You need to save the image (Cmd S) and then open it to check the render.</li>
+<li><strong>animating</strong>: Boolean value (is animating happening?)</li>
+<li><strong>fullscreen</strong>: Boolean value (full screen window?)</li>
+<li><strong>bordercolor</strong>: RGB value (red: 0-255, green: 0-255, blue: 0-255) (If you want border colour for the image)</li>
+<li><strong>serial</strong>: Boolean value. (No reading of serial input in this sketch so 'false'</li>
+<li><strong>port</strong>: serial related (not relevant for this sketch)</li>
+<li><strong>mode</strong>: serial related (not relevant for this sketch)</li>
+<li><strong>quantity</strong>: serial related (not relevant for this sketch)</li>
+</ol>
+
+<p><em>Note to self: move all of this into a start screen via JavaFX/Electron, whatever.</em></p>
+
+<hr />
+
+<h2>MySketch</h2>
+
+<p>The main code that you will be dealing with <strong>MySketch.scala</strong> contained in 'mysketch' directory of <code>src/main/scala/org/loom</code>.</p>
+
+<p>Here is where you define renderers, polygon sets, subdivision parameters, etc. This is also the place that contains the main update and draw loop. You will most likely have to check other pieces of code now and then, but you should aim to get most things done in MySketch.</p>
+
+<hr />
+
+<hr />
+
+<h2>Rendering</h2>
+
+<p>Individual renderers, which define features such as the rendering mode (points, lines, filled, etc.) and associated line widths, colours, etc., can be combined into named sets. These sets are themselves added to an overall library of renderer sets.</p>
+
+<p>Rendering is called from <code>Sprite2D</code>.</p>
+
+<p>The MySketch constructor calls an internal method, <code>makeRendererSetLibrary</code>, which is where renderers get added to rendererSets and then the sets get added to the rendererSetLibrary.</p>
+
+<p>You only need to modify fields that differ from the defaults defined in Renderer, RendererSet and RendererSetLibrary. All of these fields are defined below.</p>
+
+<hr />
+
+<h3>Renderer</h3>
+
+<p>Here are the field associated with individual renderers:</p>
+
+<p>Firstly there are parameters that are passed in when the renderer is created:</p>
+
+<ol>
+<li><strong>name</strong>: String</li>
+<li><strong>mode</strong>: Int (0 (points: Renderer.POINTS), 1 (lines: Renderer.LINES), 2 (filled: Renderer.FILLED), 3 (filled_stroked: Renderer.FILLED_STROKED))</li>
+<li><strong>strokeWidth</strong>: Float</li>
+<li><strong>strokeColor</strong>: Color (RGBA)</li>
+<li><strong>fillColor</strong>: Color (RGBA)</li>
+</ol>
+
+<p>Following these basic Java2D parameters, there are a large number of internal fields linked to ways that features of rendering can be modified either in sequence or randomly for each polygon in a polygonSet. So, for instance, the strokeWidth value could gradually increase for each polygon drawn, or a random mode of rendering could be selected for each polygon, etc.</p>
+
+<p>Important to note that all of these changes happen at the level of the individual renderer. It is also possible vary rendering at the level of the renderSet, but more about this soon.</p>
+
+<h5>Overall fields</h5>
+
+<p>These determine whether modification of the point happens when renderer is called (from sprite2D).</p>
+
+<ol>
+<li><strong>static</strong>: Boolean (if true then no modification of point drawing)</li>
+<li><strong>changeMode</strong>: Boolean (between points, lines, filled or stroked_filled. Change can be sequential or random)</li>
+<li><strong>changePoints</strong>: Boolean (switch for modifying point rendering parameters)</li>
+<li><strong>changeStrokeWidth</strong>: Boolean (switch for modifying strokeWidth rendering parameters)</li>
+<li><strong>changeStrokeColor</strong>: Boolean (switch for modifying strokeColor rendering parameters)</li>
+<li><strong>changeFillColor</strong>: Boolean (switch for modifying point fillColor parameters)</li>
+</ol>
+
+<h5>Sequential rendering modification fields</h5>
+
+<ol>
+<li><strong>sequenceParameterChange</strong>: Boolean (if true then incremental modification of rendering parameters. Also if true then randomised change does not happen. Sequential and randomised change are mutually exclusive)</li>
+<li><strong>modeIndex</strong>: Integer (initial rendering mode index: 0 for points, 1 for lines, 2 for filled, 3 for filled stroked)</li>
+<li><strong>modeIncrementAmount</strong>: Integer (how much to increment mode each rendering call: typically 1)</li>
+<li><strong>modeList</strong>: List[Integer] (the list of mode indexes referenced for sequential change)</li>
+<li><strong>strokeWidthIncrementAmount</strong>: Float (how much to increment float amount)</li>
+<li><strong>strokeWidthMin</strong>: Float (minimum value for strokeWidth)</li>
+<li><strong>strokeWidthMax</strong>: Float (maximum value for strokeWidth)</li>
+<li><strong>strokeColorMinList</strong>: List[Integer] (RGBA minimums)</li>
+<li><strong>strokeColorMaxList</strong>: List[Integer] (RGBA maximums)</li>
+<li><strong>strokeColorIncrementAmounts</strong>: List[Integer] (RGBA increments)</li>
+<li><strong>fillColorMinList</strong>: List[Integer] (RGBA minimums)</li>
+<li><strong>fillColorMaxList</strong>: List[Integer] (RGBA maximums)</li>
+<li><strong>fillColorIncrementAmounts</strong>: List[Integer] (RGBA increments)</li>
+</ol>
+
+<h5>Randomised rendering modification fields</h5>
+
+<ol>
+<li><strong>randomParameterChange</strong>: Boolean (if true then random changes to rendering determined by following parameters. Mutually exclusive with sequenceParameterChange)</li>
+<li><strong>randomModeArray</strong>: List[Integer] (the set of modes to be randomly selected from, for instance: List(Renderer.POINTS, Renderer.LINES, Renderer.FILLED, Renderer.FILLED_STROKED))</li>
+<li><strong>randomPointColorRange</strong>: List[Range(min,max)] (random ranges across R, G, B and A)</li>
+<li><strong>randomStrokeWidthRange</strong>: Range(min,max) Float (random range of stroke width values)</li>
+<li><strong>randomStrokeColorRange</strong>: List[Range(min,max)] (random ranges across R, G, B and A)</li>
+<li><strong>randomFillColorRange</strong>: List[Range(min,max)] (random ranges across R, G, B and A)</li>
+</ol>
+
+<h5>Additional point related fields</h5>
+
+<p>Points are drawn as Ellipse2Ds. This means they are essentially little circular shapes (perfect or oblong). They are defined by the size of the shape (width and height) and by standard rendering parameters (strokeWidth, strokeColor, fillColor).</p>
+
+<p>Note that the pointColor is not the same as the strokeColor. The pointColor relates to the filled state of any Ellipse2D, not the stroke (outline).</p>
+
+<ol>
+<li><strong>modifyPointStrokeWidth</strong>: Boolean (overall switch for modifiying stroke width)</li>
+<li><strong>pointStrokeWidthIncrement</strong>: Float (how much to increment strokeWidth each call to renderer)</li>
+<li><strong>pointStrokeWidthMultiplier</strong>: Double (this has two purposes. It is firstly a means of ensuring that the stroke width matches the overall rendering size of the image. If the image is rendered large then the strokeWidth of the point drawing can, for instance, increase correspondingly. Secondly, it makes it possible to iterate through a range of strokeWidth values each time the renderer is called. This can produce a variety of different size points)</li>
+<li><strong>pointStrokeWidthMultiplierRange</strong>: Range(Integer min and max) (sets the min and max for incrementing the strokeWidth value)</li>
+<li><strong>pointStrokeWidth</strong>: Float (this is instantly set to the strokeWidth * pointStrokeWidthMultiplier, ensuring points are drawn appropriately depending upon the resolution multiplier (see Configuration details).</li>
+<li><strong>pointColor</strong>: Color(RGBA) (the fill color of point)</li>
+<li><strong>pointColorMinList</strong>: List [Integer] minimum RGBA values for pointColor</li>
+<li><strong>pointColorMaxList</strong>: List [Integer] maximum RGBA values for pointColor</li>
+<li><strong>pointColorIncrementAmounts</strong>: List[Integer] RGBA increment amounts</li>
+<li><strong>modifyPointColor</strong>: Boolean (overall switch for color modification)</li>
+<li><strong>modifyPointFilled</strong>: Boolean (switch for modifying the filled status of point)</li>
+<li><strong>pointFilled</strong>: Boolean (the filled status of point)</li>
+<li><strong>modifyPointSize</strong>: Boolean (switch for whether or not point size is modified. Note currently point size adjusted identically across width and height, not independently)</li>
+<li><strong>pointSizeIncrement</strong>: Double (for sequentially modifying the point size)</li>
+<li><strong>pointSizeMultiplier</strong>: Double (again for dealing with configuration based resolution multiplier changes and for sequentially or randomly modifying the size of points)</li>
+<li><strong>pointSizeMultiplierRange</strong>; Range (set min and max values for sequentially or randomly modifying point size)</li>
+<li><strong>pointWidth</strong>: Double (set to strokeWidth * pointSizeMultiplier)</li>
+<li><strong>pointHeight</strong>: Double (set to strokeWidth * pointSizeMultiplier)</li>
+</ol>
+
+<hr />
+
+<h3>RendererSet</h3>
+
+<p>Alongside all the potential changes to individual renderers, it is also possible include rendering changes at the level of rendererSets.</p>
+
+<p>A rendererSet is composed of a set of indiviudal renderers. You can select sequentially or randomly from rendererSets. So you may have red, yellow and blue renderer and you can move between them in looping sequence as you render polygons, or select from the pool randomly. Furthermore, you can combine these set level changes with the modification of individual renderer parameters, so that the red renderer, for instance, could cycle through a range of shades, or radically shift modes, etc.</p>
+
+<p>Mainly, rendererSets are useful in terms of defining a limited palette of renderers that can be managed as a group.</p>
+
+<p>Each RendererSet takes a name (String) as a parameter.</p>
+
+<p>Here are the rendererSet fields:</p>
+
+<ol>
+<li><strong>rendererSet</strong>: ArrayBuffer of Renderers (so that sets can vary in size and renderers can be added and subtracted as needed)</li>
+<li><strong>currentRenderer</strong>: Renderer (the currently selected renderer)</li>
+<li><strong>selectedIndex</strong>: Integer (the index in the ArrayBuffer of the currently selected renderer)</li>
+<li><strong>preferredRendererIndex</strong>: Integer (you can prioritise one renderer, making it the one most likely to be chosen)</li>
+<li><strong>preferredProbability</strong>: Double (the associated percentage probability that preferred renderer will be chosen)</li>
+<li><strong>staticRendering</strong>: Boolean (if true then no sequential or random change of currentRenderer)</li>
+<li><strong>modifyInternalParameters</strong>: Boolean (modify parameters within individual renderers)</li>
+<li><strong>sequenceIndexChange</strong>: Boolean (accesses renderers in sequence from first to last and repeat - can then have subsequent modified individual renderer parameters. Mutually exclusive from randomIndexChange)</li>
+<li><strong>randomIndexChange</strong>: Boolean (if true then selects a random renderer - can then have subsequent modified individual renderer parameters. Mutually exclusive from sequenceIndexChange)</li>
+</ol>
+
+<hr />
+
+<h3>RendererSetLibrary</h3>
+
+<p>This is the overall collection of rendererSets. It is possible to access sets in sequence or randomly. Need to consider carefully at what level you want to manage change. Probably easiest to begin at renderer level, then move up to rendererSets when that makes sense, and only finally to switching between rendererSets in the library.</p>
+
+<p>The library itself has a name (String) as parameter when created.</p>
+
+<p>Note that you tend to access rendererSets by name, but they can also be accessed by index.</p>
+
+<p>Here are the rendererSetLibrary fields:</p>
+
+<ol>
+<li><strong>library</strong>: ArrayBuffer[RendererSet]</li>
+<li><strong>currentRendererSet</strong>: RendererSet</li>
+<li><strong>selectedIndex</strong>: Integer</li>
+<li><strong>preferredRendererSetIndex</strong>: Integer (the prioritised rendererSet when sequential or random access relevant (linked to probablility below))</li>
+<li><strong>preferredProbability</strong>: Double (the percentage probability that preferred renderer will be chosen)</li>
+</ol>
+
+<hr />
+
+<h3>Convenience Methods</h3>
+
+<p>Although it is possible engage with all of these fields across all these different levels of the rendering architecture directly, it is much easier to interact with the complex set of Renderer and RendererSet fields particularly via a set of convenienct methods that are assembled in a long comment at the top of <code>makeRendererSetLibrary</code>.</p>
+
+<h4>Renderer</h4>
+
+<ol>
+<li><code>setChanging(changeType: Int)</code> (Renderer.SEQUENCE or Renderer.RANDOM: <strong>required for changing</strong> and to specify type of change (sequential or random), otherwise renderer is static)</li>
+</ol>
+
+<p><strong>Mode</strong></p>
+
+<ol>
+<li><code>setChangingMode(modes: List[Int])</code> (define list of modes to be either sequentially or randomly selected depending on changeType parameter to setChanging())</li>
+</ol>
+
+<p><strong>Points</strong></p>
+
+<ol>
+<li><code>setChangingPointStrokeWidth(increment: Float, multiplier: Double, multiplierRange: Range)</code> (either sequential or random depending on setChanging() value)</li>
+<li><code>setChangingPointColor(colorMinList: List[Int], colorMaxList: List[Int], colorIncrementList: List[Int])</code> (set RGBA values sequentially or randomly depending on setChanging() value)</li>
+<li><code>setChangingPointSize(increment: Float, multiplier: Double, multiplierRange: Range)</code> (set size of Ellipse2D sequentially or randomly depending on setChanging() value)</li>
+</ol>
+
+<p><strong>Stroke Width</strong></p>
+
+<ol>
+<li><p><code>setSequentiallyChangingStrokeWidth(increment: Float, min: Float, max: Float)</code> (only happens if setChanging set to sequential)</p></li>
+<li><p><code>setRandomlyChangingStrokeWidth(range: Range)</code> (only happens if setChanging set to random)</p></li>
+<li><p><strong>Stroke Color</strong></p></li>
+<li><p><code>setSequentiallyChangingStrokeColor(min: List[Int], max: List[Int], increments: List[Int])</code> (only happens if setChanging set to sequential)</p></li>
+<li><p><code>setRandomlyChangingStrokeColor(RGBA_ranges: List[Range])</code> (only happens if setChanging set to random)</p></li>
+</ol>
+
+<p><strong>Fill Color</strong></p>
+
+<ol>
+<li><code>setSequentiallyChangingFillColor(min: List[Int], max: List[Int], increments: List[Int])</code> (only happens if setChanging set to sequential)</li>
+<li><code>setRandomlyChangingFillColor(RGBA_ranges: List[Range])</code> (only happens if setChanging set to random)</li>
+</ol>
+
+<h4>RendererSet</h4>
+
+<p><strong>Convenience Methods for Configuring Render Sets</strong></p>
+
+<p>Specify if sequential or random selection change within set and whether or not renderers can modify their internal fields. </p>
+
+<ol>
+<li><code>modifyRenderers()</code> (enables individual renderers to modify their parameters)</li>
+<li><code>sequenceRendererSet(preferred: Int, prob: Double)</code> (preferred renderer index in set, probability that preferred is chosen)</li>
+<li><code>randomRendererSet(preferred: Int, prob: Double)</code></li>
+</ol>
+
+<h3>makeRendererSetLibrary() example</h3>
+
+<p>And here is an example of how <code>makeRendererSetLibrary</code> can be managed via the use of these methods,</p>
+
+<pre><code>
+def makeRendererSetLibrary(n: String): RendererSetLibrary = {
+    
+    //CREATE OVERALL LIBRARY
+    val renderSetLibrary: RendererSetLibrary = new RendererSetLibrary(n)
+
+    //CREATE A NEW RENDERER SET
+    val renderSetA: RendererSet = new RendererSet(&quot;BlueOrangeGreenFilled&quot;)
+
+    //CREATE A NEW RENDERER WITH CHANGING POINT PARAMETERS
+    val rendererBlue: Renderer = new Renderer(&quot;Blue&quot;, Renderer.POINTS, defaultLineWidth, Renderer.BLACK, Renderer.BLUE)
+    rendererBlue.setChanging(Renderer.SEQUENCE)
+    rendererBlue.setChangingPointStrokeWidth(1, 2, new Range(1,5))//increment, multiplier, range)
+    rendererBlue.setChangingPointColor(List(0,0,0,0), List(255,255,255,255), List(15,1,1,10))//minList, maxList, incrementList - all RGBA
+    rendererBlue.setChangingPointSize(1, 2, new Range(1,5))
+    renderSetA.add(rendererBlue)//ADD RENDERER TO SET
+
+    //CREATE ANOTHER RENDERER WITH SOME CHANGING LINE PARAMETERS
+    val rendererOrange: Renderer = new Renderer(&quot;Orange&quot;, Renderer.LINES, defaultLineWidth, Renderer.BLACK, Renderer.ORANGE)
+    rendererOrange.setChanging(Renderer.SEQUENCE)//must call this method to enable changing renderer values, and must specify either sequential or random change
+    rendererOrange.setChangingMode(List(Renderer.LINES, Renderer.FILLED, Renderer.FILLED_STROKED))//changes sequentially or randomly based on setChanging parameter
+    rendererOrange.setSequentiallyChangingStrokeWidth(.1f, .1f, 1f)//increment, min, max (note: must have setChanging to sequential for this method to work
+    renderSetA.add(rendererOrange)//ADD RENDERER TO SET
+
+    //CREATE A THIRD RENDERER (FILLED_STROKED, BLACK LINES, GREEN FILL) WITH DEFAULT STATIC VALUES AND ADD TO SET
+    renderSetA.add(new Renderer(&quot;Green&quot;, Renderer.FILLED_STROKED, defaultLineWidth, Renderer.BLACK, Renderer.GREEN))
+
+    //DIRECTLY DEFINING SOME RENDERER SET FIELDS
+    renderSetA.getRenderer(&quot;Blue&quot;).randomFillColorRange = List(new Range(10, 30), new Range(40, 70), new Range(100, 150), new Range(230, 255))
+    renderSetA.getRenderer(&quot;Orange&quot;).randomFillColorRange = List(new Range(160, 240), new Range(40, 90), new Range(10, 30), new Range(20, 150))
+    renderSetA.getRenderer(&quot;Green&quot;).randomFillColorRange = List(new Range(10, 30), new Range(90, 150), new Range(40, 70), new Range(20, 60))//NOTE: THIS WILL NOT HAPPEN BECAUSE 'GREEN' IS NOT SETCHANGING()
+    renderSetA.setPreferredRenderer(&quot;Orange&quot;)
+    renderSetA.setCurrentRenderer(&quot;Blue&quot;)
+    renderSetA.modifyRenderers()//allows individual renderers to vary their parameters (otherwise they are static)
+    renderSetA.randomRendererSet(1,100)//preferred renderer index, preferred probability
+    
+    //ADD THE RENDERER SET TO LIBRARY
+    renderSetLibrary.add(renderSetA)
+    renderSetLibrary.setCurrentRendererSet(&quot;BlueOrangeGreenFilled&quot;)
+    renderSetLibrary.setPreferredRendererSet(&quot;BlueOrangeGreenFilled&quot;)
+
+    renderSetLibrary//RETURN LIBRARY
+
+}
+</code></pre>
+
+<hr />
+
+<hr />
+
+<h2>Polygons/Shapes/Sprites</h2>
+
+<p>These omponents contribute to visible output:</p>
+
+<ol>
+<li><strong>PolygonSets</strong> are the abstract geometry of the shapes. The individual polygons are composed of lines or cubic curves (splines). They are defined in normalised terms around the shape centre (so plus or minus .5 on the x and y). The sets are a static blueprint for shapes.</li>
+<li><strong>Shape2Ds (or Shape3Ds)</strong> are more concrete instance of geometry that can be subdivided and transformed, defined as a list of Polygon2D with associated subdivision parameters</li>
+<li><strong>Sprite2D</strong> contains a Shape2D and has a size and location, can be transformed and, most importantly, rendered. The sprite gets updated and drawn as part of the main program loop</li>
+</ol>
+
+<hr />
+
+<h3>PolygonSetCollection</h3>
+
+<p>Rather than dealing with single polygons, we define polygon sets that together compose an overall shape. These are created in Bezier Draw (as discussed above). Of course, a polygonSet can be just one polygon, so need for complexity if not needed. The polygonSet just provides a container for one or more polygons to be subdivided, animated and rendered.</p>
+
+<p>We are not restricted to a single set of polygons. Multiple named polygonSets can be added to the PolygonSetCollection.</p>
+
+<p>See <code>MySketch/loadPolygonCollection</code> method for how to add polygonSets to the PolygonSetCollection.</p>
+
+<p>The call to add a polygonSet calls PolygonSetLoader, which can load either line or spline based polygons. We are typically loading the latter. We then specify the sketch name (&quot;Subdivide&quot;), the relevant subdirectory in <code>resources</code> (&quot;polygonSet&quot;), the xml file the defines the shape, and provide a name for the polygonSet.</p>
+
+<p>Keep in mind that this is collection of abstract geometry that must be made into transformable and subdivisable shapes before being made into screen visible sprites.</p>
+
+<p><strong>loadPolygonCollection() example</strong></p>
+
+<pre><code>def loadPolygonCollection(): PolygonSetCollection = {
+
+    val polyCollection: PolygonSetCollection = new PolygonSetCollection()
+
+    //polyCollection.add(new PolygonSet(PolygonSetLoader.loadSplinePolygons(&quot;Subdivide&quot;, &quot;polygonSet&quot;, &quot;square_good_centred.xml&quot;), &quot;Square&quot;))//make sure to set name in make2DShapes!
+    //polyCollection.add(new PolygonSet(PolygonSetLoader.loadSplinePolygons(&quot;Subdivide&quot;, &quot;polygonSet&quot;, &quot;SixteenSides_Centred.xml&quot;), &quot;Sixteen&quot;))
+    polyCollection.add(new PolygonSet(PolygonSetLoader.loadSplinePolygons(&quot;Subdivide&quot;, &quot;polygonSet&quot;, &quot;TRIANGLE.xml&quot;), &quot;Triangle&quot;))
+    //polyCollection.add(new PolygonSet(PolygonSetLoader.loadSplinePolygons(&quot;Subdivide&quot;, &quot;polygonSet&quot;, &quot;BERG_GOOD.xml&quot;), &quot;Berg&quot;))
+
+    polyCollection
+}
+</code></pre>
+
+<hr />
+
+<h3>Shapes</h3>
+
+<p>After the PolygonSetCollection is created, the next thing that happens is the creation of subdivision parameters, but better to delay that discussion until we have completed our consideration of polygons, shapes and sprites. The reason why subdivision parameters are created next is because they need to be passed into the constructor for the list of Shapes alongside the polygons. So permit me to deal with shapes and sprites before turning to the details of subdivision.</p>
+
+<p>The creation of the &quot;shapes&quot; ListBuffer happens in the <code>MySketch/make2DShapes</code> method. There is a corresponding <code>make3DShapes</code> method that is close to ready but needs some tweaking in the light of recent changes. The only difference with the latter is that it adds a notional &quot;z&quot; to the 2Ds &quot;x&quot; and &quot;y&quot;, placing the &quot;z&quot; value at 0 prior to any transformation. All shapes represent flat surfaces currently whether represented in 2D or 3D terms.</p>
+
+<p>As I say, the <code>make2DShapes</code> method simply creates a ListBuffer of shapes composed of the polygonSets and corresponding subdivision parameters.</p>
+
+<p><strong>make2DShapes() example</strong></p>
+
+<pre><code>def make2DShapes(): ListBuffer[Shape2D] = {
+
+    val shapes: ListBuffer[Shape2D] = new ListBuffer[Shape2D]
+    //shapes += new Shape2D(polyCollection.getPolySet(&quot;Square&quot;).polySet, subdivisionParamsSetCollection.getParamsSet(&quot;subPSetA&quot;))//polySet is an internal field of PolygonSet that holds set as List[Polygon2D], which is needed for Shape
+    //shapes+= new Shape2D(polyCollection.getPolySet(&quot;Sixteen&quot;).polySet, subdivisionParamsSetCollection.getParamsSet(&quot;subPSetA&quot;))
+    shapes+= new Shape2D(polyCollection.getPolySet(&quot;Triangle&quot;).polySet, subdivisionParamsSetCollection.getParamsSet(&quot;subPSetA&quot;))
+    //shapes += new Shape2D(polyCollection.getPolySet(&quot;Berg&quot;).polySet, subdivisionParamsSetCollection.getParamsSet(&quot;subPSetA&quot;))
+
+    shapes
+
+}
+</code></pre>
+
+<hr />
+
+<h3>Sprites</h3>
+
+<p>The shape gemoetry is then recursively subdivided on the basis of the relevant subdivision parameters. So a single square polygon may become, for instance, a grid of 100 polygons, etc.</p>
+
+<p>Once this process is complete then the shapes are realised as sprites that have a position on screen and that can be animated and rendered.</p>
+
+<p>Sprites are initialised with this set of default values (that can always be modified):</p>
+
+<ol>
+<li><strong>x</strong>: Double - 0 (<strong>constructor parameter</strong>)</li>
+<li><strong>y</strong>: Double - 0 (<strong>constructor parameter</strong>)</li>
+<li><strong>locX</strong>: Double - internal field (x/Config.width)</li>
+<li><strong>locY</strong>: Double - internal field (y/Config.height)</li>
+<li><strong>loc2D</strong>: Vector2D - internal field composed of locX and locY</li>
+<li><strong>sizeFactor</strong>: Double - 1 (<strong>constructor parameter</strong>)</li>
+<li><strong>size2D</strong>: Vector2D - internal field (Config.width * Config.qualityMultiple * sizeFactor, Config.height * Config.qualityMultiple * sizeFactor). This is the initial scale</li>
+<li><strong>startRotation</strong>: Double 0 (<strong>constructor parameter</strong>)(negative values rotate clockwise, a value of 20 or -20 flips object upside down, 40/-40 returns to upright)</li>
+<li><strong>rotOffset2D</strong>: Vector2D - (0,0) (<strong>constructor parameter</strong>)(rotOffset controls where the rotation point is set in the shape - so, for example, negative 1 on z brings all the points in the object back by -1, which puts the rotation point on the tip of the crystal)</li>
+<li><strong>scaleFactor2D</strong>: Vector2D - (1,1) (<strong>constructor parameter</strong>)(no change in scale, rudimentary scale animation mechanism)</li>
+<li><strong>rotFactor2D</strong>: Double - 0 (<strong>constructor parameter</strong>)(no change in rotation)</li>
+<li>speedFactor2D: Vector2D - (0,0) (<strong>constructor parameter</strong>)(no translation)</li>
+</ol>
+
+<p>The animation variables 10, 11 and 12 are clearly very basic. Need to implement a keyframe system with tweening interpolation curves.</p>
+
+<p>Note, you will find key rendering algorithms in Sprite2D.</p>
+
+<p><strong>make2DSpriteList() example</strong></p>
+
+<pre><code>def make2DSpriteList(): List[Sprite2D] = {
+
+    val defaultSpriteParams: Sprite2DParams = new Sprite2DParams(&quot;defaultSpriteParams&quot;)
+    defaultSpriteParams.sizeFactor = .9
+
+    //create an animator based on the above parameters
+    val animator2D: Animator2D = new Animator2D(true, defaultSpriteParams.scaleFactor2D, defaultSpriteParams.rotFactor2D, defaultSpriteParams.speedFactor2D)
+    val animator2DA: Animator2D = new Animator2D(true, defaultSpriteParams.scaleFactor2D, defaultSpriteParams.rotFactor2D, defaultSpriteParams.speedFactor2D)
+    val animator2DB: Animator2D = new Animator2D(true, defaultSpriteParams.scaleFactor2D, defaultSpriteParams.rotFactor2D, defaultSpriteParams.speedFactor2D)
+
+    //create a sprite from the shape, initial parameters, animator and renderer
+    val sprite2D: Sprite2D = new Sprite2D(subdividedShapes(0).asInstanceOf[Shape2D], defaultSpriteParams, animator2D,renderSetLibrary.getRendererSet(&quot;BlueOrangeGreenFilled&quot;))
+    //val sprite2DB: Sprite2D = new Sprite2D(subdividedShapes(1).asInstanceOf[Shape2D], defaultSpriteParams, animator2D,renderSetLibrary.getRendererSet(&quot;RedAndBlueFilled&quot;))
+                    
+    List(sprite2D)
+
+}
+</code></pre>
+
+<hr />
+
+<hr />
+
+<h2>Subdivision</h2>
+
+<p>Subdivision is the process of calculating a number of subsidiary polygons from an overall polygon. QUAD subdivision, for instace, takes any regular or irregular polygon and breaks it up into 4 sub-polgons in terms of rules that I have described earlier. It then returns those 4 polygons in place of the original polygon.</p>
+
+<p>Subdivision is structured recursively so that it be pursued down multiple iterations, producing more and more polygons in place of the original, relatively simple shape.</p>
+
+<p>Sudivision can be applied to either line and spline based polygonal shapes (not a mix of the two).</p>
+
+<p>Line based subdivision includes a large number of subdivision modes (please refer to &quot;Loom Technical Development&quot; pdf in the tutorials folder of the overall project directory for furthe info).</p>
+
+<p>Here my focus will be on spline based subdivision, which only enables quad and tri based subdivision (decomposition into 4 or 3 sided polygons), but to make up for this enables powerful means of transforming these new polygons at the global, polygonal and point level.</p>
+
+<p>Subdivision has a similar tri-level structure as rendering and polygonal management. A SubdivisionParamsSetCollection holds a collection of subdivision parameters sets, which in turn holds a number of subdivision parameters. A shape and its associated sprite have a set of subdivision parameters. Collections enable multiple shape/sprites with different subdivision parameter sets. Sets are named, as are individual subdivision parameters, but the collection is singular and does not need its own name.</p>
+
+<p>So we start by initialising the overal collection and then create and add sets of subdivision parameters.</p>
+
+<p>The <code>createSubdivisionParamsSetCollection</code> method in MySketch references all the fields in <code>SubdivisionParameters</code> to make these fields visible to the end user. It overrides the default values in <code>SubdivsionParamters</code>. But it is probably easier to get a handle on the paramters within <code>SubdivisionParameters</code> because <code>MySketch</code> employs abbreviated field names and provides less explanatory information.</p>
+
+<p>At the programming level, it is worth noting that there is the Subdivision class itself, which has an associated object with a large number of methods, and there is the SubdivisionParameters class, which is like a public interface to the Subdivision instance and object. It is stores many of the fields pertinent to subdivision.</p>
+
+<p>It is also worth noting that the revised, spline based system adopts a modular approach. Instead of storing multiple modes of subdivision within a single Subdivision object, it employs separate and dedicated SplineQuad and SplineTri classes to handle subdivision. This will make it easier to maintain the code, facilitating a plugin style architecture for incorporating new subdivision modes. This was necessary because spline based subdivision is significantly more complex than line based subdivision and was producing serious bloat in the main Subdivision class/object, as well as long, overly complex and confusing methods.</p>
+
+<p>Whole polygon level and point level tranformations are managed by <code>PolysTransform</code> and <code>PointsTransform</code> classes that are instantiated in the subdivision classes (<code>SplineQuad</code> and <code>SplineTri</code>), and that draw their parameters from the subdvision parameters and, in the case of point transforms, the various <code>Transform</code> classes.</p>
+
+<p>As I explain, the SudivisionParameters object provides the main interface to the subdivision process, so let's now run through its extensive set of fields.</p>
+
+<hr />
+
+<h3>Subdivision Parameters</h3>
+
+<p>Important to understand that each stage of subdivision can have its own independent subdivision parameters. So you can begin, for instance, with QUAD subdivision and then switch at the next recursive stage to TRI subdivision. Any actual subdiviosion process is informed then typically by a list subdivision parameters that correspond to each subdivision stage.</p>
+
+<h5>Global Parameters</h5>
+
+<ol>
+<li><strong>subdivisionType</strong>: Int (either Subdivision.QUAD or Subdivision.TRI) - default QUAD</li>
+<li><strong>ranMiddle</strong>: Boolean (both types of subdivision work by calculating the middle of the original polygon as a vital point linking together all the new polygons. Instead of just adhering to the mathematical middle, you can randomise the middle to create new distorted polygons) - default FALSE</li>
+</ol>
+
+<figure>
+<img src="images/image124.png" alt="Random centre!" title="Random centre" />
+<figcaption>Random centre!</figcaption>
+</figure>
+
+<ol>
+<li><strong>ranDiv</strong>: Double (you can specify a randomDivisor for the randomMiddle- low values randomise more, large values less. Default is 100, which leads to a very minor level of randomisation. Try single digit figures for greater distortion)</li>
+<li><strong>lineRatios</strong>: Vector2D (relevant to QUAD subdivision, which calculates 'middle' points on existing lines. Line ratios enables you to define where on the line these points are calculated (you can even calulate them beyond the line by providing values greater than 1 or less than 0). The default is (.5,.5) to make everything neatly regular.). The image below shows line ratios set off centre:</li>
+</ol>
+
+<figure>
+<img src="images/image126.png" alt="Off centre line ratios!" title="Off centre line ratios" />
+<figcaption>Off centre line ratios!</figcaption>
+</figure>
+
+<ol>
+<li><strong>controlPointRatios</strong>: Vector2D (determines how new control points are distributed on lines. The default is (.25, .75), which places them a quarter of the way on any line and at 75% along the line)</li>
+<li><strong>insetTransform</strong>: Transform2D (not pertinent to splines currently, only relevant for line based subdivision - transform echo subdivided shapes) - default is <code>new Transform2D(new Vector2D(0, 0), new Vector2D(.5, .5), new Vector2D(0, 0))</code>, which halves the size of the internal echoed shape</li>
+<li><strong>continuous</strong>: Boolean (links adjacent mid-points on QUADS when lineRatios differ between x and y (as long as they add up to 1 altogether). This is necessary because new polygons are effectively rotated relative to one another. If, for instance, a square is being subdivided, the first new polygon has its origin at the top left original point. The next has its origin at the top right point, which means that it is notionally rotated 90 degrees in relation to the first polygon. This notional rotation means that lines calculated non-middle line ratios do not line up. Selecting continuous makes them line up.) - default is TRUE</li>
+</ol>
+
+<p><img src="images/image144.png" alt="Discontinuous!" title="Discontinuous" />
+<img src="images/image142.png" alt="Continuous!" title="Continuous" /></p>
+
+<ol>
+<li><p><strong>visibilityRule</strong>: Int (polygons can be visible or invisible) - default is ALL. The Subdivision object stores a number of rules for the visibility of polygons created through subdivision):</p></li>
+<li><p>ALL</p></li>
+<li><p>QUADS</p></li>
+<li><p>TRIS</p></li>
+<li><p>ALL_BUT_LAST</p></li>
+<li><p>ALTERNATE_ODD</p></li>
+<li><p>ALTERNATE_EVEN</p></li>
+<li><p>FIRST_HALF</p></li>
+<li><p>SECOND_HALF</p></li>
+<li><p>EVERY_THIRD</p></li>
+<li><p>EVERY_FOURTH</p></li>
+<li><p>EVERY_FIFTH</p></li>
+<li><p>RANDOM_1_2</p></li>
+<li><p>RANDOM_1_3</p></li>
+<li><p>RANDOM_1_5</p></li>
+<li><p>RANDOM_1_7</p></li>
+<li><p>RANDOM_1_10</p></li>
+</ol>
+
+<p>This QUAD subdivision follows the ALTERNATE_ODD rule. Polygons 1 and 3 are visible.</p>
+
+<figure>
+<img src="images/image146.png" alt="ALTERNATE_ODD!" title="ALTERNATE_ODD" />
+<figcaption>ALTERNATE_ODD!</figcaption>
+</figure>
+
+<ol>
+<li><strong>polysTransform</strong>: Boolean (global switch for polygonal transformations) - default TRUE</li>
+</ol>
+
+<p>The more specific subdivision parameters relate to the various ways that polygons produced via subdivision can be transformed. Transformations can occur at the level of overall (whole) polygons or at the level of sets of points within polygons. The extent of transformation is affected by probability fields, which take percentage values to shape the likelihood of any particular transformation ocurring.</p>
+
+<hr />
+
+<h5>Whole polygon transformation fields</h5>
+
+<p>Whole polygon transformations typically involves the randomisation of aspects of translation, scale and rotation.</p>
+
+<p>Note that the &quot;pTW&quot; prefix on these fields stands for &quot;polygon transform whole&quot;.</p>
+
+<ol>
+<li><strong>polysTransformWhole</strong>: Boolean (overall switch for whole polygon level transformations) - default is FALSE</li>
+<li><strong>pTW_randomTranslation</strong>: Boolean (switch for randomisation of polygon translation) - default is FALSE</li>
+<li><strong>pTW_randomScale</strong>: Boolean (switch for randomisation of polygon scale) - default is FALSE</li>
+<li><strong>pTW_randomRotation</strong>: Boolean (switch for randomisation of polygon rotation) - default is FALSE</li>
+<li><strong>pTW_commonCentre</strong>: Boolean (if true all transformations occur in relation to a common centre, otherwise to the centres of individual polys) - default is FALSE</li>
+<li><strong>pTW_probability</strong>: Double (probability that any given polygon will be transformed (percentage)) - default is 100</li>
+<li><strong>pTW_transform</strong>: Transform2D (deterministic rather than random, specify a global transformation) - default is a null transform <code>new Transform2D(new Vector2D(0, 0), new Vector2D(0, 0), new Vector2D(0, 0))</code></li>
+<li><strong>pTW_randomCentreDivisor</strong>: Double (randomised value between specified value and the poly centre) - default is 100</li>
+<li><strong>pTW_randomTranslationRange</strong>: RangeXY (randomised x y translation value (both x and y have separate min and max values in Range object) - default is null <code>new RangeXY(new Range(0,0), new Range(0,0))</code></li>
+<li><strong>pTW_randomScaleRange</strong>: RangeXY (randomised x y scale value (both x and y have separate min and max values in Range object) - default is null transform/identity transform <code>new RangeXY(new Range(1,1), new Range(1,1))</code></li>
+<li><strong>pTW_randomRotationRange</strong>: Range (randomised rotation value with min and max) - default is null transform <code>new Range(0,0)</code></li>
+</ol>
+
+<hr />
+
+<h5>Point level transformation fields</h5>
+
+<p>Point level transformations are handled through a plugin architecture, in which various classes that inherit from the abstract &quot;Transform&quot; class are added to an ArrayBuffer of Transforms (&quot;transformSet&quot;). The buffer is then converted to a fixed array (&quot;pTP_transformSet&quot;), which serves as the hub for iteratively performing a variety of point transforms (all those that have been added to the buffer).</p>
+
+<p>The various transforms are targetted at specific sets of points. Here is the set of currently available transforms.</p>
+
+<ul>
+<li><strong>AnchorsLinkedToCentre</strong> (affects anchor and control points that fall at the opposite ends of lines that go to the centre anchor (in the original polygon). For QUAD subdivision this relates to the two 'middle' points on the first and last lines of the new polygon. In general the options are to shift the anchor points either towards other anchor points (including the centre) and to make associated control points make the same vector shift or remain where they are)</li>
+<li><strong>CentralAnchors</strong> (central anchor and control points (calculated in relation to original polygon). There are 16 of these in QUAD subdivision - 8 anchor points and 8 control points. This once again offers the option to move these central anchors and control points in the direction of other anchors - this creates internal tearing, overlaps, etc. THe standard thing is to move the central anchors out and away from the actual centre, which creates an opening in the centre of the original polygon).</li>
+<li><strong>ExteriorAnchors</strong> (all non-centre anchors and control points, offering the option to move them towards or away from the centre)</li>
+<li><strong>InnerControlPoints</strong> (control points that lie along the lines to the centre - for creating curved lines from center to outside anchors)</li>
+<li><strong>OuterControlPoints</strong> (control points that lie along the external lines that do not run to the centre - for making shapes bulge or contract)</li>
+</ul>
+
+<p>There are a number of fields within these transforms that can be accessed to modify point transformation. This is done once the transforms are instantiated within the context of defining subdivision paramters in the <code>MySketch/createSubdivisionParamsSetCollection</code> method. I will describe these fields after I deal with the point transformation fields that are directly available within <code>SubdivisionParameters</code>.</p>
+
+<p>The prefix &quot;pTP&quot; stands for &quot;polygon transfrom points&quot;.</p>
+
+<ol>
+<li><strong>polysTransformPoints</strong>: Boolean (overall switch for point level transformations) - default is FALSE</li>
+<li><strong>pTP_probability</strong>: Double (probability that any given polygon will have its points transformed (percentage)) - default is 100</li>
+<li><strong>transformSet</strong>: ArrayBuffer[Transform] (we add transforms to this to build up our transform set. if we add a transform with the flag of 'false' then it does nothing)</li>
+<li><strong>pTP_transformSet</strong>: Array[Transform] (represents transformSet as a fixed array)</li>
+</ol>
+
+<hr />
+
+<h5>Transform fields</h5>
+
+<p>These fields are not directly visible in <code>MySketch</code>. They are accessible but not directly refeerenced. Each time you create a Transform instance and set it to TRUE then it will run with the default value described in the relevant Transform class. So you will need to refer to the information here or to the Transform classes themselves to discover the internal fields.</p>
+
+<p>Many of the Boolean fields are mutually exclusive (they belong in radio groups), so you may need to negate any that you don't want to be true that are by default true and adjust those that are by default set to false.</p>
+
+<p>Note that the easiest way to modify the transforms is by the convenience methods described in relation to each of the five transforms below. They enable specific modificaitons and handle all the background complexity of ensuring boolean fields are properly in synch.</p>
+
+<hr />
+
+<h6>AnchorsLinkedToCentre</h6>
+
+<figure>
+<img src="images/anchorsLinkedtoCentre.png" alt="AnchorsLinkedToCentre" title="AnchorsLinkedToCentre" />
+<figcaption>AnchorsLinkedToCentre</figcaption>
+</figure>
+
+<ol>
+<li><strong>tearing</strong>: Boolean (<strong>constructor parameter</strong>, global switch for this transform) - default in <code>MySketch/createSubdivisionParamsSetCollection</code> method is FALSE (switching off this transformation)</li>
+<li><strong>probability</strong>: Double (percentage probability that any specific anchor in a subdivision will be transformed) - default is 100</li>
+<li><strong>sidesTotal</strong>: Int (number of sides in the original polygon - no need to specify this value, gets calculated internally) - default is 4</li>
+<li><strong>numSidesPerPoly</strong>: Int (number of sides for new polygons - no need to specify this value, gets calculated internally) - default is 4 (QUAD subdivision)</li>
+</ol>
+
+<p>'Tear' direction</p>
+
+<ol>
+<li><strong>tearTowardsOutsideCorner</strong>: Boolean (switch to tear points towards the origin anchor (outside corner)) - default is TRUE</li>
+<li><strong>tearTowardsOppositeCorner</strong>: Boolean (switch to tear points towards the anchor diagonal to this one (for QUAD subdivision)) - default is FALSE</li>
+<li><strong>tearTowardsCentre</strong>: Boolean (switch to tear points towards the centre anchor of the old polygon) - default is FALSE</li>
+<li><strong>randomTearType</strong>: Boolean (switch to select a random option between 5 and 7 above) - default is FALSE</li>
+</ol>
+
+<p>'Tear' amount</p>
+
+<ol>
+<li><strong>tearFactor</strong>: Double (a specified tear factor) - default is .45 (calculations occur at normalised level, so employ fractions or extreme results)</li>
+<li><strong>randomTear</strong>: Boolean (switch to randomly determine tear factor for each point) - default is FALSE</li>
+<li><strong>randomTearFactor</strong>: Range (random tearing ranges) - default is <code>new Range(-.2, .2)</code></li>
+</ol>
+
+<p>Control points follow (or not)</p>
+
+<ol>
+<li><strong>cpsFollow</strong>: Boolean (switch for control points to follow their parent anchor points) - default is TRUE</li>
+<li><strong>cpsFollowMultiplier</strong>: Double (following can be multiplied to accentuate or veer away from parent transformation (negative numbers)) - default is 1 (identical transformation)</li>
+<li><strong>randomCPsFollow</strong>: Boolean (switch for whether or not the cpsFollowMultiplier should be randomly calculated for each point) - default is FALSE</li>
+<li><strong>randomCPsFollowMultiplier</strong>: Range (randomisation occurs in relation to this min/max range) - default is <code>new Range(-1.5, 1.5)</code></li>
+</ol>
+
+<p><strong>Convenience Methods</strong></p>
+
+<ol>
+<li><code>adjustStandardFields (p: Double, tF: Double, cpsF: Boolean, cpsFM: Double, rCPSFollow: Boolean, rCPSFollowMultiplier: Range)</code> (probability, tearFactor, controlPointsFollow, follow multiplier, random follow, random follow multiplier)</li>
+<li><code>setTearType(tearType: Int)</code> (AnchorsLinkedToCentre.OUTSIDE_CORNER, ...OPPOSITE_CORNER, ...CENTRE, ...RANDOM)</li>
+<li><code>setRandomTearFactor(f: Range)</code> (random tear amount)</li>
+<li><code>setRandomCPsFollow(f: Range)</code> (random control points follow multiplier range)</li>
+</ol>
+
+<p><strong>Anchors Linked to Centre Transform createSubdivisionParamsSetCollection() example</strong></p>
+
+<hr />
+
+<h6>CentralAnchors</h6>
+
+<p>This focuses on the central anchor and control points, but also provides scope to shift all remaining points either in the direction that the central points have moved or in the opposite direction.</p>
+
+<figure>
+<img src="images/central_anchors.png" alt="CentralAnchors" title="CentralAnchors" />
+<figcaption>CentralAnchors</figcaption>
+</figure>
+
+<ol>
+<li><strong>tearing</strong>: Boolean (<strong>constructor parameter</strong>, global switch for this transform) - default in <code>MySketch/createSubdivisionParamsSetCollection</code> method is FALSE (switching off this transformation)</li>
+<li><strong>probability</strong>: Double (percentage probability that any specific anchor in a subdivision will be transformed) - default is 100</li>
+<li><strong>sidesTotal</strong>: Int (number of sides in the original polygon - no need to specify this value, gets calculated internally) - default is 4</li>
+<li><strong>numSidesPerPoly</strong>: Int (number of sides for new polygons - no need to specify this value, gets calculated internally) - default is 4 (QUAD subdivision)</li>
+</ol>
+
+<p>'Tear' axes</p>
+
+<ol>
+<li><strong>tearXY</strong>: Boolean (switch to tear on x and y) - default is TRUE</li>
+<li><strong>tearX</strong>: Boolean (switch to tear just on x) - default is FALSE</li>
+<li><strong>tearY</strong>: Boolean (switch to tear just on y) - default is FALSE</li>
+<li><strong>randomTearType</strong>: Boolean (switch to select a random option between 5 and 7 above) - default is FALSE</li>
+</ol>
+
+<p><img src="images/centralAnchors/CA_tearXY_diagonal_pt5.png" alt="TearXY" title="TearXY_diagonal_.5" />
+<img src="images/centralAnchors/CA_tearX_diagonal_pt5.png" alt="TearX" title="TearX_diagonal_.5" />
+<img src="images/centralAnchors/CA_tearY_diagonal_pt5.png" alt="TearY" title="TearY_diagonal_.5" /></p>
+
+<p><em>(Tear XY, X and Y)</em></p>
+
+<p>'Tear' direction</p>
+
+<ol>
+<li><strong>tearDiagonal</strong>: Boolean (tear diagonally out from the centre (makes smooth tears)) - default is TRUE</li>
+<li><strong>tearLeft</strong>: Boolean (tear towards next anchor) - default is FALSE</li>
+<li><strong>tearRight</strong>: Boolean (tear towards previous anchor) - default is FALSE</li>
+<li><strong>ranTearDirection</strong>: Boolean (tear at some random vector between left and right anchors) - - default is FALSE</li>
+</ol>
+
+<p><img src="images/centralAnchors/CA_tearXY_left_pt9.png" alt="TearLeft" title="TearLeft" />
+<img src="images/centralAnchors/CA_tearXY_right_pt9.png" alt="TearRight" title="TearRight" /></p>
+
+<p><em>(Tear Left and Right)</em>
+<strong>Viewing from Centre looking out.</strong></p>
+
+<p>'Tear' amount</p>
+
+<ol>
+<li><strong>tearFactor</strong>: Double (a specified tear factor) - default is .45 (calculations occur at normalised level, so employ fractions or extreme results)</li>
+<li><strong>randomTear</strong>: Boolean (switch to randomly determine tear factor for each point) - default is FALSE</li>
+<li><strong>randomTearFactor</strong>: Range (random tearing ranges) - default is <code>new Range(-.2, .2)</code></li>
+</ol>
+
+<p>Control point follow (or not)</p>
+
+<ol>
+<li><strong>cpsFollow</strong>: Boolean (switch for control points to follow their parent anchor points) - default is FALSE</li>
+<li><strong>cpsFollowMultiplier</strong>: Double (following can be multiplied to accentuate or veer away from parent transformation (negative numbers)) - default is 1 (identical transformation)</li>
+<li><strong>randomCPsFollow</strong>: Boolean (switch for whether or not the cpsFollowMultiplier should be randomly calculated for each point) - default is FALSE</li>
+<li><strong>randomCPsFollowMultiplier</strong>: Range (randomisation occurs in relation to this min/max range) - default is <code>new Range(-1.5, 1.5)</code></li>
+</ol>
+
+<p><img src="images/centralAnchors/CA_tear_XY_diagonal_pt5_cpsFollow_1.png" alt="Control Points Follow Positive" title="Control Points Follow Positive" />
+<img src="images/centralAnchors/CA_tear_XY_diagonal_pt5_cpsFollow_neg1.png" alt="Control Points Follow Negative" title="Control Points Follow Negative" />
+<em>(Control Points Follow Positive 1, Control Points Follow Negative 1)</em></p>
+
+<ol>
+<li><strong>allPointsFollowCentre</strong>: Boolean (remaining poly points follow same vector as adjusted centre has moved from original centre) - default is FALSE</li>
+<li><strong>invertedFollowCentre</strong>: Boolean (if true then remaining poly points move in the opposite direction to the central points - only does anything if allPointsFollowCentre is true) - default is FALSE</li>
+</ol>
+
+<p>These last two fields can produce unpredictable and surprising results. </p>
+
+<p><img src="images/centralAnchors/CA_tearXY_diag_pt2_cpsF_5_allPtsF.png" alt="All Points Follow Centre Positive" title="All Points Follow Centre Positive" />
+<img src="images/centralAnchors/CA_tearXY_diag_pt2_cpsF_neg7_allPtsF.png" alt="All Points Follow Centre Negative" title="All Points Follow Centre Negative" />
+<img src="images/centralAnchors/CA_tearXY_diag_pt2_cpsF_5_allPtsF_inverted.png" alt="Inverted Follow Centre" title="Inverted Follow Centre" /> </p>
+
+<p><em>(CentralAnchors_tearXY_diagonal_.2_cpsFollow_5_allPointsFollowCentre, CentralAnchors_tearXY_diagonal_.2_cpsFollow_-7_allPointsFollowCentre, CentralAnchors_tearXY_diagonal_5_cpsFollow_5_allPointsFollowCentre_invertedFollowCentre)</em></p>
+
+<p><strong>Convenience Methods</strong></p>
+
+<ol>
+<li><code>adjustStandardFields (p: Double, tF: Double, cpsF: Boolean, cpsFM: Double, all: Boolean, inv: Boolean)</code> (probability, tearFactor, controlPointsFollow, follow multiplier, all points follow CA vector, all points go opposite vector)</li>
+<li><code>setTearType(tearType: Int)</code> (CentralAnchors.TEAR_XY, ...TEAR_X, ...TEAR_Y, ...RANDOM_TEAR_TYPE)</li>
+<li><code>setTearDirection(tearDirection: Int)</code> (CentralAnchors.TEAR-DIAGONAL, ...TEAR_LEFT, ...TEAR_RIGHT, ...RANDOM_TEAR_DIRECTION)</li>
+<li><code>setRandomTearFactor(f: Range)</code></li>
+<li><code>setRandomCPsFollow(f: Range)</code> (multiplier range)</li>
+</ol>
+
+<p><strong>Central Anchors Transform createSubdivisionParamsSetCollection() example</strong></p>
+
+<p>Here is just the relevant portion of the method relating to central anchors transform.</p>
+
+<pre><code>var centralAnchors: CentralAnchors = new CentralAnchors(true)
+
+//convenience methods for adjusting centralAnchors fields
+centralAnchors.adjustStandardFields (100, -.1, true, 3, true, false) //probability, tearFactor, control points follow, cps multiplier, all points follow, inverted following)
+centralAnchors.setTearType(CentralAnchors.TEAR_Y)//TEAR_XY, TEAR_Y, RANDOM_TEAR_DIRECTION
+centralAnchors.setTearDirection(CentralAnchors.TEAR_DIAGONAL)
+centralAnchors.setRandomTearFactor(new Range(-.3, .3))//sets randomTear to true and sets the range
+centralAnchors.setRandomCPsFollow(new Range(-2, 2))//sets randomCPsFollow to true and sets the range
+
+transformSet += centralAnchors
+</code></pre>
+
+<hr />
+
+<h6>ExteriorAnchors</h6>
+
+<figure>
+<img src="images/allExtAnchors.png" alt="AllExteriorAnchors" title="AllExteriorAnchors" />
+<figcaption>AllExteriorAnchors</figcaption>
+</figure>
+
+<ol>
+<li><strong>spiking</strong>: Boolean (<strong>constructor parameter</strong>, global switch for this transform) - default in <code>MySketch/createSubdivisionParamsSetCollection</code> method is FALSE (switching off this transformation)</li>
+<li><strong>probability</strong>: Double (percentage probability that any specific anchor in a subdivision will be transformed) - default is 100</li>
+<li><strong>sidesTotal</strong>: Int (number of sides in the original polygon - no need to specify this value, gets calculated internally) - default is 4</li>
+<li><strong>numSidesPerPoly</strong>: Int (number of sides for new polygons - no need to specify this value, gets calculated internally) - default is 4 (QUAD subdivision)</li>
+</ol>
+
+<p>The exterior anchors that are affected - (5, 6 &amp; 7 are mutually exclusive - select one)</p>
+
+<ol>
+<li><strong>spikeAllExteriorAnchors</strong>: Boolean (switch to affect all exterior anchors (all but those that correspond to the centre of the original polygon)) - default is TRUE</li>
+<li><strong>spikeCornerAnchors</strong>: Boolean (switch to tear just on just the origin anchor point in original polygon) - default is FALSE</li>
+<li><strong>spikeMiddleExteriorAnchors</strong>: Boolean (the anchor points that are established as middle points on existing lines: the 1 and the 3 anchors in a quad polygon) - default is FALSE</li>
+</ol>
+
+<p>Symmetrical or asymmetrical 'spiking'</p>
+
+<p>(9, 10, 11 &amp; 12 are mutually exclusive - select one)
+9. <strong>symmetricalSpike</strong>: Boolean (sibling anchors are equally affected: siblings are anchor points that share their location) - default is TRUE
+10. <strong>spikeRight</strong>: Boolean (only the right sibling is affected) - default is FALSE
+11. <strong>spikeLeft</strong>: Boolean (only the left sibling is affected) - default is FALSE
+12. <strong>randomSpikeType</strong>: Boolean (randomly selects one of the above 3 options) - default is FALSE</p>
+
+<p>The 'spiking' axes - (13, 14 &amp; 15 are mutually exclusive - select one)</p>
+
+<ol>
+<li><strong>spikeXY</strong>: Boolean (spike applied to both x &amp; y) - default is TRUE</li>
+<li><strong>spikeX</strong>: Boolean (spike applied to x) - default is FALSE</li>
+<li><strong>spikeY</strong>: Boolean (spike applied to y) - default is FALSE</li>
+</ol>
+
+<p>The amount of 'spiking'</p>
+
+<ol>
+<li><strong>spikeFactor</strong>: Double (negative numbers make spiking, positive numbers between 0 and .99 move closer to middle (1)) - default is .3</li>
+<li><strong>randomSpike</strong>: Boolean (randomly determine spike factor - this leads to unaligned polygon inside corners) - default is FALSE</li>
+<li><strong>randomSpikeFactor</strong>: Range (random spiking ranges ) - default is <code>new Range(-.2, .2)</code></li>
+</ol>
+
+<p>Control points follow anchor points (or not)</p>
+
+<ol>
+<li><strong>cpsFollow</strong>: Boolean (switch for control points to follow their parent anchor points) - default is FALSE</li>
+<li><strong>cpsFollowMultiplier</strong>: Double (following can be multiplied to accentuate or veer away from parent transformation (negative numbers)) - default is 2</li>
+<li><strong>randomCPsFollow</strong>: Boolean (switch for whether or not the cpsFollowMultiplier should be randomly calculated for each point) - default is FALSE</li>
+<li><strong>randomCPsFollowMultiplier</strong>: Range (randomisation occurs in relation to this min/max range) - default is <code>new Range(-1.5, 1.5)</code></li>
+</ol>
+
+<p>Control point 'squeezing'</p>
+
+<ol>
+<li><strong>cpsSqueeze</strong>: Boolean (vary the distance between 'perpendicular' control points to create sharper or more bulbous curves to external anchors) - default is FALSE</li>
+<li><strong>cpsSqueezeFactor</strong>: Double (multiplier to create the 'squeeze') - default is -.2</li>
+<li><strong>randomCPsSqueeze</strong>: Boolean (randomise the squeezing between sets of control points) - default is FALSE</li>
+<li><strong>randomCPsSqueezeFactor</strong>: Range (associated range) default is <code>new Range(-.5, .5)</code></li>
+</ol>
+
+<p><strong>Convenience Methods</strong></p>
+
+<ol>
+<li><code>adjustStandardFields (p: Double, sF: Double, cpsF: Boolean, cpsFM: Double, squeeze: Boolean, squeezeF: Double)</code> (probability, spike factor, control points follow, control points follow multiplier, squeeze factor)</li>
+<li><code>setWhichSpike(which: Int)</code> (ExteriorAnchors.ALL, ...CORNERS, ...MIDDLES)</li>
+<li><code>setSpikeType(spikeType: Int)</code> (ExteriorAnchors.SYMMETRICAL, ...RIGHT, ...LEFT, ...RANDOM)</li>
+<li><code>setSpikeAxis(spikeAxis: Int)</code> (ExteriorAnchors.SPIKE_XY, ...SPIKE_X, ...SPIKE_Y)</li>
+<li><code>setRandomSpikeFactor(f: Range)</code></li>
+<li><code>setRandomCPsFollow(f: Range)</code></li>
+<li><code>setRandomCPsSqueeze(f: Range)</code></li>
+</ol>
+
+<p><strong>Exterior Anchors Transform createSubdivisionParamsSetCollection() example</strong></p>
+
+<hr />
+
+<h6>InnerControlPoints</h6>
+
+<figure>
+<img src="images/innerCPs.png" alt="InnerControlPoints" title="InnerControlPoints" />
+<figcaption>InnerControlPoints</figcaption>
+</figure>
+
+<ol>
+<li><strong>curving</strong>: Boolean (<strong>constructor parameter</strong>, global switch for this transform) - default in <code>MySketch/createSubdivisionParamsSetCollection</code> method is FALSE (switching off this transformation)</li>
+<li><strong>probability</strong>: Double (percentage probability that any specific anchor in a subdivision will be transformed) - default is 100</li>
+<li><strong>sidesTotal</strong>: Int (number of sides in the original polygon - no need to specify this value, gets calculated internally) - default is 4</li>
+<li><strong>numSidesPerPoly</strong>: Int (number of sides for new polygons - no need to specify this value, gets calculated internally) - default is 4 (QUAD subdivision)</li>
+</ol>
+
+<p>QUADS (mainly relevant for quads - makes inner control points take account of external control points on outer line (typically to create matching curves))</p>
+
+<ol>
+<li><strong>referToOuter</strong>: Boolean (mainly relevant for quads, best to turn off for tris because angle is too radical) - default is TRUE</li>
+<li><strong>followOuter</strong>: Boolean (outside inner control points are placed on the opposite vector relative to the anchor of the external control points (to make things smooth)) - default is TRUE</li>
+<li><strong>exaggerateOuter</strong>: Boolean (the left 45 degree vector from external control point) - default is FALSE</li>
+<li><strong>counterOuter</strong>: Boolean (directly contradicts the incoming vector from external line) - default is FALSE</li>
+</ol>
+
+<p>If one set of multipliers is even and the other odd then they both move in same direction, if both even or both odd then then move in opposite direction</p>
+
+<ol>
+<li><strong>outerMultiplier</strong>: Vector2D (affects outer inner control points) - default is <code>new Vector2D(.5,.5)</code></li>
+<li><strong>innerMultiplier</strong>: Vector2D (affects inner inner control points) - default is <code>new Vector2D(.1,.1)</code></li>
+</ol>
+
+<p>TRIS - mainly used by tris to avoid standard quad following (see just above)</p>
+
+<ol>
+<li><strong>outerRatio</strong>: Double (normally takes a value between -.5 and .5 to place outer control point either to the left or the right of the line between relevant external anchor and centre) - default is 1.1</li>
+<li><strong>innerRatio</strong>: Double (normally takes a value between -.5 and .5 to place inner control point either to the left or the right of the line between relevant external anchor and centre) - default is .15</li>
+<li><strong>randomRatio</strong>: Boolean (randomised curve ratios) - default is FALSE</li>
+<li><strong>ranOuterRatio</strong>: Range (specify a random outer ratio) - default is <code>new Range(-.5, .5)</code></li>
+<li><strong>ranInnerRatio</strong>: Range (specify a random inner ratio) - default is <code>new Range(-.5, .5)</code></li>
+</ol>
+
+<p>Adjoining internal lines match (or not)</p>
+
+<ol>
+<li><strong>commonLine</strong>: Boolean (adjoining control points are identically postioned (or not) - if not creates inner overlapping shapes) - default is TRUE</li>
+</ol>
+
+<p>Mutuallly exclusive and onlhy relevant if commonLine is true (select one)</p>
+
+<ol>
+<li><strong>evenCommon</strong>: Boolean (common line taken from left poly of internal line) - default is FALSE</li>
+<li><strong>oddCommon</strong>: Boolean (common line taken from right poly of internal line ) - default is FALSE</li>
+<li><strong>ranCommon</strong>: Boolean (selects either even or odd) - default is TRUE</li>
+</ol>
+
+<p><strong>Convenience Methods</strong></p>
+
+<ol>
+<li><code>setQuadReferToOuter(approach: Int)</code> (QUAD - shape inner curve in terms of adjacent outer curve, according to approach(InnerControlPoints.FOLLOW_OUTER, ...EXAGGERATE_OUTER, ...COUNTER_OUTER)</li>
+<li><code>setQuadMultipliers(inner: Vector2D, outer: Vector2D)</code> (QUAD)</li>
+<li><code>setTriRatios(inner: Double, outer: Double)</code> (TRI)</li>
+<li><code>setRandomTriRatios(inner: Range, outer: Range)</code>(TRI)</li>
+<li><code>setCommonLine(common_type: Int)</code> (TRI)</li>
+</ol>
+
+<p><strong>Inner Control Points Transform createSubdivisionParamsSetCollection() example</strong></p>
+
+<hr />
+
+<h6>OuterControlPoints</h6>
+
+<figure>
+<img src="images/outerCPs.png" alt="OuterControlPoints" title="OuterControlPoints" />
+<figcaption>OuterControlPoints</figcaption>
+</figure>
+
+<p>Two ways of calculating outside spline curvature :</p>
+
+<ol>
+<li>First way calculates difference vector between the control point and a notional middle point on the line, then converts that to a perpendicular vector that gets applied to the control point, either bulging it out (postive values or puckering it in (negative values). A multiplier is then applied to exaggerate the vector. A single curve can both bulge and pinch. The curveTypes are given in the OuterControlPoints object. PUFF means that all control points on external lines bulge. PINCH means that they contract into the polygon. Something like PUFF_PINCH_PUFF_PINCH means that first control point puffs and second pinches, while the second last control point in the new polygon puffs and the last control point pinches. Can also modify the line side ratio to create different curves. If, for instance, a standard line ratio is (.33, .66), try reversing those figures.</li>
+</ol>
+
+<p><img src="images/outsideControlPoints/PUFF.png" alt="Puff" title="Puff" />
+<img src="images/outsideControlPoints/PINCH.png" alt="Pinch" title="Pinch" />
+<img src="images/outsideControlPoints/PUFF_PINCH_PUFF_PINCH.png" alt="Puff Pinch Puff Pinch" title="Puff Pinch Puff Pinch" />
+<img src="images/outsideControlPoints/PUFF_PINCH_PUFF_PINCH.png" alt="Puff Pinch Pinch Puff" title="Puff Pinch Pinch Puff" />
+<img src="images/outsideControlPoints/PINCH_PUFF_PINCH_PUFF.png" alt="Pinch Puff Pinch Puff" title="Pinch Puff Pinch Puff" />
+<img src="images/outsideControlPoints/PINCH_PUFF_PUFF_PINCH.png" alt="Pinch Puff Puff Pinch" title="Pinch Puff Puff Pinch" /></p>
+
+<p><em>(top row: PUFF, PINCH, PUFF_PINCH_PUFF_PINCH)</em></p>
+
+<p><em>(second row: PUFF_PINCH_PINCH_PUFF, PINCH_PUFF_PINCH_PUFF, PINCH_PUFF_PUFF_PINCH)</em></p>
+
+<ol>
+<li>Second way takes the vector from the absolute centre of all polygons in subdivision and lerps (linear interpolation) between the centre and the notional midpoint on the outside line. This then gets shifted by the vector difference between the mid point and the control points to move the control points by the same vector. Simple and reliable if there is a symmetrical centre, but can create intresting wave like effects and major distortion when not polygon is uncentred (in Bezier Draw). Works straighforwardly with non QUAD shapes - TRIS, etc.</li>
+</ol>
+
+<p><img src="images/outsideControlPoints/CurveFromCentre_Positive.png" alt="Curve from centre - positive" title="Curve from centre - positive" />
+<img src="images/outsideControlPoints/CurveFromCentre_Negative.png" alt="Curve from centre - negative" title="Curve from centre - negative" /></p>
+
+<p><em>(Curve from centre positive, curve from centre negative - both over several iterations)</em></p>
+
+<ol>
+<li><strong>curving</strong>: Boolean (<strong>constructor parameter</strong>, global switch for this transform) - default in <code>MySketch/createSubdivisionParamsSetCollection</code> method is FALSE (switching off this transformation)</li>
+<li><strong>probability</strong>: Double (percentage probability that any specific anchor in a subdivision will be transformed) - default is 7</li>
+<li><strong>sidesTotal</strong>: Int (number of sides in the original polygon - no need to specify this value, gets calculated internally) - default is 4</li>
+<li><strong>numSidesPerPoly</strong>: Int (number of sides for new polygons - no need to specify this value, gets calculated internally) - default is 4 (QUAD subdivision)</li>
+<li><strong>absoluteCentre</strong>: Vector2D(this is only needed when curveFromCentre is true (see below)) - default is <code>new Vector2D(0,0)</code></li>
+<li><strong>midLineRatio</strong>: Double (for calculating the initial middle) - default is .5</li>
+</ol>
+
+<p>For calculating positions of control points along the outside line</p>
+
+<ol>
+<li><strong>lineSideRatio</strong>: Vector2D (first value for first control point on outer spline, second for next) - default is <code>new Vector2D(.4, .6)</code></li>
+<li><strong>randomLineRatio</strong>: Boolean (calculate random ratios) - default is FALSE</li>
+<li><strong>randomLineRatioA</strong>: Range (specify a random outer ratio) - default is <code>new Range(.1, .5)</code></li>
+<li><strong>randomLineRatioB</strong>: Range (specify a random inner ratio) - default is <code>new Range(.5, .9)</code></li>
+</ol>
+
+<p>The remaining fields are curving focused.</p>
+
+<ol>
+<li><strong>curveFromCentre</strong>: Boolean = (set this to FALSE if you want perpendicular curving) - default is FALSE</li>
+</ol>
+
+<p>Perpendicular curving:</p>
+
+<ol>
+<li><strong>curveType</strong>: Int (OuterControlPoints.PUFF, ...PINCH, ...PUFF_PINCH_PUFF_PINCH, ...PUFF_PINCH_PINCH_PUFF, ...PINCH_PUFF_PINCH_PUFF, ...PINCH_PUFF_PUFF_PINCH) - default is PUFF</li>
+<li><strong>var curveMultiplier</strong>: Double (factor to exaggerate curving) - default is 5</li>
+<li><strong>randomMultiplier</strong>: Boolean (flag to randomise curving multiplier) - default is FALSE</li>
+<li><strong>randomCurveMultiplier</strong>: Range (min and maxs for randomisation) - default is <code>new Range(.5, 3)</code></li>
+</ol>
+
+<p>Curve from centre curving:</p>
+
+<ol>
+<li><strong>curveFromCentreRatio</strong>: Vector2D (x is for control point next to 0, y for one next to 3 (same system as curveRatio)) - default is <code>new Vector2D(.2, -.5)</code></li>
+<li><strong>ranCurveFromCentre</strong>: Boolean (calculate random curve from centre) - default is FALSE</li>
+<li><strong>ranCurveFromCentreRatioA</strong>: Range (for control point next to point 0) - default is <code>new Range(-1, 1)</code></li>
+<li><strong>ranCurveFromCentreRatioB</strong>: Range (for control point next to point 3) - default is <code>new Range(-1, 1)</code></li>
+</ol>
+
+<p><strong>Convenience Methods</strong></p>
+
+<ol>
+<li><code>setRandomLineSideRatio(innerRatio: Vector2D, outerRatio: Vector2D)</code> (first control point on spline line ratio (distance from first anchor), second control point on spline line ratio (distance from first anchor))</li>
+<li><code>curvePerpendicular(prob: Double, cType: Int, lineRatio: Vector2D, cMultiplier: Range)</code> (probability, curve type, line ratio, curve multiplier)</li>
+<li><code>curvePerpendicularRandomMultiplier(prob: Double, cType: Int, lineRatio: Vector2D, cRandomMultiplier: Range)</code> (probability, , curve type, line ratio, random curve multiplier)</li>
+<li><code>curveFromCentre(prob: Double, cRatio: Vector2D)</code> (probability, curve ratios)</li>
+<li><code>curveFromCentreRandom(prob: Double, cp1Ratio: Range, cp2Ratio: Range)</code> (probability, curve ratios (control point 1), curve ratios (control point 2))</li>
+</ol>
+
+<p><strong>Outer Control Points Transform createSubdivisionParamsSetCollection() example</strong></p>
+
+<pre><code>
+var outerControlPoints: OuterControlPoints = new OuterControlPoints(true)
+//outerControlPoints.curvePerpendicular(100, outerControlPoints.PUFF, new Vector2D(.33, .66), new Range(2, 2))
+//outerControlPoints.curvePerpendicularRandomMultiplier(100, OuterControlPoints.PUFF, new Vector2D(.33, .66), new Range(2, 5))
+outerControlPoints.curveFromCentre(100, new Vector2D(-.3, -.3))
+transformSet += outerControlPoints
+
+</code></pre>
+
+<hr />
+
+<h2>Subdivision note</h2>
+
+<p>Urgently need a more efficient means of building complex subdivision parameters. Also need to save and load them from XML.</p>
+</body>
+</html>

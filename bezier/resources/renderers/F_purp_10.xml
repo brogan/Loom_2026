@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="ISO-8859-1"?>
+<!DOCTYPE renderer SYSTEM "../dtd/renderer.dtd">
+<renderer>
+    <name>F_purp_10</name>
+    <mode>RENDER_FILLED</mode>
+    <fillRed>200</fillRed>
+    <fillGreen>0</fillGreen>
+    <fillBlue>200</fillBlue>
+    <fillAlpha>10</fillAlpha>
+    <strokeRed>255</strokeRed>
+    <strokeGreen>255</strokeGreen>
+    <strokeBlue>255</strokeBlue>
+    <strokeAlpha>10</strokeAlpha>
+    <strokeWeight>1</strokeWeight>
+</renderer>

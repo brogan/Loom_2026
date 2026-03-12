@@ -1,0 +1,59 @@
+<?xml version="1.0" encoding="ISO-8859-1"?>
+<!DOCTYPE configuration SYSTEM "dtd/configuration.dtd">
+<configuration>
+    <name></name>
+    <width>900</width>
+    <height>900</height>
+    <borderWidth>40</borderWidth>
+    <rows>25</rows>
+    <cols>25</cols>
+    <resolutionMultiplier>.5</resolutionMultiplier>
+    <offsetX>0</offsetX>
+    <offsetY>0</offsetY>
+    <gridWrapping>true</gridWrapping>
+    <visibleGridColor>0,255,100,255</visibleGridColor>
+    <selectionColor>148,148,148,255</selectionColor>
+    <centralAxesColor>0,100,255,255</centralAxesColor>
+    <singleImageImport>true</singleImageImport>
+    <importImagePath>Image Path</importImagePath>
+    <importImageSequencePath>Image Sequence Path</importImageSequencePath>
+    <ImageSequenceFrameIncrement>1.0</ImageSequenceFrameIncrement>
+    <imageBasedColor>false</imageBasedColor>
+    <imageBasedFillColor>true</imageBasedFillColor>
+    <imageBasedStrokeColor>false</imageBasedStrokeColor>
+    <autoImageDrawing>true</autoImageDrawing>
+    <backgroundImagePath>Background Image Path: image displayed at grid image dimensions</backgroundImagePath>
+    <displayBackgroundImage>false</displayBackgroundImage>
+    <referenceImagePath>Reference Image Path: image displayed at 540 X 540 pixels</referenceImagePath>
+    <displayReferenceImage>false</displayReferenceImage>
+    <fillColorSelection>true</fillColorSelection>
+    <fillColor>250,200,50,10</fillColor>
+    <strokeColor>0,0,0,15</strokeColor>
+    <drawSets>
+        <drawSet>
+            <drawSetName>null</drawSetName>
+            <drawSetEnable>false</drawSetEnable>
+            <drawSetSequential>false</drawSetSequential>
+            <drawSetAnimator>static</drawSetAnimator>
+            <drawSetFrames>
+                <drawSetFrame>1</drawSetFrame>
+            </drawSetFrames>
+            <drawSetDrawers>
+                <drawSetDrawer>
+                    <drawerName></drawerName>
+                    <drawerEnable>false</drawerEnable>
+                    <drawerAnimator>static</drawerAnimator>
+                    <drawerRenderer>F_blue_255</drawerRenderer>
+                </drawSetDrawer>
+            </drawSetDrawers>
+        </drawSet>
+    </drawSets>
+    <redrawBackground>true</redrawBackground>
+    <backgroundColor>255,255,255,255</backgroundColor>
+    <renderMode>filledStroked</renderMode>
+    <strokeWeight>1.0</strokeWeight>
+    <exportFilePath></exportFilePath>
+    <exportFilePrefix></exportFilePrefix>
+    <qualityMultiple>1</qualityMultiple>
+    <includeVisibleGrid>false</includeVisibleGrid>
+</configuration>

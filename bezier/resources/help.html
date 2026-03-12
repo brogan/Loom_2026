@@ -1,0 +1,743 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Bezier Editor — Help</title>
+<style>
+  body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; font-size: 13px; color: #222; background: #fafafa; margin: 0; padding: 0; }
+  .sidebar { position: fixed; top: 0; left: 0; width: 210px; height: 100%; background: #1e2330; color: #cdd4e0; overflow-y: auto; padding: 16px 0; box-sizing: border-box; }
+  .sidebar h2 { font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; color: #7a8499; margin: 18px 16px 6px; }
+  .sidebar a { display: block; padding: 5px 16px; color: #cdd4e0; text-decoration: none; font-size: 12px; border-left: 3px solid transparent; }
+  .sidebar a:hover { background: #2a3045; color: #fff; }
+  .sidebar a.active { border-left-color: #5b9cf6; color: #fff; }
+  .content { margin-left: 210px; padding: 32px 40px 60px; max-width: 860px; }
+  h1 { font-size: 24px; font-weight: 700; color: #1a1a2e; border-bottom: 2px solid #e0e4f0; padding-bottom: 12px; margin-top: 0; }
+  h2 { font-size: 18px; font-weight: 600; color: #1a1a2e; margin-top: 40px; border-bottom: 1px solid #e0e4f0; padding-bottom: 6px; }
+  h3 { font-size: 14px; font-weight: 600; color: #2c3060; margin-top: 24px; margin-bottom: 6px; }
+  h4 { font-size: 13px; font-weight: 600; color: #444; margin-top: 16px; margin-bottom: 4px; }
+  p { line-height: 1.65; margin: 8px 0; }
+  ul, ol { margin: 6px 0; padding-left: 22px; line-height: 1.7; }
+  li { margin-bottom: 3px; }
+  .note { background: #eef4ff; border-left: 4px solid #5b9cf6; padding: 10px 14px; border-radius: 0 6px 6px 0; margin: 14px 0; font-size: 12px; }
+  .warn { background: #fff8e6; border-left: 4px solid #f0a500; padding: 10px 14px; border-radius: 0 6px 6px 0; margin: 14px 0; font-size: 12px; }
+  table { border-collapse: collapse; width: 100%; margin: 12px 0; font-size: 12px; }
+  th { background: #f0f2f8; text-align: left; padding: 8px 12px; border: 1px solid #d8dce8; font-weight: 600; color: #333; }
+  td { padding: 7px 12px; border: 1px solid #e4e7f0; vertical-align: top; }
+  tr:nth-child(even) td { background: #f7f8fc; }
+  kbd { background: #eef; border: 1px solid #aac; border-radius: 3px; padding: 1px 5px; font-family: monospace; font-size: 11px; }
+  .chip { display: inline-block; background: #e8ecff; color: #3050b0; border-radius: 10px; padding: 1px 8px; font-size: 11px; font-weight: 600; margin: 1px 2px; }
+  .chip.orange { background: #fff0e0; color: #b05000; }
+  .chip.purple { background: #f5e8ff; color: #7020a0; }
+  .chip.yellow { background: #fdf8e0; color: #807000; }
+  .chip.blue   { background: #e0f0ff; color: #0050a0; }
+  .chip.red    { background: #ffe8e8; color: #a00020; }
+  .chip.green  { background: #e4f5e4; color: #1a6e1a; }
+  code { font-family: monospace; background: #eef; padding: 0 4px; border-radius: 3px; font-size: 11px; }
+  .toolbar-row { display: flex; flex-wrap: wrap; gap: 6px; margin: 10px 0; }
+  .btn { background: #f0f2f8; border: 1px solid #c8cce0; border-radius: 4px; padding: 4px 10px; font-size: 11px; font-weight: 600; display: inline-block; }
+  section { scroll-margin-top: 20px; }
+  .color-swatch { display: inline-block; width: 12px; height: 12px; border-radius: 2px; border: 1px solid rgba(0,0,0,0.2); vertical-align: middle; margin-right: 4px; }
+</style>
+</head>
+<body>
+
+<nav class="sidebar">
+  <h2>Bezier Editor</h2>
+  <a href="#overview">Overview</a>
+  <a href="#layout">Interface Layout</a>
+  <a href="#drawing">Drawing Polygons</a>
+  <h2>Selection Modes</h2>
+  <a href="#point-mode">Point Selection</a>
+  <a href="#edge-mode">Edge Selection</a>
+  <a href="#polygon-mode">Polygon Selection</a>
+  <a href="#submodes">Discrete &amp; Relational</a>
+  <a href="#scoping">Scoping</a>
+  <a href="#marquee">Marquee Selection</a>
+  <h2>Operations</h2>
+  <a href="#transform">Scale &amp; Rotate</a>
+  <a href="#translate">Translate</a>
+  <a href="#flip">Flip &amp; Centre</a>
+  <a href="#zoom">Zoom</a>
+  <a href="#snap">Snap to Grid</a>
+  <a href="#weld">Welding</a>
+  <a href="#knife">Knife Cut</a>
+  <a href="#intersect">Intersect</a>
+  <a href="#extrude">Extrude</a>
+  <a href="#duplicate">Duplicate &amp; Delete</a>
+  <h2>View &amp; Files</h2>
+  <a href="#view">View Toggles</a>
+  <a href="#refimage">Reference Image</a>
+  <a href="#saveload">Save &amp; Load</a>
+  <a href="#svg">SVG Export &amp; Import</a>
+  <a href="#undo">Undo</a>
+  <h2>Reference</h2>
+  <a href="#keyboard">Keyboard Shortcuts</a>
+  <a href="#mouse">Mouse &amp; Modifiers</a>
+  <a href="#colours">Highlight Colours</a>
+</nav>
+
+<div class="content">
+
+<!-- ═══════════════════════════════════════════════════════════ -->
+<section id="overview">
+<h1>Bezier Editor — Help</h1>
+<p>The Bezier Editor is a tool for creating and editing collections of closed cubic Bézier-curve polygons. Each polygon is built from one or more connected cubic Bézier segments. Finished polygon sets are saved as XML files that can be loaded directly into the Loom drawing engine.</p>
+<p>Polygons can be freely transformed, welded together at shared edges, and extruded to build up complex multi-polygon shapes. The Weld Registry keeps track of which anchor points are linked across polygons so that Relational operations move welded neighbours together automatically.</p>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════════ -->
+<section id="layout">
+<h2>Interface Layout</h2>
+
+<h3>Toolbar (top)</h3>
+<p>The toolbar contains icon buttons organised into groups separated by dividers. Left-to-right order:</p>
+<table>
+  <tr><th>Group</th><th>Buttons</th></tr>
+  <tr><td>Selection modes</td><td>Point Selection · Edge Selection · Polygon Selection</td></tr>
+  <tr><td>Creation &amp; Cut</td><td>Create Polygon · Close Polygon · <strong>Intersect</strong> · <strong>Knife Cut</strong></td></tr>
+  <tr><td>Editing</td><td>Duplicate · Weld · Flip Horizontal · Flip Vertical</td></tr>
+  <tr><td>Snapping</td><td>Snap Anchors · Snap Anchors &amp; Controls · Centre</td></tr>
+  <tr><td>Zoom</td><td>Zoom In · Zoom Out</td></tr>
+  <tr><td>View</td><td>Toggle Grid · Toggle Control Points · Toggle Reference Image</td></tr>
+  <tr><td>Destructive</td><td>Clear All Geometry · Delete Selected</td></tr>
+</table>
+<div class="note">The three <strong>Selection Mode</strong> buttons each have three visual states: unselected, active in Relational sub-mode (orange tint icon), and active in Discrete sub-mode (blue tint icon). The active icon updates in real time when you tap <kbd>⇧ Shift</kbd> to toggle sub-modes.</div>
+
+<h3>Top Panel (below toolbar)</h3>
+<ul>
+  <li><strong>Load File / Save Polygons</strong> — browse for an existing XML polygon set or type a name and click <em>Save</em> to write one.</li>
+  <li><strong>SVG</strong> — Import SVG button (see <a href="#svg">SVG</a> section).</li>
+  <li><strong>Reference Image</strong> — browse for a background image to trace over.</li>
+</ul>
+
+<h3>Canvas (centre)</h3>
+<p>The drawing grid is 1000 × 1000 user units displayed on a 1040 × 1040 pixel panel (20 px border on each side). The grid has 10 × 10 major divisions. Click and drag directly in the canvas to create and edit polygons.</p>
+
+<h3>Edit &amp; Transform Panels (below canvas)</h3>
+<ul>
+  <li><strong>Edit Mode</strong> — checkboxes to allow anchor-point and/or control-point editing while dragging in legacy mode.</li>
+  <li><strong>Scale Axis</strong> — choose whether the Scale slider affects XY, X-only, or Y-only.</li>
+  <li><strong>Rotation Axis</strong> — choose the pivot for the Rotate slider: Local (each polygon's own centre), Common (shared centroid of selection), or Absolute (canvas centre).</li>
+  <li><strong>Scale slider</strong> — drag to scale; release to commit and reset to zero.</li>
+  <li><strong>Rotation slider</strong> — drag to rotate (maps ±100 → ±180°); release to commit and reset.</li>
+</ul>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════════ -->
+<section id="drawing">
+<h2>Drawing Polygons</h2>
+
+<h3>Entering Create Mode</h3>
+<p>Click the <strong>Create Polygon</strong> toolbar button (toggle). The cursor enters drawing mode for a new polygon.</p>
+
+<h3>Placing Points</h3>
+<p>Each click on the canvas places an <em>anchor point</em>. After the first two anchors the editor automatically creates smooth cubic Bézier control points between them. Continue clicking to add more segments to the current polygon.</p>
+
+<h3>Closing a Polygon</h3>
+<p>Click the <strong>Close Polygon</strong> button. The editor:</p>
+<ol>
+  <li>Connects the last anchor back to the first, forming a closed loop.</li>
+  <li>Records the polygon's centroid.</li>
+  <li>Starts a fresh empty polygon manager for the next shape.</li>
+  <li>Automatically switches to Polygon Selection Mode.</li>
+</ol>
+
+<div class="note">Every polygon in the Bezier Editor is a <strong>closed</strong> cubic Bézier path — open paths are used internally for single-edge elements (connectors from extrude, duplicated edges) but are not drawn as standalone shapes.</div>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════════ -->
+<section id="point-mode">
+<h2>Point Selection Mode</h2>
+<p>Click the <strong>Point Selection</strong> toolbar button to enter this mode. Individual anchor and control points can be selected, moved, scaled, and rotated.</p>
+
+<h3>Selecting Points — Two-Step Scoping</h3>
+<ol>
+  <li><strong>First click inside a polygon</strong> — <em>scopes</em> that polygon (its outline flashes a <span class="chip yellow">yellow dashed border</span>). No points are selected yet.</li>
+  <li><strong>Click a visible point</strong> inside the scoped polygon — selects it.</li>
+</ol>
+<p>If you click directly on a point in any polygon (scoped or not), that polygon is automatically scoped and the point selected in one step.</p>
+
+<h3>Deselecting / Changing Scope</h3>
+<ul>
+  <li>Click <strong>empty canvas</strong> — clears scope and selection.</li>
+  <li>Click <strong>inside a different polygon</strong> — changes scope; selection is cleared (unless <kbd>⌘ Cmd</kbd> is held).</li>
+</ul>
+
+<h3>Additive Selection</h3>
+<p>Hold <kbd>⌘ Cmd</kbd> while clicking to add points to the current selection without clearing previous ones.</p>
+
+<h3>Dragging Selected Points</h3>
+<p>Drag any selected point; all selected points (including weld-linked partners if in Relational sub-mode) move together.</p>
+
+<h3>Selection Colours</h3>
+<ul>
+  <li><span class="color-swatch" style="background:#6496ff"></span><span class="chip blue">Blue</span> — anchor point selected (Discrete sub-mode)</li>
+  <li><span class="color-swatch" style="background:#ffffff;border:1px solid #888"></span><span class="chip">White</span> — control point selected (Discrete)</li>
+  <li><span class="color-swatch" style="background:#dc3220"></span><span class="chip red">Red</span> — anchor point selected (Relational sub-mode)</li>
+  <li><span class="color-swatch" style="background:#ffdc00"></span><span class="chip yellow">Yellow</span> — control point selected (Relational)</li>
+</ul>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════════ -->
+<section id="edge-mode">
+<h2>Edge Selection Mode</h2>
+<p>Click the <strong>Edge Selection</strong> toolbar button. A Bézier segment (the curve between two consecutive anchor points) is treated as a single selectable edge.</p>
+
+<h3>Selecting Edges — Two-Step Scoping</h3>
+<ol>
+  <li><strong>First click inside a polygon</strong> — scopes it (<span class="chip yellow">yellow dashed outline</span>).</li>
+  <li><strong>Click within 15 px of a curve</strong> inside the scoped polygon — selects that edge.</li>
+</ol>
+<p>Clicking directly on a curve in any polygon selects it and automatically scopes that polygon.</p>
+
+<h3>Edge Highlight Colours</h3>
+<ul>
+  <li><span class="color-swatch" style="background:#0064ff"></span><span class="chip blue">Blue (4 px)</span> — edge selected (Discrete)</li>
+  <li><span class="color-swatch" style="background:#ff8c00"></span><span class="chip orange">Orange (4 px)</span> — edge selected (Relational)</li>
+  <li><span class="color-swatch" style="background:#dc00ff"></span><span class="chip purple">Purple (5 px)</span> — edge is weldable or being extruded</li>
+</ul>
+
+<h3>Dragging Selected Edges</h3>
+<p>Drag any selected edge to translate it. All four control points of each selected curve move. In Relational sub-mode, weld-linked edges in neighbouring polygons move simultaneously.</p>
+
+<h3>Operations Available in Edge Mode</h3>
+<ul>
+  <li><strong>Duplicate</strong> — creates an offset copy of the selected edge (single-edge polygon), offset 20 px.</li>
+  <li><strong>Delete</strong> — removes the selected curve from its parent polygon.</li>
+  <li><strong>Weld</strong> — merges exactly two selected edges (must be close and parallel; see <a href="#weld">Welding</a>).</li>
+  <li><strong>Extrude</strong> — <kbd>⇧ Shift</kbd> + drag (see <a href="#extrude">Extrude</a>).</li>
+</ul>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════════ -->
+<section id="polygon-mode">
+<h2>Polygon Selection Mode</h2>
+<p>Click the <strong>Polygon Selection</strong> toolbar button. Entire polygons are selected and can be dragged, scaled, rotated, flipped, welded, duplicated, or deleted as units.</p>
+
+<h3>Selecting Polygons</h3>
+<ul>
+  <li>Click <strong>inside</strong> a polygon to select it. Its outline is drawn in <span class="chip blue">blue</span> (Discrete) or <span class="chip orange">orange</span> (Relational).</li>
+  <li>Clicking a selected polygon again <strong>deselects</strong> it.</li>
+  <li>Click <strong>empty canvas</strong> to clear all selections.</li>
+</ul>
+
+<h3>Click-Through for Stacked Polygons</h3>
+<p>When polygons overlap, clicking inside a <em>selected</em> inner polygon near an <em>unselected</em> outer polygon uses a deferred selection mechanism:</p>
+<ul>
+  <li><strong>Click + drag</strong> — moves only the inner polygon (the outer is never added to the selection). This lets you reposition the inner polygon independently.</li>
+  <li><strong>Click + release (no drag)</strong> — on mouse release the outer polygon is added to the selection. Both polygons are now selected.</li>
+</ul>
+<p>This behaviour is essential for the <a href="#intersect">Intersect</a> workflow: duplicate a polygon, scale it down, drag it inside the original, then click anywhere in the outer region to select both, and finally click Intersect.</p>
+
+<h3>Dragging Polygons</h3>
+<p>Drag a selected polygon to move it. In Relational sub-mode, all polygons linked via welded anchor points move together, keeping seams intact.</p>
+
+<h3>Drag-to-Weld</h3>
+<p>While dragging in Polygon Selection Mode the editor continuously checks for nearby weldable edges on unselected polygons. When a pair of edges meets the proximity and alignment thresholds, they are highlighted in <span class="chip purple">purple</span>. Release the mouse to snap those edges together and register their anchor links — see <a href="#weld">Welding</a>.</p>
+
+<h3>Operations Available in Polygon Mode</h3>
+<ul>
+  <li><strong>Duplicate</strong> — creates a copy of all selected polygons, offset 20 px.</li>
+  <li><strong>Delete</strong> — removes all selected polygon managers.</li>
+  <li><strong>Flip Horizontal / Vertical</strong> — mirrors selected (or all) polygons around their collective centroid.</li>
+  <li><strong>Centre</strong> — moves selected (or all) polygons to the canvas centre.</li>
+  <li><strong>Scale / Rotate sliders</strong> — transform selected (or all) polygons.</li>
+</ul>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════════ -->
+<section id="submodes">
+<h2>Discrete &amp; Relational Sub-modes</h2>
+<p>Every selection mode has two sub-modes that control how selections propagate through the Weld Registry.</p>
+
+<table>
+  <tr><th>Sub-mode</th><th>What gets selected</th><th>What moves / transforms</th></tr>
+  <tr>
+    <td><strong>Discrete</strong></td>
+    <td>Only the directly clicked element (point, edge, or polygon)</td>
+    <td>Only the selected element — welded partners stay put. Welds may stretch.</td>
+  </tr>
+  <tr>
+    <td><strong>Relational</strong></td>
+    <td>Clicked element + all weld-linked elements, traversed transitively through the Weld Registry</td>
+    <td>All linked elements move together — seams are maintained.</td>
+  </tr>
+</table>
+
+<h3>Switching Sub-mode</h3>
+<ul>
+  <li>At mode activation time: hold <kbd>⇧ Shift</kbd> when clicking a toolbar selection button to activate in Discrete mode (default is Relational).</li>
+  <li>While a mode is active: tap <kbd>⇧ Shift</kbd> to toggle between Discrete and Relational. The highlight colours update instantly to reflect the current sub-mode.</li>
+</ul>
+
+<div class="note">In Point Relational mode, clicking an anchor point also selects its adjacent control points, keeping the curve shape intact during moves.</div>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════════ -->
+<section id="scoping">
+<h2>Scoping</h2>
+<p>In Point and Edge Selection modes, a <em>scope</em> isolates one polygon so you can click precisely on its points or edges without accidentally hitting overlapping polygons.</p>
+
+<h3>Visual Indicator</h3>
+<p>The scoped polygon is outlined with a <span class="chip yellow">yellow dashed border (2 px)</span> using an 8/4 dash pattern.</p>
+
+<h3>Scoping Workflow</h3>
+<ol>
+  <li>Click inside a polygon → it becomes scoped (no selection change yet).</li>
+  <li>Click on a point or edge within the scoped polygon → it is selected.</li>
+  <li>Click inside a <em>different</em> polygon → scope moves to the new polygon; prior selection is cleared (unless <kbd>⌘ Cmd</kbd> is held).</li>
+  <li>Click empty canvas → scope and selection are both cleared.</li>
+</ol>
+<p>If you click directly on a point or edge in any unscoped polygon, it is auto-scoped and selected simultaneously in one step.</p>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════════ -->
+<section id="marquee">
+<h2>Marquee (Rubber-Band) Selection</h2>
+<p>Hold <kbd>⇧ Shift</kbd> and drag on the canvas to draw a selection rectangle.</p>
+<ul>
+  <li><strong>Point mode</strong> — selects all visible points whose position falls inside the rectangle.</li>
+  <li><strong>Edge mode</strong> — selects all edges whose anchor-midpoint falls inside the rectangle.</li>
+  <li><strong>Polygon mode</strong> — selects all polygons whose centroid falls inside the rectangle.</li>
+</ul>
+<p>The marquee is drawn as a semi-transparent light-blue fill with a dashed blue stroke. Release the mouse to finalise the selection.</p>
+<div class="note">When edges are already selected in Edge Selection Mode, <kbd>⇧ Shift</kbd> + drag triggers <a href="#extrude">Extrude</a> instead of the marquee.</div>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════════ -->
+<section id="transform">
+<h2>Scale &amp; Rotate</h2>
+
+<h3>Scale Slider</h3>
+<p>Drag the <strong>Scale</strong> slider below the canvas. The range is −100 to +100, mapping to a scale factor of 0.0 to 2.0 (0 = original size).</p>
+
+<h4>Scale Axis</h4>
+<ul>
+  <li><strong>XY</strong> (default) — proportional scale in both axes.</li>
+  <li><strong>X only</strong> — squeeze/stretch horizontally only.</li>
+  <li><strong>Y only</strong> — squeeze/stretch vertically only.</li>
+</ul>
+
+<h4>Scale Pivot</h4>
+<ul>
+  <li>In <strong>Point mode</strong> — centroid of selected points.</li>
+  <li>In <strong>Edge mode</strong> — centroid of selected edge anchors.</li>
+  <li>In <strong>Polygon mode, Relational</strong> — single shared centroid of all selected polygons.</li>
+  <li>In <strong>Polygon mode, Discrete</strong> — each polygon scales around its own centroid independently.</li>
+  <li>Nothing selected — all polygons scale around the canvas centre.</li>
+</ul>
+
+<h3>Rotate Slider</h3>
+<p>Drag the <strong>Rotation</strong> slider. Range −100 to +100 maps to −180° to +180°.</p>
+
+<h4>Rotation Axis (radio buttons)</h4>
+<ul>
+  <li><strong>Local</strong> (default) — each polygon rotates about its own centroid.</li>
+  <li><strong>Common</strong> — all selected polygons orbit their shared centroid.</li>
+  <li><strong>Absolute</strong> — all polygons orbit the canvas centre (500, 500).</li>
+</ul>
+
+<h4>Slider Commit</h4>
+<p>Releasing the mouse on either slider commits the transformation (<em>setOrigPosToPos</em>), resets the slider to zero, and marks a new undo point. Subsequent slider drags start fresh from the committed positions.</p>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════════ -->
+<section id="translate">
+<h2>Translate (Drag)</h2>
+<p>Elements are translated simply by dragging them on the canvas:</p>
+<ul>
+  <li><strong>Point mode</strong> — drag any selected point to move all selected points.</li>
+  <li><strong>Edge mode</strong> — drag near a selected edge curve to move all selected edges.</li>
+  <li><strong>Polygon mode</strong> — drag inside a selected polygon to move all selected polygons.</li>
+</ul>
+<p>In all cases an undo snapshot is taken at the start of the first drag movement.</p>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════════ -->
+<section id="flip">
+<h2>Flip &amp; Centre</h2>
+
+<h3>Flip Horizontal</h3>
+<p>Mirrors selected polygons left/right around their collective centroid. If nothing is selected, all polygons are flipped. Axis: vertical line through the group centroid.</p>
+
+<h3>Flip Vertical</h3>
+<p>Mirrors selected polygons top/bottom around their collective centroid.</p>
+
+<h3>Centre</h3>
+<p>Moves the selected polygons (or all polygons if nothing is selected) so their collective centroid coincides with the canvas centre (500, 500). Welded points move together.</p>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════════ -->
+<section id="zoom">
+<h2>Zoom In / Zoom Out</h2>
+<p>The <strong>Zoom In</strong> and <strong>Zoom Out</strong> toolbar buttons scale all polygon geometry around a pivot point:</p>
+
+<table>
+  <tr><th>Zoom factor</th><th>In</th><th>Out</th></tr>
+  <tr><td>Factor</td><td>× 1.25</td><td>× 0.8</td></tr>
+</table>
+
+<h4>Pivot Priority</h4>
+<ol>
+  <li>Centroid of <strong>selected points</strong> (if any).</li>
+  <li>Centroid of <strong>selected edge anchor pairs</strong>.</li>
+  <li>Centroid of <strong>selected polygon centres</strong>.</li>
+  <li>Canvas centre (default when nothing is selected).</li>
+</ol>
+
+<p>Each zoom click is a separate undoable step.</p>
+<div class="note">Zoom operates on the <em>coordinate values</em> of all geometry — it does not change the canvas view. Use it to scale the entire polygon set up or down.</div>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════════ -->
+<section id="snap">
+<h2>Snap to Grid</h2>
+<p>The grid has 100 × 100 intersections over the 1000 × 1000 canvas (spacing: 10 units per cell).</p>
+
+<h3>Snap Anchor Points</h3>
+<p>The <strong>Snap Anchors</strong> button moves every anchor point in all polygons to the nearest grid intersection. Control points are left unchanged.</p>
+
+<h3>Snap Anchors &amp; Control Points</h3>
+<p>The <strong>Snap Anchors &amp; Controls</strong> button also recalculates control points (<code>resetControlPoints()</code>) after snapping anchors, maintaining smooth tangents at the new grid positions.</p>
+
+<p>Both operations are undoable.</p>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════════ -->
+<section id="weld">
+<h2>Welding</h2>
+<p>Welding links anchor points from two different polygons so they share a position and move together in Relational mode.</p>
+
+<h3>Weld Button — Toggle Mode</h3>
+<p>The <strong>Weld</strong> toolbar button is a two-state toggle:</p>
+<table>
+  <tr><th>State</th><th>Icon</th><th>Meaning</th></tr>
+  <tr><td><strong>Selected / pressed</strong></td><td>weld (active)</td><td>Auto-weld is <strong>ON</strong> (default). Drag-to-weld detection runs during polygon drags; edges auto-weld on release.</td></tr>
+  <tr><td><strong>Not selected</strong></td><td>weld (normal)</td><td>Auto-weld is <strong>OFF</strong>. No drag-weld highlighting; edges do not snap on release.</td></tr>
+</table>
+<div class="note">Disable auto-weld when you need to position a polygon <em>inside</em> another (for example, before using Intersect) without triggering accidental welds during the drag. Re-enable it afterwards for normal assembly work.</div>
+
+<h3>Explicit Weld (Edge Mode)</h3>
+<p>When you are in Edge Selection Mode with exactly two edges selected, clicking the Weld button performs a one-time manual weld and immediately <em>reverts the toggle</em> back to its previous state — it does not change the auto-weld setting.</p>
+<ol>
+  <li>Enter <strong>Edge Selection Mode</strong>.</li>
+  <li>Select <strong>exactly two edges</strong> (one from each polygon you want to connect).</li>
+  <li>The edges must satisfy both:
+    <ul>
+      <li>Midpoint distance ≤ <strong>80 px</strong></li>
+      <li>Directions within ~<strong>45°</strong> of parallel (|cos θ| &gt; 0.7)</li>
+    </ul>
+  </li>
+  <li>When both conditions are met the edges turn <span class="chip purple">purple</span> automatically.</li>
+  <li>Click the <strong>Weld</strong> toolbar button.</li>
+</ol>
+
+<h4>What Happens</h4>
+<ul>
+  <li>Both anchor pairs snap to their midpoints.</li>
+  <li>Both control-point pairs snap to their midpoints.</li>
+  <li>All four point pairs are registered in the Weld Registry.</li>
+  <li>The direction pairing (normal vs. reversed) is chosen automatically to minimise total anchor displacement.</li>
+</ul>
+
+<h3>Drag-to-Weld (Polygon Mode)</h3>
+<p>While dragging in Polygon Selection Mode with auto-weld ON, the editor continuously checks for weld candidates:</p>
+<ol>
+  <li>As you drag a polygon near another, edges that meet the 80 px / 45° criteria turn <span class="chip purple">purple</span> on both polygons.</li>
+  <li>Release the mouse — the highlighted edge pairs are welded automatically (snap to midpoints, register links).</li>
+</ol>
+<p>This allows rapid assembly of multi-polygon shapes by simply dragging pieces together. Turn auto-weld <strong>OFF</strong> when you want to drag without welding (e.g. positioning the inner polygon for Intersect).</p>
+
+<h3>Weld Registry &amp; Relational Mode</h3>
+<p>The Weld Registry is a bidirectional map of linked anchor pairs. In any <strong>Relational</strong> sub-mode, operations (drag, scale, rotate) traverse this map transitively — moving one point moves all points it is linked to, and all points those are linked to, and so on.</p>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════════ -->
+<section id="knife">
+<h2>Knife Cut</h2>
+<p>The <strong>Knife Cut</strong> toolbar button is a toggle tool that slices one or more polygons along a straight line you draw across the canvas. It operates independently of the selection modes — activating it suspends the current mode and restores it when deactivated.</p>
+
+<h3>Using the Knife</h3>
+<ol>
+  <li>Click the <strong>Knife Cut</strong> toolbar button to activate it. The current selection mode buttons deselect visually.</li>
+  <li>Press and drag across the canvas to define the cut line. A red dashed line extends across the full canvas to show the cut direction; small circles mark the drag start and current cursor position.</li>
+  <li>Release the mouse. Every polygon that the line crosses with an <strong>even number ≥ 2 intersections</strong> is split into pieces at those intersection points.</li>
+  <li>Click the <strong>Knife Cut</strong> button again (or click any selection mode button) to deactivate. The previously active selection mode is restored automatically.</li>
+</ol>
+
+<h3>How Cutting Works</h3>
+<p>The cut uses <em>de Casteljau recursive subdivision</em> on signed distances to find exactly where the cut line crosses each cubic Bézier curve. This preserves the true curve shape in each piece — pieces are not approximated with straight edges.</p>
+<ul>
+  <li><strong>Even intersections (2, 4, 6 …)</strong> — the polygon is split into that many pieces. Each consecutive pair of intersection points defines one piece's boundary, with a straight closing edge added across the cut.</li>
+  <li><strong>Odd intersections or zero</strong> — the polygon is not cut (a partial hit with no exit is ignored).</li>
+  <li><strong>New pieces inherit selection state</strong> — if the original polygon was selected before Knife mode was entered, all pieces from it are added to the selection.</li>
+</ul>
+
+<h3>Auto-Weld on Cut</h3>
+<p>After cutting, coincident anchor points on adjacent pieces are automatically welded (proximity scan, ε = 0.1 px). This keeps cut seams connected so pieces move together in Relational mode. Auto-weld on cut is controlled by the same auto-weld toggle as drag-to-weld — if you have disabled auto-weld, cut pieces will not be welded at their seams.</p>
+
+<h3>Undo</h3>
+<p>The entire cut gesture is a single undoable step. Undo restores all original polygons and removes all pieces.</p>
+
+<div class="note">The minimum drag distance to trigger a cut is 5 px. A brief click without dragging is ignored.</div>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════════ -->
+<section id="intersect">
+<h2>Intersect</h2>
+<p>The <strong>Intersect</strong> toolbar button builds an annular mesh between two concentric equivalent polygons — one inside the other — filling the ring-shaped gap between them with N quad polygons (one per side).</p>
+
+<h3>Requirements</h3>
+<p>Before clicking Intersect, select <strong>exactly two polygons</strong> in Polygon Selection Mode. They must satisfy all of:</p>
+<table>
+  <tr><th>Condition</th><th>Detail</th></tr>
+  <tr><td>Same number of anchor points (curves)</td><td>Minimum 3. A triangle pair, square pair, hexagon pair, etc.</td></tr>
+  <tr><td>Rotationally compatible</td><td>The orientation of the first anchor point on each polygon must be within <strong>5°</strong> of each other (measured from each polygon's centroid).</td></tr>
+  <tr><td>One fully inside the other</td><td>All anchor points of the inner polygon must fall within the boundary of the outer polygon.</td></tr>
+</table>
+
+<h3>Procedure</h3>
+<ol>
+  <li>Enter <strong>Polygon Selection Mode</strong>.</li>
+  <li>Select the outer polygon.</li>
+  <li>Click inside the inner polygon to select it too. (If the inner is inside the outer and the outer was already selected, use the <a href="#polygon-mode">click-through deferred selection</a> to add the outer: drag the inner to position it, then click in the outer area and release without dragging.)</li>
+  <li>Click <strong>Intersect</strong>.</li>
+</ol>
+
+<h3>Result</h3>
+<p>N quad polygons are created, filling the annular region. Each quad spans:</p>
+<ul>
+  <li><strong>Curve 0</strong> — one outer edge (from the outer polygon's Bézier curve)</li>
+  <li><strong>Curve 1</strong> — right spoke (straight, outer anchor → inner anchor)</li>
+  <li><strong>Curve 2</strong> — the matching inner edge reversed</li>
+  <li><strong>Curve 3</strong> — left spoke (straight, inner anchor → outer anchor, closes the quad)</li>
+</ul>
+<p>All coincident spoke endpoints across adjacent quads are automatically welded. The new quads are selected in the current sub-mode colour (<span class="chip orange">orange</span> Relational or <span class="chip blue">blue</span> Discrete). Both original polygons are removed.</p>
+
+<h3>Keeping the Inner Polygon</h3>
+<p>Hold <kbd>⇧ Shift</kbd> while clicking <strong>Intersect</strong> to retain the inner polygon after the operation. The inner polygon's anchors coincide exactly with the inner row of spoke endpoints — they are auto-welded into the mesh.</p>
+
+<h3>Typical Workflow</h3>
+<ol>
+  <li>Draw or create a polygon and close it.</li>
+  <li>Select it and click <strong>Duplicate</strong> (a copy appears, selected, offset 20 px).</li>
+  <li>Use the <strong>Scale slider</strong> to shrink the duplicate.</li>
+  <li>Drag the duplicate into the interior of the original. <em>Disable auto-weld first</em> to avoid unwanted welds during the drag.</li>
+  <li>Click anywhere in the outer polygon's area — the outer polygon is added to the selection on release (click-through deferred selection).</li>
+  <li>Re-enable auto-weld, then click <strong>Intersect</strong>.</li>
+</ol>
+
+<h3>Undo</h3>
+<p>Intersect is a single undoable step. Undo removes the quads and restores both originals.</p>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════════ -->
+<section id="extrude">
+<h2>Extrude</h2>
+<p>Extrude creates a new edge from a selected edge by Shift-dragging, and automatically bridges the two with straight connector edges — the 2D equivalent of 3D edge extrusion.</p>
+
+<h3>Procedure</h3>
+<ol>
+  <li>Enter <strong>Edge Selection Mode</strong> and select one or more edges.</li>
+  <li>Hold <kbd>⇧ Shift</kbd> and begin dragging on the canvas.</li>
+  <li>A <span class="chip purple">purple duplicate</span> of the selected edge(s) follows the mouse.</li>
+  <li>Release the mouse.</li>
+</ol>
+
+<h3>Result</h3>
+<p>For each extruded edge the following is created automatically:</p>
+<ul>
+  <li><strong>New edge</strong> — the dragged duplicate, positioned where you released.</li>
+  <li><strong>Left connector</strong> — a straight single-edge polygon from <em>original.anchor0</em> to <em>new.anchor0</em>.</li>
+  <li><strong>Right connector</strong> — a straight single-edge polygon from <em>original.anchor1</em> to <em>new.anchor1</em>.</li>
+  <li><strong>4 weld links</strong> — each connector endpoint welded to the corresponding anchor on the original and new edges.</li>
+</ul>
+<p>This creates a quad-cage: the original edge, the new edge, and two straight sides.</p>
+
+<h3>Chaining Extrusions</h3>
+<p>After release the <strong>new edge becomes the selected edge</strong>. You can immediately <kbd>⇧ Shift</kbd> + drag again to extrude further, building up a chain of connected quads.</p>
+
+<h3>Undo</h3>
+<p>A single undo step covers the entire extrusion gesture (snapshot taken at first drag movement).</p>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════════ -->
+<section id="duplicate">
+<h2>Duplicate &amp; Delete</h2>
+
+<h3>Duplicate</h3>
+<ul>
+  <li><strong>Polygon mode</strong> — creates copies of all selected polygons, offset 20 px right and down.</li>
+  <li><strong>Edge mode</strong> — creates a single-edge polygon copy of the selected edge, offset 20 px.</li>
+</ul>
+<p>The duplicates are added immediately after the originals and become the new selection.</p>
+
+<h3>Delete Selected</h3>
+<ul>
+  <li><strong>Polygon mode</strong> — removes the selected polygon managers entirely. Their weld links are also unregistered.</li>
+  <li><strong>Edge mode</strong> — removes the selected curves from their parent polygon (the polygon continues with fewer segments).</li>
+</ul>
+
+<h3>Clear All Geometry</h3>
+<p>The <strong>Clear All</strong> toolbar button removes every polygon from the canvas and resets the weld registry. This is undoable.</p>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════════ -->
+<section id="view">
+<h2>View Toggles</h2>
+<table>
+  <tr><th>Button</th><th>Effect</th></tr>
+  <tr><td>Toggle Grid</td><td>Show or hide the background grid lines and axis lines.</td></tr>
+  <tr><td>Toggle Control Points</td><td>Show or hide the cubic Bézier control points (the handles). Anchors remain visible.</td></tr>
+  <tr><td>Toggle Reference Image</td><td>Show or hide the loaded reference image (see below).</td></tr>
+</table>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════════ -->
+<section id="refimage">
+<h2>Reference Image</h2>
+<p>A background image can be loaded as a drawing guide:</p>
+<ol>
+  <li>Click <strong>Browse</strong> in the <em>Reference Image</em> panel at the top.</li>
+  <li>Select a PNG, JPEG, or GIF file.</li>
+  <li>The image is displayed behind the polygon geometry.</li>
+  <li>Toggle its visibility with the <strong>Toggle Reference Image</strong> toolbar button.</li>
+</ol>
+<div class="note">The reference image is not saved with the polygon set — it is a session-only drawing aid.</div>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════════ -->
+<section id="saveload">
+<h2>Save &amp; Load Polygon Sets</h2>
+
+<h3>Saving</h3>
+<ol>
+  <li>Type a name in the <strong>Name</strong> field in the top panel.</li>
+  <li>Click <strong>Save</strong>.</li>
+</ol>
+<p>The polygon set is written as <code>&lt;name&gt;.xml</code> into the project's <code>polygonSets/</code> directory. An SVG copy is also written automatically to an adjacent <code>svgs/</code> directory.</p>
+
+<h3>Loading</h3>
+<ol>
+  <li>Click <strong>Load</strong> to open a file browser, or type the path in the File field.</li>
+  <li>Select an XML polygon set file.</li>
+  <li>The geometry is loaded onto the canvas, replacing the current content. The Name field is populated automatically.</li>
+</ol>
+<div class="warn">Loading a polygon set <strong>replaces</strong> all current geometry. Use Undo if you load by mistake.</div>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════════ -->
+<section id="svg">
+<h2>SVG Export &amp; Import</h2>
+
+<h3>Automatic SVG Export</h3>
+<p>Every time you click <strong>Save</strong>, an SVG copy of the polygon set is saved alongside the XML in the <code>svgs/</code> directory (adjacent to <code>polygonSets/</code>). No extra action required.</p>
+
+<p>Each closed polygon becomes a <code>&lt;path&gt;</code> element using M and C commands in a <code>viewBox="0 0 1000 1000"</code> SVG. Stroke is black, fill is none.</p>
+
+<h3>SVG Import</h3>
+<ol>
+  <li>Click <strong>Import SVG</strong> in the SVG panel.</li>
+  <li>Select any SVG file. The browser opens in the <code>svgs/</code> directory by default.</li>
+  <li>Each <code>&lt;path&gt;</code> in the SVG is added to the canvas as a new polygon. Existing geometry is preserved.</li>
+</ol>
+
+<h4>Supported SVG Path Commands</h4>
+<table>
+  <tr><th>Command</th><th>Handling</th></tr>
+  <tr><td><code>M / m</code></td><td>Move to (subpath start). Subsequent pairs treated as implicit line-tos.</td></tr>
+  <tr><td><code>C / c</code></td><td>Cubic Bézier — used directly.</td></tr>
+  <tr><td><code>L / l</code></td><td>Line to — converted to a cubic with control points at ⅓ and ⅔.</td></tr>
+  <tr><td><code>Q / q</code></td><td>Quadratic Bézier — converted to cubic via degree elevation.</td></tr>
+  <tr><td><code>Z / z</code></td><td>Close path — adds a closing line segment if not already closed.</td></tr>
+  <tr><td>H, V, S, T, A, …</td><td>Silently skipped.</td></tr>
+</table>
+<p>All paths are treated as closed polygons. Coordinates are mapped from the SVG <code>viewBox</code> into Bezier canvas space automatically.</p>
+<p>Importing is undoable with a single undo step.</p>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════════ -->
+<section id="undo">
+<h2>Undo</h2>
+<p>Press <kbd>⌘ Cmd</kbd> + <kbd>Z</kbd> to undo the last operation.</p>
+<ul>
+  <li>Up to <strong>20 undo levels</strong> are kept (older states are discarded).</li>
+  <li>Undo restores the complete polygon geometry (all anchor and control point positions) and all weld links.</li>
+  <li>Selection is cleared after an undo.</li>
+</ul>
+
+<h4>Operations that create undo points</h4>
+<ul>
+  <li>Any drag start (point, edge, or polygon drag)</li>
+  <li>First movement of a Scale or Rotate slider gesture</li>
+  <li>Close Polygon</li>
+  <li>Clear All Geometry</li>
+  <li>Zoom In / Zoom Out (each click)</li>
+  <li>Snap Anchors / Snap All</li>
+  <li>Flip, Centre</li>
+  <li>Weld (explicit and drag-to-weld)</li>
+  <li>Knife Cut (single step covers the entire cut gesture)</li>
+  <li>Intersect</li>
+  <li>Extrude (start of drag)</li>
+  <li>Duplicate, Delete</li>
+  <li>SVG Import</li>
+</ul>
+<div class="note">There is no Redo. If you undo too far, you will need to redo the work manually.</div>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════════ -->
+<section id="keyboard">
+<h2>Keyboard Shortcuts</h2>
+<table>
+  <tr><th>Shortcut</th><th>Action</th></tr>
+  <tr><td><kbd>⌘ Cmd</kbd> + <kbd>Z</kbd></td><td>Undo</td></tr>
+  <tr><td><kbd>⇧ Shift</kbd> (tap, any selection mode)</td><td>Toggle current mode's sub-mode: Relational ↔ Discrete. The toolbar selection button icon updates to reflect the current sub-mode.</td></tr>
+  <tr><td><kbd>⇧ Shift</kbd> + click toolbar selection button</td><td>Activate mode in Discrete sub-mode (default is Relational)</td></tr>
+  <tr><td><kbd>⇧ Shift</kbd> + drag (edge mode, edges selected)</td><td>Extrude selected edges</td></tr>
+  <tr><td><kbd>⇧ Shift</kbd> + drag (any selection mode, no edges selected)</td><td>Rubber-band marquee selection</td></tr>
+  <tr><td><kbd>⇧ Shift</kbd> + click <strong>Intersect</strong></td><td>Run Intersect keeping the inner polygon (rather than removing both originals)</td></tr>
+</table>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════════ -->
+<section id="mouse">
+<h2>Mouse &amp; Modifier Summary</h2>
+<table>
+  <tr><th>Action</th><th>Modifier</th><th>Mode</th><th>Result</th></tr>
+  <tr><td>Click inside polygon</td><td>—</td><td>Point / Edge</td><td>Scope that polygon</td></tr>
+  <tr><td>Click inside polygon</td><td>—</td><td>Polygon</td><td>Select / deselect polygon</td></tr>
+  <tr><td>Click point</td><td>—</td><td>Point</td><td>Select point (clears prior selection)</td></tr>
+  <tr><td>Click point</td><td><kbd>⌘ Cmd</kbd></td><td>Point</td><td>Add point to selection</td></tr>
+  <tr><td>Click edge</td><td>—</td><td>Edge</td><td>Select edge (clears prior selection)</td></tr>
+  <tr><td>Click edge</td><td><kbd>⌘ Cmd</kbd></td><td>Edge</td><td>Add edge to selection</td></tr>
+  <tr><td>Drag selected item</td><td>—</td><td>Any</td><td>Translate selection</td></tr>
+  <tr><td>Press then drag</td><td><kbd>⇧ Shift</kbd></td><td>Edge (edges selected)</td><td>Extrude</td></tr>
+  <tr><td>Press then drag</td><td><kbd>⇧ Shift</kbd></td><td>Any other</td><td>Rubber-band marquee</td></tr>
+  <tr><td>Drag polygon near another</td><td>—</td><td>Polygon</td><td>Drag-to-weld detection (purple highlights)</td></tr>
+  <tr><td>Release after polygon drag</td><td>—</td><td>Polygon</td><td>Execute pending drag-to-weld</td></tr>
+  <tr><td>Click empty canvas</td><td>—</td><td>Any</td><td>Clear scope and selection</td></tr>
+</table>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════════ -->
+<section id="colours">
+<h2>Highlight Colour Reference</h2>
+<table>
+  <tr><th>Colour</th><th>Meaning</th></tr>
+  <tr><td><span class="color-swatch" style="background:#6496ff"></span> Blue (outline, 4 px)</td><td>Polygon selected (Discrete mode)</td></tr>
+  <tr><td><span class="color-swatch" style="background:#ff8c00"></span> Orange (outline, 4 px)</td><td>Polygon or edge selected (Relational mode)</td></tr>
+  <tr><td><span class="color-swatch" style="background:#dc00ff"></span> Purple (edge, 5 px)</td><td>Edge is weldable, or live edge during extrude drag</td></tr>
+  <tr><td><span class="color-swatch" style="background:#ffff64"></span> Yellow dashed (2 px)</td><td>Polygon is scoped (next click will hit points/edges inside it)</td></tr>
+  <tr><td><span class="color-swatch" style="background:#6496ff;opacity:0.6"></span> Light blue semi-transparent fill</td><td>Rubber-band marquee selection rectangle</td></tr>
+  <tr><td><span class="color-swatch" style="background:#6496ff"></span> Blue anchor dot</td><td>Anchor point selected (Discrete)</td></tr>
+  <tr><td><span class="color-swatch" style="background:#ffffff;border:1px solid #888"></span> White dot</td><td>Control point selected (Discrete)</td></tr>
+  <tr><td><span class="color-swatch" style="background:#dc3220"></span> Red anchor dot</td><td>Anchor point selected (Relational)</td></tr>
+  <tr><td><span class="color-swatch" style="background:#ffdc00"></span> Yellow dot</td><td>Control point selected (Relational)</td></tr>
+  <tr><td><span class="color-swatch" style="background:#dc1e1e"></span> Red dashed line (1.5 px, 6/4 dash)</td><td>Knife cut line — drawn full-width across canvas while dragging in Knife mode</td></tr>
+  <tr><td><span class="color-swatch" style="background:#dc1e1e"></span> Red circles (8 px diameter)</td><td>Knife drag-start point and current cursor position</td></tr>
+</table>
+</section>
+
+</div><!-- end .content -->
+</body>
+</html>

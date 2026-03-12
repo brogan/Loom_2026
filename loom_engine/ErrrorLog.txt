@@ -1,0 +1,774 @@
+[info] compiling 118 Scala sources and 1 Java source to /Users/broganbunt/Scala/Loom_2025_Scala_3/target/scala-3.7.3/classes ...
+[warn] -- [E198] Unused Symbol Warning: /Users/broganbunt/Scala/Loom_2025_Scala_3/src/main/scala/org/loom/config/ProjectConfigManager.scala:3:56 
+[warn] 3 |import org.loom.scene.{RendererSetLibrary, RendererSet, Renderer}
+[warn]   |                                                        ^^^^^^^^
+[warn]   |                                                        unused import
+[warn] -- [E198] Unused Symbol Warning: /Users/broganbunt/Scala/Loom_2025_Scala_3/src/main/scala/org/loom/config/ProjectConfigManager.scala:5:48 
+[warn] 5 |import org.loom.geometry.{PolygonSetCollection, PolygonSet, SubdivisionParamsSetCollection, SubdivisionParamsSet}
+[warn]   |                                                ^^^^^^^^^^
+[warn]   |                                                unused import
+[warn] -- [E198] Unused Symbol Warning: /Users/broganbunt/Scala/Loom_2025_Scala_3/src/main/scala/org/loom/config/ProjectConfigManager.scala:5:92 
+[warn] 5 |import org.loom.geometry.{PolygonSetCollection, PolygonSet, SubdivisionParamsSetCollection, SubdivisionParamsSet}
+[warn]   |                                                                                            ^^^^^^^^^^^^^^^^^^^^
+[warn]   |                                                             unused import
+[warn] -- [E198] Unused Symbol Warning: /Users/broganbunt/Scala/Loom_2025_Scala_3/src/main/scala/org/loom/geometry/PolygonCreator.scala:7:21 
+[warn] 7 |import java.awt.geom._
+[warn]   |                     ^
+[warn]   |                     unused import
+[warn] -- [E198] Unused Symbol Warning: /Users/broganbunt/Scala/Loom_2025_Scala_3/src/main/scala/org/loom/geometry/PolygonCreator.scala:43:10 
+[warn] 43 |      val w: Double = width/2
+[warn]    |          ^
+[warn]    |          unused local definition
+[warn] -- [E198] Unused Symbol Warning: /Users/broganbunt/Scala/Loom_2025_Scala_3/src/main/scala/org/loom/geometry/PolygonCreator.scala:70:10 
+[warn] 70 |      var prop:Double = 1/proportion
+[warn]    |          ^^^^
+[warn]    |          unset local variable, consider using an immutable val instead
+[warn] -- [E198] Unused Symbol Warning: /Users/broganbunt/Scala/Loom_2025_Scala_3/src/main/scala/org/loom/geometry/Spline3D_Old.scala:45:6 
+[warn] 45 |		var ps: Array [Vector3D] = new Array[Vector3D](4)
+[warn]    |		    ^^
+[warn]    |		    unset local variable, consider using an immutable val instead
+[warn] -- [E198] Unused Symbol Warning: /Users/broganbunt/Scala/Loom_2025_Scala_3/src/main/scala/org/loom/geometry/Subdivision.scala:302:40 
+[warn] 302 |   def testQuad(subdivObj: Subdivision, _middle: Vector2D, subP: SubdivisionParams, _polyType: Int):Array[Polygon2D] = {
+[warn]     |                                        ^^^^^^^
+[warn]     |                                        unused explicit parameter
+[warn] -- [E198] Unused Symbol Warning: /Users/broganbunt/Scala/Loom_2025_Scala_3/src/main/scala/org/loom/geometry/Subdivision.scala:334:81 
+[warn] 334 |	def lineQuad(subdivObj: Subdivision, middle: Vector2D, subP: SubdivisionParams, _polyType: Int):Array[Polygon2D] = {
+[warn]     |	                                                                                ^^^^^^^^^
+[warn]     |                                             unused explicit parameter
+[warn] -- [E198] Unused Symbol Warning: /Users/broganbunt/Scala/Loom_2025_Scala_3/src/main/scala/org/loom/geometry/Subdivision.scala:356:42 
+[warn] 356 |	def lineQuadBord(subdivObj: Subdivision, _middle: Vector2D, subP: SubdivisionParams, _polyType: Int):Array[Polygon2D] = {
+[warn]     |	                                         ^^^^^^^
+[warn]     |	                                         unused explicit parameter
+[warn] -- [E198] Unused Symbol Warning: /Users/broganbunt/Scala/Loom_2025_Scala_3/src/main/scala/org/loom/geometry/Subdivision.scala:356:86 
+[warn] 356 |	def lineQuadBord(subdivObj: Subdivision, _middle: Vector2D, subP: SubdivisionParams, _polyType: Int):Array[Polygon2D] = {
+[warn]     |	                                                                                     ^^^^^^^^^
+[warn]     |                                             unused explicit parameter
+[warn] -- [E198] Unused Symbol Warning: /Users/broganbunt/Scala/Loom_2025_Scala_3/src/main/scala/org/loom/geometry/Subdivision.scala:377:46 
+[warn] 377 |	def lineQuadBordEcho(subdivObj: Subdivision, _middle: Vector2D, subP: SubdivisionParams, _polyType: Int):Array[Polygon2D] = {
+[warn]     |	                                             ^^^^^^^
+[warn]     |                                             unused explicit parameter
+[warn] -- [E198] Unused Symbol Warning: /Users/broganbunt/Scala/Loom_2025_Scala_3/src/main/scala/org/loom/geometry/Subdivision.scala:377:90 
+[warn] 377 |	def lineQuadBordEcho(subdivObj: Subdivision, _middle: Vector2D, subP: SubdivisionParams, _polyType: Int):Array[Polygon2D] = {
+[warn]     |	                                                                                         ^^^^^^^^^
+[warn]     |                                             unused explicit parameter
+[warn] -- [E198] Unused Symbol Warning: /Users/broganbunt/Scala/Loom_2025_Scala_3/src/main/scala/org/loom/geometry/Subdivision.scala:400:48 
+[warn] 400 |	def lineQuadBordDouble(subdivObj: Subdivision, _middle: Vector2D, subP: SubdivisionParams, _polyType: Int):Array[Polygon2D] = {
+[warn]     |	                                               ^^^^^^^
+[warn]     |                                             unused explicit parameter
+[warn] -- [E198] Unused Symbol Warning: /Users/broganbunt/Scala/Loom_2025_Scala_3/src/main/scala/org/loom/geometry/Subdivision.scala:400:92 
+[warn] 400 |	def lineQuadBordDouble(subdivObj: Subdivision, _middle: Vector2D, subP: SubdivisionParams, _polyType: Int):Array[Polygon2D] = {
+[warn]     |	                                                                                           ^^^^^^^^^
+[warn]     |                                             unused explicit parameter
+[warn] -- [E198] Unused Symbol Warning: /Users/broganbunt/Scala/Loom_2025_Scala_3/src/main/scala/org/loom/geometry/Subdivision.scala:431:52 
+[warn] 431 |	def lineQuadBordDoubleEcho(subdivObj: Subdivision, _middle: Vector2D, subP: SubdivisionParams, _polyType: Int):Array[Polygon2D] = {
+[warn]     |	                                                   ^^^^^^^
+[warn]     |                                             unused explicit parameter
+[warn] -- [E198] Unused Symbol Warning: /Users/broganbunt/Scala/Loom_2025_Scala_3/src/main/scala/org/loom/geometry/Subdivision.scala:431:96 
+[warn] 431 |	def lineQuadBordDoubleEcho(subdivObj: Subdivision, _middle: Vector2D, subP: SubdivisionParams, _polyType: Int):Array[Polygon2D] = {
+[warn]     |	                                                                                               ^^^^^^^^^
+[warn]     |                                             unused explicit parameter
+[warn] -- [E198] Unused Symbol Warning: /Users/broganbunt/Scala/Loom_2025_Scala_3/src/main/scala/org/loom/geometry/Subdivision.scala:464:81 
+[warn] 464 |	def lineTri(subdivObj: Subdivision, middle: Vector2D,  subP: SubdivisionParams, _polyType: Int):Array[Polygon2D] = {
+[warn]     |	                                                                                ^^^^^^^^^
+[warn]     |                                             unused explicit parameter
+[warn] -- [E198] Unused Symbol Warning: /Users/broganbunt/Scala/Loom_2025_Scala_3/src/main/scala/org/loom/geometry/Subdivision.scala:484:42 
+[warn] 484 |	def lineTriBordA(subdivObj: Subdivision, _middle: Vector2D, subP: SubdivisionParams, _polyType: Int):Array[Polygon2D] = {
+[warn]     |	                                         ^^^^^^^
+[warn]     |	                                         unused explicit parameter
+[warn] -- [E198] Unused Symbol Warning: /Users/broganbunt/Scala/Loom_2025_Scala_3/src/main/scala/org/loom/geometry/Subdivision.scala:484:86 
+[warn] 484 |	def lineTriBordA(subdivObj: Subdivision, _middle: Vector2D, subP: SubdivisionParams, _polyType: Int):Array[Polygon2D] = {
+[warn]     |	                                                                                     ^^^^^^^^^
+[warn]     |                                             unused explicit parameter
+[warn] -- [E198] Unused Symbol Warning: /Users/broganbunt/Scala/Loom_2025_Scala_3/src/main/scala/org/loom/geometry/Subdivision.scala:505:42 
+[warn] 505 |	def lineTriBordB(subdivObj: Subdivision, _middle: Vector2D, subP: SubdivisionParams, _polyType: Int):Array[Polygon2D] = {
+[warn]     |	                                         ^^^^^^^
+[warn]     |	                                         unused explicit parameter
+[warn] -- [E198] Unused Symbol Warning: /Users/broganbunt/Scala/Loom_2025_Scala_3/src/main/scala/org/loom/geometry/Subdivision.scala:505:86 
+[warn] 505 |	def lineTriBordB(subdivObj: Subdivision, _middle: Vector2D, subP: SubdivisionParams, _polyType: Int):Array[Polygon2D] = {
+[warn]     |	                                                                                     ^^^^^^^^^
+[warn]     |                                             unused explicit parameter
+[warn] -- [E198] Unused Symbol Warning: /Users/broganbunt/Scala/Loom_2025_Scala_3/src/main/scala/org/loom/geometry/Subdivision.scala:526:46 
+[warn] 526 |	def lineTriBordBEcho(subdivObj: Subdivision, _middle: Vector2D, subP: SubdivisionParams, _polyType: Int):Array[Polygon2D] = {
+[warn]     |	                                             ^^^^^^^
+[warn]     |                                             unused explicit parameter
+[warn] -- [E198] Unused Symbol Warning: /Users/broganbunt/Scala/Loom_2025_Scala_3/src/main/scala/org/loom/geometry/Subdivision.scala:526:90 
+[warn] 526 |	def lineTriBordBEcho(subdivObj: Subdivision, _middle: Vector2D, subP: SubdivisionParams, _polyType: Int):Array[Polygon2D] = {
+[warn]     |	                                                                                         ^^^^^^^^^
+[warn]     |                                             unused explicit parameter
+[warn] -- [E198] Unused Symbol Warning: /Users/broganbunt/Scala/Loom_2025_Scala_3/src/main/scala/org/loom/geometry/Subdivision.scala:554:41 
+[warn] 554 |	def lineTriStar(subdivObj: Subdivision, _middle: Vector2D, subP: SubdivisionParams, _polyType: Int):Array[Polygon2D] = {
+[warn]     |	                                        ^^^^^^^
+[warn]     |	                                        unused explicit parameter
+[warn] -- [E198] Unused Symbol Warning: /Users/broganbunt/Scala/Loom_2025_Scala_3/src/main/scala/org/loom/geometry/Subdivision.scala:554:85 
+[warn] 554 |	def lineTriStar(subdivObj: Subdivision, _middle: Vector2D, subP: SubdivisionParams, _polyType: Int):Array[Polygon2D] = {
+[warn]     |	                                                                                    ^^^^^^^^^
+[warn]     |                                             unused explicit parameter
+[warn] -- [E198] Unused Symbol Warning: /Users/broganbunt/Scala/Loom_2025_Scala_3/src/main/scala/org/loom/geometry/Subdivision.scala:577:45 
+[warn] 577 |	def lineTriStarFill(subdivObj: Subdivision, _middle: Vector2D, subP: SubdivisionParams, _polyType: Int):Array[Polygon2D] = {
+[warn]     |	                                            ^^^^^^^
+[warn]     |	                                            unused explicit parameter
+[warn] -- [E198] Unused Symbol Warning: /Users/broganbunt/Scala/Loom_2025_Scala_3/src/main/scala/org/loom/geometry/Subdivision.scala:577:89 
+[warn] 577 |	def lineTriStarFill(subdivObj: Subdivision, _middle: Vector2D, subP: SubdivisionParams, _polyType: Int):Array[Polygon2D] = {
+[warn]     |	                                                                                        ^^^^^^^^^
+[warn]     |                                             unused explicit parameter
+[warn] -- [E198] Unused Symbol Warning: /Users/broganbunt/Scala/Loom_2025_Scala_3/src/main/scala/org/loom/geometry/Subdivision.scala:608:42 
+[warn] 608 |	def lineTriBordC(subdivObj: Subdivision, _middle: Vector2D, subP: SubdivisionParams, _polyType: Int):Array[Polygon2D] = {
+[warn]     |	                                         ^^^^^^^
+[warn]     |	                                         unused explicit parameter
+[warn] -- [E198] Unused Symbol Warning: /Users/broganbunt/Scala/Loom_2025_Scala_3/src/main/scala/org/loom/geometry/Subdivision.scala:608:86 
+[warn] 608 |	def lineTriBordC(subdivObj: Subdivision, _middle: Vector2D, subP: SubdivisionParams, _polyType: Int):Array[Polygon2D] = {
+[warn]     |	                                                                                     ^^^^^^^^^
+[warn]     |                                             unused explicit parameter
+[warn] -- [E198] Unused Symbol Warning: /Users/broganbunt/Scala/Loom_2025_Scala_3/src/main/scala/org/loom/geometry/Subdivision.scala:641:46 
+[warn] 641 |	def lineTriBordCEcho(subdivObj: Subdivision, _middle: Vector2D, subP: SubdivisionParams, _polyType: Int):Array[Polygon2D] = {
+[warn]     |	                                             ^^^^^^^
+[warn]     |                                             unused explicit parameter
+[warn] -- [E198] Unused Symbol Warning: /Users/broganbunt/Scala/Loom_2025_Scala_3/src/main/scala/org/loom/geometry/Subdivision.scala:641:90 
+[warn] 641 |	def lineTriBordCEcho(subdivObj: Subdivision, _middle: Vector2D, subP: SubdivisionParams, _polyType: Int):Array[Polygon2D] = {
+[warn]     |	                                                                                         ^^^^^^^^^
+[warn]     |                                             unused explicit parameter
+[warn] -- [E198] Unused Symbol Warning: /Users/broganbunt/Scala/Loom_2025_Scala_3/src/main/scala/org/loom/geometry/Subdivision.scala:675:43 
+[warn] 675 |	def lineSplitVert(subdivObj: Subdivision, _middle: Vector2D, subP: SubdivisionParams, _polyType: Int):Array[Polygon2D] = {
+[warn]     |	                                          ^^^^^^^
+[warn]     |	                                          unused explicit parameter
+[warn] -- [E198] Unused Symbol Warning: /Users/broganbunt/Scala/Loom_2025_Scala_3/src/main/scala/org/loom/geometry/Subdivision.scala:675:87 
+[warn] 675 |	def lineSplitVert(subdivObj: Subdivision, _middle: Vector2D, subP: SubdivisionParams, _polyType: Int):Array[Polygon2D] = {
+[warn]     |	                                                                                      ^^^^^^^^^
+[warn]     |                                             unused explicit parameter
+[warn] -- [E198] Unused Symbol Warning: /Users/broganbunt/Scala/Loom_2025_Scala_3/src/main/scala/org/loom/geometry/Subdivision.scala:718:44 
+[warn] 718 |	def lineSplitHoriz(subdivObj: Subdivision, _middle: Vector2D, subP: SubdivisionParams, _polyType: Int):Array[Polygon2D] = {
+[warn]     |	                                           ^^^^^^^
+[warn]     |	                                           unused explicit parameter
+[warn] -- [E198] Unused Symbol Warning: /Users/broganbunt/Scala/Loom_2025_Scala_3/src/main/scala/org/loom/geometry/Subdivision.scala:718:88 
+[warn] 718 |	def lineSplitHoriz(subdivObj: Subdivision, _middle: Vector2D, subP: SubdivisionParams, _polyType: Int):Array[Polygon2D] = {
+[warn]     |	                                                                                       ^^^^^^^^^
+[warn]     |                                             unused explicit parameter
+[warn] -- [E198] Unused Symbol Warning: /Users/broganbunt/Scala/Loom_2025_Scala_3/src/main/scala/org/loom/geometry/Subdivision.scala:802:43 
+[warn] 802 |	def lineSplitDiag(subdivObj: Subdivision, _middle: Vector2D, subP: SubdivisionParams, _polyType: Int):Array[Polygon2D] = {
+[warn]     |	                                          ^^^^^^^
+[warn]     |	                                          unused explicit parameter
+[warn] -- [E198] Unused Symbol Warning: /Users/broganbunt/Scala/Loom_2025_Scala_3/src/main/scala/org/loom/geometry/Subdivision.scala:802:87 
+[warn] 802 |	def lineSplitDiag(subdivObj: Subdivision, _middle: Vector2D, subP: SubdivisionParams, _polyType: Int):Array[Polygon2D] = {
+[warn]     |	                                                                                      ^^^^^^^^^
+[warn]     |                                             unused explicit parameter
+[warn] -- [E198] Unused Symbol Warning: /Users/broganbunt/Scala/Loom_2025_Scala_3/src/main/scala/org/loom/geometry/Subdivision.scala:851:38 
+[warn] 851 |	def lineEcho(subdivObj: Subdivision, _middle: Vector2D, subP: SubdivisionParams, _polyType: Int):Array[Polygon2D] = {
+[warn]     |	                                     ^^^^^^^
+[warn]     |	                                     unused explicit parameter
+[warn] -- [E198] Unused Symbol Warning: /Users/broganbunt/Scala/Loom_2025_Scala_3/src/main/scala/org/loom/geometry/Subdivision.scala:851:82 
+[warn] 851 |	def lineEcho(subdivObj: Subdivision, _middle: Vector2D, subP: SubdivisionParams, _polyType: Int):Array[Polygon2D] = {
+[warn]     |	                                                                                 ^^^^^^^^^
+[warn]     |                                             unused explicit parameter
+[warn] -- [E198] Unused Symbol Warning: /Users/broganbunt/Scala/Loom_2025_Scala_3/src/main/scala/org/loom/geometry/Subdivision.scala:863:40 
+[warn] 863 |	def splineEcho(subdivObj: Subdivision, _middle: Vector2D, subP: SubdivisionParams, _polyType: Int):Array[Polygon2D] = {
+[warn]     |	                                       ^^^^^^^
+[warn]     |	                                       unused explicit parameter
+[warn] -- [E198] Unused Symbol Warning: /Users/broganbunt/Scala/Loom_2025_Scala_3/src/main/scala/org/loom/geometry/Subdivision.scala:863:84 
+[warn] 863 |	def splineEcho(subdivObj: Subdivision, _middle: Vector2D, subP: SubdivisionParams, _polyType: Int):Array[Polygon2D] = {
+[warn]     |	                                                                                   ^^^^^^^^^
+[warn]     |                                             unused explicit parameter
+[warn] -- [E198] Unused Symbol Warning: /Users/broganbunt/Scala/Loom_2025_Scala_3/src/main/scala/org/loom/geometry/Subdivision.scala:875:47 
+[warn] 875 |	def lineEchoAbsCenter(subdivObj: Subdivision, _middle: Vector2D, subP: SubdivisionParams, _polyType: Int):Array[Polygon2D] = {
+[warn]     |	                                              ^^^^^^^
+[warn]     |                                             unused explicit parameter
+[warn] -- [E198] Unused Symbol Warning: /Users/broganbunt/Scala/Loom_2025_Scala_3/src/main/scala/org/loom/geometry/Subdivision.scala:875:91 
+[warn] 875 |	def lineEchoAbsCenter(subdivObj: Subdivision, _middle: Vector2D, subP: SubdivisionParams, _polyType: Int):Array[Polygon2D] = {
+[warn]     |	                                                                                          ^^^^^^^^^
+[warn]     |                                             unused explicit parameter
+[warn] -- [E198] Unused Symbol Warning: /Users/broganbunt/Scala/Loom_2025_Scala_3/src/main/scala/org/loom/interaction/KeyPressListener.scala:44:10 
+[warn] 44 |      val keyChar: Char = e.getKeyChar()
+[warn]    |          ^^^^^^^
+[warn]    |          unused local definition
+[warn] -- [E198] Unused Symbol Warning: /Users/broganbunt/Scala/Loom_2025_Scala_3/src/main/scala/org/loom/interaction/Port.scala:9:22 
+[warn] 9 |import java.awt.event._
+[warn]   |                      ^
+[warn]   |                      unused import
+[warn] -- [E198] Unused Symbol Warning: /Users/broganbunt/Scala/Loom_2025_Scala_3/src/main/scala/org/loom/interaction/Port.scala:17:15 
+[warn] 17 |import java.io.InputStreamReader
+[warn]    |               ^^^^^^^^^^^^^^^^^
+[warn]    |               unused import
+[warn] -- [E198] Unused Symbol Warning: /Users/broganbunt/Scala/Loom_2025_Scala_3/src/main/scala/org/loom/interaction/Port.scala:18:15 
+[warn] 18 |import java.io.Reader
+[warn]    |               ^^^^^^
+[warn]    |               unused import
+[warn] -- [E198] Unused Symbol Warning: /Users/broganbunt/Scala/Loom_2025_Scala_3/src/main/scala/org/loom/interaction/Port.scala:19:15 
+[warn] 19 |import java.io.BufferedReader
+[warn]    |               ^^^^^^^^^^^^^^
+[warn]    |               unused import
+[warn] -- [E198] Unused Symbol Warning: /Users/broganbunt/Scala/Loom_2025_Scala_3/src/main/scala/org/loom/interaction/Port.scala:51:22 
+[warn] 51 |    def dataAvailable(event: SerialPortEvent): Unit = {
+[warn]    |                      ^^^^^
+[warn]    |                      unused explicit parameter
+[warn] -- [E198] Unused Symbol Warning: /Users/broganbunt/Scala/Loom_2025_Scala_3/src/main/scala/org/loom/media/ImageAdjust.scala:8:16 
+[warn] 8 |import java.awt._
+[warn]   |                ^
+[warn]   |                unused import
+[warn] -- [E198] Unused Symbol Warning: /Users/broganbunt/Scala/Loom_2025_Scala_3/src/main/scala/org/loom/media/ImageAnalysis.scala:7:54 
+[warn] 7 |import java.awt.image.{BufferedImage, WritableRaster, DataBuffer}
+[warn]   |                                                      ^^^^^^^^^^
+[warn]   |                                                      unused import
+[warn] -- [E198] Unused Symbol Warning: /Users/broganbunt/Scala/Loom_2025_Scala_3/src/main/scala/org/loom/media/ImageLoader.scala:27:7 
+[warn] 27 |		case ioe: IOException => println("ImageLoader IOException: " + filePath)
+[warn]    |		     ^^^
+[warn]    |		     unused pattern variable
+[warn] -- [E198] Unused Symbol Warning: /Users/broganbunt/Scala/Loom_2025_Scala_3/src/main/scala/org/loom/media/ImageSequence.scala:10:15 
+[warn] 10 |import java.io.File
+[warn]    |               ^^^^
+[warn]    |               unused import
+[warn] -- [E198] Unused Symbol Warning: /Users/broganbunt/Scala/Loom_2025_Scala_3/src/main/scala/org/loom/media/ImageWriter.scala:8:16 
+[warn] 8 |import java.awt._
+[warn]   |                ^
+[warn]   |                unused import
+[warn] -- [E198] Unused Symbol Warning: /Users/broganbunt/Scala/Loom_2025_Scala_3/src/main/scala/org/loom/media/ImageWriter.scala:29:6 
+[warn] 29 |		val cm: ColorModel = buffer.getColorModel()
+[warn]    |		    ^^
+[warn]    |		    unused local definition
+[warn] -- [E198] Unused Symbol Warning: /Users/broganbunt/Scala/Loom_2025_Scala_3/src/main/scala/org/loom/media/ImageWriter.scala:39:8 
+[warn] 39 |			case ioe: IOException => println("saving image not working");
+[warn]    |			     ^^^
+[warn]    |			     unused pattern variable
+[warn] -- [E198] Unused Symbol Warning: /Users/broganbunt/Scala/Loom_2025_Scala_3/src/main/scala/org/loom/media/SoundManager.scala:10:27 
+[warn] 10 |import javax.sound.sampled._
+[warn]    |                           ^
+[warn]    |                           unused import
+[warn] -- [E198] Unused Symbol Warning: /Users/broganbunt/Scala/Loom_2025_Scala_3/src/main/scala/org/loom/media/SoundManager.scala:11:15 
+[warn] 11 |import java.io._
+[warn]    |               ^
+[warn]    |               unused import
+[warn] -- [E198] Unused Symbol Warning: /Users/broganbunt/Scala/Loom_2025_Scala_3/src/main/scala/org/loom/media/SoundPlay.scala:27:7 
+[warn] 27 |	 case ex: InterruptedException => println("Sleep interrupted");
+[warn]    |	      ^^
+[warn]    |	      unused pattern variable
+[warn] -- [E198] Unused Symbol Warning: /Users/broganbunt/Scala/Loom_2025_Scala_3/src/main/scala/org/loom/media/SoundPlay.scala:126:15 
+[warn] 126 |          case audioException: UnsupportedAudioFileException => println("No audio line available for: "+ soundFile)
+[warn]     |               ^^^^^^^^^^^^^^
+[warn]     |               unused pattern variable
+[warn] -- [E198] Unused Symbol Warning: /Users/broganbunt/Scala/Loom_2025_Scala_3/src/main/scala/org/loom/media/SoundPlay.scala:127:15 
+[warn] 127 |          case noLineException: LineUnavailableException => println("No audio line available for: "+ soundFile)
+[warn]     |               ^^^^^^^^^^^^^^^
+[warn]     |               unused pattern variable
+[warn] -- [E198] Unused Symbol Warning: /Users/broganbunt/Scala/Loom_2025_Scala_3/src/main/scala/org/loom/media/SoundPlay.scala:128:15 
+[warn] 128 |          case ioException: IOException => println("Could not read: "+ soundFile)
+[warn]     |               ^^^^^^^^^^^
+[warn]     |               unused pattern variable
+[warn] -- [E198] Unused Symbol Warning: /Users/broganbunt/Scala/Loom_2025_Scala_3/src/main/scala/org/loom/media/SoundPlay.scala:129:15 
+[warn] 129 |          case e: Exception => println("Problem with: "+ soundFile)
+[warn]     |               ^
+[warn]     |               unused pattern variable
+[warn] -- [E198] Unused Symbol Warning: /Users/broganbunt/Scala/Loom_2025_Scala_3/src/main/scala/org/loom/mysketch/MySketch.scala:12:32 
+[warn] 12 |import scala.collection.mutable.ArrayBuffer
+[warn]    |                                ^^^^^^^^^^^
+[warn]    |                                unused import
+[warn] -- [E198] Unused Symbol Warning: /Users/broganbunt/Scala/Loom_2025_Scala_3/src/main/scala/org/loom/mysketch/MySketch.scala:14:36 
+[warn] 14 |import java.awt.{Color, Graphics2D, BasicStroke, Image}
+[warn]    |                                    ^^^^^^^^^^^
+[warn]    |                                    unused import
+[warn] -- [E198] Unused Symbol Warning: /Users/broganbunt/Scala/Loom_2025_Scala_3/src/main/scala/org/loom/mysketch/MySketch.scala:14:49 
+[warn] 14 |import java.awt.{Color, Graphics2D, BasicStroke, Image}
+[warn]    |                                                 ^^^^^
+[warn]    |                                                 unused import
+[warn] -- [E198] Unused Symbol Warning: /Users/broganbunt/Scala/Loom_2025_Scala_3/src/main/scala/org/loom/mysketch/MySketch.scala:15:22 
+[warn] 15 |import java.awt.image.BufferedImage
+[warn]    |                      ^^^^^^^^^^^^^
+[warn]    |                      unused import
+[warn] -- [E198] Unused Symbol Warning: /Users/broganbunt/Scala/Loom_2025_Scala_3/src/main/scala/org/loom/mysketch/MySketch.scala:16:21 
+[warn] 16 |import java.awt.geom.*
+[warn]    |                     ^
+[warn]    |                     unused import
+[warn] -- [E198] Unused Symbol Warning: /Users/broganbunt/Scala/Loom_2025_Scala_3/src/main/scala/org/loom/mysketch/MySketch.scala:17:16 
+[warn] 17 |import java.awt.Polygon
+[warn]    |                ^^^^^^^
+[warn]    |                unused import
+[warn] -- [E198] Unused Symbol Warning: /Users/broganbunt/Scala/Loom_2025_Scala_3/src/main/scala/org/loom/mysketch/MySketch.scala:18:15 
+[warn] 18 |import java.io.File
+[warn]    |               ^^^^
+[warn]    |               unused import
+[warn] -- [E198] Unused Symbol Warning: /Users/broganbunt/Scala/Loom_2025_Scala_3/src/main/scala/org/loom/mysketch/MySketch.scala:19:27 
+[warn] 19 |import javax.sound.sampled.*
+[warn]    |                           ^
+[warn]    |                           unused import
+[warn] -- [E198] Unused Symbol Warning: /Users/broganbunt/Scala/Loom_2025_Scala_3/src/main/scala/org/loom/mysketch/MySketch.scala:23:28 
+[warn] 23 |import org.loom.interaction.*
+[warn]    |                            ^
+[warn]    |                            unused import
+[warn] -- [E198] Unused Symbol Warning: /Users/broganbunt/Scala/Loom_2025_Scala_3/src/main/scala/org/loom/mysketch/MySketch.scala:27:24 
+[warn] 27 |import org.loom.utility.*
+[warn]    |                        ^
+[warn]    |                        unused import
+[warn] -- [E198] Unused Symbol Warning: /Users/broganbunt/Scala/Loom_2025_Scala_3/src/main/scala/org/loom/mysketch/MySketch.scala:28:26 
+[warn] 28 |import org.loom.transform.*
+[warn]    |                          ^
+[warn]    |                          unused import
+[warn] -- [E198] Unused Symbol Warning: /Users/broganbunt/Scala/Loom_2025_Scala_3/src/main/scala/org/loom/mysketch/MySketch.scala:64:14 
+[warn] 64 |  private var defaultLineWidth: Float = 1
+[warn]    |              ^^^^^^^^^^^^^^^^
+[warn]    |         unset private variable, consider using an immutable val instead
+[warn] -- [E198] Unused Symbol Warning: /Users/broganbunt/Scala/Loom_2025_Scala_3/src/main/scala/org/loom/mysketch/MySketch.scala:65:14 
+[warn] 65 |  private var defaultPointSize: Float = 2f * quality
+[warn]    |              ^^^^^^^^^^^^^^^^
+[warn]    |         unset private variable, consider using an immutable val instead
+[warn] -- [E198] Unused Symbol Warning: /Users/broganbunt/Scala/Loom_2025_Scala_3/src/main/scala/org/loom/mysketch/MySketch.scala:151:40 
+[warn] 151 |  def makeRendererSetLibrary(n: String, xmlPath: Option[String] = None): RendererSetLibrary = {
+[warn]     |                                        ^^^^^^^
+[warn]     |                                        unused explicit parameter
+[warn] -- [E198] Unused Symbol Warning: /Users/broganbunt/Scala/Loom_2025_Scala_3/src/main/scala/org/loom/mysketch/MySketch.scala:179:8 
+[warn] 179 |    val min: Float = .1f * quality
+[warn]     |        ^^^
+[warn]     |        unused local definition
+[warn] -- [E198] Unused Symbol Warning: /Users/broganbunt/Scala/Loom_2025_Scala_3/src/main/scala/org/loom/mysketch/MySketch.scala:180:8 
+[warn] 180 |    val max: Float = 5f * quality
+[warn]     |        ^^^
+[warn]     |        unused local definition
+[warn] -- [E198] Unused Symbol Warning: /Users/broganbunt/Scala/Loom_2025_Scala_3/src/main/scala/org/loom/mysketch/MySketch.scala:181:8 
+[warn] 181 |    val inc: Float = .1f * quality
+[warn]     |        ^^^
+[warn]     |        unused local definition
+[warn] -- [E198] Unused Symbol Warning: /Users/broganbunt/Scala/Loom_2025_Scala_3/src/main/scala/org/loom/mysketch/MySketch.scala:853:8 
+[warn] 853 |    val pA: Polygon2D = PolygonCreator.makePolygon2D(3, .7, .7)
+[warn]     |        ^^
+[warn]     |        unused local definition
+[warn] -- [E198] Unused Symbol Warning: /Users/broganbunt/Scala/Loom_2025_Scala_3/src/main/scala/org/loom/mysketch/MySketch.scala:854:8 
+[warn] 854 |    val pB: Polygon2D = PolygonCreator.makePolygon2D(4, .7, .7)
+[warn]     |        ^^
+[warn]     |        unused local definition
+[warn] -- [E198] Unused Symbol Warning: /Users/broganbunt/Scala/Loom_2025_Scala_3/src/main/scala/org/loom/scaffold/AnimationRunnable.scala:3:15 
+[warn] 3 |import java.io.File;
+[warn]   |               ^^^^
+[warn]   |               unused import
+[warn] -- [E198] Unused Symbol Warning: /Users/broganbunt/Scala/Loom_2025_Scala_3/src/main/scala/org/loom/scaffold/Config.scala:8:23 
+[warn] 8 |import scala.io.Source._
+[warn]   |                       ^
+[warn]   |                       unused import
+[warn] -- [E198] Unused Symbol Warning: /Users/broganbunt/Scala/Loom_2025_Scala_3/src/main/scala/org/loom/scaffold/DrawFrame.scala:50:14 
+[warn] 50 |         case e: Exception => println("Play Frame set full screen exception")
+[warn]    |              ^
+[warn]    |              unused pattern variable
+[warn] -- [E198] Unused Symbol Warning: /Users/broganbunt/Scala/Loom_2025_Scala_3/src/main/scala/org/loom/scaffold/DrawPanel.scala:71:16 
+[warn] 71 |            var dBufferGraphics = dBuffer.getGraphics();
+[warn]    |                ^^^^^^^^^^^^^^^
+[warn]    |           unset local variable, consider using an immutable val instead
+[warn] -- [E198] Unused Symbol Warning: /Users/broganbunt/Scala/Loom_2025_Scala_3/src/main/scala/org/loom/scaffold/DrawPanel.scala:81:12 
+[warn] 81 |        var g2D: Graphics2D = g.asInstanceOf[Graphics2D]
+[warn]    |            ^^^
+[warn]    |           unset local variable, consider using an immutable val instead
+[warn] -- [E198] Unused Symbol Warning: /Users/broganbunt/Scala/Loom_2025_Scala_3/src/main/scala/org/loom/scaffold/DrawPanel.scala:91:12 
+[warn] 91 |        var g2D: Graphics2D = g.asInstanceOf[Graphics2D]
+[warn]    |            ^^^
+[warn]    |           unset local variable, consider using an immutable val instead
+[warn] -- [E198] Unused Symbol Warning: /Users/broganbunt/Scala/Loom_2025_Scala_3/src/main/scala/org/loom/scaffold/Main.scala:113:8 
+[warn] 113 |    val frame: DrawFrame = DrawFrame()
+[warn]     |        ^^^^^
+[warn]     |        unused local definition
+[warn] -- [E198] Unused Symbol Warning: /Users/broganbunt/Scala/Loom_2025_Scala_3/src/main/scala/org/loom/scaffold/SimpleScreenManager.scala:29:21 
+[warn] 29 |                case ioe: IllegalArgumentException => println( "IllegalArgumentException in set full screen (Simple Screen Manager)")
+[warn]    |                     ^^^
+[warn]    |                     unused pattern variable
+[warn] -- [E198] Unused Symbol Warning: /Users/broganbunt/Scala/Loom_2025_Scala_3/src/main/scala/org/loom/scaffold/SimpleScreenManager.scala:30:21 
+[warn] 30 |                case e: Exception => println( "Exception in set full screen (Simple Screen Manager)")
+[warn]    |                     ^
+[warn]    |                     unused pattern variable
+[warn] -- [E198] Unused Symbol Warning: /Users/broganbunt/Scala/Loom_2025_Scala_3/src/main/scala/org/loom/scene/Animator2D.scala:20:15 
+[warn] 20 |   private var currentScale: Vector2D = scale
+[warn]    |               ^^^^^^^^^^^^
+[warn]    |         unset private variable, consider using an immutable val instead
+[warn] -- [E198] Unused Symbol Warning: /Users/broganbunt/Scala/Loom_2025_Scala_3/src/main/scala/org/loom/scene/Animator2D.scala:22:15 
+[warn] 22 |   private var currentSpeed: Vector2D = speed
+[warn]    |               ^^^^^^^^^^^^
+[warn]    |         unset private variable, consider using an immutable val instead
+[warn] -- [E198] Unused Symbol Warning: /Users/broganbunt/Scala/Loom_2025_Scala_3/src/main/scala/org/loom/scene/Animator2D.scala:129:10 
+[warn] 129 |      var sc: Vector2D = scale.clone()
+[warn]     |          ^^
+[warn]     |         unset local variable, consider using an immutable val instead
+[warn] -- [E198] Unused Symbol Warning: /Users/broganbunt/Scala/Loom_2025_Scala_3/src/main/scala/org/loom/scene/Animator2D.scala:130:10 
+[warn] 130 |      var sp: Vector2D = speed.clone()
+[warn]     |          ^^
+[warn]     |         unset local variable, consider using an immutable val instead
+[warn] -- [E198] Unused Symbol Warning: /Users/broganbunt/Scala/Loom_2025_Scala_3/src/main/scala/org/loom/scene/Animator3D.scala:26:10 
+[warn] 26 |      var sc: Vector3D = scale.clone()
+[warn]    |          ^^
+[warn]    |          unset local variable, consider using an immutable val instead
+[warn] -- [E198] Unused Symbol Warning: /Users/broganbunt/Scala/Loom_2025_Scala_3/src/main/scala/org/loom/scene/Animator3D.scala:27:10 
+[warn] 27 |      var rot: Vector3D = rotation.clone()
+[warn]    |          ^^^
+[warn]    |          unset local variable, consider using an immutable val instead
+[warn] -- [E198] Unused Symbol Warning: /Users/broganbunt/Scala/Loom_2025_Scala_3/src/main/scala/org/loom/scene/Animator3D.scala:28:10 
+[warn] 28 |      var sp: Vector3D = speed.clone()
+[warn]    |          ^^
+[warn]    |          unset local variable, consider using an immutable val instead
+[warn] -- [E198] Unused Symbol Warning: /Users/broganbunt/Scala/Loom_2025_Scala_3/src/main/scala/org/loom/scene/Camera.scala:69:10 
+[warn] 69 |      var angleRadians: Double = Formulas.degreesToRadians(viewAngle)
+[warn]    |          ^^^^^^^^^^^^
+[warn]    |          unset local variable, consider using an immutable val instead
+[warn] -- [E198] Unused Symbol Warning: /Users/broganbunt/Scala/Loom_2025_Scala_3/src/main/scala/org/loom/scene/MorphTarget.scala:3:35 
+[warn] 3 |import org.loom.geometry.{Shape2D, Polygon2D, Vector2D, PolygonType}
+[warn]   |                                   ^^^^^^^^^
+[warn]   |                                   unused import
+[warn] -- [E198] Unused Symbol Warning: /Users/broganbunt/Scala/Loom_2025_Scala_3/src/main/scala/org/loom/scene/MorphTarget.scala:3:56 
+[warn] 3 |import org.loom.geometry.{Shape2D, Polygon2D, Vector2D, PolygonType}
+[warn]   |                                                        ^^^^^^^^^^^
+[warn]   |                                                        unused import
+[warn] -- [E198] Unused Symbol Warning: /Users/broganbunt/Scala/Loom_2025_Scala_3/src/main/scala/org/loom/scene/RenderTransform.scala:4:24 
+[warn] 4 |import org.loom.utility.Range
+[warn]   |                        ^^^^^
+[warn]   |                        unused import
+[warn] -- [E198] Unused Symbol Warning: /Users/broganbunt/Scala/Loom_2025_Scala_3/src/main/scala/org/loom/scene/RenderTransform.scala:6:24 
+[warn] 6 |import org.loom.utility.Output
+[warn]   |                        ^^^^^^
+[warn]   |                        unused import
+[warn] -- [E198] Unused Symbol Warning: /Users/broganbunt/Scala/Loom_2025_Scala_3/src/main/scala/org/loom/scene/RenderTransform.scala:21:14 
+[warn] 21 |  private var ranMin: Int = 0
+[warn]    |              ^^^^^^
+[warn]    |              unused private member
+[warn] -- [E198] Unused Symbol Warning: /Users/broganbunt/Scala/Loom_2025_Scala_3/src/main/scala/org/loom/scene/RenderTransform.scala:22:14 
+[warn] 22 |  private var ranMax: Int = 100
+[warn]    |              ^^^^^^
+[warn]    |         unset private variable, consider using an immutable val instead
+[warn] -- [E198] Unused Symbol Warning: /Users/broganbunt/Scala/Loom_2025_Scala_3/src/main/scala/org/loom/scene/Renderer.scala:11:32 
+[warn] 11 |import scala.collection.mutable.ArrayBuffer
+[warn]    |                                ^^^^^^^^^^^
+[warn]    |                                unused import
+[warn] -- [E198] Unused Symbol Warning: /Users/broganbunt/Scala/Loom_2025_Scala_3/src/main/scala/org/loom/scene/Renderer.scala:12:24 
+[warn] 12 |import org.loom.utility._
+[warn]    |                        ^
+[warn]    |                        unused import
+[warn] -- [E198] Unused Symbol Warning: /Users/broganbunt/Scala/Loom_2025_Scala_3/src/main/scala/org/loom/scene/RendererSet.scala:5:16 
+[warn] 5 |import java.awt.Color
+[warn]   |                ^^^^^
+[warn]   |                unused import
+[warn] -- [E198] Unused Symbol Warning: /Users/broganbunt/Scala/Loom_2025_Scala_3/src/main/scala/org/loom/scene/RendererSet.scala:119:6 
+[warn] 119 |		var r: Renderer = getRenderer(n)
+[warn]     |		    ^
+[warn]     |		    unset local variable, consider using an immutable val instead
+[warn] -- [E198] Unused Symbol Warning: /Users/broganbunt/Scala/Loom_2025_Scala_3/src/main/scala/org/loom/scene/RendererSetLibrary.scala:5:16 
+[warn] 5 |import java.awt.Color
+[warn]   |                ^^^^^
+[warn]   |                unused import
+[warn] -- [E198] Unused Symbol Warning: /Users/broganbunt/Scala/Loom_2025_Scala_3/src/main/scala/org/loom/scene/RendererSetLibrary.scala:52:12 
+[warn] 52 |        var r: RendererSet = getRendererSet(n)
+[warn]    |            ^
+[warn]    |           unset local variable, consider using an immutable val instead
+[warn] -- [E198] Unused Symbol Warning: /Users/broganbunt/Scala/Loom_2025_Scala_3/src/main/scala/org/loom/scene/Scene.scala:72:10 
+[warn] 72 |      var index: Int = getIndex(sprite)
+[warn]    |          ^^^^^
+[warn]    |          unset local variable, consider using an immutable val instead
+[warn] -- [E198] Unused Symbol Warning: /Users/broganbunt/Scala/Loom_2025_Scala_3/src/main/scala/org/loom/scene/Sprite2D.scala:19:17 
+[warn] 19 |import java.awt.{AlphaComposite, Graphics2D, BasicStroke}
+[warn]    |                 ^^^^^^^^^^^^^^
+[warn]    |                 unused import
+[warn] -- [E198] Unused Symbol Warning: /Users/broganbunt/Scala/Loom_2025_Scala_3/src/main/scala/org/loom/scene/Sprite2D.scala:100:8 
+[warn] 100 |    var s: Shape2D = shape.clone()
+[warn]     |        ^
+[warn]     |        unset local variable, consider using an immutable val instead
+[warn] -- [E198] Unused Symbol Warning: /Users/broganbunt/Scala/Loom_2025_Scala_3/src/main/scala/org/loom/scene/Sprite2D.scala:101:8 
+[warn] 101 |    var loc: Vector2D = location.clone()
+[warn]     |        ^^^
+[warn]     |        unused local definition
+[warn] -- [E198] Unused Symbol Warning: /Users/broganbunt/Scala/Loom_2025_Scala_3/src/main/scala/org/loom/scene/Sprite2D.scala:102:8 
+[warn] 102 |    var sz: Vector2D = size.clone()
+[warn]     |        ^^
+[warn]     |        unset local variable, consider using an immutable val instead
+[warn] -- [E198] Unused Symbol Warning: /Users/broganbunt/Scala/Loom_2025_Scala_3/src/main/scala/org/loom/scene/Sprite2D.scala:103:8 
+[warn] 103 |    var ro: Vector2D = spriteParams.rotOffset2D.clone()
+[warn]     |        ^^
+[warn]     |        unset local variable, consider using an immutable val instead
+[warn] -- [E198] Unused Symbol Warning: /Users/broganbunt/Scala/Loom_2025_Scala_3/src/main/scala/org/loom/scene/Sprite2D.scala:110:8 
+[warn] 110 |    var a: SpriteAnimator = animator.cloneAnimator()
+[warn]     |        ^
+[warn]     |        unset local variable, consider using an immutable val instead
+[warn] -- [E198] Unused Symbol Warning: /Users/broganbunt/Scala/Loom_2025_Scala_3/src/main/scala/org/loom/scene/Sprite2D.scala:111:8 
+[warn] 111 |    var r: RendererSet = rendererSet
+[warn]     |        ^
+[warn]     |        unset local variable, consider using an immutable val instead
+[warn] -- [E198] Unused Symbol Warning: /Users/broganbunt/Scala/Loom_2025_Scala_3/src/main/scala/org/loom/scene/Sprite2D.scala:421:51 
+[warn] 421 |  private def loadBrushImages(config: BrushConfig, ren: Renderer): Array[BufferedImage] = {
+[warn]     |                                                   ^^^
+[warn]     |                                             unused explicit parameter
+[warn] -- [E198] Unused Symbol Warning: /Users/broganbunt/Scala/Loom_2025_Scala_3/src/main/scala/org/loom/scene/Sprite2DParams.scala:3:32 
+[warn] 3 |import scala.collection.mutable.ArrayBuffer
+[warn]   |                                ^^^^^^^^^^^
+[warn]   |                                unused import
+[warn] -- [E198] Unused Symbol Warning: /Users/broganbunt/Scala/Loom_2025_Scala_3/src/main/scala/org/loom/scene/Sprite2DParams.scala:4:24 
+[warn] 4 |import org.loom.utility._
+[warn]   |                        ^
+[warn]   |                        unused import
+[warn] -- [E198] Unused Symbol Warning: /Users/broganbunt/Scala/Loom_2025_Scala_3/src/main/scala/org/loom/scene/Sprite2DParams.scala:5:26 
+[warn] 5 |import org.loom.transform._
+[warn]   |                          ^
+[warn]   |                          unused import
+[warn] -- [E198] Unused Symbol Warning: /Users/broganbunt/Scala/Loom_2025_Scala_3/src/main/scala/org/loom/scene/Sprite3D.scala:48:10 
+[warn] 48 |      val poly: Polygon3D = shape.polys(index)
+[warn]    |          ^^^^
+[warn]    |          unused local definition
+[warn] -- [E198] Unused Symbol Warning: /Users/broganbunt/Scala/Loom_2025_Scala_3/src/main/scala/org/loom/scene/Sprite3D.scala:159:10 
+[warn] 159 |      var s: Shape3D = shape.clone()
+[warn]     |          ^
+[warn]     |         unset local variable, consider using an immutable val instead
+[warn] -- [E198] Unused Symbol Warning: /Users/broganbunt/Scala/Loom_2025_Scala_3/src/main/scala/org/loom/scene/Sprite3D.scala:160:10 
+[warn] 160 |      var loc: Vector3D = location.clone()
+[warn]     |          ^^^
+[warn]     |         unset local variable, consider using an immutable val instead
+[warn] -- [E198] Unused Symbol Warning: /Users/broganbunt/Scala/Loom_2025_Scala_3/src/main/scala/org/loom/scene/Sprite3D.scala:161:10 
+[warn] 161 |      var sz: Vector3D = size.clone()
+[warn]     |          ^^
+[warn]     |         unset local variable, consider using an immutable val instead
+[warn] -- [E198] Unused Symbol Warning: /Users/broganbunt/Scala/Loom_2025_Scala_3/src/main/scala/org/loom/scene/Sprite3D.scala:162:10 
+[warn] 162 |      var sr: Vector3D = startRotation.clone()
+[warn]     |          ^^
+[warn]     |         unset local variable, consider using an immutable val instead
+[warn] -- [E198] Unused Symbol Warning: /Users/broganbunt/Scala/Loom_2025_Scala_3/src/main/scala/org/loom/scene/Sprite3D.scala:163:10 
+[warn] 163 |      var ro: Vector3D = rotOffset.clone()
+[warn]     |          ^^
+[warn]     |         unset local variable, consider using an immutable val instead
+[warn] -- [E198] Unused Symbol Warning: /Users/broganbunt/Scala/Loom_2025_Scala_3/src/main/scala/org/loom/scene/Sprite3D.scala:172:10 
+[warn] 172 |      var a: Animator3D = animator.clone()
+[warn]     |          ^
+[warn]     |         unset local variable, consider using an immutable val instead
+[warn] -- [E198] Unused Symbol Warning: /Users/broganbunt/Scala/Loom_2025_Scala_3/src/main/scala/org/loom/scene/Sprite3D.scala:173:10 
+[warn] 173 |      var r: RendererSet = rendererSet
+[warn]     |          ^
+[warn]     |         unset local variable, consider using an immutable val instead
+[warn] -- [E198] Unused Symbol Warning: /Users/broganbunt/Scala/Loom_2025_Scala_3/src/main/scala/org/loom/subdivide/SplineEcho.scala:16:41 
+[warn] 16 |class SplineEcho(subdivObj: Subdivision, middle: Vector2D, subP: SubdivisionParams, polyType: Int, useAbsoluteCenter: Boolean = false) {
+[warn]    |                                         ^^^^^^
+[warn]    |                                         unused explicit parameter
+[warn] -- [E198] Unused Symbol Warning: /Users/broganbunt/Scala/Loom_2025_Scala_3/src/main/scala/org/loom/subdivide/SplineEcho.scala:16:84 
+[warn] 16 |class SplineEcho(subdivObj: Subdivision, middle: Vector2D, subP: SubdivisionParams, polyType: Int, useAbsoluteCenter: Boolean = false) {
+[warn]    |                                                                                    ^^^^^^^^
+[warn]    |                                               unused explicit parameter
+[warn] -- [E198] Unused Symbol Warning: /Users/broganbunt/Scala/Loom_2025_Scala_3/src/main/scala/org/loom/subdivide/SplineQuad.scala:3:32 
+[warn] 3 |import scala.collection.mutable.ArrayBuffer
+[warn]   |                                ^^^^^^^^^^^
+[warn]   |                                unused import
+[warn] -- [E198] Unused Symbol Warning: /Users/broganbunt/Scala/Loom_2025_Scala_3/src/main/scala/org/loom/subdivide/SplineQuad.scala:58:10 
+[warn] 58 |    		var side: Array[Vector2D] = new Array[Vector2D](numPointsPerPolySide)
+[warn]    |    		    ^^^^
+[warn]    |    		    unset local variable, consider using an immutable val instead
+[warn] -- [E198] Unused Symbol Warning: /Users/broganbunt/Scala/Loom_2025_Scala_3/src/main/scala/org/loom/subdivide/SplineQuad.scala:60:19 
+[warn] 60 |               var ptIndex: Int = (numPointsPerPolySide * i) + j
+[warn]    |                   ^^^^^^^
+[warn]    |           unset local variable, consider using an immutable val instead
+[warn] -- [E198] Unused Symbol Warning: /Users/broganbunt/Scala/Loom_2025_Scala_3/src/main/scala/org/loom/subdivide/SplineQuad.scala:191:10 
+[warn] 191 |    		var B: Vector2D = middle.clone()//ADJUST CENTRE POINTS HERE?
+[warn]     |    		    ^
+[warn]     |         unset local variable, consider using an immutable val instead
+[warn] -- [E198] Unused Symbol Warning: /Users/broganbunt/Scala/Loom_2025_Scala_3/src/main/scala/org/loom/subdivide/SplineQuadBord.scala:18:45 
+[warn] 18 |class SplineQuadBord(subdivObj: Subdivision, middle: Vector2D, subP: SubdivisionParams, polyType: Int) {
+[warn]    |                                             ^^^^^^
+[warn]    |                                             unused explicit parameter
+[warn] -- [E198] Unused Symbol Warning: /Users/broganbunt/Scala/Loom_2025_Scala_3/src/main/scala/org/loom/subdivide/SplineQuadBord.scala:18:88 
+[warn] 18 |class SplineQuadBord(subdivObj: Subdivision, middle: Vector2D, subP: SubdivisionParams, polyType: Int) {
+[warn]    |                                                                                        ^^^^^^^^
+[warn]    |                                               unused explicit parameter
+[warn] -- [E198] Unused Symbol Warning: /Users/broganbunt/Scala/Loom_2025_Scala_3/src/main/scala/org/loom/subdivide/SplineQuadBordDouble.scala:16:51 
+[warn] 16 |class SplineQuadBordDouble(subdivObj: Subdivision, middle: Vector2D, subP: SubdivisionParams, polyType: Int) {
+[warn]    |                                                   ^^^^^^
+[warn]    |                                               unused explicit parameter
+[warn] -- [E198] Unused Symbol Warning: /Users/broganbunt/Scala/Loom_2025_Scala_3/src/main/scala/org/loom/subdivide/SplineQuadBordDouble.scala:16:94 
+[warn] 16 |class SplineQuadBordDouble(subdivObj: Subdivision, middle: Vector2D, subP: SubdivisionParams, polyType: Int) {
+[warn]    |                                                                                              ^^^^^^^^
+[warn]    |                                               unused explicit parameter
+[warn] -- [E198] Unused Symbol Warning: /Users/broganbunt/Scala/Loom_2025_Scala_3/src/main/scala/org/loom/subdivide/SplineQuadBordDoubleEcho.scala:12:55 
+[warn] 12 |class SplineQuadBordDoubleEcho(subdivObj: Subdivision, middle: Vector2D, subP: SubdivisionParams, polyType: Int) {
+[warn]    |                                                       ^^^^^^
+[warn]    |                                               unused explicit parameter
+[warn] -- [E198] Unused Symbol Warning: /Users/broganbunt/Scala/Loom_2025_Scala_3/src/main/scala/org/loom/subdivide/SplineQuadBordDoubleEcho.scala:12:98 
+[warn] 12 |class SplineQuadBordDoubleEcho(subdivObj: Subdivision, middle: Vector2D, subP: SubdivisionParams, polyType: Int) {
+[warn]    |                                                                                                  ^^^^^^^^
+[warn]    |                                               unused explicit parameter
+[warn] -- [E198] Unused Symbol Warning: /Users/broganbunt/Scala/Loom_2025_Scala_3/src/main/scala/org/loom/subdivide/SplineQuadBordEcho.scala:12:49 
+[warn] 12 |class SplineQuadBordEcho(subdivObj: Subdivision, middle: Vector2D, subP: SubdivisionParams, polyType: Int) {
+[warn]    |                                                 ^^^^^^
+[warn]    |                                               unused explicit parameter
+[warn] -- [E198] Unused Symbol Warning: /Users/broganbunt/Scala/Loom_2025_Scala_3/src/main/scala/org/loom/subdivide/SplineQuadBordEcho.scala:12:92 
+[warn] 12 |class SplineQuadBordEcho(subdivObj: Subdivision, middle: Vector2D, subP: SubdivisionParams, polyType: Int) {
+[warn]    |                                                                                            ^^^^^^^^
+[warn]    |                                               unused explicit parameter
+[warn] -- [E198] Unused Symbol Warning: /Users/broganbunt/Scala/Loom_2025_Scala_3/src/main/scala/org/loom/subdivide/SplineSplitDiag.scala:5:26 
+[warn] 5 |import org.loom.transform._
+[warn]   |                          ^
+[warn]   |                          unused import
+[warn] -- [E198] Unused Symbol Warning: /Users/broganbunt/Scala/Loom_2025_Scala_3/src/main/scala/org/loom/subdivide/SplineSplitDiag.scala:15:46 
+[warn] 15 |class SplineSplitDiag(subdivObj: Subdivision, middle: Vector2D, subP: SubdivisionParams, polyType: Int) {
+[warn]    |                                              ^^^^^^
+[warn]    |                                              unused explicit parameter
+[warn] -- [E198] Unused Symbol Warning: /Users/broganbunt/Scala/Loom_2025_Scala_3/src/main/scala/org/loom/subdivide/SplineSplitDiag.scala:15:89 
+[warn] 15 |class SplineSplitDiag(subdivObj: Subdivision, middle: Vector2D, subP: SubdivisionParams, polyType: Int) {
+[warn]    |                                                                                         ^^^^^^^^
+[warn]    |                                               unused explicit parameter
+[warn] -- [E198] Unused Symbol Warning: /Users/broganbunt/Scala/Loom_2025_Scala_3/src/main/scala/org/loom/subdivide/SplineSplitHoriz.scala:5:26 
+[warn] 5 |import org.loom.transform._
+[warn]   |                          ^
+[warn]   |                          unused import
+[warn] -- [E198] Unused Symbol Warning: /Users/broganbunt/Scala/Loom_2025_Scala_3/src/main/scala/org/loom/subdivide/SplineSplitHoriz.scala:13:47 
+[warn] 13 |class SplineSplitHoriz(subdivObj: Subdivision, middle: Vector2D, subP: SubdivisionParams, polyType: Int) {
+[warn]    |                                               ^^^^^^
+[warn]    |                                               unused explicit parameter
+[warn] -- [E198] Unused Symbol Warning: /Users/broganbunt/Scala/Loom_2025_Scala_3/src/main/scala/org/loom/subdivide/SplineSplitHoriz.scala:13:90 
+[warn] 13 |class SplineSplitHoriz(subdivObj: Subdivision, middle: Vector2D, subP: SubdivisionParams, polyType: Int) {
+[warn]    |                                                                                          ^^^^^^^^
+[warn]    |                                               unused explicit parameter
+[warn] -- [E198] Unused Symbol Warning: /Users/broganbunt/Scala/Loom_2025_Scala_3/src/main/scala/org/loom/subdivide/SplineSplitVert.scala:5:26 
+[warn] 5 |import org.loom.transform._
+[warn]   |                          ^
+[warn]   |                          unused import
+[warn] -- [E198] Unused Symbol Warning: /Users/broganbunt/Scala/Loom_2025_Scala_3/src/main/scala/org/loom/subdivide/SplineSplitVert.scala:13:46 
+[warn] 13 |class SplineSplitVert(subdivObj: Subdivision, middle: Vector2D, subP: SubdivisionParams, polyType: Int) {
+[warn]    |                                              ^^^^^^
+[warn]    |                                              unused explicit parameter
+[warn] -- [E198] Unused Symbol Warning: /Users/broganbunt/Scala/Loom_2025_Scala_3/src/main/scala/org/loom/subdivide/SplineSplitVert.scala:13:89 
+[warn] 13 |class SplineSplitVert(subdivObj: Subdivision, middle: Vector2D, subP: SubdivisionParams, polyType: Int) {
+[warn]    |                                                                                         ^^^^^^^^
+[warn]    |                                               unused explicit parameter
+[warn] -- [E198] Unused Symbol Warning: /Users/broganbunt/Scala/Loom_2025_Scala_3/src/main/scala/org/loom/subdivide/SplineTri.scala:3:32 
+[warn] 3 |import scala.collection.mutable.ArrayBuffer
+[warn]   |                                ^^^^^^^^^^^
+[warn]   |                                unused import
+[warn] -- [E198] Unused Symbol Warning: /Users/broganbunt/Scala/Loom_2025_Scala_3/src/main/scala/org/loom/subdivide/SplineTri.scala:53:10 
+[warn] 53 |    		var side: Array[Vector2D] = new Array[Vector2D](numPointsPerPolySide)
+[warn]    |    		    ^^^^
+[warn]    |    		    unset local variable, consider using an immutable val instead
+[warn] -- [E198] Unused Symbol Warning: /Users/broganbunt/Scala/Loom_2025_Scala_3/src/main/scala/org/loom/subdivide/SplineTri.scala:55:19 
+[warn] 55 |               var ptIndex: Int = (numPointsPerPolySide * i) + j
+[warn]    |                   ^^^^^^^
+[warn]    |           unset local variable, consider using an immutable val instead
+[warn] -- [E198] Unused Symbol Warning: /Users/broganbunt/Scala/Loom_2025_Scala_3/src/main/scala/org/loom/subdivide/SplineTri.scala:79:10 
+[warn] 79 |    		var B1: Vector2D = middle.clone()//ADJUST CENTRE POINTS HERE?
+[warn]    |    		    ^^
+[warn]    |    		    unset local variable, consider using an immutable val instead
+[warn] -- [E198] Unused Symbol Warning: /Users/broganbunt/Scala/Loom_2025_Scala_3/src/main/scala/org/loom/subdivide/SplineTri.scala:85:16 
+[warn] 85 |            var B2: Vector2D = middle.clone()//ADJUST CENTRE POINTS HERE?
+[warn]    |                ^^
+[warn]    |           unset local variable, consider using an immutable val instead
+[warn] -- [E198] Unused Symbol Warning: /Users/broganbunt/Scala/Loom_2025_Scala_3/src/main/scala/org/loom/subdivide/SplineTriBordB.scala:18:45 
+[warn] 18 |class SplineTriBordB(subdivObj: Subdivision, middle: Vector2D, subP: SubdivisionParams, polyType: Int) {
+[warn]    |                                             ^^^^^^
+[warn]    |                                             unused explicit parameter
+[warn] -- [E198] Unused Symbol Warning: /Users/broganbunt/Scala/Loom_2025_Scala_3/src/main/scala/org/loom/subdivide/SplineTriBordB.scala:18:88 
+[warn] 18 |class SplineTriBordB(subdivObj: Subdivision, middle: Vector2D, subP: SubdivisionParams, polyType: Int) {
+[warn]    |                                                                                        ^^^^^^^^
+[warn]    |                                               unused explicit parameter
+[warn] -- [E198] Unused Symbol Warning: /Users/broganbunt/Scala/Loom_2025_Scala_3/src/main/scala/org/loom/subdivide/SplineTriBordBEcho.scala:13:49 
+[warn] 13 |class SplineTriBordBEcho(subdivObj: Subdivision, middle: Vector2D, subP: SubdivisionParams, polyType: Int) {
+[warn]    |                                                 ^^^^^^
+[warn]    |                                               unused explicit parameter
+[warn] -- [E198] Unused Symbol Warning: /Users/broganbunt/Scala/Loom_2025_Scala_3/src/main/scala/org/loom/subdivide/SplineTriBordBEcho.scala:13:92 
+[warn] 13 |class SplineTriBordBEcho(subdivObj: Subdivision, middle: Vector2D, subP: SubdivisionParams, polyType: Int) {
+[warn]    |                                                                                            ^^^^^^^^
+[warn]    |                                               unused explicit parameter
+[warn] -- [E198] Unused Symbol Warning: /Users/broganbunt/Scala/Loom_2025_Scala_3/src/main/scala/org/loom/subdivide/SplineTriBordC.scala:18:45 
+[warn] 18 |class SplineTriBordC(subdivObj: Subdivision, middle: Vector2D, subP: SubdivisionParams, polyType: Int) {
+[warn]    |                                             ^^^^^^
+[warn]    |                                             unused explicit parameter
+[warn] -- [E198] Unused Symbol Warning: /Users/broganbunt/Scala/Loom_2025_Scala_3/src/main/scala/org/loom/subdivide/SplineTriBordC.scala:18:88 
+[warn] 18 |class SplineTriBordC(subdivObj: Subdivision, middle: Vector2D, subP: SubdivisionParams, polyType: Int) {
+[warn]    |                                                                                        ^^^^^^^^
+[warn]    |                                               unused explicit parameter
+[warn] -- [E198] Unused Symbol Warning: /Users/broganbunt/Scala/Loom_2025_Scala_3/src/main/scala/org/loom/subdivide/SplineTriBordCEcho.scala:12:49 
+[warn] 12 |class SplineTriBordCEcho(subdivObj: Subdivision, middle: Vector2D, subP: SubdivisionParams, polyType: Int) {
+[warn]    |                                                 ^^^^^^
+[warn]    |                                               unused explicit parameter
+[warn] -- [E198] Unused Symbol Warning: /Users/broganbunt/Scala/Loom_2025_Scala_3/src/main/scala/org/loom/subdivide/SplineTriBordCEcho.scala:12:92 
+[warn] 12 |class SplineTriBordCEcho(subdivObj: Subdivision, middle: Vector2D, subP: SubdivisionParams, polyType: Int) {
+[warn]    |                                                                                            ^^^^^^^^
+[warn]    |                                               unused explicit parameter
+[warn] -- [E198] Unused Symbol Warning: /Users/broganbunt/Scala/Loom_2025_Scala_3/src/main/scala/org/loom/subdivide/SplineTriStar.scala:18:44 
+[warn] 18 |class SplineTriStar(subdivObj: Subdivision, middle: Vector2D, subP: SubdivisionParams, polyType: Int) {
+[warn]    |                                            ^^^^^^
+[warn]    |                                            unused explicit parameter
+[warn] -- [E198] Unused Symbol Warning: /Users/broganbunt/Scala/Loom_2025_Scala_3/src/main/scala/org/loom/subdivide/SplineTriStar.scala:18:87 
+[warn] 18 |class SplineTriStar(subdivObj: Subdivision, middle: Vector2D, subP: SubdivisionParams, polyType: Int) {
+[warn]    |                                                                                       ^^^^^^^^
+[warn]    |                                               unused explicit parameter
+[warn] -- [E198] Unused Symbol Warning: /Users/broganbunt/Scala/Loom_2025_Scala_3/src/main/scala/org/loom/subdivide/SplineTriStarFill.scala:19:48 
+[warn] 19 |class SplineTriStarFill(subdivObj: Subdivision, middle: Vector2D, subP: SubdivisionParams, polyType: Int) {
+[warn]    |                                                ^^^^^^
+[warn]    |                                               unused explicit parameter
+[warn] -- [E198] Unused Symbol Warning: /Users/broganbunt/Scala/Loom_2025_Scala_3/src/main/scala/org/loom/subdivide/SplineTriStarFill.scala:19:91 
+[warn] 19 |class SplineTriStarFill(subdivObj: Subdivision, middle: Vector2D, subP: SubdivisionParams, polyType: Int) {
+[warn]    |                                                                                           ^^^^^^^^
+[warn]    |                                               unused explicit parameter
+[warn] -- [E198] Unused Symbol Warning: /Users/broganbunt/Scala/Loom_2025_Scala_3/src/main/scala/org/loom/transform/AnchorsLinkedToCentre.scala:189:6 
+[warn] 189 |		var ranTearOutcome: Int = 0
+[warn]     |		    ^^^^^^^^^^^^^^
+[warn]     |		    unused local definition
+[warn] -- [E198] Unused Symbol Warning: /Users/broganbunt/Scala/Loom_2025_Scala_3/src/main/scala/org/loom/transform/InnerControlPoints.scala:159:7 
+[warn] 159 |		for (i <- 0 until sidesTotal) {
+[warn]     |		     ^
+[warn]     |		     unused pattern variable
+[warn] -- [E198] Unused Symbol Warning: /Users/broganbunt/Scala/Loom_2025_Scala_3/src/main/scala/org/loom/transform/InnerControlPoints.scala:311:6 
+[warn] 311 |		val anchors: Array[Array[Vector2D]] = getSideAnchors(polys, centreIndex)//n pairs of side anchors
+[warn]     |		    ^^^^^^^
+[warn]     |		    unused local definition
+[warn] -- [E198] Unused Symbol Warning: /Users/broganbunt/Scala/Loom_2025_Scala_3/src/main/scala/org/loom/transform/InnerControlPoints.scala:312:6 
+[warn] 312 |		val outerControls: Array[Array[Vector2D]] = getSideControlPoints(polys, centreIndex)//n pairs of side control points
+[warn]     |		    ^^^^^^^^^^^^^
+[warn]     |		    unused local definition
+[warn] -- [E198] Unused Symbol Warning: /Users/broganbunt/Scala/Loom_2025_Scala_3/src/main/scala/org/loom/transform/InnerControlPoints.scala:436:6 
+[warn] 436 |		var ranCurveOutcome: Int = 0
+[warn]     |		    ^^^^^^^^^^^^^^^
+[warn]     |		    unused local definition
+[warn] -- [E198] Unused Symbol Warning: /Users/broganbunt/Scala/Loom_2025_Scala_3/src/main/scala/org/loom/transform/InnerControlPoints.scala:573:8 
+[warn] 573 |				var diffVectA: Vector2D = Formulas.differenceBetweenTwoVectors(controls(i*2)(0), mids(i))
+[warn]     |				    ^^^^^^^^^
+[warn]     |				    unset local variable, consider using an immutable val instead
+[warn] -- [E198] Unused Symbol Warning: /Users/broganbunt/Scala/Loom_2025_Scala_3/src/main/scala/org/loom/transform/InnerControlPoints.scala:575:8 
+[warn] 575 |				var diffVectB: Vector2D = Formulas.differenceBetweenTwoVectors(controls(i*2)(1), mids(i))
+[warn]     |				    ^^^^^^^^^
+[warn]     |				    unset local variable, consider using an immutable val instead
+[warn] -- [E198] Unused Symbol Warning: /Users/broganbunt/Scala/Loom_2025_Scala_3/src/main/scala/org/loom/transform/InnerControlPoints.scala:576:8 
+[warn] 576 |				var diffVectC: Vector2D = Formulas.differenceBetweenTwoVectors(controls((i*2)+1)(0), mids(i))
+[warn]     |				    ^^^^^^^^^
+[warn]     |				    unset local variable, consider using an immutable val instead
+[warn] -- [E198] Unused Symbol Warning: /Users/broganbunt/Scala/Loom_2025_Scala_3/src/main/scala/org/loom/transform/InnerControlPoints.scala:577:8 
+[warn] 577 |				var diffVectD: Vector2D = Formulas.differenceBetweenTwoVectors(controls((i*2)+1)(1), mids(i))
+[warn]     |				    ^^^^^^^^^
+[warn]     |				    unset local variable, consider using an immutable val instead
+[warn] -- [E198] Unused Symbol Warning: /Users/broganbunt/Scala/Loom_2025_Scala_3/src/main/scala/org/loom/transform/OuterControlPoints.scala:157:108 
+[warn] 157 |	def curve(poly: Polygon2D, centreIndex: Int, controls: Array[Array[Vector2D]], indexes: Array[Array[Int]], polyIndex: Int): Unit = {
+[warn]     |	                                                                                                           ^^^^^^^^^
+[warn]     |                                             unused explicit parameter
+[warn] -- [E198] Unused Symbol Warning: /Users/broganbunt/Scala/Loom_2025_Scala_3/src/main/scala/org/loom/transform/OuterControlPoints.scala:187:7 
+[warn] 187 |			var diffVectA: Vector2D = Formulas.differenceBetweenTwoVectors(mid,controlA)
+[warn]     |			    ^^^^^^^^^
+[warn]     |			    unset local variable, consider using an immutable val instead
+[warn] -- [E198] Unused Symbol Warning: /Users/broganbunt/Scala/Loom_2025_Scala_3/src/main/scala/org/loom/transform/OuterControlPoints.scala:189:7 
+[warn] 189 |			var diffVectB: Vector2D = Formulas.differenceBetweenTwoVectors(mid,controlB)
+[warn]     |			    ^^^^^^^^^
+[warn]     |			    unused local definition
+[warn] -- [E198] Unused Symbol Warning: /Users/broganbunt/Scala/Loom_2025_Scala_3/src/main/scala/org/loom/transform/OuterControlPoints.scala:303:9 
+[warn] 303 |					var diffVectA: Vector2D = Formulas.differenceBetweenTwoVectors(absoluteCentre,curveA)
+[warn]     |					    ^^^^^^^^^
+[warn]     |					    unset local variable, consider using an immutable val instead
+[warn] -- [E198] Unused Symbol Warning: /Users/broganbunt/Scala/Loom_2025_Scala_3/src/main/scala/org/loom/transform/OuterControlPoints.scala:310:9 
+[warn] 310 |					var diffVectB: Vector2D = Formulas.differenceBetweenTwoVectors(absoluteCentre,curveB)
+[warn]     |					    ^^^^^^^^^
+[warn]     |					    unset local variable, consider using an immutable val instead
+[warn] -- [E198] Unused Symbol Warning: /Users/broganbunt/Scala/Loom_2025_Scala_3/src/main/scala/org/loom/transform/PointsTransform.scala:4:24 
+[warn] 4 |import org.loom.utility._
+[warn]   |                        ^
+[warn]   |                        unused import
+[warn] -- [E198] Unused Symbol Warning: /Users/broganbunt/Scala/Loom_2025_Scala_3/src/main/scala/org/loom/transform/PolysTransform.scala:13:43 
+[warn] 13 |    def transform(polys: Array[Polygon2D], subdivObj: Subdivision, subP: SubdivisionParams): Unit = {
+[warn]    |                                           ^^^^^^^^^
+[warn]    |                                           unused explicit parameter
+[warn] -- [E198] Unused Symbol Warning: /Users/broganbunt/Scala/Loom_2025_Scala_3/src/main/scala/org/loom/ui/ProjectSelector.scala:6:15 
+[warn] 6 |import java.io.File
+[warn]   |               ^^^^
+[warn]   |               unused import
+[warn] -- [E198] Unused Symbol Warning: /Users/broganbunt/Scala/Loom_2025_Scala_3/src/main/scala/org/loom/utility/Easy.scala:24:11 
+[warn] 24 |       var per: Double = scala.math.pow(time/duration, power)
+[warn]    |           ^^^
+[warn]    |           unset local variable, consider using an immutable val instead
+[warn] -- [E198] Unused Symbol Warning: /Users/broganbunt/Scala/Loom_2025_Scala_3/src/main/scala/org/loom/utility/Easy.scala:39:11 
+[warn] 39 |       var per: Double = 1 - (scala.math.pow((1 - (time/duration)), power))
+[warn]    |           ^^^
+[warn]    |           unset local variable, consider using an immutable val instead
+[warn] -- [E198] Unused Symbol Warning: /Users/broganbunt/Scala/Loom_2025_Scala_3/src/main/scala/org/loom/utility/Randomise.scala:51:15 
+[warn] 51 |   private def testRandomRange(min: Int, max: Int, ran: Int): Unit = {
+[warn]    |               ^^^^^^^^^^^^^^^
+[warn]    |               unused private member
+[warn] -- [E198] Unused Symbol Warning: /Users/broganbunt/Scala/Loom_2025_Scala_3/src/main/scala/org/loom/utility/Randomise.scala:66:15 
+[warn] 66 |   private def testRandomRange(min: Double, max: Double, ran: Double): Unit = {
+[warn]    |               ^^^^^^^^^^^^^^^
+[warn]    |               unused private member
+[warn] 193 warnings found

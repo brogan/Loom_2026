@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="ISO-8859-1"?>
+<!DOCTYPE animator SYSTEM "../dtd/animator.dtd">
+<animator>
+    <name>weave_horizontal_X3</name>
+        <keys>
+            <key>
+                <duration>60.0</duration>
+                <tweenMode>TWEENING</tweenMode>
+                <easeMode>linear</easeMode>
+                <oscillator>osc_01</oscillator>
+                <scaleX>1.0</scaleX>
+                <scaleY>1.0</scaleY>
+                <rotationAngle>0.0</rotationAngle>
+                <rotationOffset>0.0</rotationOffset>
+                <transX>-3.0</transX>
+                <transY>0.0</transY>
+                <renderer>F_blue_255</renderer>
+            </key>
+            <key>
+                <duration>60.0</duration>
+                <tweenMode>TWEENING</tweenMode>
+                <easeMode>linear</easeMode>
+                <oscillator>osc_01</oscillator>
+                <scaleX>1.0</scaleX>
+                <scaleY>1.0</scaleY>
+                <rotationAngle>0.0</rotationAngle>
+                <rotationOffset>0.0</rotationOffset>
+                <transX>3.0</transX>
+                <transY>0.0</transY>
+                <renderer>F_blue_255</renderer>
+            </key>
+        </keys>
+</animator>

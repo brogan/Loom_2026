@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="ISO-8859-1"?>
+<!DOCTYPE renderer SYSTEM "../dtd/renderer.dtd">
+<renderer>
+    <name>LN_black_2_10</name>
+    <mode>RENDER_LINES</mode>
+    <fillRed>250</fillRed>
+    <fillGreen>20</fillGreen>
+    <fillBlue>100</fillBlue>
+    <fillAlpha>200</fillAlpha>
+    <strokeRed>0</strokeRed>
+    <strokeGreen>0</strokeGreen>
+    <strokeBlue>0</strokeBlue>
+    <strokeAlpha>10</strokeAlpha>
+    <strokeWeight>2.0</strokeWeight>
+</renderer>

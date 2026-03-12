@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Renderer>
+  <Name>Blue</Name>
+  <Mode>3</Mode>
+  <StrokeWidth>1.0</StrokeWidth>
+  <StrokeColor>
+    <Red>0</Red>
+    <Green>0</Green>
+    <Blue>0</Blue>
+    <Alpha>30</Alpha>
+  </StrokeColor>
+  <FillColor>
+    <Red>255</Red>
+    <Green>0</Green>
+    <Blue>0</Blue>
+    <Alpha>50</Alpha>
+  </FillColor>
+  <PointSize>6.0</PointSize>
+  <HoldLength>1</HoldLength>
+  <PointStroked>true</PointStroked>
+  <PointFilled>true</PointFilled>
+  <RenderTransforms>
+    <StrokeWidthTransform>
+      <ChangeType>0</ChangeType>
+      <IsChanging>true</IsChanging>
+    </StrokeWidthTransform>
+    <StrokeColorTransform>
+      <ChangeType>1</ChangeType>
+      <IsChanging>true</IsChanging>
+    </StrokeColorTransform>
+    <FillColorTransform>
+      <ChangeType>2</ChangeType>
+      <IsChanging>true</IsChanging>
+    </FillColorTransform>
+    <PointSizeTransform>
+      <ChangeType>3</ChangeType>
+      <IsChanging>false</IsChanging>
+    </PointSizeTransform>
+  </RenderTransforms>
+</Renderer>

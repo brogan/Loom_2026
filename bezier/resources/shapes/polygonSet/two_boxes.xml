@@ -1,0 +1,63 @@
+<?xml version="1.0" encoding="ISO-8859-1"?>
+<!DOCTYPE polygonSet SYSTEM "../../dtd/polygonSet.dtd">
+<polygonSet>
+    <name>two_boxes</name>
+    <shapeType>CUBIC_CURVE</shapeType>
+    <polygon>
+        <curve>
+            <point x="-0.05" y="-0.05"/>
+            <point x="-0.01" y="-0.05"/>
+            <point x="0.01" y="-0.05"/>
+            <point x="0.04" y="-0.05"/>
+        </curve>
+        <curve>
+            <point x="0.04" y="-0.05"/>
+            <point x="0.04" y="-0.01"/>
+            <point x="0.04" y="0.01"/>
+            <point x="0.04" y="0.04"/>
+        </curve>
+        <curve>
+            <point x="0.04" y="0.04"/>
+            <point x="0.01" y="0.04"/>
+            <point x="-0.01" y="0.04"/>
+            <point x="-0.05" y="0.04"/>
+        </curve>
+        <curve>
+            <point x="-0.05" y="0.04"/>
+            <point x="-0.05" y="0.01"/>
+            <point x="-0.05" y="-0.01"/>
+            <point x="-0.05" y="-0.05"/>
+        </curve>
+    </polygon>
+    <polygon>
+        <curve>
+            <point x="-0.03" y="-0.02"/>
+            <point x="0.0" y="-0.02"/>
+            <point x="0.01" y="-0.02"/>
+            <point x="0.03" y="-0.02"/>
+        </curve>
+        <curve>
+            <point x="0.03" y="-0.02"/>
+            <point x="0.03" y="0.0"/>
+            <point x="0.03" y="0.0"/>
+            <point x="0.03" y="0.02"/>
+        </curve>
+        <curve>
+            <point x="0.03" y="0.02"/>
+            <point x="0.01" y="0.02"/>
+            <point x="0.0" y="0.02"/>
+            <point x="-0.03" y="0.02"/>
+        </curve>
+        <curve>
+            <point x="-0.03" y="0.02"/>
+            <point x="-0.03" y="0.0"/>
+            <point x="-0.03" y="0.0"/>
+            <point x="-0.03" y="-0.02"/>
+        </curve>
+    </polygon>
+    <scaleX>1.0</scaleX>
+    <scaleY>1.0</scaleY>
+    <rotationAngle>0.0</rotationAngle>
+    <transX>0.5</transX>
+    <transY>0.5</transY>
+</polygonSet>

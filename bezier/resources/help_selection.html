@@ -1,0 +1,125 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><title>Selection Modes</title>
+<style>
+  body { font-family: Arial, sans-serif; font-size: 13px; color: #222; background: #fafafa; margin: 0; padding: 20px 28px 40px; }
+  h1 { font-size: 21px; font-weight: bold; color: #1a1a2e; border-bottom: 2px solid #e0e4f0; padding-bottom: 10px; margin-top: 0; }
+  h2 { font-size: 16px; font-weight: bold; color: #1a1a2e; margin-top: 28px; border-bottom: 1px solid #e0e4f0; padding-bottom: 5px; }
+  h3 { font-size: 13px; font-weight: bold; color: #2c3060; margin-top: 18px; margin-bottom: 4px; }
+  h4 { font-size: 13px; font-weight: bold; color: #444; margin-top: 12px; margin-bottom: 3px; }
+  p { line-height: 1.6; margin: 7px 0; }
+  ul, ol { margin: 5px 0; padding-left: 20px; line-height: 1.65; }
+  li { margin-bottom: 2px; }
+  .note { background: #eef4ff; border-left: 4px solid #5b9cf6; padding: 9px 12px; margin: 12px 0; font-size: 12px; }
+  .warn { background: #fff8e6; border-left: 4px solid #f0a500; padding: 9px 12px; margin: 12px 0; font-size: 12px; }
+  table { border-collapse: collapse; width: 100%; margin: 10px 0; font-size: 12px; }
+  th { background: #f0f2f8; text-align: left; padding: 7px 10px; border: 1px solid #d8dce8; font-weight: bold; color: #333; }
+  td { padding: 6px 10px; border: 1px solid #e4e7f0; vertical-align: top; }
+  tr:nth-child(even) td { background: #f7f8fc; }
+  kbd { background: #eef; border: 1px solid #aac; border-radius: 3px; padding: 1px 5px; font-family: monospace; font-size: 11px; }
+  code { font-family: monospace; background: #eef; padding: 0 4px; border-radius: 3px; font-size: 11px; }
+  .chip { display: inline-block; background: #e8ecff; color: #3050b0; border-radius: 10px; padding: 1px 8px; font-size: 11px; font-weight: bold; margin: 1px 2px; }
+  .chip.orange { background: #fff0e0; color: #b05000; }
+  .chip.purple { background: #f5e8ff; color: #7020a0; }
+  .chip.yellow { background: #fdf8e0; color: #807000; }
+  .chip.blue   { background: #e0f0ff; color: #0050a0; }
+  .chip.red    { background: #ffe8e8; color: #a00020; }
+  .color-swatch { display: inline-block; width: 12px; height: 12px; border-radius: 2px; border: 1px solid rgba(0,0,0,0.2); vertical-align: middle; margin-right: 4px; }
+</style>
+</head><body>
+
+<h1>Selection Modes</h1>
+
+<h2>Point Selection Mode</h2>
+<p>Click the <b>Point Selection</b> toolbar button. Individual anchor and control points can be selected, moved, scaled, and rotated.</p>
+
+<h3>Selecting Points &mdash; Two-Step Scoping</h3>
+<ol>
+  <li><b>First click inside a polygon</b> &mdash; <i>scopes</i> that polygon (its outline shows a <span class="chip yellow">yellow dashed border</span>). No points are selected yet.</li>
+  <li><b>Click a visible point</b> inside the scoped polygon &mdash; selects it.</li>
+</ol>
+<p>If you click directly on a point in any polygon, that polygon is automatically scoped and the point selected in one step.</p>
+
+<h3>Additive Selection</h3>
+<p>Hold <kbd>&#8984; Cmd</kbd> while clicking to add points to the current selection without clearing previous ones.</p>
+
+<h3>Point Highlight Colours</h3>
+<table>
+  <tr><th>Colour</th><th>Meaning</th></tr>
+  <tr><td><span class="color-swatch" style="background:#6496ff"></span><span class="chip blue">Blue</span></td><td>Anchor point selected &mdash; Discrete sub-mode</td></tr>
+  <tr><td><span class="color-swatch" style="background:#fff;border:1px solid #888"></span> White</td><td>Control point selected &mdash; Discrete sub-mode</td></tr>
+  <tr><td><span class="color-swatch" style="background:#dc3220"></span><span class="chip red">Red</span></td><td>Anchor point selected &mdash; Relational sub-mode</td></tr>
+  <tr><td><span class="color-swatch" style="background:#ffdc00"></span><span class="chip yellow">Yellow</span></td><td>Control point selected &mdash; Relational sub-mode</td></tr>
+</table>
+
+<h2>Edge Selection Mode</h2>
+<p>Click the <b>Edge Selection</b> toolbar button. A B&eacute;zier segment (the curve between two consecutive anchor points) is treated as a single selectable edge.</p>
+
+<h3>Selecting Edges &mdash; Two-Step Scoping</h3>
+<ol>
+  <li><b>First click inside a polygon</b> &mdash; scopes it (<span class="chip yellow">yellow dashed outline</span>).</li>
+  <li><b>Click within 15 px of a curve</b> inside the scoped polygon &mdash; selects that edge.</li>
+</ol>
+<p>Clicking directly on a curve in any polygon selects it and auto-scopes that polygon.</p>
+
+<h3>Edge Highlight Colours</h3>
+<table>
+  <tr><th>Colour</th><th>Meaning</th></tr>
+  <tr><td><span class="color-swatch" style="background:#0064ff"></span><span class="chip blue">Blue (4 px)</span></td><td>Edge selected &mdash; Discrete sub-mode</td></tr>
+  <tr><td><span class="color-swatch" style="background:#ff8c00"></span><span class="chip orange">Orange (4 px)</span></td><td>Edge selected &mdash; Relational sub-mode</td></tr>
+  <tr><td><span class="color-swatch" style="background:#dc00ff"></span><span class="chip purple">Purple (5 px)</span></td><td>Edge is weldable or live during extrude drag</td></tr>
+</table>
+
+<h3>Operations in Edge Mode</h3>
+<ul>
+  <li><b>Duplicate</b> &mdash; offset copy of the selected edge (20 px).</li>
+  <li><b>Delete</b> &mdash; removes the selected curve from its parent polygon.</li>
+  <li><b>Weld</b> &mdash; merges exactly two selected edges (see Operations tab).</li>
+  <li><b>Extrude</b> &mdash; <kbd>&#8679; Shift</kbd> + drag (see Operations tab).</li>
+</ul>
+
+<h2>Polygon Selection Mode</h2>
+<p>Click the <b>Polygon Selection</b> toolbar button. Entire polygons are selected and can be dragged, scaled, rotated, flipped, welded, duplicated, or deleted as units.</p>
+
+<h3>Selecting Polygons</h3>
+<ul>
+  <li>Click <b>inside</b> a polygon to select it. Its outline is drawn in <span class="chip blue">blue</span> (Discrete) or <span class="chip orange">orange</span> (Relational).</li>
+  <li>Clicking a selected polygon again <b>deselects</b> it.</li>
+  <li>Click <b>empty canvas</b> to clear all selections.</li>
+</ul>
+
+<h3>Drag-to-Weld</h3>
+<p>While dragging in Polygon Selection Mode the editor checks for nearby weldable edges on unselected polygons. When edges meet the proximity and alignment thresholds, they highlight in <span class="chip purple">purple</span>. Release the mouse to snap and weld them.</p>
+
+<h2>Discrete &amp; Relational Sub-modes</h2>
+<table>
+  <tr><th>Sub-mode</th><th>What gets selected</th><th>What moves</th></tr>
+  <tr><td><b>Discrete</b></td><td>Only the directly clicked element</td><td>Only that element &mdash; welded partners stay put</td></tr>
+  <tr><td><b>Relational</b></td><td>Clicked element + all weld-linked elements (transitively)</td><td>All linked elements together &mdash; seams intact</td></tr>
+</table>
+
+<h3>Switching Sub-mode</h3>
+<ul>
+  <li>Hold <kbd>&#8679; Shift</kbd> when clicking a toolbar selection button &rarr; activates in Discrete mode (default is Relational).</li>
+  <li>While a mode is active: tap <kbd>&#8679; Shift</kbd> to toggle between Discrete and Relational. Highlight colours update instantly.</li>
+</ul>
+<div class="note">In Point Relational mode, clicking an anchor also selects its adjacent control points, keeping the curve shape intact during moves.</div>
+
+<h2>Scoping</h2>
+<p>In Point and Edge Selection modes, a <i>scope</i> isolates one polygon so you can click precisely on its points or edges without hitting overlapping polygons.</p>
+<p>The scoped polygon is outlined with a <span class="chip yellow">yellow dashed border (2 px)</span> using an 8/4 dash pattern.</p>
+<ol>
+  <li>Click inside a polygon &rarr; it becomes scoped.</li>
+  <li>Click on a point or edge within the scoped polygon &rarr; it is selected.</li>
+  <li>Click inside a <i>different</i> polygon &rarr; scope moves; prior selection is cleared (unless <kbd>&#8984; Cmd</kbd> held).</li>
+  <li>Click empty canvas &rarr; scope and selection both cleared.</li>
+</ol>
+
+<h2>Marquee (Rubber-Band) Selection</h2>
+<p>Hold <kbd>&#8679; Shift</kbd> and drag on the canvas to draw a selection rectangle.</p>
+<ul>
+  <li><b>Point mode</b> &mdash; selects all visible points whose position falls inside the rectangle.</li>
+  <li><b>Edge mode</b> &mdash; selects all edges whose anchor-midpoint falls inside the rectangle.</li>
+  <li><b>Polygon mode</b> &mdash; selects all polygons whose centroid falls inside the rectangle.</li>
+</ul>
+<div class="note">When edges are already selected in Edge Selection Mode, <kbd>&#8679; Shift</kbd> + drag triggers Extrude instead of the marquee.</div>
+
+</body></html>

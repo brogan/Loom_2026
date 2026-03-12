@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="ISO-8859-1"?>
+<!DOCTYPE polygonSet SYSTEM "../../dtd/polygonSet.dtd">
+<polygonSet>
+    <name>triangle_ish</name>
+    <shapeType>CUBIC_CURVE</shapeType>
+    <polygon>
+        <curve>
+            <point x="0.020000000000000018" y="-0.43"/>
+            <point x="0.21999999999999997" y="-0.18"/>
+            <point x="0.22099999999999997" y="0.17000000000000004"/>
+            <point x="0.42000000000000004" y="0.42000000000000004"/>
+        </curve>
+        <curve>
+            <point x="0.42000000000000004" y="0.42000000000000004"/>
+            <point x="0.21999999999999997" y="0.47"/>
+            <point x="-0.18" y="0.47"/>
+            <point x="-0.38" y="0.42000000000000004"/>
+        </curve>
+        <curve>
+            <point x="-0.38" y="0.42000000000000004"/>
+            <point x="-0.181" y="0.17000000000000004"/>
+            <point x="-0.181" y="-0.18"/>
+            <point x="0.020000000000000018" y="-0.43"/>
+        </curve>
+    </polygon>
+    <scaleX>1.0</scaleX>
+    <scaleY>1.0</scaleY>
+    <rotationAngle>0.0</rotationAngle>
+    <transX>0.5</transX>
+    <transY>0.5</transY>
+</polygonSet>

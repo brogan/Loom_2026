@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="ISO-8859-1"?>
+<!DOCTYPE regularPolygon SYSTEM "../../dtd/regularPolygon.dtd">
+
+<regularPolygon>
+
+	<name>r_square</name>
+	<shapeType>REGULAR_POLYGON</shapeType>
+	<totalPoints>4</totalPoints>
+	<internalRadius>.5</internalRadius>
+	<offset>0</offset>
+	<scaleX>1</scaleX>
+	<scaleY>1</scaleY>
+	<rotationAngle>45</rotationAngle>
+	<transX>.5</transX>
+	<transY>.5</transY>
+
+</regularPolygon>

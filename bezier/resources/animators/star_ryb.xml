@@ -1,0 +1,75 @@
+<?xml version="1.0" encoding="ISO-8859-1"?>
+<!DOCTYPE animator SYSTEM "../dtd/animator.dtd">
+
+<animator>
+
+	<name>star_yrb</name>
+	<keys>
+		<key>
+			<duration>60</duration>
+			<tweenMode>TWEENING</tweenMode>
+			<easeMode>EASEINQUAD</easeMode>
+			<oscillator>none</oscillator>
+			<scaleX>1</scaleX>
+			<scaleY>1</scaleY>
+			<rotationAngle>0</rotationAngle>
+			<rotationOffset>0</rotationOffset>
+			<transX>-2</transX>
+			<transY>2</transY>
+			<renderer>F_blue_10</renderer>
+		</key>
+		<key>
+			<duration>60</duration>
+			<tweenMode>TWEENING</tweenMode>
+			<easeMode>EASEINQUAD</easeMode>
+			<oscillator>none</oscillator>
+			<scaleX>1</scaleX>
+			<scaleY>1</scaleY>
+			<rotationAngle>0</rotationAngle>
+			<rotationOffset>0</rotationOffset>
+			<transX>2.5</transX>
+			<transY>-1</transY>
+			<renderer>F_yell_10</renderer>
+		</key>
+		<key>
+			<duration>60</duration>
+			<tweenMode>TWEENING</tweenMode>
+			<easeMode>EASEINQUAD</easeMode>
+			<oscillator>none</oscillator>
+			<scaleX>1</scaleX>
+			<scaleY>1</scaleY>
+			<rotationAngle>0</rotationAngle>
+			<rotationOffset>0</rotationOffset>
+			<transX>-2.5</transX>
+			<transY>-1</transY>
+			<renderer>F_red_10</renderer>
+		</key>
+		<key>
+			<duration>60</duration>
+			<tweenMode>TWEENING</tweenMode>
+			<easeMode>EASEINQUAD</easeMode>
+			<oscillator>none</oscillator>
+			<scaleX>1</scaleX>
+			<scaleY>1</scaleY>
+			<rotationAngle>0</rotationAngle>
+			<rotationOffset>0</rotationOffset>
+			<transX>2</transX>
+			<transY>2</transY>
+			<renderer>F_blue_10</renderer>
+		</key>
+		<key>
+			<duration>60</duration>
+			<tweenMode>TWEENING</tweenMode>
+			<easeMode>EASEINQUAD</easeMode>
+			<oscillator>none</oscillator>
+			<scaleX>1</scaleX>
+			<scaleY>1</scaleY>
+			<rotationAngle>0</rotationAngle>
+			<rotationOffset>0</rotationOffset>
+			<transX>0</transX>
+			<transY>-2.5</transY>
+			<renderer>F_red_10</renderer>
+		</key>
+	</keys>
+
+</animator>

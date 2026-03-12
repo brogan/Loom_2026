@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="ISO-8859-1"?>
+<!DOCTYPE polygonSet SYSTEM "../../dtd/polygonSet.dtd">
+<polygonSet>
+    <name>Five_Sided</name>
+    <shapeType>CUBIC_CURVE</shapeType>
+    <polygon>
+        <curve>
+            <point x="-0.3" y="0.0"/>
+            <point x="-0.24" y="-0.14"/>
+            <point x="-0.15" y="-0.24"/>
+            <point x="0.0" y="-0.3"/>
+        </curve>
+        <curve>
+            <point x="0.0" y="-0.3"/>
+            <point x="0.15" y="-0.24"/>
+            <point x="0.25" y="-0.14"/>
+            <point x="0.29" y="0.0"/>
+        </curve>
+        <curve>
+            <point x="0.29" y="0.0"/>
+            <point x="0.25" y="0.14"/>
+            <point x="0.22" y="0.18"/>
+            <point x="0.1" y="0.29"/>
+        </curve>
+        <curve>
+            <point x="0.1" y="0.29"/>
+            <point x="0.05" y="0.35"/>
+            <point x="-0.04" y="0.35"/>
+            <point x="-0.1" y="0.29"/>
+        </curve>
+        <curve>
+            <point x="-0.1" y="0.29"/>
+            <point x="-0.22" y="0.18"/>
+            <point x="-0.25" y="0.15"/>
+            <point x="-0.3" y="0.0"/>
+        </curve>
+    </polygon>
+    <scaleX>1.0</scaleX>
+    <scaleY>1.0</scaleY>
+    <rotationAngle>0.0</rotationAngle>
+    <transX>0.5</transX>
+    <transY>0.5</transY>
+</polygonSet>

@@ -1,0 +1,5 @@
+#!/bin/bash
+# Bezier Application Launcher - Runs without Terminal window
+
+cd /Users/broganbunt/Loom_2026/bezier
+nohup java -Xmx4G -jar out/artifacts/Bezier_jar/Bezier.jar &>/dev/null &

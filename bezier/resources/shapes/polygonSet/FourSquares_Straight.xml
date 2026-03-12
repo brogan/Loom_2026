@@ -1,0 +1,115 @@
+<?xml version="1.0" encoding="ISO-8859-1"?>
+<!DOCTYPE polygonSet SYSTEM "../../dtd/polygonSet.dtd">
+<polygonSet>
+    <name>FourSquares_Straight</name>
+    <shapeType>CUBIC_CURVE</shapeType>
+    <polygon>
+        <curve>
+            <point x="-0.3" y="-0.3"/>
+            <point x="-0.2" y="-0.3"/>
+            <point x="-0.1" y="-0.3"/>
+            <point x="0.0" y="-0.3"/>
+        </curve>
+        <curve>
+            <point x="0.0" y="-0.3"/>
+            <point x="0.0" y="-0.2"/>
+            <point x="0.0" y="-0.1"/>
+            <point x="0.0" y="0.0"/>
+        </curve>
+        <curve>
+            <point x="0.0" y="0.0"/>
+            <point x="-0.1" y="0.0"/>
+            <point x="-0.2" y="0.0"/>
+            <point x="-0.3" y="0.0"/>
+        </curve>
+        <curve>
+            <point x="-0.3" y="0.0"/>
+            <point x="-0.3" y="-0.1"/>
+            <point x="-0.3" y="-0.2"/>
+            <point x="-0.3" y="-0.3"/>
+        </curve>
+    </polygon>
+    <polygon>
+        <curve>
+            <point x="0.01" y="-0.3"/>
+            <point x="0.1" y="-0.3"/>
+            <point x="0.2" y="-0.3"/>
+            <point x="0.29" y="-0.3"/>
+        </curve>
+        <curve>
+            <point x="0.29" y="-0.3"/>
+            <point x="0.29" y="-0.2"/>
+            <point x="0.29" y="-0.1"/>
+            <point x="0.29" y="0.0"/>
+        </curve>
+        <curve>
+            <point x="0.29" y="0.0"/>
+            <point x="0.2" y="0.0"/>
+            <point x="0.1" y="0.0"/>
+            <point x="0.01" y="0.0"/>
+        </curve>
+        <curve>
+            <point x="0.01" y="0.0"/>
+            <point x="0.01" y="-0.1"/>
+            <point x="0.01" y="-0.2"/>
+            <point x="0.01" y="-0.3"/>
+        </curve>
+    </polygon>
+    <polygon>
+        <curve>
+            <point x="-0.3" y="0.01"/>
+            <point x="-0.2" y="0.01"/>
+            <point x="-0.1" y="0.01"/>
+            <point x="0.0" y="0.01"/>
+        </curve>
+        <curve>
+            <point x="0.0" y="0.01"/>
+            <point x="0.0" y="0.1"/>
+            <point x="0.0" y="0.2"/>
+            <point x="0.0" y="0.29"/>
+        </curve>
+        <curve>
+            <point x="0.0" y="0.29"/>
+            <point x="-0.1" y="0.29"/>
+            <point x="-0.2" y="0.29"/>
+            <point x="-0.3" y="0.29"/>
+        </curve>
+        <curve>
+            <point x="-0.3" y="0.29"/>
+            <point x="-0.3" y="0.2"/>
+            <point x="-0.3" y="0.1"/>
+            <point x="-0.3" y="0.01"/>
+        </curve>
+    </polygon>
+    <polygon>
+        <curve>
+            <point x="0.01" y="0.01"/>
+            <point x="0.1" y="0.01"/>
+            <point x="0.2" y="0.01"/>
+            <point x="0.29" y="0.01"/>
+        </curve>
+        <curve>
+            <point x="0.29" y="0.01"/>
+            <point x="0.29" y="0.1"/>
+            <point x="0.29" y="0.2"/>
+            <point x="0.29" y="0.29"/>
+        </curve>
+        <curve>
+            <point x="0.29" y="0.29"/>
+            <point x="0.2" y="0.29"/>
+            <point x="0.1" y="0.29"/>
+            <point x="0.01" y="0.29"/>
+        </curve>
+        <curve>
+            <point x="0.01" y="0.29"/>
+            <point x="0.01" y="0.2"/>
+            <point x="0.01" y="0.1"/>
+            <point x="0.01" y="0.01"/>
+        </curve>
+    </polygon>
+    <scaleX>1.0</scaleX>
+    <scaleY>1.0</scaleY>
+    <rotationAngle>0.0</rotationAngle>
+    <transX>0.5</transX>
+    <transY>0.5</transY>
+</polygonSet>

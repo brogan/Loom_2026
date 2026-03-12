@@ -1,0 +1,83 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><title>Overview &amp; Interface</title>
+<style>
+  body { font-family: Arial, sans-serif; font-size: 13px; color: #222; background: #fafafa; margin: 0; padding: 20px 28px 40px; }
+  h1 { font-size: 21px; font-weight: bold; color: #1a1a2e; border-bottom: 2px solid #e0e4f0; padding-bottom: 10px; margin-top: 0; }
+  h2 { font-size: 16px; font-weight: bold; color: #1a1a2e; margin-top: 28px; border-bottom: 1px solid #e0e4f0; padding-bottom: 5px; }
+  h3 { font-size: 13px; font-weight: bold; color: #2c3060; margin-top: 18px; margin-bottom: 4px; }
+  h4 { font-size: 13px; font-weight: bold; color: #444; margin-top: 12px; margin-bottom: 3px; }
+  p { line-height: 1.6; margin: 7px 0; }
+  ul, ol { margin: 5px 0; padding-left: 20px; line-height: 1.65; }
+  li { margin-bottom: 2px; }
+  .note { background: #eef4ff; border-left: 4px solid #5b9cf6; padding: 9px 12px; margin: 12px 0; font-size: 12px; }
+  .warn { background: #fff8e6; border-left: 4px solid #f0a500; padding: 9px 12px; margin: 12px 0; font-size: 12px; }
+  table { border-collapse: collapse; width: 100%; margin: 10px 0; font-size: 12px; }
+  th { background: #f0f2f8; text-align: left; padding: 7px 10px; border: 1px solid #d8dce8; font-weight: bold; color: #333; }
+  td { padding: 6px 10px; border: 1px solid #e4e7f0; vertical-align: top; }
+  tr:nth-child(even) td { background: #f7f8fc; }
+  kbd { background: #eef; border: 1px solid #aac; border-radius: 3px; padding: 1px 5px; font-family: monospace; font-size: 11px; }
+  code { font-family: monospace; background: #eef; padding: 0 4px; border-radius: 3px; font-size: 11px; }
+  .chip { display: inline-block; background: #e8ecff; color: #3050b0; border-radius: 10px; padding: 1px 8px; font-size: 11px; font-weight: bold; margin: 1px 2px; }
+  .chip.orange { background: #fff0e0; color: #b05000; }
+  .chip.purple { background: #f5e8ff; color: #7020a0; }
+  .chip.yellow { background: #fdf8e0; color: #807000; }
+  .chip.blue   { background: #e0f0ff; color: #0050a0; }
+  .chip.red    { background: #ffe8e8; color: #a00020; }
+  .color-swatch { display: inline-block; width: 12px; height: 12px; border-radius: 2px; border: 1px solid rgba(0,0,0,0.2); vertical-align: middle; margin-right: 4px; }
+</style>
+</head><body>
+
+<h1>Bezier Editor</h1>
+<p>The Bezier Editor is a tool for creating and editing collections of closed cubic B&eacute;zier-curve polygons. Each polygon is built from one or more connected cubic B&eacute;zier segments. Finished polygon sets are saved as XML files that can be loaded directly into the Loom drawing engine.</p>
+<p>Polygons can be freely transformed, welded together at shared edges, and extruded to build up complex multi-polygon shapes. The Weld Registry keeps track of which anchor points are linked across polygons so that Relational operations move welded neighbours together automatically.</p>
+
+<h2>Interface Layout</h2>
+
+<h3>Toolbar (top)</h3>
+<table>
+  <tr><th>Group</th><th>Buttons</th></tr>
+  <tr><td>Selection modes</td><td>Point Selection &middot; Edge Selection &middot; Polygon Selection</td></tr>
+  <tr><td>Creation</td><td>Create Polygon &middot; Close Polygon</td></tr>
+  <tr><td>Editing</td><td>Duplicate &middot; Flip Horizontal &middot; Flip Vertical &middot; Weld</td></tr>
+  <tr><td>Snapping</td><td>Snap Anchors &middot; Snap Anchors &amp; Controls &middot; Centre</td></tr>
+  <tr><td>Zoom</td><td>Zoom In &middot; Zoom Out</td></tr>
+  <tr><td>View</td><td>Toggle Grid &middot; Toggle Control Points &middot; Toggle Reference Image</td></tr>
+  <tr><td>Destructive</td><td>Clear All Geometry &middot; Delete Selected</td></tr>
+</table>
+
+<h3>Top Panel (below toolbar)</h3>
+<ul>
+  <li><b>Load File / Save Polygons</b> &mdash; browse for an existing XML polygon set or type a name and click <i>Save</i> to write one.</li>
+  <li><b>SVG</b> &mdash; Import SVG button (see SVG tab).</li>
+  <li><b>Reference Image</b> &mdash; browse for a background image to trace over.</li>
+</ul>
+
+<h3>Canvas (centre)</h3>
+<p>The drawing grid is 1000&times;1000 user units displayed on a 1040&times;1040 pixel panel (20 px border on each side). The grid has 10&times;10 major divisions. Click and drag directly in the canvas to create and edit polygons.</p>
+
+<h3>Edit &amp; Transform Panels (below canvas)</h3>
+<ul>
+  <li><b>Scale Axis</b> &mdash; choose whether the Scale slider affects XY, X-only, or Y-only.</li>
+  <li><b>Rotation Axis</b> &mdash; choose the pivot for the Rotate slider: Local (each polygon's own centre), Common (shared centroid of selection), or Absolute (canvas centre).</li>
+  <li><b>Scale slider</b> &mdash; drag to scale; release to commit and reset to zero.</li>
+  <li><b>Rotation slider</b> &mdash; drag to rotate (maps &plusmn;100 &rarr; &plusmn;180&deg;); release to commit and reset.</li>
+</ul>
+
+<h2>Drawing Polygons</h2>
+
+<h3>Entering Create Mode</h3>
+<p>Click the <b>Create Polygon</b> toolbar button (toggle). The cursor enters drawing mode for a new polygon.</p>
+
+<h3>Placing Points</h3>
+<p>Each click on the canvas places an <i>anchor point</i>. After the first two anchors the editor automatically creates smooth cubic B&eacute;zier control points between them. Continue clicking to add more segments to the current polygon.</p>
+
+<h3>Closing a Polygon</h3>
+<p>Click the <b>Close Polygon</b> button. The editor:</p>
+<ol>
+  <li>Connects the last anchor back to the first, forming a closed loop.</li>
+  <li>Records the polygon's centroid.</li>
+  <li>Starts a fresh empty polygon manager for the next shape.</li>
+  <li>Automatically switches to Polygon Selection Mode.</li>
+</ol>
+<div class="note">Every polygon in the Bezier Editor is a <b>closed</b> cubic B&eacute;zier path. Open paths are used internally for single-edge elements (connectors from extrude) but are not standalone shapes.</div>
+
+</body></html>

@@ -1,0 +1,1137 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Loom Parameter Editor - User Guide</title>
+    <style>
+        :root {
+            --primary-color: #2c3e50;
+            --secondary-color: #3498db;
+            --accent-color: #e74c3c;
+            --bg-color: #ecf0f1;
+            --text-color: #2c3e50;
+            --code-bg: #f8f9fa;
+            --border-color: #bdc3c7;
+        }
+        * { box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            line-height: 1.65;
+            color: var(--text-color);
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #fff;
+        }
+        header {
+            background: linear-gradient(135deg, var(--primary-color), var(--secondary-color));
+            color: white;
+            padding: 40px;
+            border-radius: 8px;
+            margin-bottom: 30px;
+        }
+        header h1 { margin: 0 0 10px 0; font-size: 2.5em; }
+        header p { margin: 0; opacity: 0.9; font-size: 1.1em; }
+        nav {
+            background: var(--bg-color);
+            padding: 20px;
+            border-radius: 8px;
+            margin-bottom: 30px;
+        }
+        nav h2 { margin-top: 0; color: var(--primary-color); }
+        nav ul { list-style: none; padding: 0; margin: 0; display: flex; flex-wrap: wrap; gap: 8px; }
+        nav ul li a {
+            display: inline-block;
+            padding: 6px 14px;
+            background: white;
+            color: var(--secondary-color);
+            text-decoration: none;
+            border-radius: 4px;
+            border: 1px solid var(--border-color);
+            font-size: 0.9em;
+            transition: all 0.2s;
+        }
+        nav ul li a:hover { background: var(--secondary-color); color: white; }
+        section {
+            background: white;
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            padding: 30px;
+            margin-bottom: 30px;
+        }
+        h2 { color: var(--primary-color); border-bottom: 3px solid var(--secondary-color); padding-bottom: 10px; margin-top: 0; }
+        h3 { color: var(--secondary-color); margin-top: 28px; }
+        h4 { color: var(--primary-color); margin-top: 20px; }
+        table { width: 100%; border-collapse: collapse; margin: 15px 0; font-size: 0.95em; }
+        th, td { padding: 10px 12px; text-align: left; border: 1px solid var(--border-color); vertical-align: top; }
+        th { background: var(--bg-color); font-weight: 600; color: var(--primary-color); }
+        tr:nth-child(even) { background: #f8f9fa; }
+        code {
+            background: var(--code-bg);
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-family: 'Monaco', 'Menlo', monospace;
+            font-size: 0.88em;
+            color: var(--accent-color);
+        }
+        pre {
+            background: var(--code-bg);
+            padding: 15px;
+            border-radius: 6px;
+            overflow-x: auto;
+            border: 1px solid var(--border-color);
+            font-size: 0.88em;
+            line-height: 1.5;
+        }
+        pre code { padding: 0; background: none; }
+        .tip { background: #d5f5e3; border-left: 4px solid #27ae60; padding: 14px; margin: 15px 0; border-radius: 0 6px 6px 0; }
+        .tip::before { content: "Tip: "; font-weight: bold; color: #27ae60; }
+        .warning { background: #fdebd0; border-left: 4px solid #f39c12; padding: 14px; margin: 15px 0; border-radius: 0 6px 6px 0; }
+        .warning::before { content: "Note: "; font-weight: bold; color: #f39c12; }
+        .info { background: #d6eaf8; border-left: 4px solid #3498db; padding: 14px; margin: 15px 0; border-radius: 0 6px 6px 0; }
+        .info::before { content: "Info: "; font-weight: bold; color: #3498db; }
+        .notimpl { background: #fde8e8; border-left: 4px solid #e74c3c; padding: 14px; margin: 15px 0; border-radius: 0 6px 6px 0; }
+        .notimpl::before { content: "Not Yet Implemented: "; font-weight: bold; color: #e74c3c; }
+        ul, ol { padding-left: 25px; }
+        li { margin-bottom: 7px; }
+        .back-to-top { display: inline-block; margin-top: 20px; color: var(--secondary-color); text-decoration: none; font-size: 0.9em; }
+        .back-to-top:hover { text-decoration: underline; }
+        footer { text-align: center; padding: 20px; color: #7f8c8d; border-top: 1px solid var(--border-color); margin-top: 30px; }
+        .flow-diagram {
+            background: var(--bg-color); border: 1px solid var(--border-color); border-radius: 8px;
+            padding: 20px; margin: 15px 0; font-family: 'Monaco', 'Menlo', monospace;
+            font-size: 0.9em; line-height: 2; text-align: center;
+        }
+        .flow-diagram .stage {
+            display: inline-block; background: white; border: 2px solid var(--secondary-color);
+            border-radius: 6px; padding: 5px 12px; margin: 3px;
+        }
+        .flow-diagram .arrow { color: var(--secondary-color); font-weight: bold; padding: 0 4px; }
+        .step-list { counter-reset: step-counter; list-style: none; padding-left: 0; }
+        .step-list li {
+            counter-increment: step-counter; padding: 12px 12px 12px 50px; position: relative;
+            margin-bottom: 10px; background: #f8f9fa; border-radius: 6px; border-left: 3px solid var(--secondary-color);
+        }
+        .step-list li::before {
+            content: counter(step-counter); position: absolute; left: 12px; top: 12px;
+            background: var(--secondary-color); color: white; width: 26px; height: 26px;
+            border-radius: 50%; text-align: center; line-height: 26px; font-weight: bold; font-size: 0.85em;
+        }
+        .cols2 { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin: 10px 0; }
+        @media (max-width: 700px) { .cols2 { grid-template-columns: 1fr; } }
+        .tag { display: inline-block; background: var(--secondary-color); color: white; font-size: 0.75em; padding: 2px 7px; border-radius: 10px; vertical-align: middle; margin-left: 4px; }
+        .tag-new { background: #27ae60; }
+        .tag-warn { background: #e74c3c; }
+    </style>
+</head>
+<body>
+<header>
+    <h1>Loom Parameter Editor</h1>
+    <p>Complete User Guide &amp; Configuration Reference &mdash; Updated February 2026</p>
+</header>
+
+<nav>
+    <h2>Contents</h2>
+    <ul>
+        <li><a href="#overview">Overview</a></li>
+        <li><a href="#getting-started">Getting Started</a></li>
+        <li><a href="#concepts">Key Concepts</a></li>
+        <li><a href="#coordinate-system">Coordinate System</a></li>
+        <li><a href="#global-config">Global Config</a></li>
+        <li><a href="#polygons">Polygons</a></li>
+        <li><a href="#subdivision">Subdivision</a></li>
+        <li><a href="#shapes">Shapes</a></li>
+        <li><a href="#sprites">Sprites</a></li>
+        <li><a href="#animation">Animation</a></li>
+        <li><a href="#morph">Morph Animation</a></li>
+        <li><a href="#rendering">Rendering</a></li>
+        <li><a href="#brushed">Brush Renderer</a></li>
+        <li><a href="#run-tab">Run Tab</a></li>
+        <li><a href="#file-management">File Management</a></li>
+    </ul>
+</nav>
+
+<!-- ============================================================ OVERVIEW -->
+<section id="overview">
+<h2>Overview</h2>
+<p>Loom is a Scala-based drawing engine that generates complex visual patterns through <strong>recursive polygonal subdivision</strong>. Starting from simple 2D shapes — triangles, squares, or custom bezier curves — Loom subdivides them into hundreds or thousands of smaller polygons, applies geometric transforms at multiple levels, and renders the results as high-resolution stills or animations.</p>
+
+<p>The <strong>Loom Parameter Editor</strong> provides a graphical interface for configuring all aspects of the engine. Instead of editing XML by hand, you define polygons, subdivision rules, rendering styles, and animation parameters through tabbed panels, then launch Loom directly from the editor.</p>
+
+<h3>What Loom Produces</h3>
+<ul>
+    <li>Complex geometric tessellations from simple polygon subdivision</li>
+    <li>Organic, distorted forms through point-level transforms (tearing, spiking, curving)</li>
+    <li>High-resolution stills suitable for large-format printing (via the quality multiplier)</li>
+    <li>Animations where shapes rotate, scale, morph, and shift over time</li>
+    <li>Layered compositions with multiple sprites at different positions and rendering styles</li>
+    <li>Brush-stroke textures that stamp along polygon edges <span class="tag tag-new">New</span></li>
+    <li>Morph animations that smoothly blend between different polygon shapes <span class="tag tag-new">New</span></li>
+</ul>
+
+<h3>Architecture: Six Configuration Domains</h3>
+<div class="flow-diagram">
+    <span class="stage">Polygons</span>
+    <span class="arrow">+</span>
+    <span class="stage">Subdivision Params</span>
+    <span class="arrow">&rarr;</span>
+    <span class="stage">Shapes</span>
+    <br>
+    <span class="stage">Shapes</span>
+    <span class="arrow">+</span>
+    <span class="stage">Renderers</span>
+    <span class="arrow">+</span>
+    <span class="stage">Position &amp; Animation</span>
+    <span class="arrow">&rarr;</span>
+    <span class="stage">Sprites</span>
+    <br>
+    <span class="stage">Sprites</span>
+    <span class="arrow">+</span>
+    <span class="stage">Global Config</span>
+    <span class="arrow">&rarr;</span>
+    <span class="stage">Canvas Output</span>
+</div>
+
+<div class="info">Each domain is stored in its own XML file within the project directory. The Scala engine reads all files at startup (or on reload) and renders accordingly.</div>
+
+<a href="#" class="back-to-top">Back to top</a>
+</section>
+
+<!-- ============================================================ GETTING STARTED -->
+<section id="getting-started">
+<h2>Getting Started</h2>
+
+<h3>Prerequisites</h3>
+<ul>
+    <li><strong>Java JDK 11+</strong> installed and on your PATH</li>
+    <li><strong>Scala / SBT</strong> installed and on your PATH</li>
+    <li><strong>Python 3.10+</strong> with <strong>PyQt6</strong> for the parameter editor</li>
+    <li><strong>Bezier Draw</strong> (optional) — a companion Java application for drawing custom spline polygon sets</li>
+</ul>
+
+<h3>Creating a New Project</h3>
+<ol class="step-list">
+    <li>Launch the editor. Select <strong>File &gt; New Project</strong> (<code>Cmd+N</code>).</li>
+    <li>Enter a project name and choose a parent directory (default: <code>~/.loom_projects</code>). The default projects directory can be changed in the Global Config tab under <em>Project Directory</em>.</li>
+    <li>Click OK. The project folder and all sub-directories are created, and all tabs populate with defaults.</li>
+</ol>
+
+<h3>Project Directory Structure</h3>
+<pre>
+YourProject/
+├── project.xml                 # Editor manifest (not read by Scala)
+├── configuration/
+│   ├── global_config.xml       # Canvas, colours, quality settings
+│   ├── polygons.xml            # Polygon definitions
+│   ├── subdivision.xml         # Subdivision parameter sets
+│   ├── shapes.xml              # Shape configurations
+│   ├── sprites.xml             # Sprite definitions
+│   └── rendering.xml           # Renderer sets and renderers
+├── polygonSets/                # Spline polygon XML files (from Bezier Draw)
+├── regularPolygons/            # Saved regular polygon definitions
+├── morphTargets/               # Morph target polygon set files
+├── brushes/                    # Greyscale brush PNG images
+├── background_image/           # Background image files
+└── renders/
+    ├── stills/                 # Captured still PNGs
+    └── animations/             # Captured animation frame sequences
+</pre>
+
+<h3>Typical Workflow</h3>
+<ol class="step-list">
+    <li><strong>Configure the canvas</strong> (Global tab) — Set width, height, background colour, background image.</li>
+    <li><strong>Define base polygons</strong> (Polygons tab) — Create a regular polygon or import spline sets from Bezier Draw.</li>
+    <li><strong>Set up subdivision</strong> (Subdivision tab) — Create a Params Set with one or more stages. Each stage = one recursion level. 3–5 stages typically yields good complexity.</li>
+    <li><strong>Compose shapes</strong> (Shapes tab) — Pair a polygon set with a subdivision params set.</li>
+    <li><strong>Define renderers</strong> (Rendering tab) — Set stroke, fill, colour, and dynamic change behaviour. For brush textures, choose the BRUSHED mode and configure the brush library.</li>
+    <li><strong>Create sprites</strong> (Sprites tab) — Position shapes on the canvas, set size, assign a renderer set, and configure animation.</li>
+    <li><strong>Configure drawing settings</strong> (Run tab) — Set quality multiple, animating toggle, draw background once.</li>
+    <li><strong>Run Loom</strong> (<code>Cmd+L</code>) — The engine launches and renders. Use <code>Cmd+R</code> to reload after parameter changes.</li>
+    <li><strong>Capture output</strong> — Use the Run tab's Save Still / Save Animation buttons.</li>
+</ol>
+
+<div class="tip">Start with a single square polygon, 2–3 stages of QUAD subdivision, and a basic stroked renderer. This gives immediate visible output. Add transforms and complexity incrementally.</div>
+
+<h3>High-Resolution Stills</h3>
+<p>For print-quality output, set <strong>Quality Multiple</strong> (Run tab) to 4–12. This multiplies the canvas pixel dimensions. When the quality multiple is greater than 1, the on-screen display shows a scaled-down preview of the full high-resolution canvas; the saved PNG captures the full resolution.</p>
+
+<div class="warning">At high quality multiples, stroke widths do <em>not</em> automatically scale unless <strong>Scale Image</strong> is enabled. Always enable Scale Image when rendering for print.</div>
+
+<h3>Animations</h3>
+<ol>
+    <li>Enable <strong>Animating</strong> (Run tab).</li>
+    <li>Configure sprite animation (Sprites tab → Animation panel).</li>
+    <li>Choose <strong>Draw Background Once</strong> behaviour: enabled = trail/layering effect; disabled = clean each frame.</li>
+    <li>Click <strong>Save Animation</strong> to start recording frames to <code>renders/animations/</code>.</li>
+</ol>
+
+<a href="#" class="back-to-top">Back to top</a>
+</section>
+
+<!-- ============================================================ KEY CONCEPTS -->
+<section id="concepts">
+<h2>Key Concepts</h2>
+
+<h3>Spline Polygons</h3>
+<p>Loom works primarily with <strong>cubic bezier spline polygons</strong>. Each side of a polygon is a bezier curve defined by four points:</p>
+<ul>
+    <li><strong>Anchor points</strong> (start and end of the curve) — the actual vertices of the polygon</li>
+    <li><strong>Control points</strong> (two per side) — invisible handles that shape the curve</li>
+</ul>
+<p>A square has 4 sides and therefore 16 points total (4 × 4). An N-sided polygon has 4N points. This structure matters because subdivision and transforms operate on these specific point types separately.</p>
+
+<h3>Recursive Subdivision</h3>
+<p>Each <em>stage</em> in a Params Set takes every polygon and divides it into sub-polygons. The process repeats: stage 2 subdivides the output of stage 1, and so on.</p>
+<ul>
+    <li>A square with 3 stages of QUAD subdivision → 4<sup>3</sup> = 64 polygons (4 per side, each stage)</li>
+    <li>A square with 5 stages of QUAD → 1024 polygons</li>
+    <li>A triangle with 3 stages of TRI → 3<sup>3</sup> = 27 polygons</li>
+    <li>SPLIT modes produce 2 polygons per stage: 3 SPLIT stages → 2<sup>3</sup> = 8 polygons</li>
+</ul>
+<p>Each stage can use a <em>different subdivision type</em> with its own parameters. You might use QUAD for stage 1, then SPLIT_VERT for stage 2, then apply spiking transforms in stage 3.</p>
+
+<h3>Transforms at Multiple Levels</h3>
+<p>Loom applies transforms at three distinct levels:</p>
+<ol>
+    <li><strong>Inset transform</strong> — Scales/rotates the entire subdivision result relative to the parent polygon centre, creating gaps or overlaps between levels.</li>
+    <li><strong>Whole polygon transforms (PTW)</strong> — Randomly translate, scale, or rotate selected sub-polygons as units, controlled by probability.</li>
+    <li><strong>Point-level transforms</strong> — Manipulate specific subsets of points (exterior anchors, central anchors, control points) within each sub-polygon. These create organic distortion effects like spiking, tearing, and curving.</li>
+</ol>
+
+<h3>Shapes vs Sprites</h3>
+<p><strong>Shapes</strong> are abstract blueprints: a polygon set + subdivision rules. The same shape can be used by multiple sprites.</p>
+<p><strong>Sprites</strong> are concrete instances: a shape placed at a specific position on the canvas, with a size, rotation, animation behaviour, and visual renderer. You can have many sprites sharing one shape, each appearing differently.</p>
+
+<h3>Animation Modes</h3>
+<p>Sprites support three mutually exclusive animation approaches:</p>
+<ul>
+    <li><strong>Random (Jitter)</strong> — Each frame applies random perturbations to scale, rotation, and position within configurable ranges. Creates organic, continuous motion.</li>
+    <li><strong>Keyframe</strong> — Interpolates between explicitly defined keyframe states (position, scale, rotation) using one of 41 easing algorithms. Creates precise, controllable animation.</li>
+    <li><strong>Morph</strong> — Blends the polygon vertices between the base shape and a morph target shape. Comes in jitter-morph (random amount each frame) and keyframe-morph (eased over keyframes) variants.</li>
+</ul>
+
+<a href="#" class="back-to-top">Back to top</a>
+</section>
+
+<!-- ============================================================ COORDINATE SYSTEM -->
+<section id="coordinate-system">
+<h2>Coordinate System and Units</h2>
+<p>Loom uses different units in different contexts. Understanding these prevents confusing results when setting parameter values.</p>
+
+<h3>Canvas Dimensions</h3>
+<table>
+    <tr><th>Setting</th><th>Unit</th><th>Example</th></tr>
+    <tr><td>Canvas Width / Height</td><td>Pixels (at quality 1×)</td><td>1080 × 1080 px</td></tr>
+    <tr><td>Quality Multiple</td><td>Integer multiplier</td><td>Quality 4 → 4320 × 4320 px output</td></tr>
+    <tr><td>Stroke Width</td><td>Pixels (scaled by quality if Scale Image enabled)</td><td>2 = 2px at quality 1; 8px at quality 4</td></tr>
+    <tr><td>Point Size</td><td>Pixels</td><td>4 = 4px diameter dots</td></tr>
+    <tr><td>Brush Size</td><td>Pixels</td><td>30 = 30px brush stamp width</td></tr>
+    <tr><td>Brush Spacing</td><td>Pixels</td><td>20 = new stamp every 20px along edge</td></tr>
+</table>
+
+<h3>Polygon Coordinates</h3>
+<p>Polygon sets use <strong>normalised coordinates</strong>, typically in the range −0.4 to +0.4 centred on the origin (0, 0). Loom's internal coordinate system has (0,0) at centre, with +Y going downward on screen. The polygon is scaled to screen space when a sprite is created using the <em>Size Factor</em>.</p>
+<table>
+    <tr><th>Setting</th><th>Unit</th><th>Example</th></tr>
+    <tr><td>Polygon vertex coordinates</td><td>Normalised (typically −0.5 to +0.5)</td><td>A square: corners at (±0.4, ±0.4)</td></tr>
+    <tr><td>Line Ratios X/Y</td><td>0.0–1.0 (fraction along side)</td><td>0.5 = midpoint; 0.25 = one-quarter along</td></tr>
+    <tr><td>Control Point Ratios X/Y</td><td>0.0–1.0</td><td>0.25/0.75 = standard smooth bezier</td></tr>
+    <tr><td>Inset Scale X/Y</td><td>Multiplier</td><td>0.5 = half the parent size; 0.8 = close to full size</td></tr>
+    <tr><td>Spike Factor</td><td>Fraction of distance to centre</td><td>−0.3 = spike 30% outward; +0.3 = move 30% toward centre</td></tr>
+</table>
+
+<h3>Sprite Coordinates</h3>
+<table>
+    <tr><th>Setting</th><th>Unit</th><th>Example</th></tr>
+    <tr><td>Location X / Y</td><td>Percentage of canvas half-width (−100 to +100)</td><td>0/0 = centre; 50/0 = right of centre by 50% of half-width</td></tr>
+    <tr><td>Size Factor</td><td>Multiplier (1.0 = fills canvas)</td><td>0.5 = half canvas; 1.5 = larger than canvas</td></tr>
+    <tr><td>Start Rotation</td><td>Degrees</td><td>45 = 45° clockwise</td></tr>
+    <tr><td>Rotation Offset X/Y</td><td>Same as Location (percentage)</td><td>Shifts the pivot point of rotation</td></tr>
+</table>
+
+<h3>Animation Coordinates</h3>
+<table>
+    <tr><th>Setting</th><th>Unit</th><th>Example</th></tr>
+    <tr><td>Rotation Factor</td><td>Degrees per frame</td><td>1.0 = one full revolution every 360 frames</td></tr>
+    <tr><td>Scale Factor</td><td>Multiplier per frame</td><td>1.002 = grows by 0.2% each frame; 0.999 = shrinks</td></tr>
+    <tr><td>Speed Factor X/Y</td><td>Same units as Location, per frame</td><td>0.1 = moves 0.1% of half-canvas per frame</td></tr>
+    <tr><td>Keyframe Draw Cycle</td><td>Integer frame number (0, 1, 2…)</td><td>Keyframe at cycle 60 fires after 60 animation frames</td></tr>
+    <tr><td>Keyframe Position X/Y</td><td>Same as Sprite Location</td><td>Delta from previous keyframe position</td></tr>
+    <tr><td>Keyframe Scale X/Y</td><td>Multiplier (applied as delta)</td><td>1.0 = no change from current; 2.0 = double current</td></tr>
+    <tr><td>Keyframe Rotation</td><td>Degrees (total accumulated rotation to reach)</td><td>90 = rotate 90° from previous keyframe</td></tr>
+    <tr><td>Morph Amount</td><td>0.0–1.0 (fraction of morph applied)</td><td>0 = base shape; 1.0 = fully morphed target</td></tr>
+</table>
+
+<a href="#" class="back-to-top">Back to top</a>
+</section>
+
+<!-- ============================================================ GLOBAL CONFIG -->
+<section id="global-config">
+<h2>Global Config Tab</h2>
+<p>Controls application-wide settings for the canvas, colours, and project management. Note: <em>quality, animating, and draw background settings</em> have moved to the <strong>Run tab</strong> for cleaner separation of runtime concerns.</p>
+
+<h3>Project</h3>
+<table>
+    <tr><th>Parameter</th><th>Description</th></tr>
+    <tr><td><code>Name</code></td><td>The project name. Used as the project identifier and when saving.</td></tr>
+</table>
+
+<h3>Canvas Settings</h3>
+<table>
+    <tr><th>Parameter</th><th>Unit</th><th>Description</th><th>Typical Values</th></tr>
+    <tr><td><code>Width</code></td><td>Pixels</td><td>Canvas width at quality 1×. The actual rendered pixel width = Width × Quality Multiple.</td><td>800–3840</td></tr>
+    <tr><td><code>Height</code></td><td>Pixels</td><td>Canvas height at quality 1×.</td><td>600–2160</td></tr>
+</table>
+
+<h3>Display</h3>
+<table>
+    <tr><th>Parameter</th><th>Description</th></tr>
+    <tr><td><code>Fullscreen</code></td><td>Launch Loom in fullscreen mode.</td></tr>
+    <tr><td><code>Background Color</code></td><td>RGBA colour for the canvas background. The alpha channel controls transparency; fully opaque (alpha=255) is typical. Example: black (0,0,0,255) or off-white (245,245,240,255).</td></tr>
+    <tr><td><code>Border Color</code></td><td>RGBA colour for the window border area (outside the canvas).</td></tr>
+    <tr><td><code>Overlay Color</code></td><td>RGBA colour for the overlay rectangle drawn each animation frame <em>before</em> the shape is drawn. A semi-transparent overlay (e.g. alpha=20) partially obscures previous frames, creating a fading trail effect. Set alpha=0 to disable the overlay.</td></tr>
+    <tr><td><code>Background Image</code></td><td>Path to a PNG or JPG file used as the canvas background instead of the background colour. Use the <em>Background Image…</em> button to browse. The output size hint shows the rendered pixel dimensions (canvas size × quality) so you can prepare source images at the correct resolution. Leave blank to use the background colour.</td></tr>
+</table>
+
+<div class="info">The background image is scaled to fit the rendered canvas exactly. Prepare images at the full render resolution (Width × Quality) for sharpest results. For example, a 1080×1080 canvas at quality 4 needs a 4320×4320 source image.</div>
+
+<h3>Subdivision Master Switch</h3>
+<table>
+    <tr><th>Parameter</th><th>Description</th></tr>
+    <tr><td><code>Enable Subdivision</code></td><td>Global on/off for subdivision. When off, shapes render as their raw base polygons with no subdivision applied. Useful for quickly previewing base polygon geometry.</td></tr>
+</table>
+
+<h3>Project Directory</h3>
+<table>
+    <tr><th>Parameter</th><th>Description</th></tr>
+    <tr><td><code>Directory</code></td><td>The default parent directory for new projects. Click <em>Change…</em> to browse. This setting is persisted in <code>~/.loom_projects/.loom_editor_settings.json</code> and remembered across sessions. The New Project dialog defaults to this location.</td></tr>
+</table>
+
+<h3>3D Settings</h3>
+<div class="notimpl">3D rendering is defined in the configuration but is not fully implemented in the current Scala engine. Setting Enable 3D or 3D shape types in the Shapes tab will have no visible effect.</div>
+
+<a href="#" class="back-to-top">Back to top</a>
+</section>
+
+<!-- ============================================================ POLYGONS -->
+<section id="polygons">
+<h2>Polygons Tab</h2>
+<p>The Polygons tab defines the base polygon shapes used throughout the system. These are the raw geometric forms that subdivision acts upon. Two types are supported: <strong>spline polygon sets</strong> (drawn in Bezier Draw) and <strong>regular polygons</strong> generated mathematically.</p>
+
+<h3>Panel Layout</h3>
+<p>The tab is split into a left panel (list + buttons) and a right panel (properties + preview).</p>
+<p>The left panel has three labelled button sections:</p>
+<ul>
+    <li><strong>Spline Polygon Sets</strong> — <em>Create</em> launches Bezier Draw to draw a new spline polygon and saves it to the project's <code>polygonSets/</code> directory. <em>Import</em> copies an existing XML file from elsewhere into <code>polygonSets/</code>.</li>
+    <li><strong>Regular Polygons</strong> — <em>Create</em> opens the built-in regular polygon editor with live preview. <em>Import</em> loads a previously saved regular polygon definition.</li>
+    <li><strong>Manage</strong> — <em>Delete</em> and <em>Move</em> act on checked entries (see below).</li>
+</ul>
+
+<h3>Polygon Sets List</h3>
+<p>The list shows all polygon sets currently loaded in the project. It has four columns:</p>
+<table>
+    <tr><th>Column</th><th>Description</th></tr>
+    <tr><td>☑ (checkbox)</td><td>Check one or more rows to select them for the <em>Delete</em> or <em>Move</em> operations. Checking does not change which row is selected for editing.</td></tr>
+    <tr><td>Name</td><td>The polygon set's display label. This is independent of the filename — a set named "leaf" may reference <code>Leaf.xml</code>.</td></tr>
+    <tr><td>Shapes</td><td>How many Shape definitions currently reference this polygon set. Zero means it is not used by any shape.</td></tr>
+    <tr><td>Sprites</td><td>How many Sprite definitions (indirectly, via shapes) reference this polygon set. Zero means it is not animated.</td></tr>
+</table>
+<p>The <em>Shapes</em> and <em>Sprites</em> counts update automatically whenever the Shapes or Sprites tab is modified.</p>
+
+<div class="info"><strong>Automatic synchronisation:</strong> When a project is opened, the polygon sets list is automatically reconciled with the <code>polygonSets/</code> directory. Any entry whose referenced file no longer exists on disk is removed; any new XML file in the directory that is not yet listed is added automatically. You should not normally need to manually add or remove file-based entries.</div>
+
+<div class="tip"><strong>Name ≠ Filename:</strong> A polygon set's <em>name</em> is its display label; the <em>filename</em> is the XML file it references. These are completely independent. Two entries can reference the same file with different names. The name shown in the list comes from the <code>&lt;name&gt;</code> element inside the XML file at import time, or from what you type — it is not derived from the filename automatically.</div>
+
+<h3>Spline Polygon Sets — Properties</h3>
+<p>Selecting a file-based entry in the list shows its properties in the right panel.</p>
+<table>
+    <tr><th>Field</th><th>Description</th></tr>
+    <tr><td><code>Folder</code></td><td>Sub-directory hint (default: <code>polygonSet</code>). Used by the Scala engine to locate the file relative to the project.</td></tr>
+    <tr><td><code>Filename</code></td><td>The polygon XML file. The dropdown lists all XML files currently in the project's <code>polygonSets/</code> directory. Click <em>Refresh File List</em> if you have added files outside the editor.</td></tr>
+    <tr><td><code>Polygon Type</code></td><td>
+        <strong>SPLINE_POLYGON</strong> — Smooth curves; bezier control points are active. Use with spline subdivision modes.<br>
+        <strong>LINE_POLYGON</strong> — Straight sides only; only anchor points are used. Use with LINE subdivision modes or for sharp faceted geometry.
+    </td></tr>
+</table>
+<p>Below the properties, a <strong>Preview</strong> panel renders the polygon set's outline so you can confirm you have the right file selected. The preview updates automatically when you change the filename.</p>
+<div class="tip">Click <em>Edit Polygon Set</em> to open the currently selected file in Bezier Draw for editing. The editor will strip and restore the XML headers that Bezier's parser requires.</div>
+
+<h3>Regular Polygons — Properties</h3>
+<p>Regular polygons are generated mathematically from alternating outer (tip) and inner (valley) vertices. Click <em>Create</em> or <em>Edit in Dialog…</em> to open the editor with a live preview.</p>
+<table>
+    <tr><th>Parameter</th><th>Unit</th><th>Description</th></tr>
+    <tr><td><code>Total Points</code></td><td>Integer</td><td>Number of outer tip vertices. Total polygon vertices = 2 × Total Points. Range: 3–64.</td></tr>
+    <tr><td><code>Internal Radius</code></td><td>Normalised (0.0–0.5)</td><td>Distance from centre to inner (valley) vertices. The outer radius is fixed at 0.5. When equal to 0.5, a plain regular polygon results; lower values give sharper stars.</td></tr>
+    <tr><td><code>Offset</code></td><td>Degrees</td><td>Rotational starting offset for the first outer vertex. Useful for aligning flat-side vs point-up orientations.</td></tr>
+    <tr><td><code>Scale X / Scale Y</code></td><td>Multiplier</td><td>Non-uniform stretch. Both 1.0 = circular; different values give elliptical shapes.</td></tr>
+    <tr><td><code>Rotation Angle</code></td><td>Degrees</td><td>Additional rotation applied after scale.</td></tr>
+    <tr><td><code>Translation X / Y</code></td><td>Normalised</td><td>Centre position offset.</td></tr>
+    <tr><td><code>Synch Direction (Positive)</code></td><td>Boolean</td><td>Whether inner vertices offset clockwise or counter-clockwise between outer tips. Flipping this produces a mirror-image pinwheel effect.</td></tr>
+    <tr><td><code>Synch Multiplier</code></td><td>Integer</td><td>How many steps to offset inner vertices between outer tips. 1 = standard star; 2+ = interlocking or asymmetric patterns.</td></tr>
+</table>
+<p>In the Create/Edit dialog preview: <strong style="color:#3498db">blue dots</strong> = outer vertices; <strong style="color:#e67e22">orange dots</strong> = inner vertices.</p>
+
+<h3>Managing Polygon Sets — Delete and Move</h3>
+<p>Use the <strong>checkbox column</strong> (leftmost) to select one or more entries, then click <em>Delete</em> or <em>Move</em>.</p>
+
+<h4>Delete</h4>
+<p>Permanently removes the checked polygon set(s) from both the library and the disk. A confirmation dialog appears before anything is deleted, showing exactly which files will be affected. Read it carefully — it distinguishes two cases:</p>
+<ul>
+    <li><strong>Files deleted from disk</strong> — the XML (and SVG, if present) is permanently removed from the <code>polygonSets/</code> directory.</li>
+    <li><strong>Entry removed only (file kept)</strong> — if the file is also referenced by another polygon set entry that you did <em>not</em> check, the file is left on disk and only the library entry is removed. This prevents accidentally destroying a file that another entry depends on.</li>
+</ul>
+<div class="warning">Deletion cannot be undone. Always check the confirmation dialog to confirm which files will actually be removed from disk.</div>
+
+<h4>Move</h4>
+<p>Moves the XML (and SVG) files of the checked entries to a directory you choose. The file chooser defaults to <code>~/.loom_projects/polygons_library/</code> — a shared library folder outside any single project. You can create sub-directories within the dialog.</p>
+<p>As with Delete, if a file is shared with another unchecked entry, it is not moved — only the library entry is removed.</p>
+<div class="tip">Use <em>Move</em> to build a personal polygon library across projects: move shapes you want to reuse out of a project folder and into <code>~/.loom_projects/polygons_library/</code>. You can then <em>Import</em> them into future projects.</div>
+
+<a href="#" class="back-to-top">Back to top</a>
+</section>
+
+<!-- ============================================================ SUBDIVISION -->
+<section id="subdivision">
+<h2>Subdivision Tab</h2>
+<p>Subdivision is the core of Loom's pattern generation. The Subdivision tab defines <strong>Params Sets</strong> — named collections of subdivision stages that shapes reference.</p>
+
+<h3>Structure</h3>
+<pre>
+Params Set Collection
+├── Params Set "mySet"
+│   ├── SubdivisionParams #1  (stage 1: e.g. QUAD)
+│   ├── SubdivisionParams #2  (stage 2: e.g. TRI_BORD_C, with transforms)
+│   └── SubdivisionParams #3  (stage 3: e.g. SPLIT_VERT)
+└── Params Set "anotherSet"
+    └── SubdivisionParams #1  (single stage)
+</pre>
+<p>Each <em>SubdivisionParams</em> = one recursion level. Stages execute sequentially from first to last. The total polygon count grows multiplicatively: if stage 1 produces N₁ polygons per input, stage 2 produces N₂ per stage-1 polygon, and so on.</p>
+
+<div class="tip">Use the <strong>Enabled</strong> checkbox to disable individual params without deleting them. Disabled params are written inside an <code>&lt;EditorDisabled&gt;</code> wrapper in the XML — the Scala engine ignores them, but they remain available to re-enable.</div>
+
+<h3>Subdivision Types — Complete Reference</h3>
+<p>Each SubdivisionParams specifies one type. Loom has two parallel sets of subdivision algorithms: <strong>LINE</strong> variants (for LINE_POLYGON type) and <strong>SPLINE</strong> variants (for SPLINE_POLYGON type). Both sets share the same type names in the UI.</p>
+
+<h4>Basic Division Types</h4>
+<table>
+    <tr><th>Type</th><th>Polygons per Input</th><th>Description</th></tr>
+    <tr>
+        <td><code>QUAD</code></td>
+        <td>N (number of sides)</td>
+        <td>Classic quadrilateral subdivision. Divides each polygon into N sub-polygons — one per original vertex. Each sub-polygon is formed from: the vertex, the midpoint of one adjacent side (controlled by Line Ratios), the polygon centre, and the midpoint of the other adjacent side. A square (4 sides) → 4 sub-polygons per stage. This is the most versatile and most commonly used type. <em>Example</em>: 3 QUAD stages on a square = 64 sub-polygons in a dense mosaic.</td>
+    </tr>
+    <tr>
+        <td><code>TRI</code></td>
+        <td>N</td>
+        <td>Triangular subdivision. Similar structure to QUAD but creates triangular sub-polygons using the vertex, midpoint of one adjacent side, and the centre. Produces more angular, triangular-feeling patterns. Particularly effective with triangle base polygons (producing fractal triangle hierarchies).</td>
+    </tr>
+    <tr>
+        <td><code>ECHO</code></td>
+        <td>2</td>
+        <td>Creates a scaled inner copy of the polygon directly inside the original. Produces a concentric nesting effect. The outer polygon and an inset copy sit inside each other. Control the gap with the Inset Transform scale.</td>
+    </tr>
+    <tr>
+        <td><code>ECHO_ABS_CENTER</code></td>
+        <td>2</td>
+        <td>Like ECHO, but the inner polygon's centre is calculated from the absolute centroid of all anchors rather than the local polygon centre. Useful for non-symmetrical shapes where the geometric centre differs from the visual centre.</td>
+    </tr>
+</table>
+
+<h4>Border Variants (QUAD)</h4>
+<table>
+    <tr><th>Type</th><th>Description</th></tr>
+    <tr>
+        <td><code>QUAD_BORD</code></td>
+        <td>QUAD subdivision with a surrounding border. Produces the usual inner QUAD sub-polygons plus additional border polygons along each outer edge. Creates a two-zone pattern: a central subdivided area and an outer frame. The border adds N more polygons (one per side). Effective for creating panelling or mosaic tile effects with distinct borders.</td>
+    </tr>
+    <tr>
+        <td><code>QUAD_BORD_ECHO</code></td>
+        <td>QUAD_BORD where the border polygons themselves are echoed (concentric inner copy added). Combines the border effect with a nesting echo inside each border polygon.</td>
+    </tr>
+    <tr>
+        <td><code>QUAD_BORD_DOUBLE</code></td>
+        <td>Like QUAD_BORD but creates a double border — two rings of border polygons around the central subdivision. Produces richer framing effects.</td>
+    </tr>
+    <tr>
+        <td><code>QUAD_BORD_DOUBLE_ECHO</code></td>
+        <td>QUAD_BORD_DOUBLE where the border polygons also have echo copies inside them.</td>
+    </tr>
+</table>
+
+<h4>Border Variants (TRI)</h4>
+<table>
+    <tr><th>Type</th><th>Description</th></tr>
+    <tr>
+        <td><code>TRI_BORD_B</code></td>
+        <td>Triangular subdivision with a border. Similar to QUAD_BORD but using the TRI algorithm for the central subdivision. The border polygons run along each outer edge.</td>
+    </tr>
+    <tr>
+        <td><code>TRI_BORD_B_ECHO</code></td>
+        <td>TRI_BORD_B with echo copies inside the border polygons.</td>
+    </tr>
+    <tr>
+        <td><code>TRI_BORD_C</code></td>
+        <td>A second variant of TRI border subdivision with a different geometric construction for the border polygons. Produces a distinct border shape compared to TRI_BORD_B.</td>
+    </tr>
+    <tr>
+        <td><code>TRI_BORD_C_ECHO</code></td>
+        <td>TRI_BORD_C with echo copies inside the border polygons.</td>
+    </tr>
+    <tr>
+        <td><code>TRI_STAR</code></td>
+        <td>Star-shaped triangular subdivision. Produces sub-polygons radiating from the centre in a star pattern. Particularly striking with triangular base polygons, producing a Star-of-David-like recursive structure.</td>
+    </tr>
+    <tr>
+        <td><code>TRI_STAR_FILL</code></td>
+        <td>TRI_STAR with a central fill polygon added to cover the central gap. Prevents the hollow centre typical of the star arrangement.</td>
+    </tr>
+    <tr>
+        <td><code>TRI_BORD_A</code></td>
+        <td>Corner-triangle subdivision (N output polygons). Creates one triangle per corner of the input polygon, each spanning that corner and the midpoints of its two adjacent outer sides. Unlike TRI_BORD_B, no inset polygon is used — midpoints are sampled directly from the outer sides via <em>Line Ratios</em>. The result is small triangles at each corner with unfilled space between them. <em>Example</em>: applied to a square, produces 4 corner triangles whose bases cut diagonally across the sides.</td>
+    </tr>
+    <tr>
+        <td><code>TRI_BORD_A_ECHO</code></td>
+        <td>TRI_BORD_A with an additional star-shaped echo polygon (N+1 output polygons). The echo alternates between the original corner vertices and the outer side midpoints — <code>corner[0] → outerMid[0] → corner[1] → outerMid[1] → …</code> — producing a zigzag star outline overlaying the N corner triangles. The echo is the last polygon in the output array and can be isolated or hidden using Visibility Rules.</td>
+    </tr>
+</table>
+
+<h4>Split Types</h4>
+<table>
+    <tr><th>Type</th><th>Polygons per Input</th><th>Description</th></tr>
+    <tr>
+        <td><code>SPLIT_VERT</code></td>
+        <td>2</td>
+        <td>Splits each polygon into two halves with a vertical cut (left/right). The algorithm detects the most horizontal pair of opposite sides and divides there, so the split is always genuinely vertical even after previous subdivision stages have rotated or distorted the shapes. <em>Example</em>: 4 stages of SPLIT_VERT on a square → 16 tall thin strips.</td>
+    </tr>
+    <tr>
+        <td><code>SPLIT_HORIZ</code></td>
+        <td>2</td>
+        <td>Splits each polygon into two halves with a horizontal cut (top/bottom). Geometry-aware: finds the most vertical pair of sides. <em>Example</em>: alternating SPLIT_VERT and SPLIT_HORIZ stages creates a brick-like grid.</td>
+    </tr>
+    <tr>
+        <td><code>SPLIT_DIAG</code></td>
+        <td>2</td>
+        <td>Splits each polygon diagonally. Finds the pair of sides whose connecting line is most diagonal (closest to 45°). Creates triangular-feeling pairs. Mixing with QUAD produces angular, faceted results.</td>
+    </tr>
+</table>
+
+<div class="info">SPLIT types always produce exactly 2 polygons per input, regardless of the polygon's number of sides. They are geometry-aware: even after many recursion levels distort the shapes, SPLIT_VERT will still detect and cut the most horizontal sides.</div>
+
+<h3>Basic Parameters</h3>
+<table>
+    <tr><th>Parameter</th><th>Unit</th><th>Description</th></tr>
+    <tr><td><code>Random Middle</code></td><td>Boolean</td><td>Randomise the centre point of each polygon before subdivision. Creates organic distortion. <em>Off</em>: clean geometric subdivision. <em>On</em>: each polygon's centre drifts randomly, making the subdivision messy and organic.</td></tr>
+    <tr><td><code>Random Divisor</code></td><td>Integer</td><td>Controls the degree of centre randomisation. The random offset range is proportional to the polygon size divided by this value. <em>Low values (2–10)</em>: dramatic, distorting shifts. <em>High values (50–200)</em>: subtle wobble. Requires Random Middle to be on.</td></tr>
+    <tr><td><code>Line Ratios X/Y</code></td><td>0.0–1.0</td><td>Where along each side the midpoint is placed. Default 0.5/0.5 = exact middle. Using different values (e.g. X=0.3, Y=0.7) creates asymmetric subdivision where sub-polygons aren't equal-sized. <em>Example</em>: 0.3/0.7 pushes sub-polygons to one side, creating a scale or shingle effect. Values outside 0–1 are allowed for extreme effects but can create self-intersecting geometry.</td></tr>
+    <tr><td><code>Control Point Ratios X/Y</code></td><td>0.0–1.0</td><td>Placement of bezier control points along each new spline side. Default 0.25/0.75 creates smooth, natural-feeling curves. <em>0.5/0.5</em>: control points at midpoints, creating flatter curves. <em>0.1/0.9</em>: control points very close to anchors, creating sharp, kinked curves.</td></tr>
+    <tr><td><code>Continuous</code></td><td>Boolean</td><td>When Line Ratios X ≠ Y (asymmetric), adjacent polygons' shared sides may not perfectly align. Enabling Continuous forces alignment, preventing gaps in the tessellation. Keep this on unless you deliberately want gaps.</td></tr>
+</table>
+
+<h3>Visibility Rules</h3>
+<p>Controls which sub-polygons are visible after each stage. Selectively hiding polygons creates many pattern variations without changing the subdivision geometry.</p>
+<table>
+    <tr><th>Rule</th><th>Description</th><th>Effect Example</th></tr>
+    <tr><td><code>ALL</code></td><td>All sub-polygons visible (default)</td><td>Full dense pattern</td></tr>
+    <tr><td><code>ALTERNATE_ODD</code></td><td>Show polygons at odd indices (1st, 3rd, 5th…)</td><td>Checkerboard-like gaps in QUAD</td></tr>
+    <tr><td><code>ALTERNATE_EVEN</code></td><td>Show polygons at even indices (0th, 2nd, 4th…)</td><td>Complement of ALTERNATE_ODD</td></tr>
+    <tr><td><code>FIRST_HALF</code></td><td>Show only the first half of sub-polygons</td><td>Half-panel effect</td></tr>
+    <tr><td><code>SECOND_HALF</code></td><td>Show only the second half</td><td>Complement of FIRST_HALF</td></tr>
+    <tr><td><code>ALL_BUT_LAST</code></td><td>Hide the final sub-polygon only</td><td>Subtle gap/opening</td></tr>
+    <tr><td><code>EVERY_THIRD</code></td><td>Show every third polygon (0th, 3rd, 6th…)</td><td>Sparse lattice pattern</td></tr>
+    <tr><td><code>RANDOM_1_2</code></td><td>Each polygon shown with 50% probability</td><td>Medium-density random scatter</td></tr>
+    <tr><td><code>RANDOM_1_3</code> through <code>RANDOM_1_10</code></td><td>Decreasing probability (1-in-3 through 1-in-10)</td><td>Increasingly sparse scatter</td></tr>
+</table>
+
+<div class="tip">RANDOM visibility rules produce a different pattern every time Loom starts (or reloads), since they are evaluated fresh each session. For reproducible sparse patterns, use ALTERNATE_ODD/EVERY_THIRD instead.</div>
+
+<h3>Inset Transform</h3>
+<p>Scales/translates/rotates the entire subdivision result relative to the parent polygon's centre before the result is used for further subdivision. Creates a gap between sub-polygons and the parent boundary.</p>
+<table>
+    <tr><th>Parameter</th><th>Unit</th><th>Description</th></tr>
+    <tr><td><code>Scale X/Y</code></td><td>Multiplier</td><td>Size of the inset result relative to the parent. <em>1.0</em>: no inset (polygons touch their parent boundary). <em>0.5</em>: result is half the parent size, leaving a clear gap. <em>0.9</em>: subtle inset with small gap. Values above 1.0 cause polygons to overflow the parent boundary.</td></tr>
+    <tr><td><code>Translation X/Y</code></td><td>Fraction of parent size</td><td>Off-centre shift of the inset. 0/0 = centred.</td></tr>
+    <tr><td><code>Rotation X/Y</code></td><td>Degrees</td><td>Rotational offset for the entire inset.</td></tr>
+</table>
+
+<h3>Whole Polygon Transforms (PTW)</h3>
+<p>Applied to entire sub-polygons as rigid units after subdivision. A percentage probability controls how many polygons are affected.</p>
+<table>
+    <tr><th>Parameter</th><th>Unit</th><th>Description</th></tr>
+    <tr><td><code>Polys Transform</code></td><td>Boolean</td><td>Master switch for ALL transforms (both PTW and point-level). Disabling this skips all transforms for this stage, regardless of other settings.</td></tr>
+    <tr><td><code>Polys Transform Whole</code></td><td>Boolean</td><td>Enable whole-polygon transforms specifically. Independent from the point-level transform switch.</td></tr>
+    <tr><td><code>PTW Probability</code></td><td>0–100 %</td><td>Percentage of polygons that receive the whole-polygon transform. <em>100</em>: all affected. <em>50</em>: roughly half. <em>10</em>: only one in ten — scattered effect.</td></tr>
+    <tr><td><code>PTW Random Translation</code></td><td>Boolean</td><td>Randomly shift affected polygons by a small amount. Creates a scattered mosaic look.</td></tr>
+    <tr><td><code>PTW Random Scale</code></td><td>Boolean</td><td>Randomly resize affected polygons. Low probability with high variation creates sparse "zoomed-in" polygons.</td></tr>
+    <tr><td><code>PTW Random Rotation</code></td><td>Boolean</td><td>Randomly rotate affected polygons around their own centre (or common centre if enabled).</td></tr>
+    <tr><td><code>PTW Common Centre</code></td><td>Boolean</td><td>All transforms use one shared centre point rather than each polygon's individual centre. Creates radial/spiral effects when combined with rotation.</td></tr>
+</table>
+
+<h3>Point-Level Transforms</h3>
+<p>These manipulate specific sets of points within each sub-polygon. They are the most powerful tools for organic distortion in Loom. Five transform types are available; each targets a different subset of the polygon's points.</p>
+
+<h4>Exterior Anchors</h4>
+<p>Moves the non-centre anchor points — the vertices that sit on the edges of the parent polygon. Primary effect: <strong>spiking</strong>.</p>
+<table>
+    <tr><th>Parameter</th><th>Unit</th><th>Description</th></tr>
+    <tr><td><code>Spike Factor</code></td><td>Fraction</td><td>Amount to move exterior points toward or away from the polygon centre. <em>0.0</em>: no movement. <em>−0.5</em>: push 50% of the distance from centre outward → spiky, star-like protrusions. <em>+0.5</em>: pull 50% toward centre → pinched, convex shapes. <em>−1.0 or lower</em>: extreme spikes well beyond the parent boundary.</td></tr>
+    <tr><td><code>Which Spike</code></td><td>Enum</td><td><strong>ALL</strong>: all exterior anchors. <strong>CORNERS</strong>: only anchors that correspond to original polygon corners (creates sharper corner emphasis). <strong>MIDDLES</strong>: only midpoint anchors on original sides (creates mid-edge bulging).</td></tr>
+    <tr><td><code>Spike Type</code></td><td>Enum</td><td><strong>SYMMETRICAL</strong>: sibling pairs (adjacent anchors) move equally in mirrored directions — creates symmetric pinching. <strong>RIGHT</strong>: only the right sibling moves. <strong>LEFT</strong>: only the left sibling moves. <strong>RANDOM</strong>: random direction each frame.</td></tr>
+    <tr><td><code>Spike Axis</code></td><td>Enum</td><td><strong>XY</strong>: full 2D movement. <strong>X_ONLY</strong>: horizontal movement only (creates vertical streaking). <strong>Y_ONLY</strong>: vertical movement only (horizontal streaking).</td></tr>
+    <tr><td><code>CPs Follow</code></td><td>Boolean</td><td>When enabled, the bezier control points associated with each moved anchor shift by the same amount. Keeps curves anchored to the moved point, preserving smooth connections. When disabled, control points stay put — creates kinked, angular junctions.</td></tr>
+    <tr><td><code>CPs Squeeze</code></td><td>Boolean</td><td>Vary the perpendicular distance between control points, creating sharper or more bulbous curves at the anchor positions.</td></tr>
+</table>
+
+<h4>Central Anchors</h4>
+<p>Moves the centre point(s) of sub-polygons and their associated control points. Primary effect: <strong>tearing</strong> — pulling the centre apart to create openings or folded-over overlaps.</p>
+<table>
+    <tr><th>Parameter</th><th>Unit</th><th>Description</th></tr>
+    <tr><td><code>Tear Factor</code></td><td>Fraction of side length</td><td>How far to pull the centre point from its geometric position. <em>0.1</em>: subtle wobble in the centre. <em>0.5</em>: pronounced opening. <em>1.0+</em>: centre pulled far outside the polygon — extreme overlapping forms.</td></tr>
+    <tr><td><code>Tear Axis</code></td><td>Enum</td><td><strong>XY</strong>, <strong>X_ONLY</strong>, <strong>Y_ONLY</strong>, <strong>RANDOM</strong>. Constraining to one axis creates directional streaks.</td></tr>
+    <tr><td><code>Tear Direction</code></td><td>Enum</td><td><strong>DIAGONAL</strong>: moves outward from the polygon's centroid. <strong>LEFT</strong>: toward the next exterior anchor. <strong>RIGHT</strong>: toward the previous exterior anchor. <strong>RANDOM</strong>: changes each frame.</td></tr>
+    <tr><td><code>All Points Follow</code></td><td>Boolean</td><td>All other points in the polygon shift in the same direction as the centre movement. Creates a translation of the entire polygon rather than just a local distortion of the centre region.</td></tr>
+    <tr><td><code>Inverted Follow</code></td><td>Boolean</td><td>When All Points Follow is on, the remaining points move in the <em>opposite</em> direction — creating an expanding/tearing-apart effect where centre and extremities move away from each other.</td></tr>
+</table>
+
+<h4>Inner Control Points</h4>
+<p>Fine-tunes bezier control points along the internal edges running from exterior anchors to the centre. Primarily affects the curvature of the internal edges and how they join at the centre.</p>
+<table>
+    <tr><th>Parameter</th><th>Description</th></tr>
+    <tr><td><code>Refer To Outer</code></td><td><strong>FOLLOW_OUTER</strong>: inner control points mirror the curvature of the outer edge, creating smooth transitions. <strong>EXAGGERATE_OUTER</strong>: amplifies the outer curvature inward. <strong>COUNTER_OUTER</strong>: reverses the outer curvature — creates S-curves. <strong>NONE</strong>: control points placed at default positions.</td></tr>
+    <tr><td><code>Inner Multiplier / Outer Multiplier</code></td><td>Scale factors for control point positions along the inner lines. Higher values push control points further along toward the centre or exterior anchor.</td></tr>
+    <tr><td><code>Common Line</code></td><td>Whether adjacent internal lines share control point positions. Enabling this prevents overlapping shapes along shared internal edges.</td></tr>
+</table>
+
+<h4>Outer Control Points</h4>
+<p>Controls the curvature of the external (non-centre-connecting) edges of sub-polygons. Two approaches:</p>
+<ul>
+    <li><strong>Perpendicular curving</strong> — Pushes control points perpendicular to the edge line, creating puff or pinch effects. Curve types include: <code>PUFF</code> (both control points curve outward), <code>PINCH</code> (both curve inward), <code>PUFF_PINCH</code> (first outward, then inward — S-curve), <code>PUFF_PINCH_PUFF_PINCH</code> (alternating pattern for longer edges).</li>
+    <li><strong>Curve from centre</strong> — Uses the polygon's absolute geometric centroid as a reference. Effective for creating wave-like distortions, especially with asymmetric or irregular base shapes.</li>
+</ul>
+
+<h4>Anchors Linked to Centre</h4>
+<p>Acts on the anchor points at the ends of lines connecting outer edges to the polygon centre — i.e. the points where the internal spokes meet the outer boundary. Primary effect: tearing these anchors toward corners, the opposite corner, or the centre itself. Useful for creating "fan" and "burst" patterns.</p>
+
+<div class="tip">Point-level transforms compound across recursive stages. A Spike Factor of −0.1 (10% outward) at every stage over 5 recursion levels produces dramatically spiked results at the finest level. Start with very small values and add stages incrementally to see how the effect builds.</div>
+
+<a href="#" class="back-to-top">Back to top</a>
+</section>
+
+<!-- ============================================================ SHAPES -->
+<section id="shapes">
+<h2>Shapes Tab</h2>
+<p>The Shapes tab pairs polygon sets with subdivision parameters to create shape blueprints. Shapes are organised into <strong>Shape Sets</strong>. Each shape says: "take this polygon, subdivide it with these rules."</p>
+
+<h3>Shape Properties</h3>
+<table>
+    <tr><th>Parameter</th><th>Description</th></tr>
+    <tr><td><code>Name</code></td><td>Unique identifier used when referencing from the Sprites tab.</td></tr>
+    <tr><td><code>Polygon Set</code></td><td>Which polygon set to use. Dropdown is populated from all polygon definitions in the Polygons tab.</td></tr>
+    <tr><td><code>Params Set</code></td><td>Which subdivision params set to apply. Dropdown shows all Params Sets from the Subdivision tab.</td></tr>
+</table>
+
+<h3>Shape Transform</h3>
+<p>An optional global transform applied to the entire shape geometry before it is used by sprites:</p>
+<table>
+    <tr><th>Parameter</th><th>Unit</th><th>Description</th></tr>
+    <tr><td><code>Translation X/Y</code></td><td>Normalised</td><td>Position offset from the origin.</td></tr>
+    <tr><td><code>Scale X/Y</code></td><td>Multiplier</td><td>Scale the shape. 1.0 = no change; 0.5 = half size.</td></tr>
+    <tr><td><code>Rotation</code></td><td>Degrees</td><td>Rotation of the shape about its origin.</td></tr>
+</table>
+
+<div class="tip">Use the Refresh List buttons to update the Polygon Set and Params Set dropdowns after making changes in other tabs.</div>
+
+<h3>3D Shape Generation</h3>
+<div class="notimpl">3D shape types (Crystal, Rect Prism, Extrusion, Grid Plane, Grid Block) are configurable here but are not implemented in the current Scala engine. 2D shapes work fully.</div>
+
+<a href="#" class="back-to-top">Back to top</a>
+</section>
+
+<!-- ============================================================ SPRITES -->
+<section id="sprites">
+<h2>Sprites Tab</h2>
+<p>Sprites are the visible, positioned instances of shapes on the canvas. Each sprite combines a shape, a renderer set, a position, and animation behaviour. Multiple sprites can share the same shape but appear at different positions with different rendering styles.</p>
+
+<h3>Core Properties</h3>
+<table>
+    <tr><th>Parameter</th><th>Description</th></tr>
+    <tr><td><code>Name</code></td><td>Unique identifier for this sprite.</td></tr>
+    <tr><td><code>Shape Set / Shape Name</code></td><td>References a shape from the Shapes tab. The Shape Set dropdown lists all sets; Shape Name lists shapes within the selected set.</td></tr>
+    <tr><td><code>Renderer Set</code></td><td>References a renderer set from the Rendering tab.</td></tr>
+</table>
+
+<h3>Position and Size</h3>
+<table>
+    <tr><th>Parameter</th><th>Unit</th><th>Description</th></tr>
+    <tr><td><code>Location X / Y</code></td><td>Percentage (−100 to +100)</td><td>Position on the canvas, measured from centre. 0/0 = centre of canvas. 50/0 = offset right by 50% of the canvas half-width. Note: this is a fractional canvas unit, not pixels. A value of 100 reaches the canvas edge; values beyond ±100 place the sprite partially off-screen.</td></tr>
+    <tr><td><code>Size Factor</code></td><td>Multiplier</td><td>Overall scale of the sprite. 1.0 means the polygon's normalised coordinates fill roughly the full canvas width. 0.5 = half that size. 0.25 = quarter size. Values above 1.0 cause the shape to extend beyond the canvas edges.</td></tr>
+    <tr><td><code>Start Rotation</code></td><td>Degrees</td><td>Initial rotation angle at frame 0. 0 = upright; 90 = rotated 90° clockwise.</td></tr>
+    <tr><td><code>Rotation Offset X / Y</code></td><td>Percentage</td><td>Shifts the pivot point of rotation away from the sprite's centre. 0/0 = rotate around own centre. Non-zero values create orbital rotation effects.</td></tr>
+</table>
+
+<h3>Animation — Overview</h3>
+<p>Animation mode is selected in the Sprites tab Animation panel. Three modes are available; only one can be active per sprite. See the <a href="#animation">Animation</a> and <a href="#morph">Morph Animation</a> sections for full details.</p>
+
+<a href="#" class="back-to-top">Back to top</a>
+</section>
+
+<!-- ============================================================ ANIMATION -->
+<section id="animation">
+<h2>Animation</h2>
+<p>Sprite animation controls how a sprite transforms over time when <strong>Animating</strong> is enabled (Run tab). Two main animation paradigms are supported: <strong>Random (Jitter)</strong> and <strong>Keyframe</strong>.</p>
+
+<h3>Random (Jitter) Animation</h3>
+<p>Each animation frame, random perturbations are applied to the sprite's scale, rotation, and position within specified ranges. This creates organic, continuously varying motion with no fixed path.</p>
+<table>
+    <tr><th>Parameter</th><th>Unit</th><th>Description</th></tr>
+    <tr><td><code>Scale Factor</code></td><td>Multiplier/frame</td><td>Base scale change applied every frame. <em>1.0</em>: no change. <em>1.002</em>: grows 0.2% per frame (after ~350 frames, double-size). <em>0.999</em>: slowly shrinks.</td></tr>
+    <tr><td><code>Rotation Factor</code></td><td>Degrees/frame</td><td>Base rotation change per frame. <em>0</em>: stationary. <em>1.0</em>: rotates 1° per frame, making one full revolution in 360 frames. <em>−0.5</em>: slow counter-clockwise rotation.</td></tr>
+    <tr><td><code>Speed Factor X / Y</code></td><td>Location units/frame</td><td>Base translation per frame. Small values (0.1–0.5) create slow drifting; larger values (2.0+) produce fast movement across the canvas.</td></tr>
+    <tr><td><code>Scale Range</code></td><td>Multiplier</td><td>Maximum random variation around Scale Factor. If Scale Factor = 1.002 and Scale Range = 0.001, the actual per-frame scale varies randomly from 1.001 to 1.003. Creates pulsing/breathing effects.</td></tr>
+    <tr><td><code>Rotation Range</code></td><td>Degrees</td><td>Maximum random variation around Rotation Factor. Creates wobbly, unsteady rotation.</td></tr>
+    <tr><td><code>Translation Range</code></td><td>Location units</td><td>Maximum random variation around Speed Factor. Creates jittery, trembling motion.</td></tr>
+</table>
+
+<div class="tip">For animation that looks "alive" without drifting off-screen, use small base factors (1.0, 0, 0) with moderate ranges. The sprite will oscillate around its starting position without permanently moving away.</div>
+
+<h3>Keyframe Animation</h3>
+<p>Keyframes define explicit states (position, scale, rotation) at specific draw cycle numbers. Loom interpolates between consecutive keyframes using the easing algorithm specified for each transition.</p>
+
+<h4>Keyframe Parameters</h4>
+<table>
+    <tr><th>Parameter</th><th>Unit</th><th>Description</th></tr>
+    <tr><td><code>Draw Cycle</code></td><td>Integer</td><td>The animation frame number when this keyframe occurs. Must be in ascending order. Keyframe 0 is the initial state; keyframe 60 is reached after 60 animation frames.</td></tr>
+    <tr><td><code>Position X / Y</code></td><td>Location percentage delta</td><td>Position <em>change</em> to apply from the previous keyframe to this one. Cumulative: each keyframe's position is added to the previous. <em>Example</em>: keyframe 0 at (0,0), keyframe 60 at (20,0) moves the sprite 20% to the right over 60 frames.</td></tr>
+    <tr><td><code>Scale X / Y</code></td><td>Multiplier delta</td><td>Scale change from previous keyframe. <em>1.0</em> = no change. <em>2.0</em> = double the size relative to where the previous keyframe left off.</td></tr>
+    <tr><td><code>Rotation</code></td><td>Degrees delta</td><td>Rotation change from previous keyframe. <em>90</em> = rotate 90° clockwise to reach this keyframe. Accumulates: a sequence of 90° keyframes produces continuous spinning.</td></tr>
+    <tr><td><code>Easing</code></td><td>Enum</td><td>The interpolation algorithm used to transition <em>from</em> this keyframe <em>to</em> the next. See Easing Types below.</td></tr>
+</table>
+
+<h4>Loop Modes</h4>
+<table>
+    <tr><th>Mode</th><th>Description</th></tr>
+    <tr><td><code>LOOP</code></td><td>When the last keyframe is reached, the animation immediately restarts from the first keyframe. Good for continuous, seamlessly repeating motion.</td></tr>
+    <tr><td><code>PING_PONG</code></td><td>When the last keyframe is reached, the animation reverses and plays backward to the first keyframe, then reverses again. Creates back-and-forth oscillation without a visible jump cut.</td></tr>
+    <tr><td><code>ONCE</code></td><td>Plays through all keyframes once, then holds at the last keyframe state permanently.</td></tr>
+    <tr><td><code>HOLD</code></td><td>Plays through all keyframes once, then holds at the final state. Identical to ONCE in current implementation.</td></tr>
+</table>
+
+<h4>Easing Types</h4>
+<p>Loom provides 41 easing functions controlling the rate of change during transitions. They fall into families based on the mathematical curve shape:</p>
+<table>
+    <tr><th>Family</th><th>Available Variants</th><th>Character</th></tr>
+    <tr><td><code>linear</code></td><td>linear</td><td>Constant rate of change. No acceleration or deceleration. Simple but mechanical-feeling.</td></tr>
+    <tr><td><code>quad</code></td><td>easeInQuad, easeOutQuad, easeInOutQuad</td><td>Quadratic (power 2) curve. Gentle acceleration/deceleration. Good default choice.</td></tr>
+    <tr><td><code>cubic</code></td><td>easeInCubic, easeOutCubic, easeInOutCubic</td><td>Power 3. Noticeably stronger acceleration than quad.</td></tr>
+    <tr><td><code>quart</code></td><td>easeInQuart, easeOutQuart, easeInOutQuart</td><td>Power 4. Sharp acceleration/deceleration with a long slow middle or extreme beginning/end.</td></tr>
+    <tr><td><code>quint</code></td><td>easeInQuint, easeOutQuint, easeInOutQuint</td><td>Power 5. Very dramatic ease. Almost stationary at start/end, very fast in the middle (Out variant).</td></tr>
+    <tr><td><code>sine</code></td><td>easeInSine, easeOutSine, easeInOutSine</td><td>Sinusoidal curve. Smooth and natural-feeling. Lighter than quad. Good for organic motion.</td></tr>
+    <tr><td><code>expo</code></td><td>easeInExpo, easeOutExpo, easeInOutExpo</td><td>Exponential curve. Extremely slow start (or end), then explosive acceleration. Dramatic effect.</td></tr>
+    <tr><td><code>circ</code></td><td>easeInCirc, easeOutCirc, easeInOutCirc</td><td>Circular arc interpolation. Dramatic but smooth. Good for "snap" arrivals.</td></tr>
+    <tr><td><code>back</code></td><td>easeInBack, easeOutBack, easeInOutBack</td><td>Overshoots slightly past the target before settling. Creates a "spring" or "overshoot" feel. Good for UI-style animation.</td></tr>
+    <tr><td><code>elastic</code></td><td>easeInElastic, easeOutElastic, easeInOutElastic</td><td>Oscillates multiple times around the target before settling, like a plucked string. Creates bouncy, springy motion.</td></tr>
+    <tr><td><code>bounce</code></td><td>easeInBounce, easeOutBounce, easeInOutBounce</td><td>Simulates a ball bouncing — rapid small reversals near start or end. Very physical-feeling.</td></tr>
+</table>
+<p>Variants: <em>easeIn</em> = starts slow, ends fast. <em>easeOut</em> = starts fast, ends slow. <em>easeInOut</em> = starts and ends slow, fast in the middle.</p>
+
+<h4>Managing Keyframes</h4>
+<ul>
+    <li><strong>Add</strong> — Adds a new keyframe after the selected one.</li>
+    <li><strong>Remove</strong> — Deletes the selected keyframe.</li>
+    <li><strong>Duplicate</strong> — Copies the selected keyframe as a new entry.</li>
+    <li><strong>Copy From</strong> — Copies keyframes from another sprite's animation into this one.</li>
+</ul>
+
+<a href="#" class="back-to-top">Back to top</a>
+</section>
+
+<!-- ============================================================ MORPH ANIMATION -->
+<section id="morph">
+<h2>Morph Animation</h2>
+<p>Morph animation blends between the base shape's polygon vertices and a <em>morph target</em>'s vertices frame by frame. The morph target must have the exact same topology as the base shape (same number of polygons, same number of vertices per polygon, same polygon types).</p>
+
+<div class="info">Morph targets are stored as polygon set XML files in the project's <code>morphTargets/</code> directory. They are created and managed within the Sprites tab's Morph panel.</div>
+
+<h3>Morph Target Setup</h3>
+<ol>
+    <li>Select a sprite in the Sprites tab.</li>
+    <li>In the Animation panel, choose <strong>Jitter Morph</strong> or <strong>Keyframe Morph</strong> from the animator type selector.</li>
+    <li>Click <strong>Create</strong> to generate a new morph target based on the sprite's current polygon set (creates an editable copy in <code>morphTargets/</code>). Or click <strong>Refresh</strong> to reload the list of existing morph target files.</li>
+    <li>Select the morph target from the dropdown.</li>
+    <li>Edit the morph target polygon set using Bezier Draw to define the target shape. The edited file goes in <code>morphTargets/</code>.</li>
+</ol>
+
+<h3>Jitter Morph</h3>
+<p>Each frame, a random morph amount within a specified range is applied. Creates continuously shifting, "breathing" deformation.</p>
+<table>
+    <tr><th>Parameter</th><th>Unit</th><th>Description</th></tr>
+    <tr><td><code>Morph Target</code></td><td>File name</td><td>The polygon set file in <code>morphTargets/</code> to blend toward. Must be topologically compatible with the base shape.</td></tr>
+    <tr><td><code>Morph Min</code></td><td>0.0–1.0</td><td>Minimum morph amount applied each frame. <em>0.0</em>: can fully revert to base shape. <em>0.3</em>: always at least 30% morphed.</td></tr>
+    <tr><td><code>Morph Max</code></td><td>0.0–1.0</td><td>Maximum morph amount applied each frame. <em>1.0</em>: can reach the fully morphed target. The actual value each frame is randomly chosen between Min and Max.</td></tr>
+</table>
+<p><em>Example</em>: Morph Min = 0.0, Morph Max = 1.0 with a triangle base morphing to a circle target creates continuous, randomly-paced deformation between the two shapes.</p>
+
+<h3>Keyframe Morph</h3>
+<p>Combines keyframe animation with morph blending. Each keyframe has all the usual position/scale/rotation parameters plus a <strong>Morph Amount</strong> value. Loom interpolates both the transforms and the morph amount between keyframes.</p>
+<table>
+    <tr><th>Parameter</th><th>Unit</th><th>Description</th></tr>
+    <tr><td><code>Morph Target</code></td><td>File name</td><td>Target polygon set file.</td></tr>
+    <tr><td><code>Morph Amount</code> (per keyframe)</td><td>0.0–1.0</td><td>The morph blend amount to reach at this keyframe. Eased from the previous keyframe's morph amount using the keyframe's easing function. <em>0.0</em> at keyframe 0, <em>1.0</em> at keyframe 60 = gradually morphs fully over 60 frames.</td></tr>
+</table>
+
+<div class="warning">The morph target polygon set must be topologically identical to the base polygon set — same number of polygons, same number of vertices per polygon, same polygon type (SPLINE or LINE). Topology mismatch is detected at load time and will fall back to the base shape.</div>
+
+<a href="#" class="back-to-top">Back to top</a>
+</section>
+
+<!-- ============================================================ RENDERING -->
+<section id="rendering">
+<h2>Rendering Tab</h2>
+<p>The Rendering tab defines how shapes are visually displayed. It uses a three-level hierarchy: <strong>Library → Renderer Sets → Renderers</strong>.</p>
+
+<h3>Hierarchy</h3>
+<pre>
+Renderer Set Library
+├── Renderer Set "BlueOrangeGreen"
+│   ├── Renderer "Blue"   (STROKED mode)
+│   ├── Renderer "Orange" (FILLED mode)
+│   └── Renderer "Green"  (FILLED_STROKED mode)
+└── Renderer Set "Textured"
+    └── Renderer "Brush"  (BRUSHED mode)
+</pre>
+
+<h3>Renderer Sets</h3>
+<p>A Renderer Set contains one or more renderers. As polygons are drawn, the set selects which renderer to use based on its playback mode.</p>
+<table>
+    <tr><th>Parameter</th><th>Description</th></tr>
+    <tr><td><code>Mode</code></td><td>
+        <strong>STATIC</strong> — Always use the preferred renderer for all polygons in this sprite.<br>
+        <strong>SEQUENTIAL</strong> — Cycle through renderers in order as polygons are drawn: renderer 1 for polygon 1, renderer 2 for polygon 2, renderer 3 for polygon 3, renderer 1 for polygon 4, etc. Creates multi-colour or multi-style patterns within a single sprite.<br>
+        <strong>RANDOM</strong> — Pick a renderer randomly for each polygon.
+    </td></tr>
+    <tr><td><code>Preferred Renderer</code></td><td>Default renderer for STATIC mode. In RANDOM mode, this renderer has higher-than-uniform selection probability.</td></tr>
+    <tr><td><code>Preferred Probability</code></td><td>0–100%. In RANDOM mode: probability of choosing the preferred renderer. Remaining probability is distributed equally among the others. <em>Example</em>: 80% → preferred chosen 80% of the time, others split the 20%.</td></tr>
+</table>
+
+<h3>Renderer Modes</h3>
+<table>
+    <tr><th>Mode</th><th>Description</th></tr>
+    <tr><td><code>POINTS</code></td><td>Draw the polygon's anchor vertices as dots. No connecting lines. Creates pointillist/particle effects, especially striking at late recursion stages with thousands of tiny polygons.</td></tr>
+    <tr><td><code>STROKED</code></td><td>Draw polygon outlines only. The most common mode for technical/geometric drawing. Stroke width and colour are configurable.</td></tr>
+    <tr><td><code>FILLED</code></td><td>Draw solid filled polygon areas. No outline. Creates flat colour regions.</td></tr>
+    <tr><td><code>FILLED_STROKED</code></td><td>Draw both fill and outline. Outline draws on top of fill. Suitable for coloured tiles with visible borders.</td></tr>
+    <tr><td><code>BRUSHED</code></td><td>Stamp greyscale brush PNG images along polygon edges. See the <a href="#brushed">Brush Renderer</a> section for full details.</td></tr>
+</table>
+
+<h3>Basic Renderer Properties</h3>
+<table>
+    <tr><th>Parameter</th><th>Unit</th><th>Description</th></tr>
+    <tr><td><code>Stroke Width</code></td><td>Pixels</td><td>Line thickness for outlines (STROKED, FILLED_STROKED modes). Scaled by the Quality Multiple when Scale Image is enabled. <em>1</em>: hairline. <em>5</em>: thick border. <em>0.5</em>: sub-pixel (anti-aliased thin line).</td></tr>
+    <tr><td><code>Stroke Color</code></td><td>RGBA</td><td>Colour for outlines or for brush tinting (in BRUSHED mode). The alpha channel controls transparency — useful for layered, semi-transparent effects.</td></tr>
+    <tr><td><code>Fill Color</code></td><td>RGBA</td><td>Colour for filled areas (FILLED, FILLED_STROKED modes). Semi-transparent fill (alpha &lt; 255) creates layering effects where overlapping polygons build up colour.</td></tr>
+    <tr><td><code>Point Size</code></td><td>Pixels</td><td>Dot diameter in POINTS mode. <em>2</em>: small dots. <em>8</em>: large dots. Scale with Quality Multiple for consistent print size.</td></tr>
+    <tr><td><code>Hold Length</code></td><td>Frames</td><td>In SEQUENTIAL renderer sets: how many polygons this renderer is used for before cycling to the next. <em>1</em>: cycle every polygon. <em>5</em>: use each renderer for 5 polygons before switching. Creates larger colour blocks.</td></tr>
+</table>
+
+<h3>Dynamic Changes</h3>
+<p>Each visual property (stroke width, stroke colour, fill colour, point size) can be animated dynamically as polygons are drawn. Changes happen <em>per polygon, per sprite, or per point</em> — so stroke width might increase from the first polygon to the last, creating a gradient of line weights across the shape.</p>
+
+<h4>Dynamic Change Configuration</h4>
+<table>
+    <tr><th>Setting</th><th>Description</th></tr>
+    <tr><td><code>Enabled</code></td><td>Whether this property has a dynamic change. Toggle to add/remove animation for that property.</td></tr>
+    <tr><td><code>Kind</code></td><td><strong>SEQ</strong> (Sequential) — increment through the range in order, reset when reaching min/max according to Motion setting. <strong>RAN</strong> (Random) — pick randomly within min/max each step.</td></tr>
+    <tr><td><code>Motion</code></td><td><strong>UP</strong>: increase from min toward max. <strong>DOWN</strong>: decrease from max toward min. <strong>PING_PONG</strong>: increase to max, then reverse to min, repeat. Creates oscillating values.</td></tr>
+    <tr><td><code>Cycle</code></td><td>
+        <strong>CONSTANT</strong>: run continuously without stopping.<br>
+        <strong>ONCE</strong>: animate once through the range, then hold at the final value.<br>
+        <strong>ONCE_REVERT</strong>: animate once through the range, then return to the starting value.<br>
+        <strong>PAUSING</strong>: animate with periodic pauses of fixed length (Pause Max frames) at each extreme.<br>
+        <strong>PAUSING_RANDOM</strong>: animate with random-length pauses at each extreme.
+    </td></tr>
+    <tr><td><code>Scale</code></td><td>
+        <strong>SPRITE</strong>: the value changes once per animation frame (same value for all polygons in a frame).<br>
+        <strong>POLY</strong>: the value changes with each polygon drawn (different for every sub-polygon — creates gradients across the shape).<br>
+        <strong>POINT</strong>: the value changes with each point drawn (finest granularity).
+    </td></tr>
+    <tr><td><code>Min / Max</code></td><td>The range of values for the dynamic change. For stroke width: 0.5–5.0. For colour channels: 0–255.</td></tr>
+    <tr><td><code>Increment</code></td><td>Step size per change cycle. Smaller increments = smoother, slower transitions. Larger = abrupt steps.</td></tr>
+    <tr><td><code>Pause Max</code></td><td>Maximum pause duration (in draw frames) for PAUSING cycle modes.</td></tr>
+</table>
+
+<p><em>Example — colour gradient across a shape</em>: Set Fill Color Red channel to dynamic, Kind=SEQ, Motion=PING_PONG, Cycle=CONSTANT, Scale=POLY, Min=0, Max=255, Increment=2. The red channel increases by 2 for each polygon drawn, pinging between 0 and 255. With hundreds of polygons, this creates a smooth red gradient across the entire subdivided shape.</p>
+
+<h3>Managing Renderers</h3>
+<ul>
+    <li><strong>+ Set / − Set</strong> — Add or remove renderer sets.</li>
+    <li><strong>+ Renderer / − Renderer</strong> — Add or remove individual renderers within a set.</li>
+    <li><strong>Rename</strong> — Change the name of any set or renderer.</li>
+    <li><strong>Duplicate</strong> — Clone a renderer or set for quick variations.</li>
+    <li><strong>↑ / ↓ arrows</strong> — Reorder items (affects sequential cycling order).</li>
+    <li><strong>Sel checkboxes + Delete Selected</strong> — Multi-select and delete multiple items at once.</li>
+    <li><strong>Enabled checkbox</strong> — Temporarily disable individual renderers without deleting them.</li>
+</ul>
+
+<a href="#" class="back-to-top">Back to top</a>
+</section>
+
+<!-- ============================================================ BRUSH RENDERER -->
+<section id="brushed">
+<h2>Brush Renderer (BRUSHED Mode)</h2>
+<p>The BRUSHED renderer mode stamps greyscale brush images along polygon edges instead of drawing lines or fills. This creates ink-wash, charcoal, watercolour, and hand-drawn stroke effects.</p>
+
+<h3>How It Works</h3>
+<ol>
+    <li>Loom extracts all unique edges from the subdivided polygon set.</li>
+    <li>For each edge, brush stamps (from a greyscale PNG in the project's <code>brushes/</code> directory) are placed at intervals along the edge path.</li>
+    <li>Stamps are tinted using the renderer's <strong>Stroke Color</strong> before being composited onto the canvas.</li>
+    <li>In PROGRESSIVE mode, edges are revealed gradually over time; in FULL_PATH mode, all edges are redrawn every frame.</li>
+</ol>
+
+<h3>Brush Configuration Panel</h3>
+<p>When a renderer's mode is set to BRUSHED, a <em>Brush Config</em> panel appears in the renderer editor.</p>
+<table>
+    <tr><th>Parameter</th><th>Unit</th><th>Description</th></tr>
+    <tr><td><code>Brush Name</code></td><td>File name</td><td>The brush PNG file from the project's <code>brushes/</code> directory. Selected from the brush library dropdown.</td></tr>
+    <tr><td><code>Brush Size</code></td><td>Pixels</td><td>Width and height of each stamp. <em>10</em>: tiny stamps, very fine texture. <em>30</em>: medium brush. <em>80</em>: broad, coarse strokes. Scaled by Quality Multiple when Scale Image is enabled.</td></tr>
+    <tr><td><code>Stamp Spacing</code></td><td>Pixels</td><td>Distance along the edge between consecutive brush stamps. <em>5</em>: dense, overlapping stamps = smooth stroke. <em>20</em>: spaced stamps = visible individual marks. <em>50</em>: very sparse = dotted-line effect.</td></tr>
+    <tr><td><code>Jitter</code></td><td>Pixels</td><td>Random position offset applied to each stamp perpendicular to the edge direction. <em>0</em>: stamps align exactly on the edge. <em>5</em>: slight wobble. <em>20</em>: broad scattered stroke that extends well beyond the edge.</td></tr>
+    <tr><td><code>Opacity</code></td><td>0.0–1.0</td><td>Alpha multiplier for each stamp. Combined with the stamp's inherent greyscale values and the Stroke Color's alpha. <em>0.3</em>: ghostly, transparent. <em>1.0</em>: full opacity.</td></tr>
+    <tr><td><code>Draw Mode</code></td><td>Enum</td><td><strong>FULL_PATH</strong>: all edges are stamped every draw frame. Suitable for still images or animations where the brush texture is static. <strong>PROGRESSIVE</strong>: edges are revealed gradually over multiple frames, as if drawn in real time. Suitable for animated drawing effects.</td></tr>
+    <tr><td><code>Post-Completion Mode</code></td><td>Enum</td><td>What happens after PROGRESSIVE mode finishes drawing all edges: <strong>HOLD</strong> keeps the final state; <strong>CLEAR</strong> wipes and restarts; <strong>REVERSE</strong> retraces in reverse.</td></tr>
+    <tr><td><code>Edges Per Frame</code></td><td>Integer</td><td>In PROGRESSIVE mode: how many edges are added to the drawing each frame. <em>1</em>: very slow, one edge at a time. <em>10</em>: faster reveal.</td></tr>
+</table>
+
+<h3>Brush Library</h3>
+<p>The Brush Library panel manages PNG brush files in the project's <code>brushes/</code> directory. Brushes must be greyscale PNGs; white areas are opaque, black areas are transparent (the greyscale value maps to alpha).</p>
+
+<h4>Library Actions</h4>
+<ul>
+    <li><strong>Import</strong> — Copy an external PNG file into the project's <code>brushes/</code> directory.</li>
+    <li><strong>Create</strong> — Open the built-in Brush Editor to draw a new brush from scratch.</li>
+    <li><strong>Edit</strong> — Open an existing brush in the Brush Editor.</li>
+    <li><strong>Delete</strong> — Remove a brush file from the library.</li>
+</ul>
+
+<h3>Brush Editor</h3>
+<p>The built-in pixel editor lets you paint greyscale brush shapes at any size. Paint with white for opaque areas, black for transparent. Several presets are available:</p>
+<ul>
+    <li><strong>Circle</strong> — Hard-edged circular brush.</li>
+    <li><strong>Soft Circle</strong> — Gaussian-falloff circular brush for smooth, airbrush-like strokes.</li>
+    <li><strong>Scatter</strong> — Random scattered dots for dry-brush or chalk-like texture.</li>
+</ul>
+<p>Custom brushes can be painted manually using the editor's drawing tools. Export to save the PNG to the project's <code>brushes/</code> directory.</p>
+
+<div class="tip">Start with a soft circle brush at size 20–30, spacing 5, jitter 3, opacity 0.5 for a natural ink-wash look. Increase jitter and reduce opacity for a looser, more painterly effect. Combine with semi-transparent stroke colours for layered watercolour effects.</div>
+
+<a href="#" class="back-to-top">Back to top</a>
+</section>
+
+<!-- ============================================================ RUN TAB -->
+<section id="run-tab">
+<h2>Run Tab</h2>
+<p>The Run tab controls launching the Loom Scala engine, capturing output, and configuring runtime drawing settings. It is the primary interface for the edit-render-iterate workflow.</p>
+
+<h3>Drawing Settings</h3>
+<p>These settings affect the quality and animation behaviour of the Loom render. They are saved as part of the project's global configuration.</p>
+<table>
+    <tr><th>Parameter</th><th>Unit</th><th>Description</th></tr>
+    <tr><td><code>Quality Multiple</code></td><td>Integer (1–12)</td><td>Multiplies the canvas pixel dimensions. <em>1</em>: screen-resolution (e.g. 1080×1080 px). <em>4</em>: 4320×4320 px — suitable for A2 print at 150 dpi. <em>8</em>: very high resolution for large format. When the quality multiple is greater than 1, the on-screen window shows a scaled-down preview of the full high-resolution canvas; use Save Still to capture the full image.</td></tr>
+    <tr><td><code>Scale Image</code></td><td>Boolean</td><td>When enabled, stroke widths and point sizes are scaled by the Quality Multiple so they remain proportionally consistent at high resolution. Always enable this for print-quality renders. When disabled, lines appear thinner relative to the canvas at higher quality multiples.</td></tr>
+    <tr><td><code>Animating</code></td><td>Boolean</td><td>Master animation switch. When off, Loom draws a single frame and holds — suitable for still capture. When on, the update/draw loop runs continuously. All per-sprite animation (random, keyframe, morph) requires this to be enabled.</td></tr>
+    <tr><td><code>Draw Background Once</code></td><td>Boolean</td><td>Only relevant when Animating is on. <em>Enabled</em>: background is painted only on frame 1; subsequent frames draw on top, accumulating a layered trail effect. <em>Disabled</em>: background is cleared and repainted every frame for clean, crisp animation. The overlay colour (Global Config) is drawn every frame in either mode — use semi-transparent overlay with Draw Background Once enabled for a fading-trail effect.</td></tr>
+</table>
+
+<h3>Process Controls</h3>
+<table>
+    <tr><th>Button / Shortcut</th><th>Action</th></tr>
+    <tr><td><strong>Run Loom</strong> (<code>Cmd+L</code>)</td><td>Auto-saves the project, then launches the Loom Scala engine via SBT. A window opens with the rendered output. SBT compilation may take 10–30 seconds on first run; subsequent runs are faster (incremental compilation).</td></tr>
+    <tr><td><strong>Reload</strong> (<code>Cmd+R</code>)</td><td>Auto-saves the project, then signals the running Loom engine to reload all configuration files and reinitialise. No restart needed. This is the fastest way to see parameter changes.</td></tr>
+    <tr><td><strong>Stop</strong> (<code>Cmd+H</code>)</td><td>Terminates the running Loom process.</td></tr>
+</table>
+
+<div class="tip">The <em>Reload</em> command (<code>Cmd+R</code>) is your primary iteration tool. Edit any parameter, press Cmd+R, and the Loom window updates within a second. You can also press F5 in the Loom window itself to trigger a reload.</div>
+
+<h3>Capture Controls</h3>
+<table>
+    <tr><th>Button</th><th>Description</th></tr>
+    <tr><td><strong>Save Still</strong></td><td>Captures the current frame as a PNG. Saved to <code>&lt;project&gt;/renders/stills/</code> with an auto-incremented filename. When the quality multiple is greater than 1, the on-screen display shows a scaled-down preview; the saved PNG always contains the full-resolution image.</td></tr>
+    <tr><td><strong>Save Animation</strong></td><td>Toggles frame recording on/off. While recording, each animation frame is saved as a sequential PNG to <code>&lt;project&gt;/renders/animations/</code>. Stop recording to finish the sequence. Use external tools (ffmpeg, Premiere, etc.) to combine frames into video.</td></tr>
+</table>
+
+<h3>Render Destination</h3>
+<p>By default, captures go to <code>&lt;project_dir&gt;/renders/</code>. You can specify a custom path using the <em>Render Path</em> field or the Browse button. The custom path is communicated to Loom via a sentinel file mechanism.</p>
+
+<h3>Loom SBT Path</h3>
+<p>The file system path to the root of the Loom Scala project (the directory containing <code>build.sbt</code>). SBT is launched from here. Adjust this if your Loom installation is in a non-standard location.</p>
+
+<h3>Auto-Save</h3>
+<p>When <em>Auto-save before run/reload</em> is checked (default), the editor saves all configuration files to disk before launching or reloading Loom. This guarantees the engine reads your latest changes. Uncheck only if you want to run with previously saved parameters while leaving unsaved edits in the editor.</p>
+
+<h3>Output Console</h3>
+<p>The scrolling text panel shows SBT compilation output, Loom startup messages, and any runtime warnings or diagnostics. Key messages to look for:</p>
+<ul>
+    <li><code>[Loom] Project loaded</code> — Successful startup</li>
+    <li><code>[Loom] Warning: ...</code> — Configuration issue (missing file, name mismatch, etc.)</li>
+    <li><code>[error]</code> — Scala compilation error; the engine will not start</li>
+    <li><code>[Loom] Animation thread started</code> — Animation loop is running</li>
+    <li><code>[Loom] Reloading...</code> — Reload signal received</li>
+</ul>
+
+<a href="#" class="back-to-top">Back to top</a>
+</section>
+
+<!-- ============================================================ FILE MANAGEMENT -->
+<section id="file-management">
+<h2>File Management</h2>
+
+<h3>Project Files</h3>
+<table>
+    <tr><th>File</th><th>Read by Loom?</th><th>Contents</th></tr>
+    <tr><td><code>project.xml</code></td><td>No (editor only)</td><td>Project manifest listing file paths. Not consumed by the Scala engine.</td></tr>
+    <tr><td><code>configuration/global_config.xml</code></td><td>Yes</td><td>Canvas size, colours, quality, animation flags, background image path.</td></tr>
+    <tr><td><code>configuration/polygons.xml</code></td><td>Yes</td><td>All polygon set references and regular polygon definitions.</td></tr>
+    <tr><td><code>configuration/subdivision.xml</code></td><td>Yes</td><td>All subdivision params sets.</td></tr>
+    <tr><td><code>configuration/shapes.xml</code></td><td>Yes</td><td>Shape configurations (polygon + subdivision pairings).</td></tr>
+    <tr><td><code>configuration/sprites.xml</code></td><td>Yes</td><td>Sprite definitions including position, animation, morph targets.</td></tr>
+    <tr><td><code>configuration/rendering.xml</code></td><td>Yes</td><td>All renderer sets and individual renderer configurations.</td></tr>
+</table>
+
+<h3>Asset Directories</h3>
+<table>
+    <tr><th>Directory</th><th>Contents</th></tr>
+    <tr><td><code>polygonSets/</code></td><td>Spline polygon XML files drawn in Bezier Draw.</td></tr>
+    <tr><td><code>regularPolygons/</code></td><td>Editor-only regular polygon definition files (reusable/shareable).</td></tr>
+    <tr><td><code>morphTargets/</code></td><td>Morph target polygon set XML files. Same format as polygon sets.</td></tr>
+    <tr><td><code>brushes/</code></td><td>Greyscale brush PNG files for the BRUSHED renderer.</td></tr>
+    <tr><td><code>background_image/</code></td><td>Background image files (PNG, JPG) referenced by Global Config.</td></tr>
+    <tr><td><code>renders/stills/</code></td><td>Captured still images. Auto-named with timestamp/index.</td></tr>
+    <tr><td><code>renders/animations/</code></td><td>Animation frame sequences (PNG). Combine with ffmpeg for video.</td></tr>
+</table>
+
+<h3>Disabled Items and XML</h3>
+<p>Items disabled using the <em>Enabled</em> checkbox (SubdivisionParams, Renderers) are written to XML inside an <code>&lt;EditorDisabled&gt;</code> wrapper element. The Scala engine skips any element inside this wrapper, so disabled items are preserved for future re-enabling but have no effect on the render.</p>
+
+<h3>Keyboard Shortcuts</h3>
+<table>
+    <tr><th>Shortcut</th><th>Action</th></tr>
+    <tr><td><code>Cmd+N</code></td><td>New Project</td></tr>
+    <tr><td><code>Cmd+O</code></td><td>Open Project</td></tr>
+    <tr><td><code>Cmd+S</code></td><td>Save All</td></tr>
+    <tr><td><code>Cmd+Shift+S</code></td><td>Save Project As</td></tr>
+    <tr><td><code>Cmd+L</code></td><td>Run Loom</td></tr>
+    <tr><td><code>Cmd+R</code></td><td>Reload Loom</td></tr>
+    <tr><td><code>Cmd+H</code></td><td>Stop Loom</td></tr>
+    <tr><td><code>Cmd+Q</code></td><td>Quit</td></tr>
+    <tr><td><code>F1</code></td><td>Open this User Guide</td></tr>
+    <tr><td><code>F5</code> (in Loom window)</td><td>Reload from within the running Loom engine</td></tr>
+</table>
+
+<a href="#" class="back-to-top">Back to top</a>
+</section>
+
+<footer>
+    <p>Loom Parameter Editor &copy; 2024&ndash;2026. For use with the Loom Drawing Engine (Scala 3).</p>
+</footer>
+</body>
+</html>

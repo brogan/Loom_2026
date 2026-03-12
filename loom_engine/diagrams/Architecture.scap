@@ -1,0 +1,91 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ScappleDocument Version="1.2" ID="3D2EC2BB-E72C-4E13-B069-DF9916B60E58">
+  <Notes>
+    <Note ID="0" FontSize="12.0" Position="227.0,167.0" Width="107.0">
+      <Appearance>
+        <Alignment>Left</Alignment>
+        <Border Weight="2"/>
+      </Appearance>
+      <String>Renderer Library</String>
+    </Note>
+    <Note ID="1" FontSize="12.0" Position="224.5,209.6" Width="137.0">
+      <Appearance>
+        <Alignment>Left</Alignment>
+        <Border Weight="2"/>
+      </Appearance>
+      <String>Polygon Set Collection</String>
+    </Note>
+    <Note ID="2" FontSize="12.0" Position="221.7,256.9" Width="242.4">
+      <Appearance>
+        <Alignment>Left</Alignment>
+        <Border Weight="2"/>
+      </Appearance>
+      <String>Subdivision Parameter Set Collection</String>
+    </Note>
+    <Note ID="3" FontSize="12.0" Position="229.3,301.7" Width="76.0">
+      <Appearance>
+        <Alignment>Left</Alignment>
+        <Border Weight="2"/>
+      </Appearance>
+      <String>Shapes 2D</String>
+      <ConnectedNoteIDs>4</ConnectedNoteIDs>
+    </Note>
+    <Note ID="4" FontSize="12.0" Position="357.8,299.6" Width="113.0">
+      <Appearance>
+        <Alignment>Left</Alignment>
+        <Border Weight="2"/>
+      </Appearance>
+      <String>Subdivide Shapes</String>
+      <ConnectedNoteIDs>3</ConnectedNoteIDs>
+    </Note>
+    <Note ID="5" FontSize="12.0" Position="225.9,348.5" Width="89.0">
+      <Appearance>
+        <Alignment>Left</Alignment>
+        <Border Weight="2"/>
+      </Appearance>
+      <String>Sprite 2D List</String>
+    </Note>
+  </Notes>
+  <BackgroundShapes/>
+  <AutoFit>0,1,3-5</AutoFit>
+  <NoteStyles>
+    <Style Name="Bubble (Blue)" ID="F82C4BC6-7C72-4E7B-95E8-01A8CEF83637" AffectFontStyle="No" AffectAlignment="No" AffectTextColor="No" AffectNoteBody="Yes" AffectFade="No">
+      <BorderThickness>1</BorderThickness>
+      <BorderColor>0.722101628780365 0.8462901711463928 0.9162386655807495</BorderColor>
+      <FillColor>0.786 0.9204 0.9961</FillColor>
+    </Style>
+    <Style Name="Bubble (Green)" ID="ED7A9DC4-4C33-40E3-968F-434858D55CF6" AffectFontStyle="No" AffectAlignment="No" AffectTextColor="No" AffectNoteBody="Yes" AffectFade="No">
+      <BorderThickness>1</BorderThickness>
+      <BorderColor>0.7199764847755432 0.8974809646606445 0.633672833442688</BorderColor>
+      <FillColor>0.7837 0.9758 0.6903</FillColor>
+    </Style>
+    <Style Name="Bubble (Pink)" ID="58A57925-3259-4A19-9530-FD9AF4C75565" AffectFontStyle="No" AffectAlignment="No" AffectTextColor="No" AffectNoteBody="Yes" AffectFade="No">
+      <BorderThickness>1</BorderThickness>
+      <BorderColor>0.9189181923866272 0.7627586722373962 0.7658078670501709</BorderColor>
+      <FillColor>0.9948 0.8577 0.9998</FillColor>
+    </Style>
+    <Style Name="Bubble (Red)" ID="8628FD6D-4FA0-497B-B7A3-CAFEB246DE5D" AffectFontStyle="No" AffectAlignment="No" AffectTextColor="No" AffectNoteBody="Yes" AffectFade="No">
+      <BorderThickness>1</BorderThickness>
+      <BorderColor>0.9189181923866272 0.7627586722373962 0.7658078670501709</BorderColor>
+      <FillColor>0.999 0.83 0.8333</FillColor>
+    </Style>
+    <Style Name="Bubble (Yellow)" ID="BDDE66D1-C287-44CC-85BA-B03EE6E0AAB2" AffectFontStyle="No" AffectAlignment="No" AffectTextColor="No" AffectNoteBody="Yes" AffectFade="No">
+      <BorderThickness>1</BorderThickness>
+      <BorderColor>0.9024707674980164 0.8555303812026978 0.628868043422699</BorderColor>
+      <FillColor>0.9812 0.9304 0.6851</FillColor>
+    </Style>
+    <Style Name="Red Text" ID="BE77D1CD-102F-4FEF-9BD6-FA8E17C1928C" AffectFontStyle="No" AffectAlignment="No" AffectTextColor="Yes" AffectNoteBody="No" AffectFade="No">
+      <TextColor>1.0 0.0 0.0</TextColor>
+    </Style>
+    <Style Name="Title Text" ID="25C5A4C6-E45B-448A-BA8F-62E819D48B37" AffectFontStyle="Yes" AffectAlignment="No" AffectTextColor="No" AffectNoteBody="No" AffectFade="No">
+      <FontSize>28.0</FontSize>
+      <IsBold>Yes</IsBold>
+    </Style>
+  </NoteStyles>
+  <UISettings>
+    <BackgroundColor>1.0 0.99 0.96</BackgroundColor>
+    <DefaultFont>Helvetica</DefaultFont>
+    <NoteXPadding>8.0</NoteXPadding>
+  </UISettings>
+  <PrintSettings PaperSize="595.0,842.0" LeftMargin="72.0" RightMargin="72.0" TopMargin="90.0" BottomMargin="90.0" PaperType="iso-a4" Orientation="Portrait" HorizontalPagination="Clip" VerticalPagination="Auto" ScaleFactor="1.0" HorizontallyCentered="Yes" VerticallyCentered="Yes" Collates="Yes" PagesAcross="1" PagesDown="1"/>
+</ScappleDocument>

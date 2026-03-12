@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="ISO-8859-1"?>
+<!DOCTYPE oval SYSTEM "../../dtd/oval.dtd">
+
+<oval>
+
+	<name>o_circle</name>
+	<shapeType>OVAL</shapeType>
+	<centerX>0</centerX>
+	<centerY>0</centerY>
+	<width>1</width>
+	<height>1</height>
+
+</oval>

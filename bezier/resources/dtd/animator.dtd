@@ -1,0 +1,16 @@
+<!ELEMENT animator (name, keys)>
+
+    <!ELEMENT name (#PCDATA)>
+    <!ELEMENT keys (key+)>
+       <!ELEMENT key (duration, tweenMode, easeMode, oscillator, scaleX, scaleY, rotationAngle, rotationOffset, transX, transY, renderer)>
+       		<!ELEMENT duration (#PCDATA)>
+       		<!ELEMENT tweenMode (#PCDATA)>
+       		<!ELEMENT easeMode (#PCDATA)>
+       		<!ELEMENT oscillator (#PCDATA)>
+    		<!ELEMENT scaleX (#PCDATA)>
+    		<!ELEMENT scaleY (#PCDATA)>
+    		<!ELEMENT rotationAngle (#PCDATA)>
+    		<!ELEMENT rotationOffset (#PCDATA)>
+    		<!ELEMENT transX (#PCDATA)>
+    		<!ELEMENT transY (#PCDATA)>
+    		<!ELEMENT renderer (#PCDATA)>

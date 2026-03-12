@@ -1,0 +1,105 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><title>View &amp; Files</title>
+<style>
+  body { font-family: Arial, sans-serif; font-size: 13px; color: #222; background: #fafafa; margin: 0; padding: 20px 28px 40px; }
+  h1 { font-size: 21px; font-weight: bold; color: #1a1a2e; border-bottom: 2px solid #e0e4f0; padding-bottom: 10px; margin-top: 0; }
+  h2 { font-size: 16px; font-weight: bold; color: #1a1a2e; margin-top: 28px; border-bottom: 1px solid #e0e4f0; padding-bottom: 5px; }
+  h3 { font-size: 13px; font-weight: bold; color: #2c3060; margin-top: 18px; margin-bottom: 4px; }
+  h4 { font-size: 13px; font-weight: bold; color: #444; margin-top: 12px; margin-bottom: 3px; }
+  p { line-height: 1.6; margin: 7px 0; }
+  ul, ol { margin: 5px 0; padding-left: 20px; line-height: 1.65; }
+  li { margin-bottom: 2px; }
+  .note { background: #eef4ff; border-left: 4px solid #5b9cf6; padding: 9px 12px; margin: 12px 0; font-size: 12px; }
+  .warn { background: #fff8e6; border-left: 4px solid #f0a500; padding: 9px 12px; margin: 12px 0; font-size: 12px; }
+  table { border-collapse: collapse; width: 100%; margin: 10px 0; font-size: 12px; }
+  th { background: #f0f2f8; text-align: left; padding: 7px 10px; border: 1px solid #d8dce8; font-weight: bold; color: #333; }
+  td { padding: 6px 10px; border: 1px solid #e4e7f0; vertical-align: top; }
+  tr:nth-child(even) td { background: #f7f8fc; }
+  kbd { background: #eef; border: 1px solid #aac; border-radius: 3px; padding: 1px 5px; font-family: monospace; font-size: 11px; }
+  code { font-family: monospace; background: #eef; padding: 0 4px; border-radius: 3px; font-size: 11px; }
+  .chip { display: inline-block; background: #e8ecff; color: #3050b0; border-radius: 10px; padding: 1px 8px; font-size: 11px; font-weight: bold; margin: 1px 2px; }
+  .chip.orange { background: #fff0e0; color: #b05000; }
+  .chip.purple { background: #f5e8ff; color: #7020a0; }
+  .chip.yellow { background: #fdf8e0; color: #807000; }
+  .chip.blue   { background: #e0f0ff; color: #0050a0; }
+  .chip.red    { background: #ffe8e8; color: #a00020; }
+  .color-swatch { display: inline-block; width: 12px; height: 12px; border-radius: 2px; border: 1px solid rgba(0,0,0,0.2); vertical-align: middle; margin-right: 4px; }
+</style>
+</head><body>
+
+<h1>View &amp; Files</h1>
+
+<h2>View Toggles</h2>
+<table>
+  <tr><th>Button</th><th>Effect</th></tr>
+  <tr><td>Toggle Grid</td><td>Show or hide the background grid lines and axis lines.</td></tr>
+  <tr><td>Toggle Control Points</td><td>Show or hide the cubic B&eacute;zier control-point handles. Anchors remain visible.</td></tr>
+  <tr><td>Toggle Reference Image</td><td>Show or hide the loaded reference image.</td></tr>
+</table>
+
+<h2>Reference Image</h2>
+<ol>
+  <li>Click <b>Browse</b> in the Reference Image panel at the top.</li>
+  <li>Select a PNG, JPEG, or GIF file.</li>
+  <li>The image is displayed behind the polygon geometry.</li>
+  <li>Toggle its visibility with the <b>Toggle Reference Image</b> toolbar button.</li>
+</ol>
+<div class="note">The reference image is not saved with the polygon set &mdash; it is a session-only drawing aid.</div>
+
+<h2>Save &amp; Load Polygon Sets</h2>
+<h3>Saving</h3>
+<ol>
+  <li>Type a name in the <b>Name</b> field in the top panel.</li>
+  <li>Click <b>Save</b>.</li>
+</ol>
+<p>The polygon set is written as <code>&lt;name&gt;.xml</code> into the project's <code>polygonSets/</code> directory. An SVG copy is also written automatically to an adjacent <code>svgs/</code> directory.</p>
+
+<h3>Loading</h3>
+<ol>
+  <li>Click <b>Load</b> to open a file browser, or type the path in the File field.</li>
+  <li>Select an XML polygon set file.</li>
+  <li>The geometry is loaded onto the canvas, replacing the current content. The Name field is populated automatically.</li>
+</ol>
+<div class="warn">Loading a polygon set <b>replaces</b> all current geometry. Use Undo if you load by mistake.</div>
+
+<h2>SVG Export &amp; Import</h2>
+<h3>Automatic SVG Export</h3>
+<p>Every time you click <b>Save</b>, an SVG copy is saved alongside the XML in the <code>svgs/</code> directory. Each closed polygon becomes a <code>&lt;path&gt;</code> element using M and C commands in a <code>viewBox="0 0 1000 1000"</code> SVG.</p>
+
+<h3>SVG Import</h3>
+<ol>
+  <li>Click <b>Import SVG</b> in the SVG panel.</li>
+  <li>Select any SVG file. The browser opens in the <code>svgs/</code> directory by default.</li>
+  <li>Each <code>&lt;path&gt;</code> in the SVG is added to the canvas as a new polygon. Existing geometry is preserved.</li>
+</ol>
+<h4>Supported SVG Path Commands</h4>
+<table>
+  <tr><th>Command</th><th>Handling</th></tr>
+  <tr><td><code>M / m</code></td><td>Move to (subpath start).</td></tr>
+  <tr><td><code>C / c</code></td><td>Cubic B&eacute;zier &mdash; used directly.</td></tr>
+  <tr><td><code>L / l</code></td><td>Line to &mdash; converted to cubic with control points at &frac13; and &frac23;.</td></tr>
+  <tr><td><code>Q / q</code></td><td>Quadratic B&eacute;zier &mdash; converted to cubic via degree elevation.</td></tr>
+  <tr><td><code>Z / z</code></td><td>Close path.</td></tr>
+  <tr><td>H, V, S, T, A, &hellip;</td><td>Silently skipped.</td></tr>
+</table>
+<p>Coordinates are mapped from the SVG <code>viewBox</code> into Bezier canvas space automatically. Importing is undoable.</p>
+
+<h2>Undo</h2>
+<p>Press <kbd>&#8984; Cmd</kbd> + <kbd>Z</kbd> to undo the last operation. Up to <b>20 undo levels</b> are kept.</p>
+<p>Undo restores the complete polygon geometry and all weld links. Selection is cleared after an undo.</p>
+<h4>Operations that create undo points</h4>
+<ul>
+  <li>Any drag start (point, edge, or polygon)</li>
+  <li>First movement of a Scale or Rotate slider gesture</li>
+  <li>Close Polygon</li>
+  <li>Clear All Geometry</li>
+  <li>Zoom In / Zoom Out (each click)</li>
+  <li>Snap Anchors / Snap All</li>
+  <li>Flip, Centre</li>
+  <li>Weld (explicit and drag-to-weld)</li>
+  <li>Extrude (start of drag)</li>
+  <li>Duplicate, Delete</li>
+  <li>SVG Import</li>
+</ul>
+<div class="note">There is no Redo. If you undo too far, you will need to redo the work manually.</div>
+
+</body></html>

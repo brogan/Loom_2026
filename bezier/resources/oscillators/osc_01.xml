@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="ISO-8859-1"?>
+<!DOCTYPE oscillator SYSTEM "../dtd/oscillator.dtd">
+
+<oscillator>
+
+	<name>osc_01</name>
+	<frequency>3</frequency>
+	<amplitude>45</amplitude>
+	<minAmp>0</minAmp>
+	<maxAmp>90</maxAmp>
+	<ampIncrement>1</ampIncrement>
+	<incrementing>true</incrementing>
+	<ampTipPoint>.5</ampTipPoint>
+	<phase>0</phase>
+
+</oscillator>

@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="ISO-8859-1"?>
+<!DOCTYPE renderer SYSTEM "../dtd/renderer.dtd">
+<renderer>
+    <name>F_white_255</name>
+    <mode>RENDER_FILLED</mode>
+    <fillRed>255</fillRed>
+    <fillGreen>255</fillGreen>
+    <fillBlue>255</fillBlue>
+    <fillAlpha>255</fillAlpha>
+    <strokeRed>255</strokeRed>
+    <strokeGreen>255</strokeGreen>
+    <strokeBlue>255</strokeBlue>
+    <strokeAlpha>10</strokeAlpha>
+    <strokeWeight>1</strokeWeight>
+</renderer>

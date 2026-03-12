@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="ISO-8859-1"?>
+<!DOCTYPE regularPolygon SYSTEM "../../dtd/regularPolygon.dtd">
+<regularPolygon>
+    <name>r_star_32_twirl_tight</name>
+    <shapeType>REGULAR_POLYGON</shapeType>
+    <totalPoints>32</totalPoints>
+    <internalRadius>-1.0</internalRadius>
+    <offset>0.0</offset>
+    <scaleX>0.5</scaleX>
+    <scaleY>0.5</scaleY>
+    <rotationAngle>11.25</rotationAngle>
+    <transX>0.5</transX>
+    <transY>0.5</transY>
+</regularPolygon>
