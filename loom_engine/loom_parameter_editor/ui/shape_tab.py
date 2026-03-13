@@ -29,6 +29,8 @@ class ShapeTab(QWidget):
         self._checking = False
         self._subdivision_collection = None  # Reference to subdivision collection for dropdown
         self._polygon_library = None  # Reference to polygon library for dropdown
+        self._open_curve_library = None  # Reference to open curve library for dropdown
+        self._point_set_library = None  # Reference to point set library for dropdown
 
         self._setup_ui()
         self._refresh_tree()
@@ -113,9 +115,8 @@ class ShapeTab(QWidget):
         source_layout = QFormLayout(source_group)
 
         self.source_type_combo = QComboBox()
-        # Items map: index 0 → POLYGON_SET, index 1 → INLINE_POINTS
-        # Regular polygons are now created in the Polygons tab and referenced by name
-        self.source_type_combo.addItems(["Polygon Set Reference", "Inline Points"])
+        # Items map: index 0 → POLYGON_SET, index 1 → INLINE_POINTS, index 2 → OPEN_CURVE_SET, index 3 → POINT_SET
+        self.source_type_combo.addItems(["Polygon Set Reference", "Inline Points", "Open Curve Set", "Point Set"])
         self.source_type_combo.currentIndexChanged.connect(self._on_source_type_changed)
         source_layout.addRow("Source Type:", self.source_type_combo)
 
@@ -147,6 +148,40 @@ class ShapeTab(QWidget):
         self.inline_label = QLabel("Inline points not yet editable in UI")
         inline_layout.addWidget(self.inline_label)
         self.source_stack.addWidget(inline_widget)
+
+        # Open curve set reference (index 2)
+        open_curve_widget = QWidget()
+        open_curve_layout = QFormLayout(open_curve_widget)
+        self.open_curve_set_combo = QComboBox()
+        self.open_curve_set_combo.setEditable(True)
+        self.open_curve_set_combo.setPlaceholderText("Name of OpenCurveSet from curves.xml")
+        self.open_curve_set_combo.currentTextChanged.connect(self._on_modified)
+        open_curve_layout.addRow("Open Curve Set:", self.open_curve_set_combo)
+
+        oc_refresh_layout = QHBoxLayout()
+        self.refresh_open_curve_btn = QPushButton("Refresh List")
+        self.refresh_open_curve_btn.clicked.connect(self._refresh_open_curve_dropdown)
+        oc_refresh_layout.addStretch()
+        oc_refresh_layout.addWidget(self.refresh_open_curve_btn)
+        open_curve_layout.addRow("", oc_refresh_layout)
+        self.source_stack.addWidget(open_curve_widget)
+
+        # Point set reference (index 3)
+        point_set_widget = QWidget()
+        point_set_layout = QFormLayout(point_set_widget)
+        self.point_set_combo = QComboBox()
+        self.point_set_combo.setEditable(True)
+        self.point_set_combo.setPlaceholderText("Name of PointSet from points.xml")
+        self.point_set_combo.currentTextChanged.connect(self._on_modified)
+        point_set_layout.addRow("Point Set:", self.point_set_combo)
+
+        ps_refresh_layout = QHBoxLayout()
+        self.refresh_point_set_btn = QPushButton("Refresh List")
+        self.refresh_point_set_btn.clicked.connect(self._refresh_point_set_dropdown)
+        ps_refresh_layout.addStretch()
+        ps_refresh_layout.addWidget(self.refresh_point_set_btn)
+        point_set_layout.addRow("", ps_refresh_layout)
+        self.source_stack.addWidget(point_set_widget)
 
         source_layout.addRow(self.source_stack)
         right_layout.addWidget(source_group)
@@ -266,6 +301,8 @@ class ShapeTab(QWidget):
         "POLYGON_SET": "PSET",
         "REGULAR_POLYGON": "REG",
         "INLINE_POINTS": "IPT",
+        "OPEN_CURVE_SET": "OCS",
+        "POINT_SET": "PTS",
     }
 
     def _refresh_tree(self):
@@ -349,11 +386,19 @@ class ShapeTab(QWidget):
             self.name_edit.setText(shape.name)
 
             # Source type — map enum to combo index
-            # POLYGON_SET (0) → combo 0, REGULAR_POLYGON (1) → combo 0 (show as reference),
-            # INLINE_POINTS (2) → combo 1
+            # POLYGON_SET (0) → combo 0, REGULAR_POLYGON (1) → combo 0,
+            # INLINE_POINTS (2) → combo 1, OPEN_CURVE_SET (3) → combo 2, POINT_SET (4) → combo 3
             if shape.source_type == ShapeSourceType.INLINE_POINTS:
                 self.source_type_combo.setCurrentIndex(1)
                 self.source_stack.setCurrentIndex(1)
+            elif shape.source_type == ShapeSourceType.OPEN_CURVE_SET:
+                self.source_type_combo.setCurrentIndex(2)
+                self.source_stack.setCurrentIndex(2)
+                self.open_curve_set_combo.setCurrentText(shape.open_curve_set_name)
+            elif shape.source_type == ShapeSourceType.POINT_SET:
+                self.source_type_combo.setCurrentIndex(3)
+                self.source_stack.setCurrentIndex(3)
+                self.point_set_combo.setCurrentText(shape.point_set_name)
             else:
                 # Both POLYGON_SET and legacy REGULAR_POLYGON show as polygon set reference
                 self.source_type_combo.setCurrentIndex(0)
@@ -386,11 +431,17 @@ class ShapeTab(QWidget):
 
         self._current_shape.name = self.name_edit.text()
 
-        # Source type — combo index 0 = POLYGON_SET, 1 = INLINE_POINTS
+        # Source type — combo index 0=POLYGON_SET, 1=INLINE_POINTS, 2=OPEN_CURVE_SET, 3=POINT_SET
         combo_idx = self.source_type_combo.currentIndex()
         if combo_idx == 0:
             self._current_shape.source_type = ShapeSourceType.POLYGON_SET
             self._current_shape.polygon_set_name = self.polygon_set_combo.currentText()
+        elif combo_idx == 2:
+            self._current_shape.source_type = ShapeSourceType.OPEN_CURVE_SET
+            self._current_shape.open_curve_set_name = self.open_curve_set_combo.currentText()
+        elif combo_idx == 3:
+            self._current_shape.source_type = ShapeSourceType.POINT_SET
+            self._current_shape.point_set_name = self.point_set_combo.currentText()
         else:
             self._current_shape.source_type = ShapeSourceType.INLINE_POINTS
 
@@ -687,6 +738,60 @@ class ShapeTab(QWidget):
                 else:
                     # If not found, set as custom text
                     self.subdiv_set_combo.setCurrentText(current_text)
+        finally:
+            self._updating = False
+
+    def set_open_curve_library(self, library) -> None:
+        """Set the open curve library for populating the open curve set dropdown."""
+        self._open_curve_library = library
+        self._refresh_open_curve_dropdown()
+
+    def _refresh_open_curve_dropdown(self) -> None:
+        """Refresh the open curve set dropdown from the open curve library."""
+        self._updating = True
+        try:
+            current_text = self.open_curve_set_combo.currentText()
+            self.open_curve_set_combo.clear()
+            if self._open_curve_library is not None:
+                try:
+                    if hasattr(self._open_curve_library, 'curve_sets'):
+                        names = sorted(cs.name for cs in self._open_curve_library.curve_sets)
+                        self.open_curve_set_combo.addItems(names)
+                except Exception:
+                    pass
+            if current_text:
+                index = self.open_curve_set_combo.findText(current_text)
+                if index >= 0:
+                    self.open_curve_set_combo.setCurrentIndex(index)
+                else:
+                    self.open_curve_set_combo.setCurrentText(current_text)
+        finally:
+            self._updating = False
+
+    def set_point_set_library(self, library) -> None:
+        """Set the point set library for populating the point set dropdown."""
+        self._point_set_library = library
+        self._refresh_point_set_dropdown()
+
+    def _refresh_point_set_dropdown(self) -> None:
+        """Refresh the point set dropdown from the point set library."""
+        self._updating = True
+        try:
+            current_text = self.point_set_combo.currentText()
+            self.point_set_combo.clear()
+            if self._point_set_library is not None:
+                try:
+                    if hasattr(self._point_set_library, 'point_sets'):
+                        names = sorted(ps.name for ps in self._point_set_library.point_sets)
+                        self.point_set_combo.addItems(names)
+                except Exception:
+                    pass
+            if current_text:
+                index = self.point_set_combo.findText(current_text)
+                if index >= 0:
+                    self.point_set_combo.setCurrentIndex(index)
+                else:
+                    self.point_set_combo.setCurrentText(current_text)
         finally:
             self._updating = False
 

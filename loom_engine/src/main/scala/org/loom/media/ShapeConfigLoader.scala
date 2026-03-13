@@ -13,6 +13,8 @@ object ShapeConfigLoader {
   val SOURCE_POLYGON_SET = 0
   val SOURCE_REGULAR_POLYGON = 1
   val SOURCE_INLINE_POINTS = 2
+  val SOURCE_OPEN_CURVE_SET = 3
+  val SOURCE_POINT_SET = 4
 
   // 3D shape types
   val SHAPE3D_NONE = 0
@@ -114,6 +116,10 @@ object ShapeConfigLoader {
           }
         case SOURCE_INLINE_POINTS =>
           shapeDef.inlinePoints = parseInlinePoints(sourceNode)
+        case SOURCE_OPEN_CURVE_SET =>
+          shapeDef.openCurveSetName = (sourceNode \ "@openCurveSet").text
+        case SOURCE_POINT_SET =>
+          shapeDef.pointSetName = (sourceNode \ "@pointSet").text
         case _ =>
       }
     }
@@ -192,6 +198,8 @@ object ShapeConfigLoader {
       case "POLYGON_SET" => SOURCE_POLYGON_SET
       case "REGULAR_POLYGON" => SOURCE_REGULAR_POLYGON
       case "INLINE_POINTS" => SOURCE_INLINE_POINTS
+      case "OPENCURVESET" | "OPEN_CURVE_SET" => SOURCE_OPEN_CURVE_SET
+      case "POINTSET" | "POINT_SET" => SOURCE_POINT_SET
       case _ => SOURCE_POLYGON_SET
     }
   }
@@ -216,6 +224,8 @@ object ShapeConfigLoader {
 class ShapeDef(val name: String) {
   var sourceType: Int = ShapeConfigLoader.SOURCE_POLYGON_SET
   var polygonSetName: String = ""
+  var openCurveSetName: String = ""
+  var pointSetName: String = ""
   var regularPolygonSides: Int = 4
   var inlinePoints: List[Vector2D] = List.empty
   var subdivisionParamsSetName: String = ""

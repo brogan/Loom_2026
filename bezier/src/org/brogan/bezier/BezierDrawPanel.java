@@ -140,6 +140,10 @@ public class BezierDrawPanel extends JPanel implements Runnable, MouseListener, 
 	private LayerManager layerManager = new LayerManager();
 	private java.util.List<Point2D.Double[]> clipboard = new ArrayList<>();
 
+	// ── Point mode ────────────────────────────────────────────────────────────
+	private java.util.List<Point2D.Double> pointList = new ArrayList<>();
+	private boolean pointMode = false;
+
 	public BezierDrawPanel(CubicCurvePanel p, CubicCurveFrame  cF, Color strokeCol){
 		cubicCurvePanel = p;
 		curveFrame = cF;
@@ -308,6 +312,16 @@ public class BezierDrawPanel extends JPanel implements Runnable, MouseListener, 
 						10f, new float[]{6, 3}, 0f));
 				rg.setColor(new Color(50, 130, 255, 220));
 				rg.drawRect(rx, ry, rw, rh);
+			}
+
+			// Draw discrete points (point mode)
+			if (!pointList.isEmpty()) {
+				Graphics2D pg = (Graphics2D) dBufferGraphics;
+				pg.setColor(new Color(255, 0, 255, 220)); // magenta
+				int r = 5;
+				for (Point2D.Double pt : pointList) {
+					pg.fillOval((int)pt.x - r, (int)pt.y - r, r * 2, r * 2);
+				}
 			}
 
 			if (knifeMode && knifeStart != null && knifeEnd != null) {
@@ -586,6 +600,11 @@ public class BezierDrawPanel extends JPanel implements Runnable, MouseListener, 
 		double y = sp.y;
 		Point2D.Double mousePos = new Point2D.Double(x,y);
 		System.out.println("BezierDrawPanel, mousePressed, mouse x: " + mousePos.x + "   mouse y: " + mousePos.y);
+
+		if (pointMode) {
+			addPointAtMouse(mE);
+			return;
+		}
 
 		if (knifeMode) {
 			knifeStart = new Point2D.Double(x, y);
@@ -1551,7 +1570,7 @@ public class BezierDrawPanel extends JPanel implements Runnable, MouseListener, 
 					}
 				}
 			}
-			managers[i] = new GeometrySnapshot.ManagerSnap(isSingleEdge, n, px, py, m.getLayerId());
+			managers[i] = new GeometrySnapshot.ManagerSnap(isSingleEdge, m.getIsClosed(), n, px, py, m.getLayerId());
 		}
 
 		// Capture cross-manager weld links (deduplicated by canonical index key)
@@ -1577,8 +1596,11 @@ public class BezierDrawPanel extends JPanel implements Runnable, MouseListener, 
 				}
 			}
 		}
+		// Snapshot the discrete point list
+		Point2D.Double[] pointsSnap = pointList.toArray(new Point2D.Double[0]);
 		return new GeometrySnapshot(managers,
-			weldLinks.toArray(new GeometrySnapshot.WeldLinkSnap[0]));
+			weldLinks.toArray(new GeometrySnapshot.WeldLinkSnap[0]),
+			pointsSnap);
 	}
 
 	/** Push the current geometry state onto the undo stack. */
@@ -1600,6 +1622,11 @@ public class BezierDrawPanel extends JPanel implements Runnable, MouseListener, 
 		scaleRotateSnapshotPending = true;
 		// Restore geometry
 		polygonManager.restoreFromSnapshot(snap, strokeColor);
+		// Restore discrete points
+		pointList.clear();
+		for (Point2D.Double pt : snap.points) {
+			pointList.add(new Point2D.Double(pt.x, pt.y));
+		}
 	}
 	/**
 	 * setPolygonSet from loaded PolygonSet xml file (single-layer load).
@@ -1626,13 +1653,106 @@ public class BezierDrawPanel extends JPanel implements Runnable, MouseListener, 
 			System.out.println("BezierDrawPanel, appendPolygonSet, polygon number: " + p);
 
 			Element poly = (Element) polys.get(p);
+			String isClosedAttr = poly.getAttributeValue("isClosed");
+			boolean isOpen = "false".equals(isClosedAttr);
+
 			Elements curves = poly.getChildElements();
 			int totCurves = curves.size();
 
-			for (int c=0;c<totCurves;c++) {
+			if (isOpen) {
+				// Open curve: all <curve> elements are real curves, no closing synthetic curve.
+				for (int c = 0; c < totCurves; c++) {
+					Element curve = curves.get(c);
+					Elements points = curve.getChildElements();
 
+					Double A1x = Double.valueOf(points.get(0).getAttributeValue("x")) + offset;
+					Double A1y = Double.valueOf(points.get(0).getAttributeValue("y")) + offset;
+					Point2D.Double A1 = new Point2D.Double(A1x, A1y);
+
+					Double C1x = Double.valueOf(points.get(1).getAttributeValue("x")) + offset;
+					Double C1y = Double.valueOf(points.get(1).getAttributeValue("y")) + offset;
+					Point2D.Double C1 = new Point2D.Double(C1x, C1y);
+
+					Double C2x = Double.valueOf(points.get(2).getAttributeValue("x")) + offset;
+					Double C2y = Double.valueOf(points.get(2).getAttributeValue("y")) + offset;
+					Point2D.Double C2 = new Point2D.Double(C2x, C2y);
+
+					Double A2x = Double.valueOf(points.get(3).getAttributeValue("x")) + offset;
+					Double A2y = Double.valueOf(points.get(3).getAttributeValue("y")) + offset;
+					Point2D.Double A2 = new Point2D.Double(A2x, A2y);
+
+					if (c == 0) {
+						setPoint(A1, C1, C2);
+						setPoint(A2, C1, C2);
+					} else {
+						setPoint(A2, C1, C2);
+					}
+				}
+				// Finalise as open curve (safe even if totCurves == 0)
+				int polygonCount = polygonManager.getPolygonCount();
+				CubicCurveManager curveManager = polygonManager.getManager(polygonCount);
+				curveManager.finishOpen();
+				curveManager.setCurrentBezierPosition(curveManager.getAverageXY());
+				polygonManager.addManager();
+				currentCurveManager = polygonManager.getManager(p);
+
+			} else {
+				// Closed polygon: last <curve> element is the synthetic closing curve.
+				for (int c = 0; c < totCurves; c++) {
+					Element curve = curves.get(c);
+					Elements points = curve.getChildElements();
+
+					Double A1x = Double.valueOf(points.get(0).getAttributeValue("x")) + offset;
+					Double A1y = Double.valueOf(points.get(0).getAttributeValue("y")) + offset;
+					Point2D.Double A1 = new Point2D.Double(A1x, A1y);
+
+					Double C1x = Double.valueOf(points.get(1).getAttributeValue("x")) + offset;
+					Double C1y = Double.valueOf(points.get(1).getAttributeValue("y")) + offset;
+					Point2D.Double C1 = new Point2D.Double(C1x, C1y);
+
+					Double C2x = Double.valueOf(points.get(2).getAttributeValue("x")) + offset;
+					Double C2y = Double.valueOf(points.get(2).getAttributeValue("y")) + offset;
+					Point2D.Double C2 = new Point2D.Double(C2x, C2y);
+
+					Double A2x = Double.valueOf(points.get(3).getAttributeValue("x")) + offset;
+					Double A2y = Double.valueOf(points.get(3).getAttributeValue("y")) + offset;
+					Point2D.Double A2 = new Point2D.Double(A2x, A2y);
+
+					int polygonCount = polygonManager.getPolygonCount();
+					CubicCurveManager curveManager = polygonManager.getManager(polygonCount);
+					if (c == 0) {
+						setPoint(A1, C1, C2);
+						setPoint(A2, C1, C2);
+					} else if (c == totCurves-1) {
+						curveManager.closeCurve(strokeColor, C1, C2);
+						curveManager.setCurrentBezierPosition(curveManager.getAverageXY());
+						polygonManager.addManager();
+						currentCurveManager = polygonManager.getManager(p);
+					} else {
+						setPoint(A2, C1, C2);
+					}
+				}
+			}
+		}
+	}
+
+	/**
+	 * Load open curves from an openCurveSet XML root element WITHOUT denormalising.
+	 * Call denormaliseAllPoints() after this.
+	 */
+	public void appendOpenCurveSet(Element root) {
+		double offset = (edgeOffset) / 1000.0;
+
+		Elements openCurves = root.getChildElements("openCurve");
+
+		for (int p = 0; p < openCurves.size(); p++) {
+			Element openCurve = openCurves.get(p);
+			Elements curves = openCurve.getChildElements("curve");
+			int totCurves = curves.size();
+
+			for (int c = 0; c < totCurves; c++) {
 				Element curve = curves.get(c);
-				Elements points = curve.getChildElements();
+				Elements points = curve.getChildElements("point");
 
 				Double A1x = Double.valueOf(points.get(0).getAttributeValue("x")) + offset;
 				Double A1y = Double.valueOf(points.get(0).getAttributeValue("y")) + offset;
@@ -1650,20 +1770,20 @@ public class BezierDrawPanel extends JPanel implements Runnable, MouseListener, 
 				Double A2y = Double.valueOf(points.get(3).getAttributeValue("y")) + offset;
 				Point2D.Double A2 = new Point2D.Double(A2x, A2y);
 
-				int polygonCount = polygonManager.getPolygonCount();
-				CubicCurveManager curveManager = polygonManager.getManager(polygonCount);
 				if (c == 0) {
 					setPoint(A1, C1, C2);
 					setPoint(A2, C1, C2);
-				} else if (c == totCurves-1) {
-					curveManager.closeCurve(strokeColor, C1, C2);
-					curveManager.setCurrentBezierPosition(curveManager.getAverageXY());
-					polygonManager.addManager();
-					currentCurveManager = polygonManager.getManager(p);
 				} else {
 					setPoint(A2, C1, C2);
 				}
 			}
+
+			// Finalise as open curve
+			int polygonCount = polygonManager.getPolygonCount();
+			CubicCurveManager curveManager = polygonManager.getManager(polygonCount);
+			curveManager.finishOpen();
+			curveManager.setCurrentBezierPosition(curveManager.getAverageXY());
+			polygonManager.addManager();
 		}
 	}
 
@@ -1691,6 +1811,52 @@ public class BezierDrawPanel extends JPanel implements Runnable, MouseListener, 
 		allPoints.toArray(aP);
 		polygonManager.deNormalisePoints(aP, GRIDWIDTH, GRIDHEIGHT);
 	}
+	// ── Point mode ───────────────────────────────────────────────────────────
+
+	/** Toggle point-placement mode. */
+	public void setPointMode(boolean b) { pointMode = b; }
+	public boolean isPointMode()         { return pointMode; }
+
+	/** Retrieve a copy of the current discrete point list (for saving/undo). */
+	public java.util.List<Point2D.Double> getPoints() {
+		return new ArrayList<>(pointList);
+	}
+
+	/** Replace the discrete point list (used by undo). */
+	public void setPoints(java.util.List<Point2D.Double> pts) {
+		pointList.clear();
+		pointList.addAll(pts);
+	}
+
+	/** Clear all discrete points. */
+	public void clearPoints() {
+		pointList.clear();
+	}
+
+	/** Add a point at the scaled mouse position. */
+	public void addPointAtMouse(MouseEvent mE) {
+		takeUndoSnapshot();
+		Point2D.Double sp = scaleMouse(mE);
+		pointList.add(new Point2D.Double(sp.x, sp.y));
+	}
+
+	/**
+	 * Load discrete points from a <pointSet> XML root element.
+	 * Reads <point x y/> children, applies offset and denormalises to pixel coords.
+	 */
+	public void appendPointSet(Element root) {
+		double offset = edgeOffset / 1000.0;
+		Elements pts = root.getChildElements("point");
+		for (int i = 0; i < pts.size(); i++) {
+			Element ptEl = pts.get(i);
+			double valX = Double.parseDouble(ptEl.getAttributeValue("x")) + offset;
+			double valY = Double.parseDouble(ptEl.getAttributeValue("y")) + offset;
+			double pixelX = valX * GRIDWIDTH  + GRIDWIDTH  / 2.0;
+			double pixelY = valY * GRIDHEIGHT + GRIDHEIGHT / 2.0;
+			pointList.add(new Point2D.Double(pixelX, pixelY));
+		}
+	}
+
 	/**
 	 * setPoint: called from mousePressed
 	 * & adds curves

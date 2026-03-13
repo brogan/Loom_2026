@@ -85,6 +85,10 @@ class ShapeConfigIO:
                 shape.regular_polygon_sides = int(source_elem.get("sides", "4"))
             elif shape.source_type == ShapeSourceType.INLINE_POINTS:
                 shape.inline_points = ShapeConfigIO._parse_points(source_elem)
+            elif shape.source_type == ShapeSourceType.OPEN_CURVE_SET:
+                shape.open_curve_set_name = source_elem.get("openCurveSet", "")
+            elif shape.source_type == ShapeSourceType.POINT_SET:
+                shape.point_set_name = source_elem.get("pointSet", "")
 
         # Parse subdivision reference
         subdiv_elem = elem.find("SubdivisionParamsSet")
@@ -136,6 +140,10 @@ class ShapeConfigIO:
             "POLYGON_SET": ShapeSourceType.POLYGON_SET,
             "REGULAR_POLYGON": ShapeSourceType.REGULAR_POLYGON,
             "INLINE_POINTS": ShapeSourceType.INLINE_POINTS,
+            "OPENCURVESET": ShapeSourceType.OPEN_CURVE_SET,
+            "OPEN_CURVE_SET": ShapeSourceType.OPEN_CURVE_SET,
+            "POINTSET": ShapeSourceType.POINT_SET,
+            "POINT_SET": ShapeSourceType.POINT_SET,
         }
         return mapping.get(type_str, ShapeSourceType.POLYGON_SET)
 
@@ -173,16 +181,23 @@ class ShapeConfigIO:
         shape_elem = etree.SubElement(parent, "Shape", name=shape.name)
 
         # Source
-        source_elem = etree.SubElement(shape_elem, "Source",
-                                       type=shape.source_type.name)
-        if shape.source_type == ShapeSourceType.POLYGON_SET:
-            source_elem.set("polygonSet", shape.polygon_set_name)
-        elif shape.source_type == ShapeSourceType.REGULAR_POLYGON:
-            source_elem.set("sides", str(shape.regular_polygon_sides))
-        elif shape.source_type == ShapeSourceType.INLINE_POINTS:
-            for point in shape.inline_points:
-                etree.SubElement(source_elem, "Point",
-                                x=str(point.x), y=str(point.y))
+        if shape.source_type == ShapeSourceType.OPEN_CURVE_SET:
+            source_elem = etree.SubElement(shape_elem, "Source", type="openCurveSet")
+            source_elem.set("openCurveSet", shape.open_curve_set_name)
+        elif shape.source_type == ShapeSourceType.POINT_SET:
+            source_elem = etree.SubElement(shape_elem, "Source", type="pointSet")
+            source_elem.set("pointSet", shape.point_set_name)
+        else:
+            source_elem = etree.SubElement(shape_elem, "Source",
+                                           type=shape.source_type.name)
+            if shape.source_type == ShapeSourceType.POLYGON_SET:
+                source_elem.set("polygonSet", shape.polygon_set_name)
+            elif shape.source_type == ShapeSourceType.REGULAR_POLYGON:
+                source_elem.set("sides", str(shape.regular_polygon_sides))
+            elif shape.source_type == ShapeSourceType.INLINE_POINTS:
+                for point in shape.inline_points:
+                    etree.SubElement(source_elem, "Point",
+                                    x=str(point.x), y=str(point.y))
 
         # Subdivision reference
         if shape.subdivision_params_set_name:

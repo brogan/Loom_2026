@@ -143,6 +143,37 @@ object ProjectConfigManager {
 
   def getSpriteConfig: Option[SpriteLibrary] = _spriteConfig
 
+  /** Configuration file names */
+  val CurvesConfigFile = "curves.xml"
+  val PointsConfigFile = "points.xml"
+
+  /**
+   * Get the full path to a named configuration file for the current project.
+   * Returns "" if no project is loaded or the file doesn't exist.
+   */
+  def getConfigPath(domain: String): String = {
+    if (!_projectLoaded) return ""
+    val fileName = domain match {
+      case "curves" => CurvesConfigFile
+      case "points" => PointsConfigFile
+      case other    => other + ".xml"
+    }
+    val path = ProjectPaths.getConfigFilePath(_currentProject, fileName)
+    if (java.io.File(path).exists()) path else ""
+  }
+
+  /** Full path to the curveSets/ directory for the current project. */
+  def getCurveSetsPath: String = {
+    if (!_projectLoaded) return ""
+    ProjectPaths.getCurveSetsPath(_currentProject)
+  }
+
+  /** Full path to the pointSets/ directory for the current project. */
+  def getPointSetsPath: String = {
+    if (!_projectLoaded) return ""
+    ProjectPaths.getPointSetsPath(_currentProject)
+  }
+
   def projectsDirectory: String = ProjectPaths.projectsDirectory
 
   def projectsDirectory_=(dir: String): Unit = {

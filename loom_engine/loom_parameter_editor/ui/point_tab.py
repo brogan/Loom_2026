@@ -1,0 +1,326 @@
+"""
+Point Set configuration tab for the parameter editor.
+Provides UI for editing points.xml settings.
+"""
+import os
+from PyQt6.QtWidgets import (
+    QWidget, QVBoxLayout, QHBoxLayout, QFormLayout, QGroupBox,
+    QLineEdit, QComboBox, QTreeWidget, QTreeWidgetItem, QPushButton,
+    QSplitter, QLabel, QMessageBox, QInputDialog, QSizePolicy
+)
+from PyQt6.QtCore import pyqtSignal, Qt, QProcess
+from models.point_config import PointSetDef, PointSetLibrary, PointSourceType
+from models.polygon_config import FileSource
+from ui.polygon_tab import PolygonPreviewWidget
+
+BEZIER_JAR = "/Users/broganbunt/Loom_2026/bezier/out/artifacts/Bezier_jar/Bezier.jar"
+BEZIER_WORKING_DIR = "/Users/broganbunt/Loom_2026/bezier"
+
+
+class PointTab(QWidget):
+    """Tab widget for editing discrete point set configuration."""
+
+    modified = pyqtSignal()
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self._library = PointSetLibrary.default()
+        self._current_set: PointSetDef = None
+        self._updating = False
+        self._point_sets_dir: str = ""
+        self._bezier_process: QProcess = None
+
+        self._setup_ui()
+        self._refresh_list()
+
+    def _setup_ui(self):
+        main_layout = QHBoxLayout(self)
+        splitter = QSplitter(Qt.Orientation.Horizontal)
+        main_layout.addWidget(splitter)
+
+        # ── Left panel ────────────────────────────────────────────────────────
+        left_panel = QWidget()
+        left_layout = QVBoxLayout(left_panel)
+
+        left_layout.addWidget(QLabel("Point Sets:"))
+
+        self.set_list = QTreeWidget()
+        self.set_list.setHeaderLabels(["Name"])
+        self.set_list.setRootIsDecorated(False)
+        self.set_list.currentItemChanged.connect(self._on_set_selected)
+        left_layout.addWidget(self.set_list)
+
+        btn_layout = QHBoxLayout()
+        self.new_btn = QPushButton("New")
+        self.new_btn.clicked.connect(self._new_point_set)
+        btn_layout.addWidget(self.new_btn)
+
+        self.rename_btn = QPushButton("Rename")
+        self.rename_btn.clicked.connect(self._rename_point_set)
+        btn_layout.addWidget(self.rename_btn)
+
+        btn_layout2 = QHBoxLayout()
+        self.dup_btn = QPushButton("Duplicate")
+        self.dup_btn.clicked.connect(self._duplicate_point_set)
+        btn_layout2.addWidget(self.dup_btn)
+
+        self.del_btn = QPushButton("Delete")
+        self.del_btn.clicked.connect(self._delete_point_set)
+        btn_layout2.addWidget(self.del_btn)
+
+        left_layout.addLayout(btn_layout)
+        left_layout.addLayout(btn_layout2)
+        left_layout.addStretch()
+        splitter.addWidget(left_panel)
+
+        # ── Right panel ───────────────────────────────────────────────────────
+        right_panel = QWidget()
+        right_layout = QVBoxLayout(right_panel)
+
+        info_group = QGroupBox("Point Set")
+        form = QFormLayout(info_group)
+
+        self.name_edit = QLineEdit()
+        self.name_edit.setReadOnly(True)
+        form.addRow("Name:", self.name_edit)
+
+        self.folder_edit = QLineEdit()
+        self.folder_edit.setText("pointSets")
+        self.folder_edit.textChanged.connect(self._on_modified)
+        form.addRow("Folder:", self.folder_edit)
+
+        self.filename_combo = QComboBox()
+        self.filename_combo.setEditable(True)
+        self.filename_combo.currentTextChanged.connect(self._on_modified)
+        self.filename_combo.currentTextChanged.connect(self._update_preview)
+        form.addRow("Filename:", self.filename_combo)
+
+        btn_row = QHBoxLayout()
+        self.edit_btn = QPushButton("Edit in Bezier")
+        self.edit_btn.clicked.connect(self._edit_in_bezier)
+        btn_row.addWidget(self.edit_btn)
+
+        self.refresh_btn = QPushButton("Refresh Files")
+        self.refresh_btn.clicked.connect(self._refresh_file_list)
+        btn_row.addStretch()
+        btn_row.addWidget(self.refresh_btn)
+        form.addRow("", btn_row)
+
+        right_layout.addWidget(info_group)
+
+        preview_group = QGroupBox("Preview")
+        preview_layout = QVBoxLayout(preview_group)
+        preview_layout.setContentsMargins(4, 4, 4, 4)
+        self.preview_widget = PolygonPreviewWidget()
+        preview_layout.addWidget(self.preview_widget)
+        right_layout.addWidget(preview_group)
+
+        right_layout.addStretch()
+        splitter.addWidget(right_panel)
+        splitter.setSizes([220, 580])
+
+    # ── Library access ────────────────────────────────────────────────────────
+
+    def set_library(self, library: PointSetLibrary) -> None:
+        self._library = library
+        self._refresh_list()
+
+    def get_library(self) -> PointSetLibrary:
+        return self._library
+
+    def set_point_sets_directory(self, directory: str) -> None:
+        self._point_sets_dir = directory
+        self._refresh_file_list()
+
+    def create_default_library(self) -> PointSetLibrary:
+        return PointSetLibrary.default()
+
+    # ── List management ───────────────────────────────────────────────────────
+
+    def _refresh_list(self):
+        self._updating = True
+        try:
+            current_name = self._current_set.name if self._current_set else None
+            self.set_list.clear()
+            for ps in self._library.point_sets:
+                item = QTreeWidgetItem([ps.name])
+                item.setData(0, Qt.ItemDataRole.UserRole, ps)
+                self.set_list.addTopLevelItem(item)
+                if ps.name == current_name:
+                    self.set_list.setCurrentItem(item)
+        finally:
+            self._updating = False
+
+    def _on_set_selected(self, current, previous):
+        if current is None:
+            self._current_set = None
+            self._clear_editor()
+            return
+        ps = current.data(0, Qt.ItemDataRole.UserRole)
+        self._current_set = ps
+        self._load_set_to_editor(ps)
+
+    def _clear_editor(self):
+        self._updating = True
+        try:
+            self.name_edit.clear()
+            self.folder_edit.clear()
+            self.filename_combo.setCurrentText("")
+            self.preview_widget.clear()
+        finally:
+            self._updating = False
+
+    def _load_set_to_editor(self, ps: PointSetDef):
+        self._updating = True
+        try:
+            self.name_edit.setText(ps.name)
+            if ps.file_source:
+                self.folder_edit.setText(ps.file_source.folder or "pointSets")
+                self._refresh_file_list()
+                self.filename_combo.setCurrentText(ps.file_source.filename or "")
+            self._update_preview()
+        finally:
+            self._updating = False
+
+    # ── File list helpers ─────────────────────────────────────────────────────
+
+    def _refresh_file_list(self):
+        self._updating = True
+        try:
+            current = self.filename_combo.currentText()
+            self.filename_combo.clear()
+            if self._point_sets_dir and os.path.isdir(self._point_sets_dir):
+                files = sorted(
+                    f for f in os.listdir(self._point_sets_dir)
+                    if f.lower().endswith(".xml")
+                )
+                self.filename_combo.addItems(files)
+            if current:
+                idx = self.filename_combo.findText(current)
+                if idx >= 0:
+                    self.filename_combo.setCurrentIndex(idx)
+                else:
+                    self.filename_combo.setCurrentText(current)
+        finally:
+            self._updating = False
+
+    def _update_preview(self):
+        if not self._point_sets_dir:
+            self.preview_widget.clear()
+            return
+        filename = self.filename_combo.currentText()
+        if not filename:
+            self.preview_widget.clear()
+            return
+        full_path = os.path.join(self._point_sets_dir, filename)
+        self.preview_widget.load_polygon_set(full_path)
+
+    # ── CRUD ─────────────────────────────────────────────────────────────────
+
+    def _new_point_set(self):
+        name, ok = QInputDialog.getText(self, "New Point Set", "Name:")
+        if not ok or not name.strip():
+            return
+        name = name.strip()
+        if self._library.get_point_set(name):
+            QMessageBox.warning(self, "Duplicate Name", f"A point set named '{name}' already exists.")
+            return
+        ps = PointSetDef(name=name, file_source=FileSource(folder="pointSets"))
+        self._library.add_point_set(ps)
+        self._refresh_list()
+        self.modified.emit()
+        for i in range(self.set_list.topLevelItemCount()):
+            item = self.set_list.topLevelItem(i)
+            if item.data(0, Qt.ItemDataRole.UserRole).name == name:
+                self.set_list.setCurrentItem(item)
+                break
+
+    def _rename_point_set(self):
+        if self._current_set is None:
+            return
+        old_name = self._current_set.name
+        name, ok = QInputDialog.getText(self, "Rename", "New name:", text=old_name)
+        if not ok or not name.strip() or name.strip() == old_name:
+            return
+        name = name.strip()
+        if self._library.get_point_set(name):
+            QMessageBox.warning(self, "Duplicate Name", f"'{name}' already exists.")
+            return
+        self._current_set.name = name
+        self._refresh_list()
+        self.modified.emit()
+
+    def _duplicate_point_set(self):
+        if self._current_set is None:
+            return
+        new_ps = self._current_set.copy()
+        new_ps.name = self._current_set.name + "_copy"
+        self._library.add_point_set(new_ps)
+        self._refresh_list()
+        self.modified.emit()
+
+    def _delete_point_set(self):
+        if self._current_set is None:
+            return
+        result = QMessageBox.question(
+            self, "Delete", f"Delete '{self._current_set.name}'?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+        )
+        if result != QMessageBox.StandardButton.Yes:
+            return
+        self._library.remove_point_set(self._current_set.name)
+        self._current_set = None
+        self._refresh_list()
+        self._clear_editor()
+        self.modified.emit()
+
+    # ── Bezier launch ─────────────────────────────────────────────────────────
+
+    def _edit_in_bezier(self):
+        if not self._point_sets_dir:
+            QMessageBox.warning(self, "No Project", "Please save the project first.")
+            return
+        filename = self.filename_combo.currentText()
+        if not filename:
+            QMessageBox.warning(self, "No File", "Select a point set file first.")
+            return
+        full_path = os.path.join(self._point_sets_dir, filename)
+
+        if self._bezier_process is not None and \
+                self._bezier_process.state() != QProcess.ProcessState.NotRunning:
+            QMessageBox.information(self, "Bezier Running", "Bezier is already running.")
+            return
+
+        self._bezier_process = QProcess(self)
+        self._bezier_process.setWorkingDirectory(BEZIER_WORKING_DIR)
+        self._bezier_process.finished.connect(self._on_edit_bezier_finished)
+        self._bezier_process.start("java", [
+            "-Xmx4G", "-jar", BEZIER_JAR,
+            "--save-dir", self._point_sets_dir,
+            "--load", full_path
+        ])
+
+    def _on_edit_bezier_finished(self, exit_code, exit_status):
+        self._refresh_file_list()
+        self._update_preview()
+
+    # ── Change tracking ───────────────────────────────────────────────────────
+
+    def _on_modified(self):
+        if self._updating:
+            return
+        self._save_editor_to_set()
+        self.modified.emit()
+
+    def _save_editor_to_set(self):
+        if self._current_set is None:
+            return
+        filename = self.filename_combo.currentText()
+        folder = self.folder_edit.text()
+        if self._current_set.file_source is None:
+            self._current_set.file_source = FileSource(folder="pointSets")
+        self._current_set.file_source.folder = folder
+        self._current_set.file_source.filename = filename
+        current_item = self.set_list.currentItem()
+        if current_item:
+            current_item.setText(0, self._current_set.name)

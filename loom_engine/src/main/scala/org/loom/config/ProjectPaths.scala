@@ -83,6 +83,14 @@ object ProjectPaths {
     getProjectPath(projectName) + File.separator + "polygonSets"
   }
 
+  def getCurveSetsPath(projectName: String): String = {
+    getProjectPath(projectName) + File.separator + "curveSets"
+  }
+
+  def getPointSetsPath(projectName: String): String = {
+    getProjectPath(projectName) + File.separator + "pointSets"
+  }
+
   def getMorphTargetsPath(projectName: String): String = {
     getProjectPath(projectName) + File.separator + "morphTargets"
   }

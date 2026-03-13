@@ -21,6 +21,8 @@ from .subdivision_tab import SubdivisionTab
 from .shape_tab import ShapeTab
 from .sprite_tab import SpriteTab
 from .run_tab import RunTab
+from .open_curve_tab import OpenCurveTab
+from .point_tab import PointTab
 from models.project import Project
 from models.rendering import RendererSetLibrary
 from models.global_config import GlobalConfig
@@ -28,6 +30,8 @@ from models.polygon_config import PolygonSetLibrary
 from models.subdivision_config import SubdivisionParamsSetCollection
 from models.shape_config import ShapeLibrary
 from models.sprite_config import SpriteLibrary
+from models.open_curve_config import OpenCurveSetLibrary
+from models.point_config import PointSetLibrary
 from file_io.project_io import ProjectIO
 from file_io.rendering_io import RenderingIO
 from file_io.global_config_io import GlobalConfigIO
@@ -35,6 +39,8 @@ from file_io.polygon_config_io import PolygonConfigIO
 from file_io.subdivision_config_io import SubdivisionConfigIO
 from file_io.shape_config_io import ShapeConfigIO
 from file_io.sprite_config_io import SpriteConfigIO
+from file_io.open_curve_config_io import OpenCurveConfigIO
+from file_io.point_config_io import PointConfigIO
 from app_settings import AppSettings
 
 
@@ -316,6 +322,16 @@ class MainWindow(QMainWindow):
         self.polygon_tab.modified.connect(self._on_polygon_library_changed)
         self.tab_widget.addTab(self.polygon_tab, "Polygons")
 
+        self.open_curve_tab = OpenCurveTab()
+        self.open_curve_tab.modified.connect(self._on_modified)
+        self.open_curve_tab.modified.connect(self._on_open_curve_library_changed)
+        self.tab_widget.addTab(self.open_curve_tab, "Curves")
+
+        self.point_tab = PointTab()
+        self.point_tab.modified.connect(self._on_modified)
+        self.point_tab.modified.connect(self._on_point_set_library_changed)
+        self.tab_widget.addTab(self.point_tab, "Points")
+
         self.subdivision_tab = SubdivisionTab()
         self.subdivision_tab.modified.connect(self._on_modified)
         self.tab_widget.addTab(self.subdivision_tab, "Subdivision")
@@ -414,6 +430,14 @@ class MainWindow(QMainWindow):
         save_sprites_action = QAction("Save Sprites Config", self)
         save_sprites_action.triggered.connect(lambda: self._save_single_tab("sprites"))
         save_tab_menu.addAction(save_sprites_action)
+
+        save_curves_action = QAction("Save Curves Config", self)
+        save_curves_action.triggered.connect(lambda: self._save_single_tab("curves"))
+        save_tab_menu.addAction(save_curves_action)
+
+        save_points_action = QAction("Save Points Config", self)
+        save_points_action.triggered.connect(lambda: self._save_single_tab("points"))
+        save_tab_menu.addAction(save_points_action)
 
         file_menu.addSeparator()
 
@@ -525,6 +549,14 @@ class MainWindow(QMainWindow):
         polygon_sets_dir = os.path.join(project_dir, "polygonSets")
         os.makedirs(polygon_sets_dir, exist_ok=True)
 
+        # CurveSets directory
+        curve_sets_dir = os.path.join(project_dir, "curveSets")
+        os.makedirs(curve_sets_dir, exist_ok=True)
+
+        # PointSets directory
+        point_sets_dir = os.path.join(project_dir, "pointSets")
+        os.makedirs(point_sets_dir, exist_ok=True)
+
         # Regular polygons directory (editor-only asset store)
         regular_polygons_dir = os.path.join(project_dir, "regularPolygons")
         os.makedirs(regular_polygons_dir, exist_ok=True)
@@ -587,6 +619,12 @@ class MainWindow(QMainWindow):
         sprite_library = self.sprite_tab.create_default_library()
         self.sprite_tab.set_library(sprite_library)
 
+        open_curve_library = self.open_curve_tab.create_default_library()
+        self.open_curve_tab.set_library(open_curve_library)
+
+        point_library = self.point_tab.create_default_library()
+        self.point_tab.set_library(point_library)
+
         self._update_title()
         self.project_label.setText("New Project (unsaved)")
 
@@ -618,6 +656,8 @@ class MainWindow(QMainWindow):
             self._project.add_file("subdivision", "configuration/subdivision.xml")
             self._project.add_file("shapes", "configuration/shapes.xml")
             self._project.add_file("sprites", "configuration/sprites.xml")
+            self._project.add_file("curves", "configuration/curves.xml")
+            self._project.add_file("points", "configuration/points.xml")
 
             self._modified = False
 
@@ -648,6 +688,12 @@ class MainWindow(QMainWindow):
             sprite_library = self.sprite_tab.create_default_library()
             self.sprite_tab.set_library(sprite_library)
 
+            open_curve_library = self.open_curve_tab.create_default_library()
+            self.open_curve_tab.set_library(open_curve_library)
+
+            point_library = self.point_tab.create_default_library()
+            self.point_tab.set_library(point_library)
+
             # Notify tabs of project directory for polygon file lookups
             self._notify_tabs_of_project_dir()
 
@@ -669,6 +715,11 @@ class MainWindow(QMainWindow):
             if hasattr(self.polygon_tab, 'set_polygon_sets_directory'):
                 self.polygon_tab.set_polygon_sets_directory(polygon_sets_dir)
 
+            # Notify open curve tab of curveSets directory
+            curve_sets_dir = os.path.join(self._project_dir, "curveSets")
+            if hasattr(self, 'open_curve_tab') and hasattr(self.open_curve_tab, 'set_curve_sets_directory'):
+                self.open_curve_tab.set_curve_sets_directory(curve_sets_dir)
+
             # Notify polygon tab of regularPolygons directory
             regular_polygons_dir = os.path.join(self._project_dir, "regularPolygons")
             if hasattr(self.polygon_tab, 'set_regular_polygons_directory'):
@@ -683,6 +734,20 @@ class MainWindow(QMainWindow):
             if hasattr(self.shape_tab, 'set_polygon_library'):
                 self.shape_tab.set_polygon_library(
                     self.polygon_tab.get_library())
+
+            # Notify shape tab of open curve library for open curve set dropdown
+            if hasattr(self, 'open_curve_tab') and hasattr(self.shape_tab, 'set_open_curve_library'):
+                self.shape_tab.set_open_curve_library(
+                    self.open_curve_tab.get_library())
+
+            # Notify point tab of pointSets directory
+            point_sets_dir = os.path.join(self._project_dir, "pointSets")
+            if hasattr(self, 'point_tab') and hasattr(self.point_tab, 'set_point_sets_directory'):
+                self.point_tab.set_point_sets_directory(point_sets_dir)
+
+            # Notify shape tab of point set library for point set dropdown
+            if hasattr(self, 'point_tab') and hasattr(self.shape_tab, 'set_point_set_library'):
+                self.shape_tab.set_point_set_library(self.point_tab.get_library())
 
             # Notify polygon tab of shape/sprite libraries for usage counts
             if hasattr(self.polygon_tab, 'set_shape_library'):
@@ -828,6 +893,34 @@ class MainWindow(QMainWindow):
                 sprite_library = self.sprite_tab.create_default_library()
                 self.sprite_tab.set_library(sprite_library)
 
+            # Load open curve configuration
+            curves_file = self._project.get_file("curves")
+            if curves_file:
+                curves_path = os.path.join(project_dir, curves_file.path)
+                if os.path.exists(curves_path):
+                    open_curve_library = OpenCurveConfigIO.load(curves_path)
+                    self.open_curve_tab.set_library(open_curve_library)
+                else:
+                    open_curve_library = self.open_curve_tab.create_default_library()
+                    self.open_curve_tab.set_library(open_curve_library)
+            else:
+                open_curve_library = self.open_curve_tab.create_default_library()
+                self.open_curve_tab.set_library(open_curve_library)
+
+            # Load point set configuration
+            points_file = self._project.get_file("points")
+            if points_file:
+                points_path = os.path.join(project_dir, points_file.path)
+                if os.path.exists(points_path):
+                    point_library = PointConfigIO.load(points_path)
+                    self.point_tab.set_library(point_library)
+                else:
+                    point_library = self.point_tab.create_default_library()
+                    self.point_tab.set_library(point_library)
+            else:
+                point_library = self.point_tab.create_default_library()
+                self.point_tab.set_library(point_library)
+
             # Notify tabs of project directory
             self._notify_tabs_of_project_dir()
 
@@ -887,6 +980,24 @@ class MainWindow(QMainWindow):
                         if os.path.isfile(src):
                             shutil.copy2(src, os.path.join(new_reg_dir, filename))
 
+                # Copy curveSets from old project to new project
+                old_curve_dir = os.path.join(old_project_dir, "curveSets")
+                new_curve_dir = os.path.join(project_dir, "curveSets")
+                if os.path.isdir(old_curve_dir):
+                    for filename in os.listdir(old_curve_dir):
+                        src = os.path.join(old_curve_dir, filename)
+                        if os.path.isfile(src):
+                            shutil.copy2(src, os.path.join(new_curve_dir, filename))
+
+                # Copy pointSets from old project to new project
+                old_point_dir = os.path.join(old_project_dir, "pointSets")
+                new_point_dir = os.path.join(project_dir, "pointSets")
+                if os.path.isdir(old_point_dir):
+                    for filename in os.listdir(old_point_dir):
+                        src = os.path.join(old_point_dir, filename)
+                        if os.path.isfile(src):
+                            shutil.copy2(src, os.path.join(new_point_dir, filename))
+
             # Update project
             self._project_dir = project_dir
             self._project_path = os.path.join(project_dir, "project.xml")
@@ -901,6 +1012,8 @@ class MainWindow(QMainWindow):
                 self._project.add_file("subdivision", "configuration/subdivision.xml")
                 self._project.add_file("shapes", "configuration/shapes.xml")
                 self._project.add_file("sprites", "configuration/sprites.xml")
+                self._project.add_file("curves", "configuration/curves.xml")
+                self._project.add_file("points", "configuration/points.xml")
 
             # Update global config name
             global_config = self._get_full_global_config()
@@ -1001,6 +1114,26 @@ class MainWindow(QMainWindow):
                         SpriteConfigIO.save(sprite_library, sprite_path)
                         self.status_bar.showMessage(f"Saved {sprite_path}", 3000)
 
+            elif tab_name == "curves":
+                curves_file = self._project.get_file("curves")
+                if curves_file:
+                    curves_path = os.path.join(project_dir, curves_file.path)
+                    os.makedirs(os.path.dirname(curves_path), exist_ok=True)
+                    open_curve_library = self.open_curve_tab.get_library()
+                    if open_curve_library:
+                        OpenCurveConfigIO.save(open_curve_library, curves_path)
+                        self.status_bar.showMessage(f"Saved {curves_path}", 3000)
+
+            elif tab_name == "points":
+                points_file = self._project.get_file("points")
+                if points_file:
+                    points_path = os.path.join(project_dir, points_file.path)
+                    os.makedirs(os.path.dirname(points_path), exist_ok=True)
+                    point_library = self.point_tab.get_library()
+                    if point_library:
+                        PointConfigIO.save(point_library, points_path)
+                        self.status_bar.showMessage(f"Saved {points_path}", 3000)
+
             return True
 
         except Exception as e:
@@ -1029,6 +1162,10 @@ class MainWindow(QMainWindow):
                     self._project.add_file("shapes", "configuration/shapes.xml")
                 if not self._project.get_file("sprites"):
                     self._project.add_file("sprites", "configuration/sprites.xml")
+                if not self._project.get_file("curves"):
+                    self._project.add_file("curves", "configuration/curves.xml")
+                if not self._project.get_file("points"):
+                    self._project.add_file("points", "configuration/points.xml")
 
                 # Update project name from global config
                 global_config = self._get_full_global_config()
@@ -1044,6 +1181,8 @@ class MainWindow(QMainWindow):
                 self._save_single_tab("subdivision")
                 self._save_single_tab("shapes")
                 self._save_single_tab("sprites")
+                self._save_single_tab("curves")
+                self._save_single_tab("points")
 
             self._project_path = project_file
             self._project_dir = project_dir
@@ -1217,6 +1356,16 @@ class MainWindow(QMainWindow):
         """Propagate polygon library changes to the shape tab."""
         if hasattr(self, 'shape_tab'):
             self.shape_tab.set_polygon_library(self.polygon_tab.get_library())
+
+    def _on_open_curve_library_changed(self) -> None:
+        """Propagate open curve library changes to the shape tab."""
+        if hasattr(self, 'shape_tab') and hasattr(self.shape_tab, 'set_open_curve_library'):
+            self.shape_tab.set_open_curve_library(self.open_curve_tab.get_library())
+
+    def _on_point_set_library_changed(self) -> None:
+        """Propagate point set library changes to the shape tab."""
+        if hasattr(self, 'shape_tab') and hasattr(self.shape_tab, 'set_point_set_library'):
+            self.shape_tab.set_point_set_library(self.point_tab.get_library())
 
     def _on_shape_library_for_polygon_counts(self) -> None:
         """Refresh polygon tab usage counts when the shape library changes."""

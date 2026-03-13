@@ -96,7 +96,14 @@ public class CubicCurveFrame extends JFrame implements WindowListener{
 					curvePanel.loadLayerSet(loadFile);
 					layerPanel.refreshTable();
 				} else {
-					curvePanel.loadPolygonSet(loadFile);
+					String rootName = peekRootElementName(loadFile);
+					if ("openCurveSet".equals(rootName)) {
+						curvePanel.loadOpenCurveSet(loadFile);
+					} else if ("pointSet".equals(rootName)) {
+						curvePanel.loadPointSet(loadFile);
+					} else {
+						curvePanel.loadPolygonSet(loadFile);
+					}
 				}
 			} else {
 				System.out.println("CubicCurveFrame: load file not found: " + loadFilePath);
@@ -252,6 +259,20 @@ public class CubicCurveFrame extends JFrame implements WindowListener{
 	public void windowDeiconified(WindowEvent e) {
 		
 	}
+	/**
+	 * Peek at the root element name of an XML file without full validation.
+	 * Returns "" on any error.
+	 */
+	private String peekRootElementName(File f) {
+		try {
+			nu.xom.Builder parser = new nu.xom.Builder(false);
+			nu.xom.Document doc = parser.build(f);
+			return doc.getRootElement().getLocalName();
+		} catch (Exception ex) {
+			return "";
+		}
+	}
+
 	public ImportImagesPanel getImportImagesPanel() {
 		return referenceImagePanel;
 	}

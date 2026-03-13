@@ -248,7 +248,19 @@ class Sprite2D(val shape: Shape2D, val spriteParams: Sprite2DParams, var animato
   }
 
 
+  /** Render a POINT_POLYGON as a small filled ellipse at the point's transformed position. */
+  def drawPoint(g2D: Graphics2D, pol: Polygon2D, view: View): Unit = {
+    if (pol.points.isEmpty) return
+    val polyCorrected: Polygon2D = coordinateCorrect(pol, view)
+    val pt = polyCorrected.points.head
+    val ren = rendererSet.getRenderer(rendererSet.selectedIndex)
+    val dotRadius = 3
+    g2D.setColor(ren.strokeColor)
+    g2D.fillOval(pt.x.toInt - dotRadius, pt.y.toInt - dotRadius, dotRadius * 2, dotRadius * 2)
+  }
+
   def drawLines(g2D: Graphics2D, pol: Polygon2D, view: View): Unit = {
+    if (pol.polyType == PolygonType.POINT_POLYGON) { drawPoint(g2D, pol, view); return }
 
     val polyCorrected: Polygon2D = coordinateCorrect(pol, view)
     //val polyCorrected: Polygon2D = pol
@@ -290,6 +302,10 @@ class Sprite2D(val shape: Shape2D, val spriteParams: Sprite2DParams, var animato
   }
 
   def drawFilled(g2D: Graphics2D, pol: Polygon2D, view: View): Unit = {
+    // Discrete points rendered as filled ellipses.
+    if (pol.polyType == PolygonType.POINT_POLYGON) { drawPoint(g2D, pol, view); return }
+    // Open curves cannot be filled — render as stroked line instead.
+    if (pol.polyType == PolygonType.OPEN_SPLINE_POLYGON) { drawLines(g2D, pol, view); return }
     //println("drawFilled at sprite level")
     val polyCorrected: Polygon2D = coordinateCorrect(pol, view)
 
@@ -327,6 +343,10 @@ class Sprite2D(val shape: Shape2D, val spriteParams: Sprite2DParams, var animato
   }
 
   def drawFilledStroked(g2D: Graphics2D, pol: Polygon2D, view: View): Unit = {
+    // Discrete points rendered as filled ellipses.
+    if (pol.polyType == PolygonType.POINT_POLYGON) { drawPoint(g2D, pol, view); return }
+    // Open curves cannot be filled — render as stroked line instead.
+    if (pol.polyType == PolygonType.OPEN_SPLINE_POLYGON) { drawLines(g2D, pol, view); return }
 
     val polyCorrected: Polygon2D = coordinateCorrect(pol, view)
 

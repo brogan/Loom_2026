@@ -136,8 +136,18 @@ class Shape2D(val polys: List[Polygon2D], val subdivisionParamsSet: SubdivisionP
     * @shape input Shape2D
     */
    def recursiveSubdivide(subs: List[SubdivisionParams]): Shape2D  = {
-     println(s"[Loom] Subdivision: ${subs.length} pass(es), input: ${polys.length} polygon(s)")
-     var oldShape: Shape2D = new Shape2D(polys.toList, subdivisionParamsSet)
+     // Separate bypass polygons (open curves, discrete points) from closed polygons.
+     val bypassPolys = polys.filter(p => p.polyType == PolygonType.OPEN_SPLINE_POLYGON || p.polyType == PolygonType.POINT_POLYGON)
+     val closedPolys = polys.filter(p => p.polyType != PolygonType.OPEN_SPLINE_POLYGON && p.polyType != PolygonType.POINT_POLYGON)
+
+     println(s"[Loom] Subdivision: ${subs.length} pass(es), input: ${closedPolys.length} closed + ${bypassPolys.length} bypass polygon(s)")
+
+     if (closedPolys.isEmpty) {
+       // Nothing to subdivide — return bypass polys cloned into a fresh shape.
+       return new Shape2D(bypassPolys.map(_.clone()), subdivisionParamsSet)
+     }
+
+     var oldShape: Shape2D = new Shape2D(closedPolys, subdivisionParamsSet)
      var newShape: Shape2D = null
      for (i <- 0 until subs.length) {
        val sType = Subdivision.getType(subs(i).subdivisionType)
@@ -148,8 +158,11 @@ class Shape2D(val polys: List[Polygon2D], val subdivisionParamsSet: SubdivisionP
        val visiblePolys = newShape.polys.filter(_.visible).map(_.clone()).toList
        oldShape = new Shape2D(visiblePolys, newShape.subdivisionParamsSet)
      }
-     println(s"[Loom] Subdivision complete — output: ${newShape.polys.length} polygon(s)")
-     newShape
+
+     // Recombine subdivided closed polys with unchanged bypass polys.
+     val finalPolys = newShape.polys ++ bypassPolys.map(_.clone())
+     println(s"[Loom] Subdivision complete — output: ${finalPolys.length} polygon(s) (${newShape.polys.length} closed + ${bypassPolys.length} bypass)")
+     new Shape2D(finalPolys, subdivisionParamsSet)
    }
    /**
    This subdivides a shape either as quads or triangles

@@ -2,6 +2,7 @@
 Polygon configuration tab for the parameter editor.
 Provides UI for editing polygons.xml settings.
 """
+from __future__ import annotations
 import os
 import shutil
 import xml.etree.ElementTree as ET
@@ -33,7 +34,9 @@ class PolygonPreviewWidget(QWidget):
         super().__init__(parent)
         self._anchor_polys: list[list[tuple[float, float]]] = []
         self._ctrl_polys: list[list[tuple[float, float, float, float, float, float]]] = []
+        self._closed_flags: list[bool] = []
         self._has_bezier = False
+        self._dot_positions: list[tuple[float, float]] = []
         self.setMinimumHeight(200)
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
         self.setToolTip("Polygon set shape preview")
@@ -41,13 +44,17 @@ class PolygonPreviewWidget(QWidget):
     def clear(self):
         self._anchor_polys = []
         self._ctrl_polys = []
+        self._closed_flags = []
         self._has_bezier = False
+        self._dot_positions = []
         self.update()
 
     def load_polygon_set(self, filepath: str) -> None:
         self._anchor_polys = []
         self._ctrl_polys = []
+        self._closed_flags = []
         self._has_bezier = False
+        self._dot_positions = []
         if not filepath or not os.path.isfile(filepath):
             self.update()
             return
@@ -73,11 +80,28 @@ class PolygonPreviewWidget(QWidget):
         1. Per-curve structure  (<curve> with child anchor/ctrl elements)
         2. Flat interleaved structure  (every 4th element is an anchor point)
         3. All x/y pairs  (LINE_POLYGON or fallback)
+        Also handles <pointSet> root with direct <point x y/> children.
         """
-        polygon_elems = list(root.iter('polygon'))
-        targets = polygon_elems if polygon_elems else [root]
+        # Handle pointSet: collect top-level <point> elements as dots
+        if root.tag == 'pointSet':
+            for pt in root.findall('point'):
+                xy = self._xy(pt)
+                if xy:
+                    self._dot_positions.append(xy)
+            return
 
-        for poly_elem in targets:
+        polygon_elems = list(root.iter('polygon'))
+        open_curve_elems = list(root.iter('openCurve'))
+
+        normalized = []
+        for t in polygon_elems:
+            normalized.append((t, t.get('isClosed', 'true').lower() != 'false'))
+        for t in open_curve_elems:
+            normalized.append((t, False))
+        if not normalized:
+            normalized = [(root, root.get('isClosed', 'true').lower() != 'false')]
+
+        for poly_elem, is_closed in normalized:
             children = list(poly_elem)
 
             # Strategy 1: look for <curve> children
@@ -87,6 +111,7 @@ class PolygonPreviewWidget(QWidget):
                 if anchors:
                     self._anchor_polys.append(anchors)
                     self._ctrl_polys.append(beziers)
+                    self._closed_flags.append(is_closed)
                     self._has_bezier = bool(beziers)
                 continue
 
@@ -102,6 +127,7 @@ class PolygonPreviewWidget(QWidget):
                 if anchors:
                     self._anchor_polys.append(anchors)
                     self._ctrl_polys.append(beziers)
+                    self._closed_flags.append(is_closed)
                     self._has_bezier = bool(beziers)
                     continue
 
@@ -110,6 +136,7 @@ class PolygonPreviewWidget(QWidget):
             if len(simple) >= 2:
                 self._anchor_polys.append(simple)
                 self._ctrl_polys.append([])
+                self._closed_flags.append(is_closed)
 
     def _parse_curves(self, curves):
         """Parse a list of <curve> elements each containing 4 child points."""
@@ -155,6 +182,27 @@ class PolygonPreviewWidget(QWidget):
 
         painter.fillRect(0, 0, w, h, QColor(28, 28, 28))
 
+        # Render discrete point set (dots)
+        if self._dot_positions:
+            all_x = [p[0] for p in self._dot_positions]
+            all_y = [p[1] for p in self._dot_positions]
+            min_x, max_x = min(all_x), max(all_x)
+            min_y, max_y = min(all_y), max(all_y)
+            dx = max_x - min_x or 1.0
+            dy = max_y - min_y or 1.0
+            margin = 16
+            scale = min((w - 2 * margin) / dx, (h - 2 * margin) / dy)
+            ox = margin + ((w - 2 * margin) - dx * scale) / 2 - min_x * scale
+            oy = margin + ((h - 2 * margin) - dy * scale) / 2 - min_y * scale
+            painter.setBrush(QColor(255, 0, 255, 200))
+            painter.setPen(Qt.PenStyle.NoPen)
+            r = 4
+            for (px, py) in self._dot_positions:
+                cx = int(px * scale + ox)
+                cy = int(py * scale + oy)
+                painter.drawEllipse(cx - r, cy - r, r * 2, r * 2)
+            return
+
         if not self._anchor_polys:
             painter.setPen(QColor(90, 90, 90))
             painter.drawText(self.rect(), Qt.AlignmentFlag.AlignCenter, "No preview")
@@ -178,7 +226,7 @@ class PolygonPreviewWidget(QWidget):
 
         painter.setPen(QPen(QColor(80, 200, 120), 1.5))
 
-        for anchors, beziers in zip(self._anchor_polys, self._ctrl_polys):
+        for anchors, beziers, is_closed in zip(self._anchor_polys, self._ctrl_polys, self._closed_flags):
             if len(anchors) < 2:
                 continue
             path = QPainterPath()
@@ -189,7 +237,8 @@ class PolygonPreviewWidget(QWidget):
             else:
                 for pt in anchors[1:]:
                     path.lineTo(sx(pt[0]), sy(pt[1]))
-            path.closeSubpath()
+            if is_closed:
+                path.closeSubpath()
             painter.drawPath(path)
 
 

@@ -2,6 +2,7 @@ package org.brogan.ui;
 
 import org.brogan.data.*;
 import org.brogan.bezier.*;
+import org.brogan.bezier.CubicCurveManager;
 
 import java.util.List;
 import java.util.stream.Collectors;
@@ -281,11 +282,51 @@ public class CubicCurvePanel extends JPanel implements MouseListener, ChangeList
 			BorderFactory.createTitledBorder("SVG"),
 			BorderFactory.createEmptyBorder(2, 2, 2, 2)));
 
+		// Save Open Curves button
+		JButton saveOpenCurvesBtn = new JButton("Save Open Curves");
+		Swing.setSize(saveOpenCurvesBtn, w * 4, h);
+		saveOpenCurvesBtn.addActionListener(new ActionListener() {
+			public void actionPerformed(ActionEvent e) {
+				saveAsOpenCurveSet();
+			}
+		});
+		JPanel openCurvesPanel = new JPanel();
+		Swing.setSize(openCurvesPanel, 240, 54);
+		openCurvesPanel.add(saveOpenCurvesBtn);
+		openCurvesPanel.setBorder(BorderFactory.createCompoundBorder(
+			BorderFactory.createTitledBorder("Open Curves"),
+			BorderFactory.createEmptyBorder(2, 2, 2, 2)));
+
+		// Point Mode controls
+		final JToggleButton pointModeBtn = new JToggleButton("Point Mode");
+		Swing.setSize(pointModeBtn, w * 3, h);
+		pointModeBtn.addActionListener(new ActionListener() {
+			public void actionPerformed(ActionEvent e) {
+				bezier.setPointMode(pointModeBtn.isSelected());
+			}
+		});
+		JButton savePointSetBtn = new JButton("Save Points");
+		Swing.setSize(savePointSetBtn, w * 3, h);
+		savePointSetBtn.addActionListener(new ActionListener() {
+			public void actionPerformed(ActionEvent e) {
+				saveAsPointSet();
+			}
+		});
+		JPanel pointPanel = new JPanel();
+		Swing.setSize(pointPanel, 240, 54);
+		pointPanel.add(pointModeBtn);
+		pointPanel.add(savePointSetBtn);
+		pointPanel.setBorder(BorderFactory.createCompoundBorder(
+			BorderFactory.createTitledBorder("Points"),
+			BorderFactory.createEmptyBorder(2, 2, 2, 2)));
+
 		// Place the SVG button and reference image section side-by-side in one row
 		JPanel topRow = new JPanel();
 		topRow.setLayout(new BoxLayout(topRow, BoxLayout.LINE_AXIS));
 		Swing.setSize(topRow, CubicCurveFrame.DEFAULT_WIDTH - 8, 54);
 		topRow.add(svgPanel);
+		topRow.add(openCurvesPanel);
+		topRow.add(pointPanel);
 		if (refImagePanel != null) {
 			topRow.add(refImagePanel);
 		}
@@ -417,7 +458,128 @@ public class CubicCurvePanel extends JPanel implements MouseListener, ChangeList
 		}
 	}
 	/**
-	 * 
+	 * Save all open (non-closed) managers as an openCurveSet XML to the curveSets directory.
+	 */
+	public void saveAsOpenCurveSet() {
+		if (!valuesEntered) {
+			enterValues();
+		}
+		CubicCurvePolygonManager polygonManager = bezier.getPolygonManager();
+		String overall = Swing.getFieldStringValue(name);
+		double sX  = Swing.getFieldDoubleValue(scaleX);
+		double sY  = Swing.getFieldDoubleValue(scaleY);
+		double rotA = Swing.getFieldDoubleValue(rotationAngle);
+
+		String dtdPath = "../dtd";
+		ProjectManager projectManager = curveFrame.getProjectManager();
+		String polygonSetFilePath = projectManager.getPolygonSetFilePath();
+		File polygonSetDir = new File(polygonSetFilePath);
+		File curveSetsDir = new File(polygonSetDir.getParent(), "curveSets");
+		curveSetsDir.mkdirs();
+
+		String overallFn = toFilename(overall);
+		String xmlPath = curveSetsDir.getAbsolutePath() + File.separator + overallFn + ".xml";
+		String svgDirPath = new File(polygonSetDir.getParent(), "svgs").getAbsolutePath();
+
+		// Collect only open managers
+		java.util.List<CubicCurveManager> openManagers = new java.util.ArrayList<>();
+		int count = polygonManager.getPolygonCount();
+		for (int i = 0; i < count; i++) {
+			CubicCurveManager mgr = polygonManager.getManager(i);
+			if (!mgr.getIsClosed()) {
+				openManagers.add(mgr);
+			}
+		}
+
+		OpenCurveSetXml xml = new OpenCurveSetXml(dtdPath);
+		xml.setXmlFilePath(xmlPath);
+		xml.createNewXml(overallFn, openManagers, this, sX, sY, rotA, 0.5, 0.5);
+		BezierSvgExporter.save(openManagers, svgDirPath, overallFn);
+		System.out.println("CubicCurvePanel: saved open curve set to " + xmlPath);
+	}
+
+	/**
+	 * Save all discrete points as a pointSet XML to the pointSets directory.
+	 */
+	public void saveAsPointSet() {
+		java.util.List<java.awt.geom.Point2D.Double> points = bezier.getPoints();
+		if (points.isEmpty()) {
+			javax.swing.JOptionPane.showMessageDialog(this, "No points to save. Enable Point Mode and click on the canvas first.",
+				"No Points", javax.swing.JOptionPane.INFORMATION_MESSAGE);
+			return;
+		}
+		if (!valuesEntered) {
+			enterValues();
+		}
+		String overall = Swing.getFieldStringValue(name);
+		double sX  = Swing.getFieldDoubleValue(scaleX);
+		double sY  = Swing.getFieldDoubleValue(scaleY);
+		double rotA = Swing.getFieldDoubleValue(rotationAngle);
+
+		String dtdPath = "../dtd";
+		ProjectManager projectManager = curveFrame.getProjectManager();
+		String polygonSetFilePath = projectManager.getPolygonSetFilePath();
+		File polygonSetDir = new File(polygonSetFilePath);
+		File pointSetsDir = new File(polygonSetDir.getParent(), "pointSets");
+		pointSetsDir.mkdirs();
+
+		String overallFn = toFilename(overall);
+		String xmlPath = pointSetsDir.getAbsolutePath() + File.separator + overallFn + ".xml";
+
+		org.brogan.data.PointSetXml xml = new org.brogan.data.PointSetXml(dtdPath);
+		xml.setXmlFilePath(xmlPath);
+		xml.createNewXml(overallFn, points, this, sX, sY, rotA, 0.5, 0.5);
+		System.out.println("CubicCurvePanel: saved point set to " + xmlPath);
+	}
+
+	/**
+	 * Load a pointSet XML file, replacing current points and clearing curves.
+	 */
+	public void loadPointSet(File f) {
+		bezier.getPolygonManager().clearManagers();
+		bezier.clearPoints();
+		nu.xom.Document doc;
+		try {
+			nu.xom.Builder parser = new nu.xom.Builder(false);
+			doc = parser.build(f);
+		} catch (Exception ex) {
+			System.out.println("CubicCurvePanel: failed to parse pointSet: " + ex.getMessage());
+			return;
+		}
+		nu.xom.Element root = doc.getRootElement();
+		bezier.appendPointSet(root);
+		nu.xom.Element nameEl = root.getFirstChildElement("name");
+		if (nameEl != null && !nameEl.getValue().trim().isEmpty()) {
+			name.setText(nameEl.getValue().trim());
+		}
+		System.out.println("CubicCurvePanel: loaded point set from " + f.getName());
+	}
+
+	/**
+	 * Load an openCurveSet XML file, replacing the current canvas geometry.
+	 */
+	public void loadOpenCurveSet(File f) {
+		bezier.getPolygonManager().clearManagers();
+		Document doc;
+		try {
+			Builder parser = new Builder(false);
+			doc = parser.build(f);
+		} catch (Exception ex) {
+			System.out.println("CubicCurvePanel: failed to parse openCurveSet: " + ex.getMessage());
+			return;
+		}
+		Element root = doc.getRootElement();
+		bezier.appendOpenCurveSet(root);
+		bezier.denormaliseAllPoints();
+		Element nameEl = root.getFirstChildElement("name");
+		if (nameEl != null && !nameEl.getValue().trim().isEmpty()) {
+			name.setText(nameEl.getValue().trim());
+		}
+		System.out.println("CubicCurvePanel: loaded open curve set from " + f.getName());
+	}
+
+	/**
+	 *
 	 */
 	public void loadPolygonSet(File polySetXml) {
 		

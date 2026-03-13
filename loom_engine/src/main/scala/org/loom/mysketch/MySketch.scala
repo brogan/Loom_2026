@@ -67,6 +67,12 @@ class MySketch(width: Int, height: Int) extends Sketch(width, height) {
   //Load list of polygons from polygonSet - this is the normal way (create polygon sets in Bezier Draw application)
   val polyCollection: PolygonSetCollection = loadPolygonCollection()
 
+  //Load open curve sets from curves.xml
+  val openCurveSetCollection: org.loom.geometry.OpenCurveSetCollection = loadOpenCurveCollection()
+
+  //Load discrete point sets from points.xml
+  val pointSetCollection: org.loom.geometry.PointSetCollection = loadPointCollection()
+
   //Create a list of subdivision parameters
   val initialSubdivisionType: Int = Subdivision.QUAD //a default
   val subdivisionParamsSetCollection: SubdivisionParamsSetCollection = createSubdivisionParamsSetCollection()
@@ -221,6 +227,34 @@ class MySketch(width: Int, height: Int) extends Sketch(width, height) {
 
 
   /**
+   * Load open curve sets from curves.xml if present in the project.
+   */
+  def loadOpenCurveCollection(): org.loom.geometry.OpenCurveSetCollection = {
+    if (useProjectConfig) {
+      val curvesConfigPath = ProjectConfigManager.getConfigPath("curves")
+      if (curvesConfigPath.nonEmpty) {
+        val curveSetsPath = ProjectConfigManager.getCurveSetsPath
+        return org.loom.media.OpenCurveSetLoader.load(curvesConfigPath, curveSetsPath)
+      }
+    }
+    new org.loom.geometry.OpenCurveSetCollection()
+  }
+
+  /**
+   * Load discrete point sets from points.xml if present in the project.
+   */
+  def loadPointCollection(): org.loom.geometry.PointSetCollection = {
+    if (useProjectConfig) {
+      val pointsConfigPath = ProjectConfigManager.getConfigPath("points")
+      if (pointsConfigPath.nonEmpty) {
+        val pointSetsPath = ProjectConfigManager.getPointSetsPath
+        return org.loom.media.PointSetLoader.load(pointsConfigPath, pointSetsPath)
+      }
+    }
+    new org.loom.geometry.PointSetCollection()
+  }
+
+  /**
    * CREATESUBDIVISIONPARAMETERS
    */
   def createSubdivisionParamsSetCollection(): SubdivisionParamsSetCollection = {
@@ -323,6 +357,20 @@ class MySketch(width: Int, height: Int) extends Sketch(width, height) {
           List(Polygon2D(shapeDef.inlinePoints, PolygonType.LINE_POLYGON))
         } else {
           println(s"  Warning: Shape '${shapeDef.name}' has no inline points")
+          return null
+        }
+      case ShapeConfigLoader.SOURCE_OPEN_CURVE_SET =>
+        val curveSet = openCurveSetCollection.getSet(shapeDef.openCurveSetName)
+        if (curveSet != null) curveSet.curves.map(_.clone())
+        else {
+          println(s"  Warning: Open curve set '${shapeDef.openCurveSetName}' not found")
+          return null
+        }
+      case ShapeConfigLoader.SOURCE_POINT_SET =>
+        val ps = pointSetCollection.getSet(shapeDef.pointSetName)
+        if (ps != null) ps.points.map(_.clone())
+        else {
+          println(s"  Warning: Point set '${shapeDef.pointSetName}' not found")
           return null
         }
       case _ =>
