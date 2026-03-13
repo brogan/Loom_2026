@@ -1,16 +1,16 @@
 {
     "version": "1.4.0",
     "project": {
-        "name": "loom_2025_scala_3-build",
-        "directory": "/Users/broganbunt/Scala/Loom_2025_Scala_3/project",
-        "workspaceDir": "/Users/broganbunt/Scala/Loom_2025_Scala_3/project",
+        "name": "loom_engine-build",
+        "directory": "/Users/broganbunt/Loom_2026/loom_engine/project",
+        "workspaceDir": "/Users/broganbunt/Loom_2026/loom_engine/project",
         "sources": [
-            "/Users/broganbunt/Scala/Loom_2025_Scala_3/project/src/main/scala",
-            "/Users/broganbunt/Scala/Loom_2025_Scala_3/project/src/main/scala-2.12",
-            "/Users/broganbunt/Scala/Loom_2025_Scala_3/project/src/main/scala-2",
-            "/Users/broganbunt/Scala/Loom_2025_Scala_3/project/src/main/java",
-            "/Users/broganbunt/Scala/Loom_2025_Scala_3/project/src/main/scala-sbt-1.0",
-            "/Users/broganbunt/Scala/Loom_2025_Scala_3/project/target/scala-2.12/sbt-1.0/src_managed/main"
+            "/Users/broganbunt/Loom_2026/loom_engine/project/src/main/scala",
+            "/Users/broganbunt/Loom_2026/loom_engine/project/src/main/scala-2.12",
+            "/Users/broganbunt/Loom_2026/loom_engine/project/src/main/scala-2",
+            "/Users/broganbunt/Loom_2026/loom_engine/project/src/main/java",
+            "/Users/broganbunt/Loom_2026/loom_engine/project/src/main/scala-sbt-1.0",
+            "/Users/broganbunt/Loom_2026/loom_engine/project/target/scala-2.12/sbt-1.0/src_managed/main"
         ],
         "dependencies": [
             
@@ -111,11 +111,11 @@
             "/Users/broganbunt/Library/Caches/Coursier/v1/https/repo1.maven.org/maven2/org/reactivestreams/reactive-streams/1.0.3/reactive-streams-1.0.3.jar",
             "/Users/broganbunt/Library/Caches/Coursier/v1/https/repo1.maven.org/maven2/com/typesafe/config/1.4.2/config-1.4.2.jar"
         ],
-        "out": "/Users/broganbunt/Scala/Loom_2025_Scala_3/project/.bloop/loom_2025_scala_3-build",
-        "classesDir": "/Users/broganbunt/Scala/Loom_2025_Scala_3/project/.bloop/loom_2025_scala_3-build/scala-2.12/sbt-1.0/classes",
+        "out": "/Users/broganbunt/Loom_2026/loom_engine/project/.bloop/loom_engine-build",
+        "classesDir": "/Users/broganbunt/Loom_2026/loom_engine/project/.bloop/loom_engine-build/scala-2.12/sbt-1.0/classes",
         "resources": [
-            "/Users/broganbunt/Scala/Loom_2025_Scala_3/project/src/main/resources",
-            "/Users/broganbunt/Scala/Loom_2025_Scala_3/project/target/scala-2.12/sbt-1.0/resource_managed/main"
+            "/Users/broganbunt/Loom_2026/loom_engine/project/src/main/resources",
+            "/Users/broganbunt/Loom_2026/loom_engine/project/target/scala-2.12/sbt-1.0/resource_managed/main"
         ],
         "scala": {
             "organization": "org.scala-lang",
@@ -222,7 +222,7 @@
             "config": {
                 "home": "/Library/Java/JavaVirtualMachines/jdk-18.0.1.jdk/Contents/Home",
                 "options": [
-                    "-Duser.dir=/Users/broganbunt/Scala/Loom_2025_Scala_3/project"
+                    "-Duser.dir=/Users/broganbunt/Loom_2026/loom_engine/project"
                 ]
             },
             "mainClass": [
@@ -231,11 +231,11 @@
             "runtimeConfig": {
                 "home": "/Library/Java/JavaVirtualMachines/jdk-18.0.1.jdk/Contents/Home",
                 "options": [
-                    "-Duser.dir=/Users/broganbunt/Scala/Loom_2025_Scala_3/project"
+                    "-Duser.dir=/Users/broganbunt/Loom_2026/loom_engine/project"
                 ]
             },
             "classpath": [
-                "/Users/broganbunt/Scala/Loom_2025_Scala_3/project/.bloop/loom_2025_scala_3-build/scala-2.12/sbt-1.0/classes",
+                "/Users/broganbunt/Loom_2026/loom_engine/project/.bloop/loom_engine-build/scala-2.12/sbt-1.0/classes",
                 "/Users/broganbunt/Library/Caches/Coursier/v1/https/repo1.maven.org/maven2/ch/epfl/scala/sbt-bloop_2.12_1.0/2.0.13/sbt-bloop_2.12_1.0-2.0.13.jar",
                 "/Users/broganbunt/Library/Caches/Coursier/v1/https/repo1.maven.org/maven2/ch/epfl/scala/sbt-scalafix_2.12_1.0/0.12.1/sbt-scalafix_2.12_1.0-0.12.1.jar",
                 "/Users/broganbunt/Library/Caches/Coursier/v1/https/repo1.maven.org/maven2/ch/epfl/scala/sbt-scala3-migrate_2.12_1.0/0.6.1/sbt-scala3-migrate-0.6.1.jar",

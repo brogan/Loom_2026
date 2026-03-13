@@ -2,5 +2,4 @@
 # Loom Parameter Editor Launcher - Runs without Terminal window
 
 cd /Users/broganbunt/Loom_2026/loom_engine/loom_parameter_editor
-source .venv/bin/activate
-nohup python3 main.py &>/dev/null &
+nohup arch -arm64 .venv/bin/python main.py >>/tmp/loom_editor.log 2>&1 &

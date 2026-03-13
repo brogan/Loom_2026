@@ -53,6 +53,8 @@ object PolygonSetLoader {
 
 					for (i <- 0 until polygons.length) {//load polygon data
 						val polygon: NodeSeq = polygons(i)
+								val isClosedAttr = (polygon \ "@isClosed").text
+								val polyType = if (isClosedAttr == "false") PolygonType.OPEN_SPLINE_POLYGON else PolygonType.SPLINE_POLYGON
 								val curves: NodeSeq = (polygon \\ "curve")
 								val pts: ListBuffer[Vector2D] = new ListBuffer[Vector2D]()
 
@@ -73,7 +75,7 @@ object PolygonSetLoader {
 											}
 
 								}
-								polys += new Polygon2D(pts.toList, PolygonType.SPLINE_POLYGON)	
+								polys += new Polygon2D(pts.toList, polyType)
 					}
 					polys.toList
 	}

@@ -75,7 +75,7 @@ class BrushState {
             edgeList += new BrushEdge(PolygonType.LINE_POLYGON, Array(p1, p2), length)
           }
         }
-      } else if (poly.polyType == PolygonType.SPLINE_POLYGON) {
+      } else if (poly.polyType == PolygonType.SPLINE_POLYGON || poly.polyType == PolygonType.OPEN_SPLINE_POLYGON) {
         val pts = poly.points
         for (i <- 0 until poly.sidesTotal) {
           val a1 = pts(i * 4)

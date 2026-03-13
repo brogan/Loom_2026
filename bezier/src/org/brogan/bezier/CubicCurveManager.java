@@ -21,6 +21,7 @@ public class CubicCurveManager {
 	private boolean selectedRelational = false;
 	private boolean scoped = false;
 	private int layerId = 0;
+	private boolean isClosed = false;
 	private Set<Integer> discreteEdgeIndices   = new HashSet<>();
 	private Set<Integer> relationalEdgeIndices = new HashSet<>();
 	private Set<Integer> weldableEdgeIndices   = new HashSet<>();
@@ -111,6 +112,42 @@ public class CubicCurveManager {
 		g2D.drawOval((int)pos.x-6, (int)pos.y-6, 12, 12);
 	}
 	/**
+	 * Finish drawing as an open curve without adding a closing synthetic edge.
+	 * Works with any number of curves including zero (discrete point placeholder).
+	 */
+	public void finishOpen() {
+		addPoints = false;
+		isClosed = false;
+		polyManager.addPolygon(curves);
+	}
+
+	/**
+	 * Load an open curve from an array of N*4 points WITHOUT linking the last anchor
+	 * back to the first. Mirrors setAllPoints() but for open paths.
+	 * For N=0 (discrete point placeholder) the curves list remains empty.
+	 */
+	public void setOpenPoints(Point2D.Double[] points, Color strokeColor) {
+		addPoints = false;
+		isClosed = false;
+		int totalCurves = points.length / 4;
+		int count = 0;
+		for (int i = 0; i < totalCurves; i++) {
+			currentCurve = new CubicCurve(strokeColor);
+			if (i == 0) {
+				currentCurve.setAnchorPoint(points[count], CubicCurve.ANCHOR_FIRST, null);
+			} else {
+				currentCurve.setAnchorPoint(points[count], CubicCurve.ANCHOR_FIRST, curves.getCurve(i-1).getPoint(3));
+			}
+			currentCurve.setControlPoint(points[count+1], 1);
+			currentCurve.setControlPoint(points[count+2], 2);
+			// Last anchor is NOT shared back to curve[0].anchor[0]
+			currentCurve.setAnchorPoint(points[count+3], CubicCurve.ANCHOR_LAST, null);
+			curves.addCurve(currentCurve);
+			count += 4;
+		}
+	}
+
+	/**
 	 * Set up this manager as a single open edge from pts[0..3].
 	 * Unlike setAllPoints, the last anchor is NOT closed back to the first.
 	 * Used when duplicating a selected edge into a new standalone single-edge polygon.
@@ -176,13 +213,14 @@ public class CubicCurveManager {
 		
 		currentCurve.setControlPoints();
 		curves.addCurve(currentCurve);
-		
+
 		addPoints = false;
-		
+		isClosed = true;
+
 		polyManager.addPolygon(curves);
-		
+
 	}
-	
+
 	/**
 	 * called from loading xml
 	 * @param strokeColor
@@ -205,11 +243,12 @@ public class CubicCurveManager {
 		
 		currentCurve.setControlPoints(C1, C2);//the different line - sets control points to a specfic predetermined position (from xml)
 		curves.addCurve(currentCurve);
-		
+
 		addPoints = false;
-		
+		isClosed = true;
+
 		polyManager.addPolygon(curves);
-		
+
 	}
 	
 	public void hideControls() {
@@ -318,8 +357,10 @@ public class CubicCurveManager {
 		a[1]=-1;
 		return a;
 	}
-	public int  getLayerId()        { return layerId; }
-	public void setLayerId(int id)  { this.layerId = id; }
+	public int  getLayerId()           { return layerId; }
+	public void setLayerId(int id)     { this.layerId = id; }
+	public boolean getIsClosed()       { return isClosed; }
+	public void    setIsClosed(boolean b) { isClosed = b; }
 
 	public boolean isSelected() { return selected; }
 	public void setSelected(boolean selected) { this.selected = selected; }
@@ -389,6 +430,9 @@ public class CubicCurveManager {
 	 * @return the average x, y of all anchor points
 	 */
 	public Point2D.Double getAverageXY() {
+		if (curves.getCubicCurveTotal() == 0) {
+			return new Point2D.Double(520, 520); // canvas centre; safe default for discrete points
+		}
 		int x = 0;
 		int y = 0;
 		for (int c = 0; c<curves.getCubicCurveTotal();c++) {

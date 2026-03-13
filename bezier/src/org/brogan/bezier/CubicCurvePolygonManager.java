@@ -258,6 +258,7 @@ public class CubicCurvePolygonManager {
 		CubicCurveManager newManager = new CubicCurveManager(strokeColor, this);
 		if (layerManager != null) newManager.setLayerId(layerManager.getActiveLayerId());
 		newManager.setSingleEdgePoints(pts, strokeColor);
+		newManager.setIsClosed(false);
 		newManager.setCurrentBezierPosition(newManager.getAverageXY());
 		polys.addPolygon(newManager.getCurves());
 		cubicCurveManagers.add(cubicCurveManagers.size() - 1, newManager);
@@ -329,7 +330,7 @@ public class CubicCurvePolygonManager {
 		cubicCurveManagers.clear();
 		polys.clearPolygonSet();
 
-		// Rebuild each closed polygon manager
+		// Rebuild each polygon manager
 		for (GeometrySnapshot.ManagerSnap ms : snap.managers) {
 			CubicCurveManager m = new CubicCurveManager(strokeColor, this);
 			m.setLayerId(ms.layerId);
@@ -340,8 +341,13 @@ public class CubicCurvePolygonManager {
 			}
 			if (ms.isSingleEdge) {
 				m.setSingleEdgePoints(pts, strokeColor);
-			} else {
+				m.setIsClosed(false);
+			} else if (ms.isClosed) {
 				m.setAllPoints(pts, strokeColor);
+				m.setIsClosed(true);
+			} else {
+				m.setOpenPoints(pts, strokeColor);
+				m.setIsClosed(false);
 			}
 			polys.addPolygon(m.getCurves());
 			cubicCurveManagers.add(m);
@@ -369,6 +375,25 @@ public class CubicCurvePolygonManager {
 		if (idx < cubicCurveManagers.size()) {
 			cubicCurveManagers.get(idx).setLayerId(layerManager.getActiveLayerId());
 		}
+	}
+
+	/**
+	 * Create a new open curve manager from an array of N*4 point positions.
+	 * Like addClosedFromPoints but does not link the last anchor back to the first.
+	 */
+	public CubicCurveManager addOpenCurveFromPoints(Point2D.Double[] pts, Color strokeColor) {
+		CubicCurveManager newManager = new CubicCurveManager(strokeColor, this);
+		if (layerManager != null) newManager.setLayerId(layerManager.getActiveLayerId());
+		newManager.setOpenPoints(pts, strokeColor);
+		newManager.setCurrentBezierPosition(newManager.getAverageXY());
+		polys.addPolygon(newManager.getCurves());
+		cubicCurveManagers.add(cubicCurveManagers.size() - 1, newManager);
+		return newManager;
+	}
+
+	/** Returns true if the polygon manager at index i is a closed polygon. */
+	public boolean isClosedAt(int i) {
+		return cubicCurveManagers.get(i).getIsClosed();
 	}
 
 	/** Return all closed polygon managers whose layerId matches the given id. */

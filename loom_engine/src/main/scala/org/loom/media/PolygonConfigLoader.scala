@@ -131,6 +131,9 @@ object PolygonConfigLoader {
     val polygons: NodeSeq = (polygonSet \\ "polygon")
 
     for (polygon <- polygons) {
+      val isClosedAttr = (polygon \ "@isClosed").text
+      val polyType = if (isClosedAttr == "false") PolygonType.OPEN_SPLINE_POLYGON else PolygonType.SPLINE_POLYGON
+
       val curves: NodeSeq = (polygon \\ "curve")
       val pts = ListBuffer[org.loom.geometry.Vector2D]()
 
@@ -144,7 +147,7 @@ object PolygonConfigLoader {
         }
       }
 
-      polys += Polygon2D(pts.toList, PolygonType.SPLINE_POLYGON)
+      polys += Polygon2D(pts.toList, polyType)
     }
 
     polys.toList

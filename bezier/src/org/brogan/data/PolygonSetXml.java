@@ -47,6 +47,9 @@ public class PolygonSetXml extends XmlManager {
 		CubicCurvePolygon[] polys = polyManager.getPolygons().getArrayofCubicCurvePolygons();
 		for (int i = 0; i< polys.length;i++) {
 			Element polygon = new Element("polygon");
+			if (!polyManager.isClosedAt(i)) {
+				polygon.addAttribute(new Attribute("isClosed", "false"));
+			}
 			CubicCurvePolygon poly = polys[i];
 			CubicCurve[] curves = poly.getArrayofCubicCurves();
 			for (int c = 0; c < curves.length; c++) {
@@ -225,6 +228,9 @@ public class PolygonSetXml extends XmlManager {
 			CubicCurvePolygon poly = mgr.getCurves();
 			CubicCurve[] curves = poly.getArrayofCubicCurves();
 			Element polygon = new Element("polygon");
+			if (!mgr.getIsClosed()) {
+				polygon.addAttribute(new Attribute("isClosed", "false"));
+			}
 			for (int c = 0; c < curves.length; c++) {
 				Element curve = new Element("curve");
 				CubicPoint[] points = curves[c].getPoints();

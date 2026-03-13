@@ -24,7 +24,7 @@ public class BezierToolBarPanel extends JPanel {
 	private ImageIcon polyRelationalIcon,  polyDiscreteIcon;
 
 	// Action buttons — momentary, no persistent highlight
-	private JButton closeCurves, intersect, duplicatePolygon, flipHorizontal, flipVertical;
+	private JButton closeCurves, finishOpenCurve, intersect, duplicatePolygon, flipHorizontal, flipVertical;
 	private JButton snapAnchors, snapAll, centre;
 	private JButton zoomIn, zoomOut;
 	private JButton clearGrid, deleteSelected;
@@ -159,6 +159,21 @@ public class BezierToolBarPanel extends JPanel {
 			}
 		});
 		toolBar.add(closeCurves);
+
+		finishOpenCurve = new JButton();
+		initButton(finishOpenCurve, "Finish Open Curve (no closing edge)", "closeCurve");
+		finishOpenCurve.addActionListener(new ActionListener() {
+			public void actionPerformed(ActionEvent e) {
+				bezier.takeUndoSnapshot();
+				int polygonCount = polygonManager.getPolygonCount();
+				CubicCurveManager curveManager = polygonManager.getManager(polygonCount);
+				curveManager.finishOpen();
+				curveManager.setCurrentBezierPosition(curveManager.getAverageXY());
+				polygonManager.addManager();
+				activatePolygonSelectionMode();
+			}
+		});
+		toolBar.add(finishOpenCurve);
 
 		intersect = new JButton();
 		initButton(intersect, "Intersect — build quad mesh between two concentric polygons (Shift: keep inner)", "intersect");

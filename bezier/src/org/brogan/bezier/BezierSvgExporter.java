@@ -64,7 +64,8 @@ public class BezierSvgExporter {
                         toSvg(pts[2].getPos().x), toSvg(pts[2].getPos().y),
                         toSvg(pts[3].getPos().x), toSvg(pts[3].getPos().y)));
             }
-            sb.append(" Z\"");
+            if (m.getIsClosed()) sb.append(" Z");
+            sb.append("\"");
             sb.append(" fill=\"none\" stroke=\"#000000\" stroke-width=\"1\"");
             sb.append("/>\n");
         }
@@ -111,7 +112,8 @@ public class BezierSvgExporter {
                         toSvg(pts[2].getPos().x), toSvg(pts[2].getPos().y),
                         toSvg(pts[3].getPos().x), toSvg(pts[3].getPos().y)));
             }
-            sb.append(" Z\"");
+            if (m.getIsClosed()) sb.append(" Z");
+            sb.append("\"");
             sb.append(" fill=\"none\" stroke=\"#000000\" stroke-width=\"1\"");
             sb.append("/>\n");
         }
