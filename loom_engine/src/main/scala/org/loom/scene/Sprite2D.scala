@@ -396,17 +396,16 @@ class Sprite2D(val shape: Shape2D, val spriteParams: Sprite2DParams, var animato
     val config = ren.brushConfig
     if (config == null) return
 
+    val brushes = loadBrushImages(config, ren)
+    if (brushes.isEmpty) return
+
     // Coordinate-correct all visible polys
     val correctedPolys: List[Polygon2D] = shape.polys.filter(_.visible).map(p => coordinateCorrect(p, view))
 
-    // POINT_POLYGON: render immediately as dots every frame (no edges to traverse)
-    val dotRadius = 3
+    // POINT_POLYGON: stamp a single brush at each point position
     for (poly <- correctedPolys if poly.polyType == PolygonType.POINT_POLYGON) {
-      if (poly.points.nonEmpty) {
-        val pt = poly.points.head
-        g2D.setColor(ren.strokeColor)
-        g2D.fillOval(pt.x.toInt - dotRadius, pt.y.toInt - dotRadius, dotRadius * 2, dotRadius * 2)
-      }
+      if (poly.points.nonEmpty)
+        BrushStampEngine.stampAtPoint(g2D, poly.points.head, config, brushes, ren.strokeColor)
     }
 
     val edgePolys = correctedPolys.filter(_.polyType != PolygonType.POINT_POLYGON)
@@ -416,10 +415,6 @@ class Sprite2D(val shape: Shape2D, val spriteParams: Sprite2DParams, var animato
     if (config.drawMode == BrushConfig.FULL_PATH) {
       val state = new BrushState()
       state.initializeFromPolys(edgePolys)
-
-      // Load brush images
-      val brushes = loadBrushImages(config, ren)
-      if (brushes.isEmpty) return
 
       for (edge <- state.edges) {
         BrushStampEngine.drawFullEdge(g2D, edge, config, brushes, ren.strokeColor)
@@ -431,9 +426,6 @@ class Sprite2D(val shape: Shape2D, val spriteParams: Sprite2DParams, var animato
         brushState.initializeFromPolys(edgePolys)
         brushState.createAgents(config.agentCount)
       }
-
-      val brushes = loadBrushImages(config, ren)
-      if (brushes.isEmpty) return
 
       for (agent <- brushState.agents) {
         if (!agent.completed) {

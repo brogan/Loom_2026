@@ -125,6 +125,26 @@ object BrushStampEngine {
   }
 
   /**
+   * Stamp a single brush at a discrete point position (for POINT_POLYGON entries).
+   * Uses random brush/scale/opacity from config, tangent angle 0, no tangent following.
+   */
+  def stampAtPoint(
+    g2D: Graphics2D,
+    position: Vector2D,
+    config: BrushConfig,
+    brushes: Array[BufferedImage],
+    strokeColor: Color
+  ): Unit = {
+    if (brushes.isEmpty) return
+    val brush = brushes(Randomise.range(0, brushes.length - 1))
+    val tintedBrush = BrushLibrary.getTintedBrush(brush, strokeColor)
+    val stampScale = Randomise.range(config.scaleMin, config.scaleMax)
+    val opacity = Randomise.range(config.opacityMin, config.opacityMax).toFloat
+    val perpJitter = Randomise.range(config.perpendicularJitterMin, config.perpendicularJitterMax)
+    stampBrush(g2D, tintedBrush, position, 0.0, stampScale, opacity, perpJitter, false)
+  }
+
+  /**
    * Stamp a single brush image at the given position.
    */
   private def stampBrush(
