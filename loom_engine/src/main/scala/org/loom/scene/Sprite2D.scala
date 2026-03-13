@@ -399,10 +399,23 @@ class Sprite2D(val shape: Shape2D, val spriteParams: Sprite2DParams, var animato
     // Coordinate-correct all visible polys
     val correctedPolys: List[Polygon2D] = shape.polys.filter(_.visible).map(p => coordinateCorrect(p, view))
 
+    // POINT_POLYGON: render immediately as dots every frame (no edges to traverse)
+    val dotRadius = 3
+    for (poly <- correctedPolys if poly.polyType == PolygonType.POINT_POLYGON) {
+      if (poly.points.nonEmpty) {
+        val pt = poly.points.head
+        g2D.setColor(ren.strokeColor)
+        g2D.fillOval(pt.x.toInt - dotRadius, pt.y.toInt - dotRadius, dotRadius * 2, dotRadius * 2)
+      }
+    }
+
+    val edgePolys = correctedPolys.filter(_.polyType != PolygonType.POINT_POLYGON)
+    if (edgePolys.isEmpty) return
+
     // For FULL_PATH mode, re-extract edges each frame (shape may be animated)
     if (config.drawMode == BrushConfig.FULL_PATH) {
       val state = new BrushState()
-      state.initializeFromPolys(correctedPolys)
+      state.initializeFromPolys(edgePolys)
 
       // Load brush images
       val brushes = loadBrushImages(config, ren)
@@ -415,7 +428,7 @@ class Sprite2D(val shape: Shape2D, val spriteParams: Sprite2DParams, var animato
       // PROGRESSIVE mode: lazy-init state, advance agents each frame
       if (brushState == null || !brushState.initialized) {
         brushState = new BrushState()
-        brushState.initializeFromPolys(correctedPolys)
+        brushState.initializeFromPolys(edgePolys)
         brushState.createAgents(config.agentCount)
       }
 
