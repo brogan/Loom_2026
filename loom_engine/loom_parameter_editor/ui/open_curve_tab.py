@@ -1,6 +1,6 @@
 """
-Point Set configuration tab for the parameter editor.
-Provides UI for editing points.xml settings.
+Open Curve Set configuration tab for the parameter editor.
+Provides UI for editing curves.xml settings.
 """
 import os
 from PyQt6.QtWidgets import (
@@ -9,7 +9,7 @@ from PyQt6.QtWidgets import (
     QSplitter, QLabel, QMessageBox, QInputDialog, QSizePolicy
 )
 from PyQt6.QtCore import pyqtSignal, Qt, QProcess
-from models.point_config import PointSetDef, PointSetLibrary, PointSourceType
+from models.open_curve_config import OpenCurveDef, OpenCurveSetLibrary, OpenCurveSourceType
 from models.polygon_config import FileSource
 from ui.polygon_tab import PolygonPreviewWidget
 
@@ -17,17 +17,17 @@ BEZIER_JAR = "/Users/broganbunt/Loom_2026/bezier/out/artifacts/Bezier_jar/Bezier
 BEZIER_WORKING_DIR = "/Users/broganbunt/Loom_2026/bezier"
 
 
-class PointTab(QWidget):
-    """Tab widget for editing discrete point set configuration."""
+class OpenCurveTab(QWidget):
+    """Tab widget for editing open curve set configuration."""
 
     modified = pyqtSignal()
 
     def __init__(self, parent=None):
         super().__init__(parent)
-        self._library = PointSetLibrary.default()
-        self._current_set: PointSetDef = None
+        self._library = OpenCurveSetLibrary.default()
+        self._current_set: OpenCurveDef = None
         self._updating = False
-        self._point_sets_dir: str = ""
+        self._curve_sets_dir: str = ""
         self._bezier_process: QProcess = None
 
         self._setup_ui()
@@ -42,7 +42,7 @@ class PointTab(QWidget):
         left_panel = QWidget()
         left_layout = QVBoxLayout(left_panel)
 
-        left_layout.addWidget(QLabel("Point Sets:"))
+        left_layout.addWidget(QLabel("Open Curve Sets:"))
 
         self.set_list = QTreeWidget()
         self.set_list.setHeaderLabels(["Name"])
@@ -52,20 +52,20 @@ class PointTab(QWidget):
 
         btn_layout = QHBoxLayout()
         self.new_btn = QPushButton("New")
-        self.new_btn.clicked.connect(self._new_point_set)
+        self.new_btn.clicked.connect(self._new_curve_set)
         btn_layout.addWidget(self.new_btn)
 
         self.rename_btn = QPushButton("Rename")
-        self.rename_btn.clicked.connect(self._rename_point_set)
+        self.rename_btn.clicked.connect(self._rename_curve_set)
         btn_layout.addWidget(self.rename_btn)
 
         btn_layout2 = QHBoxLayout()
         self.dup_btn = QPushButton("Duplicate")
-        self.dup_btn.clicked.connect(self._duplicate_point_set)
+        self.dup_btn.clicked.connect(self._duplicate_curve_set)
         btn_layout2.addWidget(self.dup_btn)
 
         self.del_btn = QPushButton("Delete")
-        self.del_btn.clicked.connect(self._delete_point_set)
+        self.del_btn.clicked.connect(self._delete_curve_set)
         btn_layout2.addWidget(self.del_btn)
 
         left_layout.addLayout(btn_layout)
@@ -77,7 +77,7 @@ class PointTab(QWidget):
         right_panel = QWidget()
         right_layout = QVBoxLayout(right_panel)
 
-        info_group = QGroupBox("Point Set")
+        info_group = QGroupBox("Open Curve Set")
         form = QFormLayout(info_group)
 
         self.name_edit = QLineEdit()
@@ -85,7 +85,7 @@ class PointTab(QWidget):
         form.addRow("Name:", self.name_edit)
 
         self.folder_edit = QLineEdit()
-        self.folder_edit.setText("pointSets")
+        self.folder_edit.setText("curveSets")
         self.folder_edit.textChanged.connect(self._on_modified)
         form.addRow("Folder:", self.folder_edit)
 
@@ -121,35 +121,35 @@ class PointTab(QWidget):
 
     # ── Library access ────────────────────────────────────────────────────────
 
-    def set_library(self, library: PointSetLibrary) -> None:
+    def set_library(self, library: OpenCurveSetLibrary) -> None:
         self._library = library
         self._refresh_list()
 
-    def get_library(self) -> PointSetLibrary:
+    def get_library(self) -> OpenCurveSetLibrary:
         return self._library
 
-    def set_point_sets_directory(self, directory: str) -> None:
-        self._point_sets_dir = directory
+    def set_curve_sets_directory(self, directory: str) -> None:
+        self._curve_sets_dir = directory
         self._refresh_file_list()
         self._auto_discover()
 
     def _auto_discover(self) -> None:
         """Populate library from filesystem if it currently has no entries."""
-        if not self._point_sets_dir or not os.path.isdir(self._point_sets_dir):
+        if not self._curve_sets_dir or not os.path.isdir(self._curve_sets_dir):
             return
-        if self._library.point_sets:
+        if self._library.curve_sets:
             return
-        files = sorted(f for f in os.listdir(self._point_sets_dir) if f.lower().endswith(".xml"))
+        files = sorted(f for f in os.listdir(self._curve_sets_dir) if f.lower().endswith(".xml"))
         if not files:
             return
         for filename in files:
             name = os.path.splitext(filename)[0]
-            ps = PointSetDef(name=name, file_source=FileSource(folder="pointSets", filename=filename))
-            self._library.add_point_set(ps)
+            cs = OpenCurveDef(name=name, file_source=FileSource(folder="curveSets", filename=filename))
+            self._library.add_curve_set(cs)
         self._refresh_list()
 
-    def create_default_library(self) -> PointSetLibrary:
-        return PointSetLibrary.default()
+    def create_default_library(self) -> OpenCurveSetLibrary:
+        return OpenCurveSetLibrary.default()
 
     # ── List management ───────────────────────────────────────────────────────
 
@@ -158,11 +158,11 @@ class PointTab(QWidget):
         try:
             current_name = self._current_set.name if self._current_set else None
             self.set_list.clear()
-            for ps in self._library.point_sets:
-                item = QTreeWidgetItem([ps.name])
-                item.setData(0, Qt.ItemDataRole.UserRole, ps)
+            for cs in self._library.curve_sets:
+                item = QTreeWidgetItem([cs.name])
+                item.setData(0, Qt.ItemDataRole.UserRole, cs)
                 self.set_list.addTopLevelItem(item)
-                if ps.name == current_name:
+                if cs.name == current_name:
                     self.set_list.setCurrentItem(item)
         finally:
             self._updating = False
@@ -172,9 +172,9 @@ class PointTab(QWidget):
             self._current_set = None
             self._clear_editor()
             return
-        ps = current.data(0, Qt.ItemDataRole.UserRole)
-        self._current_set = ps
-        self._load_set_to_editor(ps)
+        cs = current.data(0, Qt.ItemDataRole.UserRole)
+        self._current_set = cs
+        self._load_set_to_editor(cs)
 
     def _clear_editor(self):
         self._updating = True
@@ -186,14 +186,14 @@ class PointTab(QWidget):
         finally:
             self._updating = False
 
-    def _load_set_to_editor(self, ps: PointSetDef):
+    def _load_set_to_editor(self, cs: OpenCurveDef):
         self._updating = True
         try:
-            self.name_edit.setText(ps.name)
-            if ps.file_source:
-                self.folder_edit.setText(ps.file_source.folder or "pointSets")
+            self.name_edit.setText(cs.name)
+            if cs.file_source:
+                self.folder_edit.setText(cs.file_source.folder or "curveSets")
                 self._refresh_file_list()
-                self.filename_combo.setCurrentText(ps.file_source.filename or "")
+                self.filename_combo.setCurrentText(cs.file_source.filename or "")
             self._update_preview()
         finally:
             self._updating = False
@@ -205,9 +205,9 @@ class PointTab(QWidget):
         try:
             current = self.filename_combo.currentText()
             self.filename_combo.clear()
-            if self._point_sets_dir and os.path.isdir(self._point_sets_dir):
+            if self._curve_sets_dir and os.path.isdir(self._curve_sets_dir):
                 files = sorted(
-                    f for f in os.listdir(self._point_sets_dir)
+                    f for f in os.listdir(self._curve_sets_dir)
                     if f.lower().endswith(".xml")
                 )
                 self.filename_combo.addItems(files)
@@ -221,37 +221,38 @@ class PointTab(QWidget):
             self._updating = False
 
     def _update_preview(self):
-        if not self._point_sets_dir:
+        if not self._curve_sets_dir:
             self.preview_widget.clear()
             return
         filename = self.filename_combo.currentText()
         if not filename:
             self.preview_widget.clear()
             return
-        full_path = os.path.join(self._point_sets_dir, filename)
+        full_path = os.path.join(self._curve_sets_dir, filename)
         self.preview_widget.load_polygon_set(full_path)
 
     # ── CRUD ─────────────────────────────────────────────────────────────────
 
-    def _new_point_set(self):
-        name, ok = QInputDialog.getText(self, "New Point Set", "Name:")
+    def _new_curve_set(self):
+        name, ok = QInputDialog.getText(self, "New Open Curve Set", "Name:")
         if not ok or not name.strip():
             return
         name = name.strip()
-        if self._library.get_point_set(name):
-            QMessageBox.warning(self, "Duplicate Name", f"A point set named '{name}' already exists.")
+        if self._library.get_curve_set(name):
+            QMessageBox.warning(self, "Duplicate Name", f"A curve set named '{name}' already exists.")
             return
-        ps = PointSetDef(name=name, file_source=FileSource(folder="pointSets"))
-        self._library.add_point_set(ps)
+        cs = OpenCurveDef(name=name, file_source=FileSource(folder="curveSets"))
+        self._library.add_curve_set(cs)
         self._refresh_list()
         self.modified.emit()
+        # Select newly created
         for i in range(self.set_list.topLevelItemCount()):
             item = self.set_list.topLevelItem(i)
             if item.data(0, Qt.ItemDataRole.UserRole).name == name:
                 self.set_list.setCurrentItem(item)
                 break
 
-    def _rename_point_set(self):
+    def _rename_curve_set(self):
         if self._current_set is None:
             return
         old_name = self._current_set.name
@@ -259,23 +260,24 @@ class PointTab(QWidget):
         if not ok or not name.strip() or name.strip() == old_name:
             return
         name = name.strip()
-        if self._library.get_point_set(name):
+        if self._library.get_curve_set(name):
             QMessageBox.warning(self, "Duplicate Name", f"'{name}' already exists.")
             return
         self._current_set.name = name
         self._refresh_list()
         self.modified.emit()
 
-    def _duplicate_point_set(self):
+    def _duplicate_curve_set(self):
         if self._current_set is None:
             return
-        new_ps = self._current_set.copy()
-        new_ps.name = self._current_set.name + "_copy"
-        self._library.add_point_set(new_ps)
+        base = self._current_set.name + "_copy"
+        new_cs = self._current_set.copy()
+        new_cs.name = base
+        self._library.add_curve_set(new_cs)
         self._refresh_list()
         self.modified.emit()
 
-    def _delete_point_set(self):
+    def _delete_curve_set(self):
         if self._current_set is None:
             return
         result = QMessageBox.question(
@@ -284,7 +286,7 @@ class PointTab(QWidget):
         )
         if result != QMessageBox.StandardButton.Yes:
             return
-        self._library.remove_point_set(self._current_set.name)
+        self._library.remove_curve_set(self._current_set.name)
         self._current_set = None
         self._refresh_list()
         self._clear_editor()
@@ -293,14 +295,14 @@ class PointTab(QWidget):
     # ── Bezier launch ─────────────────────────────────────────────────────────
 
     def _edit_in_bezier(self):
-        if not self._point_sets_dir:
+        if not self._curve_sets_dir:
             QMessageBox.warning(self, "No Project", "Please save the project first.")
             return
         filename = self.filename_combo.currentText()
         if not filename:
-            QMessageBox.warning(self, "No File", "Select a point set file first.")
+            QMessageBox.warning(self, "No File", "Select a curve set file first.")
             return
-        full_path = os.path.join(self._point_sets_dir, filename)
+        full_path = os.path.join(self._curve_sets_dir, filename)
 
         if self._bezier_process is not None and \
                 self._bezier_process.state() != QProcess.ProcessState.NotRunning:
@@ -312,7 +314,7 @@ class PointTab(QWidget):
         self._bezier_process.finished.connect(self._on_edit_bezier_finished)
         self._bezier_process.start("java", [
             "-Xmx4G", "-jar", BEZIER_JAR,
-            "--save-dir", self._point_sets_dir,
+            "--save-dir", self._curve_sets_dir,
             "--load", full_path
         ])
 
@@ -334,9 +336,10 @@ class PointTab(QWidget):
         filename = self.filename_combo.currentText()
         folder = self.folder_edit.text()
         if self._current_set.file_source is None:
-            self._current_set.file_source = FileSource(folder="pointSets")
+            self._current_set.file_source = FileSource(folder="curveSets")
         self._current_set.file_source.folder = folder
         self._current_set.file_source.filename = filename
+        # Sync name label in list
         current_item = self.set_list.currentItem()
         if current_item:
             current_item.setText(0, self._current_set.name)
