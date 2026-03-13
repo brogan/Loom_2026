@@ -18,9 +18,8 @@ class Polygon2D(val points: List[Vector2D], val polyType: Int) {
        sidesTotal = points.length
        //println(">>Polygon2D,INIT LINE POLYGON, sidesTotal: " + sidesTotal + "  points.length: " + points.length)
        //for(p <- points) { println("point: x:" + p.x + "  y:" + p.y) }
-   } else if (polyType == PolygonType.SPLINE_POLYGON) {
+   } else if (polyType == PolygonType.SPLINE_POLYGON || polyType == PolygonType.OPEN_SPLINE_POLYGON) {
        sidesTotal = points.length/4//because there are 4 points in any spline side
-       //println("!!Polygon2D, INIT SPLINE POLYGON, sidesTotal: " + sidesTotal + "  points.length: " + points.length)
    }
    override def toString(): String = "Polygon2D sidesTotal: " + sidesTotal
    def print(): Unit = {
