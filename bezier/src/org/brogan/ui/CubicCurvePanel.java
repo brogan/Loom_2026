@@ -433,6 +433,19 @@ public class CubicCurvePanel extends JPanel implements MouseListener, ChangeList
 			// Save the layer manifest
 			LayerSetXml.save(lm, overall, polygonSetFilePath);
 		}
+
+		// Save discrete points (if any) to the pointSets directory
+		java.util.List<java.awt.geom.Point2D.Double> points = bezier.getPoints();
+		if (!points.isEmpty()) {
+			File pointSetsDir = new File(new File(polygonSetFilePath).getParent(), "pointSets");
+			pointSetsDir.mkdirs();
+			String pointsFn = overallFn + "_points";
+			String pointsXmlPath = pointSetsDir.getAbsolutePath() + File.separator + pointsFn + ".xml";
+			org.brogan.data.PointSetXml pointsXml = new org.brogan.data.PointSetXml(dtdPath);
+			pointsXml.setXmlFilePath(pointsXmlPath);
+			pointsXml.createNewXml(pointsFn, points, this, sX, sY, rotA, 0.5, 0.5);
+			System.out.println("CubicCurvePanel: saved point set to " + pointsXmlPath);
+		}
 	}
 
 	/**
