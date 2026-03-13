@@ -305,17 +305,9 @@ public class CubicCurvePanel extends JPanel implements MouseListener, ChangeList
 				bezier.setPointMode(pointModeBtn.isSelected());
 			}
 		});
-		JButton savePointSetBtn = new JButton("Save Points");
-		Swing.setSize(savePointSetBtn, w * 3, h);
-		savePointSetBtn.addActionListener(new ActionListener() {
-			public void actionPerformed(ActionEvent e) {
-				saveAsPointSet();
-			}
-		});
 		JPanel pointPanel = new JPanel();
 		Swing.setSize(pointPanel, 240, 54);
 		pointPanel.add(pointModeBtn);
-		pointPanel.add(savePointSetBtn);
 		pointPanel.setBorder(BorderFactory.createCompoundBorder(
 			BorderFactory.createTitledBorder("Points"),
 			BorderFactory.createEmptyBorder(2, 2, 2, 2)));
