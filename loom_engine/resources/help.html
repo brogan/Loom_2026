@@ -1,0 +1,376 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Loom Engine — Help</title>
+<style>
+  body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; font-size: 13px; color: #222; background: #fafafa; margin: 0; padding: 0; }
+  .sidebar { position: fixed; top: 0; left: 0; width: 210px; height: 100%; background: #1e2330; color: #cdd4e0; overflow-y: auto; padding: 16px 0; box-sizing: border-box; }
+  .sidebar h2 { font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; color: #7a8499; margin: 18px 16px 6px; }
+  .sidebar a { display: block; padding: 5px 16px; color: #cdd4e0; text-decoration: none; font-size: 12px; border-left: 3px solid transparent; }
+  .sidebar a:hover { background: #2a3045; color: #fff; }
+  .sidebar a.active { border-left-color: #5b9cf6; color: #fff; }
+  .content { margin-left: 210px; padding: 32px 40px 60px; max-width: 860px; }
+  h1 { font-size: 24px; font-weight: 700; color: #1a1a2e; border-bottom: 2px solid #e0e4f0; padding-bottom: 12px; margin-top: 0; }
+  h2 { font-size: 18px; font-weight: 600; color: #1a1a2e; margin-top: 40px; border-bottom: 1px solid #e0e4f0; padding-bottom: 6px; }
+  h3 { font-size: 14px; font-weight: 600; color: #2c3060; margin-top: 24px; margin-bottom: 6px; }
+  h4 { font-size: 13px; font-weight: 600; color: #444; margin-top: 16px; margin-bottom: 4px; }
+  p { line-height: 1.65; margin: 8px 0; }
+  ul, ol { margin: 6px 0; padding-left: 22px; line-height: 1.7; }
+  li { margin-bottom: 3px; }
+  .note { background: #eef4ff; border-left: 4px solid #5b9cf6; padding: 10px 14px; border-radius: 0 6px 6px 0; margin: 14px 0; font-size: 12px; }
+  .warn { background: #fff8e6; border-left: 4px solid #f0a500; padding: 10px 14px; border-radius: 0 6px 6px 0; margin: 14px 0; font-size: 12px; }
+  .tip  { background: #eafaf1; border-left: 4px solid #27ae60; padding: 10px 14px; border-radius: 0 6px 6px 0; margin: 14px 0; font-size: 12px; }
+  .tip::before  { content: "Tip: "; font-weight: bold; color: #27ae60; }
+  table { border-collapse: collapse; width: 100%; margin: 12px 0; font-size: 12px; }
+  th { background: #f0f2f8; text-align: left; padding: 8px 12px; border: 1px solid #d8dce8; font-weight: 600; color: #333; }
+  td { padding: 7px 12px; border: 1px solid #e4e7f0; vertical-align: top; }
+  tr:nth-child(even) td { background: #f7f8fc; }
+  kbd { background: #eef; border: 1px solid #aac; border-radius: 3px; padding: 1px 5px; font-family: monospace; font-size: 11px; }
+  code { font-family: monospace; background: #eef; padding: 0 4px; border-radius: 3px; font-size: 11px; }
+  pre { background: #f4f6fb; border: 1px solid #dde; border-radius: 6px; padding: 14px; font-size: 11px; line-height: 1.6; overflow-x: auto; }
+  .chip { display: inline-block; background: #e8ecff; color: #3050b0; border-radius: 10px; padding: 1px 8px; font-size: 11px; font-weight: 600; margin: 1px 2px; }
+  .chip.green { background: #e4f5e4; color: #1a6e1a; }
+  .chip.orange { background: #fff0e0; color: #b05000; }
+  section { scroll-margin-top: 20px; }
+  .flow { background: #f0f2f8; border: 1px solid #d8dce8; border-radius: 8px; padding: 16px; font-family: monospace; font-size: 11px; line-height: 2; text-align: center; margin: 12px 0; }
+  .flow .box { display: inline-block; background: white; border: 2px solid #5b9cf6; border-radius: 5px; padding: 4px 10px; margin: 2px; }
+  .flow .arrow { color: #5b9cf6; font-weight: bold; padding: 0 4px; }
+</style>
+</head>
+<body>
+
+<nav class="sidebar">
+  <h2>Loom Engine</h2>
+  <a href="#overview">Overview</a>
+  <a href="#startup">Starting Loom</a>
+  <a href="#window">The Loom Window</a>
+  <a href="#keyboard">Keyboard Shortcuts</a>
+  <h2>Rendering</h2>
+  <a href="#pipeline">Rendering Pipeline</a>
+  <a href="#geometry-types">Geometry Types</a>
+  <a href="#subdivision">Subdivision</a>
+  <a href="#renderers">Renderer Modes</a>
+  <a href="#animation">Animation</a>
+  <h2>Output</h2>
+  <a href="#capture">Capture &amp; Output</a>
+  <a href="#reload">Reload Workflow</a>
+  <h2>Integration</h2>
+  <a href="#editor">Parameter Editor</a>
+  <a href="#config-files">Config Files</a>
+</nav>
+
+<div class="content">
+
+<!-- ═══════════════════════════════════════════════════════════ -->
+<section id="overview">
+<h1>Loom Engine — Help</h1>
+<p>Loom is a Scala-based drawing engine that generates complex visual patterns from geometric descriptions defined in the <strong>Loom Parameter Editor</strong>. It reads a set of XML configuration files, constructs a scene from polygon sets, open curve sets, and point sets, and renders it to a Swing window at any resolution.</p>
+
+<h3>What Loom does</h3>
+<ul>
+  <li>Loads geometry (polygons, open curves, points) from XML files created in <strong>Bezier Draw</strong></li>
+  <li>Recursively subdivides closed polygon shapes through configurable multi-stage subdivision pipelines</li>
+  <li>Applies point-level geometric transforms (spiking, curving, tearing) at each subdivision stage</li>
+  <li>Renders the resulting geometry using stroked outlines, solid fills, point stamps, or brush-texture stamps</li>
+  <li>Animates sprites with random jitter, keyframe interpolation, or polygon-vertex morph targets</li>
+  <li>Exports high-resolution stills and animation frame sequences as PNG files</li>
+</ul>
+
+<div class="flow">
+  <span class="box">Bezier Draw</span>
+  <span class="arrow">→</span>
+  <span class="box">XML geometry files</span>
+  <span class="arrow">→</span>
+  <span class="box">Parameter Editor</span>
+  <span class="arrow">→</span>
+  <span class="box">XML config files</span>
+  <br>
+  <span class="box">XML config files</span>
+  <span class="arrow">→</span>
+  <span class="box">Loom Engine</span>
+  <span class="arrow">→</span>
+  <span class="box">Canvas / PNG output</span>
+</div>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════════ -->
+<section id="startup">
+<h2>Starting Loom</h2>
+
+<h3>From the Parameter Editor (normal workflow)</h3>
+<p>Click <strong>Run Loom</strong> (<kbd>Cmd+L</kbd>) in the Parameter Editor's Run tab. The editor auto-saves all config files, then launches <code>sbt run</code> from the Loom engine directory. SBT compiles the Scala sources (takes 10–30 seconds on first run; subsequent runs are faster) and opens two windows:</p>
+<ol>
+  <li><strong>Project Selector</strong> — a small dialog to choose which project to load.</li>
+  <li><strong>Loom Canvas</strong> — the main rendering window.</li>
+</ol>
+
+<h3>Project Selector dialog</h3>
+<p>On startup, a <em>Project Selector</em> dialog appears:</p>
+<table>
+  <tr><th>Control</th><th>Description</th></tr>
+  <tr><td><strong>Projects Directory</strong></td><td>The root folder scanned for projects. Click <em>Browse…</em> to change. Defaults to <code>~/.loom_projects</code>.</td></tr>
+  <tr><td><strong>Project combo</strong></td><td>Dropdown listing all sub-directories found in the Projects Directory. Select the project to render.</td></tr>
+  <tr><td><strong>Load Project</strong></td><td>Loads the selected project's XML configuration and opens the canvas.</td></tr>
+  <tr><td><strong>New Project</strong></td><td>Creates a new empty project directory structure.</td></tr>
+</table>
+
+<div class="note">The Parameter Editor's <em>Run Loom</em> button passes the current project's directory to the engine automatically — the Project Selector is pre-populated with the correct project. You typically just click <em>Load Project</em> without changing anything.</div>
+
+<h3>Direct launch (advanced)</h3>
+<p>You can also launch from a terminal:</p>
+<pre>cd /Users/broganbunt/Loom_2026/loom_engine
+SBT_OPTS="-Xmx8G" sbt run</pre>
+<p>The Project Selector dialog appears and you choose the project manually.</p>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════════ -->
+<section id="window">
+<h2>The Loom Window</h2>
+<p>The main Loom canvas is a Swing window showing the rendered output. Its pixel dimensions are <em>Canvas Width × Quality Multiple</em> by <em>Canvas Height × Quality Multiple</em> as configured in the Parameter Editor's Global Config tab. When the quality multiple is greater than 1, the window is scaled down to fit on screen; the full-resolution image is still composited internally and saved to PNG at full size.</p>
+
+<h3>Window behaviour</h3>
+<ul>
+  <li><strong>Static mode</strong> (Animating off): one frame is drawn and held. The window does not update until a reload.</li>
+  <li><strong>Animating mode</strong> (Animating on): the draw loop runs continuously. Draw cycle counts are printed to the console every 100 frames.</li>
+  <li><strong>Paused</strong>: animation loop is suspended. The current frame remains displayed.</li>
+</ul>
+
+<div class="tip">For fine detailed work, leave Animating off, adjust parameters in the editor, and press <kbd>F5</kbd> to reload. This lets you evaluate each change as a static frame.</div>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════════ -->
+<section id="keyboard">
+<h2>Keyboard Shortcuts</h2>
+<p>Click anywhere in the Loom canvas window to ensure it has keyboard focus before using these shortcuts.</p>
+<table>
+  <tr><th>Key</th><th>Action</th></tr>
+  <tr><td><kbd>F5</kbd></td><td><strong>Reload</strong> — Re-reads all XML config files and reinitialises the scene. The fastest way to see parameter changes. Equivalent to clicking <em>Reload</em> in the Parameter Editor.</td></tr>
+  <tr><td><kbd>S</kbd></td><td><strong>Save Still</strong> — Captures the current frame as a PNG. Saved to <code>&lt;project&gt;/renders/stills/</code> with an auto-incremented filename. Always captures at full resolution (quality multiple applied).</td></tr>
+  <tr><td><kbd>V</kbd></td><td><strong>Save Video (toggle)</strong> — Starts or stops animation frame recording. Frames are saved to <code>&lt;project&gt;/renders/animations/</code> as sequentially numbered PNGs. Press <kbd>V</kbd> again to stop.</td></tr>
+  <tr><td><kbd>P</kbd></td><td><strong>Pause / Resume</strong> — Toggles the animation loop. The current frame is held while paused. Use to freeze and examine a specific animation state.</td></tr>
+  <tr><td><kbd>Q</kbd></td><td><strong>Quit</strong> — Exits the Loom engine.</td></tr>
+  <tr><td><kbd>1</kbd></td><td>Override all renderers to <strong>POINTS</strong> mode.</td></tr>
+  <tr><td><kbd>2</kbd></td><td>Override all renderers to <strong>STROKED</strong> mode.</td></tr>
+  <tr><td><kbd>3</kbd></td><td>Override all renderers to <strong>FILLED</strong> mode.</td></tr>
+  <tr><td><kbd>4</kbd></td><td>Override all renderers to <strong>FILLED_STROKED</strong> mode.</td></tr>
+  <tr><td><kbd>←</kbd> <kbd>→</kbd> <kbd>↑</kbd> <kbd>↓</kbd></td><td><strong>Camera translate</strong> (3D mode). In 2D mode these have no visual effect.</td></tr>
+  <tr><td><kbd>Shift</kbd> + <kbd>↑↓</kbd></td><td><strong>Camera crane</strong> up/down (3D mode).</td></tr>
+  <tr><td><kbd>Ctrl</kbd> + arrow</td><td><strong>Camera rotate</strong> / pitch / bank (3D mode).</td></tr>
+</table>
+<div class="note">The renderer-mode override keys (1–4) switch <em>all</em> renderers temporarily. Reload (<kbd>F5</kbd>) restores the configured renderer modes.</div>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════════ -->
+<section id="pipeline">
+<h2>Rendering Pipeline</h2>
+<p>Each time Loom initialises (on startup or reload), it executes the following pipeline:</p>
+<ol>
+  <li><strong>Load config</strong> — reads <code>global_config.xml</code>, <code>polygons.xml</code>, <code>curves.xml</code>, <code>points.xml</code>, <code>subdivision.xml</code>, <code>shapes.xml</code>, <code>sprites.xml</code>, <code>rendering.xml</code>.</li>
+  <li><strong>Load geometry</strong> — parses polygon set XML files from <code>polygonSets/</code>, open curve set XML files from <code>curveSets/</code>, and point set XML files from <code>pointSets/</code>.</li>
+  <li><strong>Build shapes</strong> — for each Shape definition, pairs the geometry source with its subdivision parameters.</li>
+  <li><strong>Subdivide</strong> (polygon types only) — recursively applies each SubdivisionParams stage to every polygon, producing the final subdivided mesh. Open curves and point sets bypass this step.</li>
+  <li><strong>Build sprites</strong> — instantiates each Sprite with its shape, position, size, and animation configuration.</li>
+  <li><strong>Draw loop</strong> — each frame: clear/overlay background, then for each sprite: apply transforms (animation, morph), then for each polygon/curve/point: apply renderer and draw.</li>
+</ol>
+
+<div class="note">Subdivision is computed once at initialisation, not per-frame. Very large subdivision counts (many stages or many sprites) may slow the initial load but have no effect on animation frame rate.</div>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════════ -->
+<section id="geometry-types">
+<h2>Geometry Types</h2>
+<p>Loom supports three geometry types. They differ in what rendering and subdivision features are available:</p>
+<table>
+  <tr><th>Type</th><th>File format</th><th>Subdivision</th><th>Morph targets</th><th>Useful renderers</th></tr>
+  <tr>
+    <td><strong>Polygon Sets</strong><br>(spline or line polygons)</td>
+    <td><code>&lt;polygonSet&gt;</code> XML</td>
+    <td>Yes — full pipeline</td>
+    <td>Yes</td>
+    <td>All (POINTS, STROKED, FILLED, FILLED_STROKED, BRUSHED)</td>
+  </tr>
+  <tr>
+    <td><strong>Open Curve Sets</strong><br>(non-closed splines)</td>
+    <td><code>&lt;openCurveSet&gt;</code> XML</td>
+    <td>No — rendered directly</td>
+    <td>No</td>
+    <td>STROKED, BRUSHED</td>
+  </tr>
+  <tr>
+    <td><strong>Point Sets</strong><br>(discrete points)</td>
+    <td><code>&lt;pointSet&gt;</code> XML</td>
+    <td>No — rendered directly</td>
+    <td>No</td>
+    <td>POINTS, BRUSHED</td>
+  </tr>
+</table>
+
+<h3>Polygon types: SPLINE vs LINE</h3>
+<p>Polygon sets can use two polygon types, selected per-set in the Parameter Editor:</p>
+<ul>
+  <li><strong>SPLINE_POLYGON</strong> — bezier control points are active. Subdivision uses curved edges. Use with spline subdivision modes.</li>
+  <li><strong>LINE_POLYGON</strong> — only anchor points are used; all edges are straight. Produces faceted, angular geometry. Use with LINE subdivision modes.</li>
+</ul>
+
+<h3>Open curves</h3>
+<p>Open curves are non-closed cubic Bézier paths with a defined start and end. They are drawn in Bezier Draw using the <em>Finish Open Curve</em> button. Loom renders each open curve as a continuous stroked path or brush-stamp chain. They participate in sprite transforms (position, scale, rotation, jitter animation, keyframe animation) but are not subdivided and do not support morph targets.</p>
+
+<h3>Point sets</h3>
+<p>Point sets are collections of discrete anchor positions. Loom renders each point as a dot stamp (POINTS mode) or brush stamp (BRUSHED mode). They participate in sprite transforms and jitter/keyframe animation but are not subdivided and do not support morph targets.</p>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════════ -->
+<section id="subdivision">
+<h2>Subdivision</h2>
+<p>Subdivision is Loom's core pattern-generation mechanism. It applies only to polygon-type shapes (polygon sets and regular polygons). Open curves and point sets are not subdivided.</p>
+
+<h3>How it works</h3>
+<p>A <em>Params Set</em> contains one or more <em>SubdivisionParams</em> stages. Each stage is applied recursively to the output of the previous stage:</p>
+<ul>
+  <li><strong>Stage 1</strong> divides each base polygon into sub-polygons.</li>
+  <li><strong>Stage 2</strong> divides each of those into more sub-polygons.</li>
+  <li>… and so on.</li>
+</ul>
+<p>The total polygon count grows multiplicatively. A square with 3 QUAD stages → 4³ = 64 polygons. A square with 5 QUAD stages → 1024 polygons.</p>
+
+<h3>Subdivision types summary</h3>
+<table>
+  <tr><th>Type</th><th>Output per input</th><th>Notes</th></tr>
+  <tr><td>QUAD</td><td>N (sides)</td><td>Standard quadrilateral subdivision. Most versatile.</td></tr>
+  <tr><td>TRI</td><td>N</td><td>Triangular sub-polygons.</td></tr>
+  <tr><td>ECHO / ECHO_ABS_CENTER</td><td>2</td><td>Concentric inner copy.</td></tr>
+  <tr><td>QUAD_BORD, QUAD_BORD_ECHO, QUAD_BORD_DOUBLE, QUAD_BORD_DOUBLE_ECHO</td><td>2N, 3N, 3N, 4N</td><td>QUAD with border polygons around the perimeter.</td></tr>
+  <tr><td>TRI_BORD_B, TRI_BORD_B_ECHO, TRI_BORD_C, TRI_BORD_C_ECHO</td><td>N+1, 2N+1, N+1, 2N+1</td><td>TRI with border polygons.</td></tr>
+  <tr><td>TRI_STAR, TRI_STAR_FILL</td><td>N, N+1</td><td>Star-radiating sub-polygons from centre.</td></tr>
+  <tr><td>TRI_BORD_A, TRI_BORD_A_ECHO</td><td>N, N+1</td><td>Corner triangles.</td></tr>
+  <tr><td>SPLIT_VERT, SPLIT_HORIZ, SPLIT_DIAG</td><td>2</td><td>Geometry-aware bisection.</td></tr>
+</table>
+
+<h3>Point-level transforms</h3>
+<p>Each SubdivisionParams stage can apply transforms to specific subsets of points within each sub-polygon:</p>
+<ul>
+  <li><strong>Inner control points</strong> — adjust curvature of internal subdivision edges.</li>
+  <li><strong>Outer control points</strong> — puff, pinch, or S-curve the outer edges (PUFF, PINCH, PUFF_PINCH, etc.).</li>
+  <li><strong>Anchors linked to centre</strong> — tear outer anchors toward corners or the centre, creating fan/burst patterns.</li>
+  <li><strong>Inset transform</strong> — scale/rotate the whole sub-polygon within its parent, creating gaps or overlaps.</li>
+  <li><strong>Whole polygon transforms (PTW)</strong> — randomly translate/scale/rotate selected sub-polygons as units.</li>
+</ul>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════════ -->
+<section id="renderers">
+<h2>Renderer Modes</h2>
+<p>Each renderer set contains one or more named renderers. The set's <em>playback mode</em> (STATIC, SEQUENTIAL, or RANDOM) determines which renderer is used for each polygon.</p>
+<table>
+  <tr><th>Mode</th><th>Description</th><th>Geometry types</th></tr>
+  <tr><td><strong>POINTS</strong></td><td>Draws dots at each anchor position. Size set by Point Size.</td><td>All</td></tr>
+  <tr><td><strong>STROKED</strong></td><td>Draws polygon/curve outlines. Stroke colour and width configurable.</td><td>All</td></tr>
+  <tr><td><strong>FILLED</strong></td><td>Draws solid filled areas. Open paths and points produce no visible fill.</td><td>Polygon sets only (useful)</td></tr>
+  <tr><td><strong>FILLED_STROKED</strong></td><td>Fill plus outline.</td><td>Polygon sets only (useful)</td></tr>
+  <tr><td><strong>BRUSHED</strong></td><td>Stamps greyscale PNG brush images along edges or at point positions. Tinted by Stroke Colour.</td><td>All</td></tr>
+</table>
+
+<h3>Dynamic changes</h3>
+<p>Stroke width, stroke colour, fill colour, and point size can all be animated dynamically per-polygon or per-frame using configurable ramp/random patterns. See the Parameter Editor's Rendering tab help for full details.</p>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════════ -->
+<section id="animation">
+<h2>Animation</h2>
+<p>Animation requires <em>Animating</em> to be enabled (configured in the Run tab of the Parameter Editor). Three animation modes are available per sprite:</p>
+<table>
+  <tr><th>Mode</th><th>Description</th><th>Geometry restriction</th></tr>
+  <tr><td><strong>Random (Jitter)</strong></td><td>Random perturbations to scale, rotation, and position each frame.</td><td>All geometry types</td></tr>
+  <tr><td><strong>Keyframe</strong></td><td>Interpolated transitions between defined states using 41 easing functions.</td><td>All geometry types</td></tr>
+  <tr><td><strong>Jitter Morph</strong></td><td>Random blend amount applied each frame between base shape and morph target.</td><td>Polygon sets only</td></tr>
+  <tr><td><strong>Keyframe Morph</strong></td><td>Eased morph amount interpolated between keyframes.</td><td>Polygon sets only</td></tr>
+</table>
+
+<h3>Draw background once</h3>
+<p>When <em>Draw Background Once</em> is enabled in the Run tab, the background is painted only on frame 1. Subsequent frames are drawn on top, accumulating a layered trail. With a semi-transparent overlay colour, older frames fade slowly — a fading-trail effect. Disable for clean per-frame animation.</p>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════════ -->
+<section id="capture">
+<h2>Capture &amp; Output</h2>
+<p>All output files go into the <code>renders/</code> sub-directory of the current project, or a custom path if set in the Run tab.</p>
+
+<h3>Still capture</h3>
+<p>Press <kbd>S</kbd> in the Loom window, or click <em>Save Still</em> in the Parameter Editor's Run tab. The current frame is saved as:</p>
+<pre>renders/stills/loom_still_&lt;N&gt;.png</pre>
+<p>where N is an auto-incrementing integer. The PNG is always at full resolution (<em>width × quality</em> pixels), regardless of any on-screen scaling.</p>
+
+<h3>Animation recording</h3>
+<p>Press <kbd>V</kbd> (or <em>Save Animation</em> in the Run tab) to start recording. Each subsequent animation frame is saved as:</p>
+<pre>renders/animations/loom_frame_&lt;NNNNN&gt;.png</pre>
+<p>Press <kbd>V</kbd> again (or click the button) to stop. The resulting sequence of PNGs can be assembled into video with an external tool such as ffmpeg:</p>
+<pre>ffmpeg -framerate 30 -i loom_frame_%05d.png -c:v libx264 -pix_fmt yuv420p output.mp4</pre>
+
+<h3>Resolution</h3>
+<p>Output resolution = <em>Canvas Width</em> × <em>Quality Multiple</em> by <em>Canvas Height</em> × <em>Quality Multiple</em>. A 1080×1080 canvas at quality 4 → 4320×4320 px PNG. At quality 8 → 8640×8640 px. Stroke widths are scaled proportionally if <em>Scale Image</em> is enabled in the Parameter Editor.</p>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════════ -->
+<section id="reload">
+<h2>Reload Workflow</h2>
+<p>The reload mechanism lets you update any parameter in the editor and see the result without restarting Loom:</p>
+<ol>
+  <li>Make changes in the Parameter Editor (any tab).</li>
+  <li>Press <kbd>Cmd+R</kbd> (or click <em>Reload</em>) in the editor. The editor auto-saves all config files first.</li>
+  <li>Loom detects the reload signal (a sentinel file <code>.reload</code> placed in the project directory) and re-reads all XML files.</li>
+  <li>The canvas reinitialises and redraws. The SBT process is not restarted — reload is near-instant (typically under 1 second).</li>
+</ol>
+<p>You can also press <kbd>F5</kbd> directly in the Loom window to trigger a reload without going through the editor.</p>
+<div class="tip">For the fastest iteration cycle: keep the Parameter Editor and Loom windows side-by-side. Edit a parameter, press <kbd>Cmd+R</kbd>, and see the result immediately. No SBT recompilation happens on reload — only the config files are re-read.</div>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════════ -->
+<section id="editor">
+<h2>Parameter Editor Integration</h2>
+<p>The Loom Parameter Editor drives the Loom engine via saved XML files and sentinel files written to the project directory. There is no live socket connection — all communication is file-based.</p>
+<table>
+  <tr><th>Editor action</th><th>What happens</th></tr>
+  <tr><td>Run Loom (<kbd>Cmd+L</kbd>)</td><td>Editor saves all config files, then runs <code>sbt run</code> in a child process.</td></tr>
+  <tr><td>Reload (<kbd>Cmd+R</kbd>)</td><td>Editor saves all config files, then writes <code>.reload</code> sentinel file to project dir. Loom picks it up within one draw cycle.</td></tr>
+  <tr><td>Save Still (Run tab)</td><td>Writes <code>.capture_still</code> sentinel file. Loom captures the current frame on the next draw cycle.</td></tr>
+  <tr><td>Save Animation (Run tab)</td><td>Writes <code>.capture_video</code> sentinel file. Loom starts/stops recording.</td></tr>
+  <tr><td>Stop (<kbd>Cmd+H</kbd>)</td><td>Terminates the SBT child process.</td></tr>
+</table>
+
+<div class="note">The sentinel file mechanism means the editor and engine can also be run as completely separate processes. You can edit XML config files by hand and press <kbd>F5</kbd> in the Loom window to reload without the editor running at all.</div>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════════ -->
+<section id="config-files">
+<h2>Config Files Reference</h2>
+<p>All config files live in the project's <code>configuration/</code> sub-directory. All are read by the Loom engine on startup and reload.</p>
+<table>
+  <tr><th>File</th><th>Contents</th></tr>
+  <tr><td><code>global_config.xml</code></td><td>Canvas dimensions, background colour/image, quality multiple, animating flag, draw-background-once flag, 3D flag.</td></tr>
+  <tr><td><code>polygons.xml</code></td><td>Polygon set references (file paths relative to <code>polygonSets/</code>) and regular polygon definitions. Supports subdivision and morph targets.</td></tr>
+  <tr><td><code>curves.xml</code></td><td>Open curve set references (file paths relative to <code>curveSets/</code>). No subdivision; rendered directly.</td></tr>
+  <tr><td><code>points.xml</code></td><td>Point set references (file paths relative to <code>pointSets/</code>). No subdivision; rendered directly.</td></tr>
+  <tr><td><code>subdivision.xml</code></td><td>All subdivision params sets. Each set contains one or more SubdivisionParams stages with type, transforms, and control point settings.</td></tr>
+  <tr><td><code>shapes.xml</code></td><td>Shape configurations. Each shape has a source type (polygonSet, openCurveSet, pointSet) and a reference to the geometry source and (for polygons) the subdivision params set.</td></tr>
+  <tr><td><code>sprites.xml</code></td><td>Sprite definitions: shape reference, renderer set reference, position, size, rotation, and animation configuration (jitter, keyframe, morph).</td></tr>
+  <tr><td><code>rendering.xml</code></td><td>Renderer set library. Each set contains one or more named renderers with mode, colours, stroke width, and dynamic change parameters.</td></tr>
+</table>
+
+<h3>Asset directories</h3>
+<table>
+  <tr><th>Directory</th><th>Contents</th></tr>
+  <tr><td><code>polygonSets/</code></td><td>Closed spline polygon XML files. Read by polygons.xml references.</td></tr>
+  <tr><td><code>curveSets/</code></td><td>Open curve set XML files (<code>&lt;openCurveSet&gt;</code> root). Read by curves.xml references.</td></tr>
+  <tr><td><code>pointSets/</code></td><td>Point set XML files. Read by points.xml references.</td></tr>
+  <tr><td><code>morphTargets/</code></td><td>Morph target polygon XML files. Must be topologically identical to their corresponding polygon set.</td></tr>
+  <tr><td><code>brushes/</code></td><td>Greyscale PNG brush images for the BRUSHED renderer.</td></tr>
+  <tr><td><code>background_image/</code></td><td>Background image (PNG or JPG). Referenced from global_config.xml.</td></tr>
+  <tr><td><code>renders/stills/</code></td><td>Captured still PNG files.</td></tr>
+  <tr><td><code>renders/animations/</code></td><td>Animation frame PNG sequences.</td></tr>
+</table>
+</section>
+
+</div><!-- end .content -->
+</body>
+</html>
