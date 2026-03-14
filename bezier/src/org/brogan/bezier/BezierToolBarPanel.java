@@ -14,7 +14,7 @@ public class BezierToolBarPanel extends JPanel {
 
 	// Toggle buttons — show selected icon while their mode is active
 	private JToggleButton selectionMode, edgeSelectionMode, polygonSelectionMode;
-	private JToggleButton polygonMode;
+	private JToggleButton polygonMode, pointModeToggle;
 	private JToggleButton hideGrid, hideControls, hideReferenceImage;
 	private JToggleButton knifeTool;
 
@@ -56,10 +56,12 @@ public class BezierToolBarPanel extends JPanel {
 				int idx = polygonManager.getPolygonCount();
 				polygonManager.getManager(idx).setAddPoints(false);
 				polygonMode.setSelected(false);
+				pointModeToggle.setSelected(false);
 				edgeSelectionMode.setSelected(false);
 				polygonSelectionMode.setSelected(false);
 				knifeTool.setSelected(false);
 				bezier.setKnifeMode(false);
+				bezier.setPointMode(false);
 				bezier.setEdgeSelectionMode(false);
 				bezier.setPolygonSelectionMode(false);
 				bezier.setPointSelectionMode(selectionMode.isSelected());
@@ -82,10 +84,12 @@ public class BezierToolBarPanel extends JPanel {
 				int idx = polygonManager.getPolygonCount();
 				polygonManager.getManager(idx).setAddPoints(false);
 				polygonMode.setSelected(false);
+				pointModeToggle.setSelected(false);
 				selectionMode.setSelected(false);
 				polygonSelectionMode.setSelected(false);
 				knifeTool.setSelected(false);
 				bezier.setKnifeMode(false);
+				bezier.setPointMode(false);
 				bezier.setPolygonSelectionMode(false);
 				bezier.setPointSelectionMode(false);
 				bezier.setEdgeSelectionMode(edgeSelectionMode.isSelected());
@@ -108,10 +112,12 @@ public class BezierToolBarPanel extends JPanel {
 				int idx = polygonManager.getPolygonCount();
 				polygonManager.getManager(idx).setAddPoints(false);
 				polygonMode.setSelected(false);
+				pointModeToggle.setSelected(false);
 				selectionMode.setSelected(false);
 				edgeSelectionMode.setSelected(false);
 				knifeTool.setSelected(false);
 				bezier.setKnifeMode(false);
+				bezier.setPointMode(false);
 				bezier.setEdgeSelectionMode(false);
 				bezier.setPointSelectionMode(false);
 				bezier.setPolygonSelectionMode(polygonSelectionMode.isSelected());
@@ -136,8 +142,10 @@ public class BezierToolBarPanel extends JPanel {
 				int idx = polygonManager.getPolygonCount();
 				polygonManager.getManager(idx).setAddPoints(polygonMode.isSelected());
 				selectionMode.setSelected(false);
+				pointModeToggle.setSelected(false);
 				edgeSelectionMode.setSelected(false);
 				polygonSelectionMode.setSelected(false);
+				bezier.setPointMode(false);
 				bezier.setEdgeSelectionMode(false);
 				bezier.setPolygonSelectionMode(false);
 				bezier.setPointSelectionMode(false);
@@ -145,8 +153,28 @@ public class BezierToolBarPanel extends JPanel {
 		});
 		toolBar.add(polygonMode);
 
+		pointModeToggle = new JToggleButton();
+		initToggle(pointModeToggle, "Point Placement Mode", "createPoint");
+		pointModeToggle.addActionListener(new ActionListener() {
+			public void actionPerformed(ActionEvent e) {
+				int idx = polygonManager.getPolygonCount();
+				polygonManager.getManager(idx).setAddPoints(false);
+				selectionMode.setSelected(false);
+				edgeSelectionMode.setSelected(false);
+				polygonSelectionMode.setSelected(false);
+				polygonMode.setSelected(false);
+				knifeTool.setSelected(false);
+				bezier.setKnifeMode(false);
+				bezier.setEdgeSelectionMode(false);
+				bezier.setPolygonSelectionMode(false);
+				bezier.setPointSelectionMode(false);
+				bezier.setPointMode(pointModeToggle.isSelected());
+			}
+		});
+		toolBar.add(pointModeToggle);
+
 		closeCurves = new JButton();
-		initButton(closeCurves, "Close Polygon", "closeCurve");
+		initButton(closeCurves, "Close Polygon", "closePolygon");
 		closeCurves.addActionListener(new ActionListener() {
 			public void actionPerformed(ActionEvent e) {
 				bezier.takeUndoSnapshot();
@@ -161,7 +189,7 @@ public class BezierToolBarPanel extends JPanel {
 		toolBar.add(closeCurves);
 
 		finishOpenCurve = new JButton();
-		initButton(finishOpenCurve, "Finish Open Curve (no closing edge)", "closeCurve");
+		initButton(finishOpenCurve, "Finish Open Curve (no closing edge)", "openCurve");
 		finishOpenCurve.addActionListener(new ActionListener() {
 			public void actionPerformed(ActionEvent e) {
 				bezier.takeUndoSnapshot();
@@ -192,9 +220,11 @@ public class BezierToolBarPanel extends JPanel {
 				boolean active = knifeTool.isSelected();
 				if (active) {
 					polygonMode.setSelected(false);
+					pointModeToggle.setSelected(false);
 					selectionMode.setSelected(false);
 					edgeSelectionMode.setSelected(false);
 					polygonSelectionMode.setSelected(false);
+					bezier.setPointMode(false);
 					bezier.setKnifeMode(true);
 				} else {
 					bezier.setKnifeMode(false);
@@ -477,6 +507,25 @@ public class BezierToolBarPanel extends JPanel {
 		bezier.setPolygonSelectionMode(false);
 		bezier.setPointSelectionMode(false);
 		polygonMode.setSelected(true);
+	}
+
+	/**
+	 * Activate Point Placement Mode programmatically (e.g. when loading a point set).
+	 */
+	public void activatePointMode() {
+		CubicCurvePolygonManager polygonManager = bezier.getPolygonManager();
+		int idx = polygonManager.getPolygonCount();
+		polygonManager.getManager(idx).setAddPoints(false);
+		selectionMode.setSelected(false);
+		edgeSelectionMode.setSelected(false);
+		polygonSelectionMode.setSelected(false);
+		polygonMode.setSelected(false);
+		knifeTool.setSelected(false);
+		bezier.setEdgeSelectionMode(false);
+		bezier.setPolygonSelectionMode(false);
+		bezier.setPointSelectionMode(false);
+		pointModeToggle.setSelected(true);
+		bezier.setPointMode(true);
 	}
 
 	/**

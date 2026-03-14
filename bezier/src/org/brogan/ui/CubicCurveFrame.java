@@ -88,6 +88,7 @@ public class CubicCurveFrame extends JFrame implements WindowListener{
 
 		drawBezier();
 
+		boolean loadedPointSet = false;
 		if (loadFilePath != null) {
 			File loadFile = new File(loadFilePath);
 			if (loadFile.exists()) {
@@ -101,6 +102,7 @@ public class CubicCurveFrame extends JFrame implements WindowListener{
 						curvePanel.loadOpenCurveSet(loadFile);
 					} else if ("pointSet".equals(rootName)) {
 						curvePanel.loadPointSet(loadFile);
+						loadedPointSet = true;
 					} else {
 						curvePanel.loadPolygonSet(loadFile);
 					}
@@ -116,9 +118,12 @@ public class CubicCurveFrame extends JFrame implements WindowListener{
 
 		// Edit projects: set mode AFTER loading so polygon count is correct.
 		// --point-select (morph editing)        → Point Selection Mode
+		// --load of a pointSet                  → Point Placement Mode
 		// --load without --point-select         → Polygon Selection Mode
 		if (pointSelect) {
 			toolBarPanel.activatePointSelectionMode();
+		} else if (loadedPointSet) {
+			toolBarPanel.activatePointMode();
 		} else if (loadFilePath != null) {
 			toolBarPanel.activatePolygonSelectionMode();
 		}

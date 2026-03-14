@@ -178,6 +178,13 @@ public class CubicCurvePanel extends JPanel implements MouseListener, ChangeList
 					public void actionPerformed(ActionEvent e){
 						enterValues();
 						exportToUserDir();
+						// Save open curves if any exist
+						CubicCurvePolygonManager pm = bezier.getPolygonManager();
+						boolean hasOpen = false;
+						for (int i = 0; i < pm.getPolygonCount(); i++) {
+							if (!pm.getManager(i).getIsClosed()) { hasOpen = true; break; }
+						}
+						if (hasOpen) saveAsOpenCurveSet();
 					}
 				});
 		
@@ -190,7 +197,7 @@ public class CubicCurvePanel extends JPanel implements MouseListener, ChangeList
 		namePanel.add(nameLabel);
 		namePanel.add(name);
 		namePanel.add(enterButton);
-		namePanel.setBorder(BorderFactory.createCompoundBorder(BorderFactory.createTitledBorder("Load File: Save Polygons"), BorderFactory.createEmptyBorder(2,2,2,2)));
+		namePanel.setBorder(BorderFactory.createCompoundBorder(BorderFactory.createTitledBorder("Load File: Save"), BorderFactory.createEmptyBorder(2,2,2,2)));
 		
 		drawPanel = new JPanel();
 		Swing.setSize(drawPanel, CubicCurveFrame.DEFAULT_WIDTH-8, currentCanvasSize);
@@ -282,43 +289,11 @@ public class CubicCurvePanel extends JPanel implements MouseListener, ChangeList
 			BorderFactory.createTitledBorder("SVG"),
 			BorderFactory.createEmptyBorder(2, 2, 2, 2)));
 
-		// Save Open Curves button
-		JButton saveOpenCurvesBtn = new JButton("Save Open Curves");
-		Swing.setSize(saveOpenCurvesBtn, w * 4, h);
-		saveOpenCurvesBtn.addActionListener(new ActionListener() {
-			public void actionPerformed(ActionEvent e) {
-				saveAsOpenCurveSet();
-			}
-		});
-		JPanel openCurvesPanel = new JPanel();
-		Swing.setSize(openCurvesPanel, 240, 54);
-		openCurvesPanel.add(saveOpenCurvesBtn);
-		openCurvesPanel.setBorder(BorderFactory.createCompoundBorder(
-			BorderFactory.createTitledBorder("Open Curves"),
-			BorderFactory.createEmptyBorder(2, 2, 2, 2)));
-
-		// Point Mode controls
-		final JToggleButton pointModeBtn = new JToggleButton("Point Mode");
-		Swing.setSize(pointModeBtn, w * 3, h);
-		pointModeBtn.addActionListener(new ActionListener() {
-			public void actionPerformed(ActionEvent e) {
-				bezier.setPointMode(pointModeBtn.isSelected());
-			}
-		});
-		JPanel pointPanel = new JPanel();
-		Swing.setSize(pointPanel, 240, 54);
-		pointPanel.add(pointModeBtn);
-		pointPanel.setBorder(BorderFactory.createCompoundBorder(
-			BorderFactory.createTitledBorder("Points"),
-			BorderFactory.createEmptyBorder(2, 2, 2, 2)));
-
 		// Place the SVG button and reference image section side-by-side in one row
 		JPanel topRow = new JPanel();
 		topRow.setLayout(new BoxLayout(topRow, BoxLayout.LINE_AXIS));
 		Swing.setSize(topRow, CubicCurveFrame.DEFAULT_WIDTH - 8, 54);
 		topRow.add(svgPanel);
-		topRow.add(openCurvesPanel);
-		topRow.add(pointPanel);
 		if (refImagePanel != null) {
 			topRow.add(refImagePanel);
 		}
