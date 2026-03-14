@@ -16,13 +16,11 @@ from PyQt6.QtCore import Qt, QUrl
 from PyQt6.QtGui import QAction, QKeySequence, QDesktopServices
 from .rendering_tab import RenderingTab
 from .global_tab import GlobalTab
-from .polygon_tab import PolygonTab
+from .geometry_tab import GeometryTab
 from .subdivision_tab import SubdivisionTab
 from .shape_tab import ShapeTab
 from .sprite_tab import SpriteTab
 from .run_tab import RunTab
-from .open_curve_tab import OpenCurveTab
-from .point_tab import PointTab
 from models.project import Project
 from models.rendering import RendererSetLibrary
 from models.global_config import GlobalConfig
@@ -317,20 +315,14 @@ class MainWindow(QMainWindow):
         self.global_tab.projects_dir_changed.connect(self._on_projects_dir_changed)
         self.tab_widget.addTab(self.global_tab, "Global")
 
-        self.polygon_tab = PolygonTab()
-        self.polygon_tab.modified.connect(self._on_modified)
-        self.polygon_tab.modified.connect(self._on_polygon_library_changed)
-        self.tab_widget.addTab(self.polygon_tab, "Polygons")
-
-        self.open_curve_tab = OpenCurveTab()
-        self.open_curve_tab.modified.connect(self._on_modified)
-        self.open_curve_tab.modified.connect(self._on_open_curve_library_changed)
-        self.tab_widget.addTab(self.open_curve_tab, "Curves")
-
-        self.point_tab = PointTab()
-        self.point_tab.modified.connect(self._on_modified)
-        self.point_tab.modified.connect(self._on_point_set_library_changed)
-        self.tab_widget.addTab(self.point_tab, "Points")
+        self.geometry_tab = GeometryTab()
+        self.geometry_tab.modified.connect(self._on_modified)
+        self.geometry_tab.modified.connect(self._on_geometry_modified)
+        self.tab_widget.addTab(self.geometry_tab, "Geometry")
+        # Aliases so all existing references in this file continue to work:
+        self.polygon_tab    = self.geometry_tab.polygon_tab
+        self.open_curve_tab = self.geometry_tab.open_curve_tab
+        self.point_tab      = self.geometry_tab.point_tab
 
         self.subdivision_tab = SubdivisionTab()
         self.subdivision_tab.modified.connect(self._on_modified)
@@ -415,9 +407,9 @@ class MainWindow(QMainWindow):
         save_rendering_action.triggered.connect(lambda: self._save_single_tab("rendering"))
         save_tab_menu.addAction(save_rendering_action)
 
-        save_polygons_action = QAction("Save Polygons Config", self)
-        save_polygons_action.triggered.connect(lambda: self._save_single_tab("polygons"))
-        save_tab_menu.addAction(save_polygons_action)
+        save_geometry_action = QAction("Save Geometry Config", self)
+        save_geometry_action.triggered.connect(self._save_geometry_config)
+        save_tab_menu.addAction(save_geometry_action)
 
         save_subdivision_action = QAction("Save Subdivision Config", self)
         save_subdivision_action.triggered.connect(lambda: self._save_single_tab("subdivision"))
@@ -430,14 +422,6 @@ class MainWindow(QMainWindow):
         save_sprites_action = QAction("Save Sprites Config", self)
         save_sprites_action.triggered.connect(lambda: self._save_single_tab("sprites"))
         save_tab_menu.addAction(save_sprites_action)
-
-        save_curves_action = QAction("Save Curves Config", self)
-        save_curves_action.triggered.connect(lambda: self._save_single_tab("curves"))
-        save_tab_menu.addAction(save_curves_action)
-
-        save_points_action = QAction("Save Points Config", self)
-        save_points_action.triggered.connect(lambda: self._save_single_tab("points"))
-        save_tab_menu.addAction(save_points_action)
 
         file_menu.addSeparator()
 
@@ -1366,6 +1350,18 @@ class MainWindow(QMainWindow):
         """Propagate point set library changes to the shape tab."""
         if hasattr(self, 'shape_tab') and hasattr(self.shape_tab, 'set_point_set_library'):
             self.shape_tab.set_point_set_library(self.point_tab.get_library())
+
+    def _on_geometry_modified(self) -> None:
+        """Dispatch geometry sub-tab change notifications."""
+        self._on_polygon_library_changed()
+        self._on_open_curve_library_changed()
+        self._on_point_set_library_changed()
+
+    def _save_geometry_config(self) -> None:
+        """Save all three geometry config files."""
+        self._save_single_tab("polygons")
+        self._save_single_tab("curves")
+        self._save_single_tab("points")
 
     def _on_shape_library_for_polygon_counts(self) -> None:
         """Refresh polygon tab usage counts when the shape library changes."""
