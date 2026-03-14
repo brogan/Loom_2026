@@ -128,7 +128,7 @@
 <body>
 <header>
     <h1>Loom Parameter Editor</h1>
-    <p>Complete User Guide &amp; Configuration Reference &mdash; Updated February 2026</p>
+    <p>Complete User Guide &amp; Configuration Reference &mdash; Updated March 2026</p>
 </header>
 
 <nav>
@@ -139,7 +139,10 @@
         <li><a href="#concepts">Key Concepts</a></li>
         <li><a href="#coordinate-system">Coordinate System</a></li>
         <li><a href="#global-config">Global Config</a></li>
-        <li><a href="#polygons">Polygons</a></li>
+        <li><a href="#geometry">Geometry Tab</a></li>
+        <li><a href="#polygons">↳ Polygons</a></li>
+        <li><a href="#open-curves">↳ Open Curves</a></li>
+        <li><a href="#point-sets">↳ Point Sets</a></li>
         <li><a href="#subdivision">Subdivision</a></li>
         <li><a href="#shapes">Shapes</a></li>
         <li><a href="#sprites">Sprites</a></li>
@@ -166,13 +169,15 @@
     <li>High-resolution stills suitable for large-format printing (via the quality multiplier)</li>
     <li>Animations where shapes rotate, scale, morph, and shift over time</li>
     <li>Layered compositions with multiple sprites at different positions and rendering styles</li>
-    <li>Brush-stroke textures that stamp along polygon edges <span class="tag tag-new">New</span></li>
-    <li>Morph animations that smoothly blend between different polygon shapes <span class="tag tag-new">New</span></li>
+    <li>Brush-stroke textures that stamp along polygon edges</li>
+    <li>Morph animations that smoothly blend between different polygon shapes</li>
+    <li>Open-curve geometry (non-closed splines) rendered as stroked paths <span class="tag tag-new">New</span></li>
+    <li>Discrete point sets (scatter patterns and point-stamp effects) <span class="tag tag-new">New</span></li>
 </ul>
 
-<h3>Architecture: Six Configuration Domains</h3>
+<h3>Architecture: Configuration Domains</h3>
 <div class="flow-diagram">
-    <span class="stage">Polygons</span>
+    <span class="stage">Polygons / Open Curves / Points</span>
     <span class="arrow">+</span>
     <span class="stage">Subdivision Params</span>
     <span class="arrow">&rarr;</span>
@@ -193,7 +198,7 @@
     <span class="stage">Canvas Output</span>
 </div>
 
-<div class="info">Each domain is stored in its own XML file within the project directory. The Scala engine reads all files at startup (or on reload) and renders accordingly.</div>
+<div class="info">Each domain is stored in its own XML file within the project directory. The Scala engine reads all files at startup (or on reload) and renders accordingly. Note: <strong>Subdivision</strong> applies only to polygon-type shapes (polygon sets and regular polygons). Open curves and point sets are not subdivided — they are rendered directly.</div>
 
 <a href="#" class="back-to-top">Back to top</a>
 </section>
@@ -224,12 +229,16 @@ YourProject/
 ├── configuration/
 │   ├── global_config.xml       # Canvas, colours, quality settings
 │   ├── polygons.xml            # Polygon definitions
+│   ├── curves.xml              # Open curve set definitions
+│   ├── points.xml              # Point set definitions
 │   ├── subdivision.xml         # Subdivision parameter sets
 │   ├── shapes.xml              # Shape configurations
 │   ├── sprites.xml             # Sprite definitions
 │   └── rendering.xml           # Renderer sets and renderers
 ├── polygonSets/                # Spline polygon XML files (from Bezier Draw)
 ├── regularPolygons/            # Saved regular polygon definitions
+├── curveSets/                  # Open curve set XML files (from Bezier Draw)
+├── pointSets/                  # Point set XML files (from Bezier Draw)
 ├── morphTargets/               # Morph target polygon set files
 ├── brushes/                    # Greyscale brush PNG images
 ├── background_image/           # Background image files
@@ -241,9 +250,9 @@ YourProject/
 <h3>Typical Workflow</h3>
 <ol class="step-list">
     <li><strong>Configure the canvas</strong> (Global tab) — Set width, height, background colour, background image.</li>
-    <li><strong>Define base polygons</strong> (Polygons tab) — Create a regular polygon or import spline sets from Bezier Draw.</li>
-    <li><strong>Set up subdivision</strong> (Subdivision tab) — Create a Params Set with one or more stages. Each stage = one recursion level. 3–5 stages typically yields good complexity.</li>
-    <li><strong>Compose shapes</strong> (Shapes tab) — Pair a polygon set with a subdivision params set.</li>
+    <li><strong>Define base geometry</strong> (Geometry tab) — Create polygon sets, open curve sets, or point sets. Use the <em>Polygons</em> sub-tab for spline or regular polygons; the <em>Curves</em> sub-tab for open non-closed splines; the <em>Points</em> sub-tab for discrete point collections.</li>
+    <li><strong>Set up subdivision</strong> (Subdivision tab) — Create a Params Set with one or more stages. Each stage = one recursion level. 3–5 stages typically yields good complexity. <strong>Subdivision applies to polygon types only.</strong></li>
+    <li><strong>Compose shapes</strong> (Shapes tab) — Choose a source type (Polygon Set, Open Curve Set, or Point Set) and pair it with a subdivision params set (polygon types only).</li>
     <li><strong>Define renderers</strong> (Rendering tab) — Set stroke, fill, colour, and dynamic change behaviour. For brush textures, choose the BRUSHED mode and configure the brush library.</li>
     <li><strong>Create sprites</strong> (Sprites tab) — Position shapes on the canvas, set size, assign a renderer set, and configure animation.</li>
     <li><strong>Configure drawing settings</strong> (Run tab) — Set quality multiple, animating toggle, draw background once.</li>
@@ -273,6 +282,16 @@ YourProject/
 <section id="concepts">
 <h2>Key Concepts</h2>
 
+<h3>Geometry Types</h3>
+<p>Loom supports three distinct geometry types, each with different capabilities:</p>
+<table>
+    <tr><th>Type</th><th>Created in</th><th>Subdivision?</th><th>Morph Targets?</th><th>Renderers</th></tr>
+    <tr><td><strong>Polygon Sets</strong><br>(spline or line)</td><td>Bezier Draw → Polygons sub-tab</td><td>Yes — full subdivision pipeline</td><td>Yes</td><td>All modes</td></tr>
+    <tr><td><strong>Regular Polygons</strong><br>(mathematically generated)</td><td>Polygons sub-tab → Create</td><td>Yes — full subdivision pipeline</td><td>Yes (polygon topology)</td><td>All modes</td></tr>
+    <tr><td><strong>Open Curve Sets</strong><br>(non-closed splines)</td><td>Bezier Draw → Curves sub-tab</td><td>No — rendered directly as open paths</td><td>No</td><td>STROKED, BRUSHED</td></tr>
+    <tr><td><strong>Point Sets</strong><br>(discrete points)</td><td>Bezier Draw → Points sub-tab</td><td>No — rendered directly as point stamps</td><td>No</td><td>POINTS, BRUSHED</td></tr>
+</table>
+
 <h3>Spline Polygons</h3>
 <p>Loom works primarily with <strong>cubic bezier spline polygons</strong>. Each side of a polygon is a bezier curve defined by four points:</p>
 <ul>
@@ -280,6 +299,12 @@ YourProject/
     <li><strong>Control points</strong> (two per side) — invisible handles that shape the curve</li>
 </ul>
 <p>A square has 4 sides and therefore 16 points total (4 × 4). An N-sided polygon has 4N points. This structure matters because subdivision and transforms operate on these specific point types separately.</p>
+
+<h3>Open Curves</h3>
+<p><strong>Open curve sets</strong> are collections of non-closed cubic Bézier splines — paths that have a distinct start and end rather than looping back. They are drawn in Bezier Draw using the "Finish Open Curve" button instead of the normal "Close Polygon" button. Open curves are <em>not</em> subdivided; Loom renders them directly as stroked paths or brush stamps. They cannot be used as morph targets.</p>
+
+<h3>Point Sets</h3>
+<p><strong>Point sets</strong> are collections of discrete anchor points drawn in Bezier Draw. Each point can be rendered as a dot stamp (POINTS mode) or a brush stamp (BRUSHED mode). Point sets are not subdivided and do not support morph targets.</p>
 
 <h3>Recursive Subdivision</h3>
 <p>Each <em>stage</em> in a Params Set takes every polygon and divides it into sub-polygons. The process repeats: stage 2 subdivides the output of stage 1, and so on.</p>
@@ -306,9 +331,9 @@ YourProject/
 <h3>Animation Modes</h3>
 <p>Sprites support three mutually exclusive animation approaches:</p>
 <ul>
-    <li><strong>Random (Jitter)</strong> — Each frame applies random perturbations to scale, rotation, and position within configurable ranges. Creates organic, continuous motion.</li>
-    <li><strong>Keyframe</strong> — Interpolates between explicitly defined keyframe states (position, scale, rotation) using one of 41 easing algorithms. Creates precise, controllable animation.</li>
-    <li><strong>Morph</strong> — Blends the polygon vertices between the base shape and a morph target shape. Comes in jitter-morph (random amount each frame) and keyframe-morph (eased over keyframes) variants.</li>
+    <li><strong>Random (Jitter)</strong> — Each frame applies random perturbations to scale, rotation, and position within configurable ranges. Creates organic, continuous motion. Available for all geometry types.</li>
+    <li><strong>Keyframe</strong> — Interpolates between explicitly defined keyframe states (position, scale, rotation) using one of 41 easing algorithms. Creates precise, controllable animation. Available for all geometry types.</li>
+    <li><strong>Morph</strong> — Blends the polygon vertices between the base shape and a morph target shape. Comes in jitter-morph (random amount each frame) and keyframe-morph (eased over keyframes) variants. <strong>Available for polygon sets and regular polygons only.</strong> Not available for open curves or point sets.</li>
 </ul>
 
 <a href="#" class="back-to-top">Back to top</a>
@@ -414,10 +439,18 @@ YourProject/
 <a href="#" class="back-to-top">Back to top</a>
 </section>
 
+<!-- ============================================================ GEOMETRY TAB -->
+<section id="geometry">
+<h2>Geometry Tab</h2>
+<p>The Geometry tab consolidates all base geometry into one place with three sub-tabs: <strong>Polygons</strong>, <strong>Curves</strong>, and <strong>Points</strong>. Each sub-tab manages a different geometry type. Only polygon types support subdivision; open curves and point sets are rendered directly without subdivision.</p>
+<div class="info">Geometry types at a glance: <strong>Polygons</strong> — closed splines, subdivided and morphable. <strong>Open Curves</strong> — non-closed splines, rendered as stroked paths or brush stamps, no subdivision. <strong>Points</strong> — discrete anchor positions, rendered as dot or brush stamps, no subdivision.</div>
+<a href="#" class="back-to-top">Back to top</a>
+</section>
+
 <!-- ============================================================ POLYGONS -->
 <section id="polygons">
-<h2>Polygons Tab</h2>
-<p>The Polygons tab defines the base polygon shapes used throughout the system. These are the raw geometric forms that subdivision acts upon. Two types are supported: <strong>spline polygon sets</strong> (drawn in Bezier Draw) and <strong>regular polygons</strong> generated mathematically.</p>
+<h2>Geometry Tab — Polygons Sub-tab</h2>
+<p>The Polygons sub-tab defines the base polygon shapes used throughout the system. These are the raw geometric forms that subdivision acts upon. Two types are supported: <strong>spline polygon sets</strong> (drawn in Bezier Draw) and <strong>regular polygons</strong> generated mathematically.</p>
 
 <h3>Panel Layout</h3>
 <p>The tab is split into a left panel (list + buttons) and a right panel (properties + preview).</p>
@@ -491,10 +524,83 @@ YourProject/
 <a href="#" class="back-to-top">Back to top</a>
 </section>
 
+<!-- ============================================================ OPEN CURVES -->
+<section id="open-curves">
+<h2>Geometry Tab — Curves Sub-tab</h2>
+<p>The Curves sub-tab manages <strong>open curve sets</strong> — collections of non-closed cubic Bézier splines drawn in Bezier Draw. Open curves have a start and end point; they do not loop. They are rendered directly as stroked paths or brush stamps and are <strong>not subdivided</strong>.</p>
+
+<div class="warning">Open curves do not support subdivision or morph targets. Assigning a Params Set to an open-curve shape has no effect. Morph animation is not available for open-curve sprites.</div>
+
+<h3>Creating Open Curve Sets</h3>
+<ol class="step-list">
+    <li>In the Curves sub-tab, click <strong>New</strong> to create a named curve set entry. Enter a folder (default: <code>curveSets</code>) and select or type a filename.</li>
+    <li>Click <strong>Edit in Bezier</strong> to launch Bezier Draw. In Bezier Draw, place anchor points and then click <strong>Finish Open Curve</strong> (instead of the normal "Close Polygon" button) to create a non-closed path.</li>
+    <li>Save in Bezier Draw. Return to the editor and click <strong>Refresh Files</strong> to update the filename dropdown.</li>
+</ol>
+
+<h3>Curve Set Properties</h3>
+<table>
+    <tr><th>Field</th><th>Description</th></tr>
+    <tr><td><code>Name</code></td><td>Display label for this curve set. Used when referencing from the Shapes tab.</td></tr>
+    <tr><td><code>Folder</code></td><td>Sub-directory within the project (default: <code>curveSets</code>). The Scala engine resolves file paths relative to this folder.</td></tr>
+    <tr><td><code>Filename</code></td><td>The open curve XML file. The dropdown lists all XML files currently in the project's <code>curveSets/</code> directory. Click <em>Refresh Files</em> if you have added files outside the editor.</td></tr>
+</table>
+
+<h3>Supported Renderers for Open Curves</h3>
+<table>
+    <tr><th>Renderer Mode</th><th>Suitable?</th><th>Notes</th></tr>
+    <tr><td>STROKED</td><td>Yes</td><td>Draws the curves as continuous stroked open paths. The most common mode for open curves.</td></tr>
+    <tr><td>BRUSHED</td><td>Yes</td><td>Stamps brush images along the open curve path. Creates hand-drawn or ink-wash stroke effects.</td></tr>
+    <tr><td>FILLED / FILLED_STROKED</td><td>Not useful</td><td>Open paths have no enclosed area; fill produces no visible result.</td></tr>
+    <tr><td>POINTS</td><td>Limited</td><td>Draws dots at the anchor positions only; curve shape is not drawn.</td></tr>
+</table>
+
+<div class="tip">Use open curves with the STROKED renderer and a thin stroke for delicate line-work that complements subdivided polygon backgrounds. Use BRUSHED mode for ink or charcoal stroke effects.</div>
+
+<a href="#" class="back-to-top">Back to top</a>
+</section>
+
+<!-- ============================================================ POINT SETS -->
+<section id="point-sets">
+<h2>Geometry Tab — Points Sub-tab</h2>
+<p>The Points sub-tab manages <strong>point sets</strong> — collections of discrete anchor positions drawn in Bezier Draw. Each point in the set can be rendered as a dot stamp or a brush stamp. Point sets are <strong>not subdivided</strong> and do not support morph targets.</p>
+
+<div class="warning">Point sets do not support subdivision or morph targets. Assigning a Params Set to a point-set shape has no effect. Morph animation is not available for point-set sprites.</div>
+
+<h3>Creating Point Sets</h3>
+<ol class="step-list">
+    <li>In the Points sub-tab, click <strong>New</strong> to create a named point set entry.</li>
+    <li>Click <strong>Edit in Bezier</strong> to launch Bezier Draw. Place individual anchor points on the canvas (no need to close or connect them). Save the file.</li>
+    <li>Click <strong>Refresh Files</strong> to update the filename dropdown.</li>
+</ol>
+
+<h3>Point Set Properties</h3>
+<table>
+    <tr><th>Field</th><th>Description</th></tr>
+    <tr><td><code>Name</code></td><td>Display label for this point set.</td></tr>
+    <tr><td><code>Folder</code></td><td>Sub-directory within the project (default: <code>pointSets</code>).</td></tr>
+    <tr><td><code>Filename</code></td><td>The point set XML file. The dropdown lists all XML files currently in the project's <code>pointSets/</code> directory.</td></tr>
+</table>
+
+<h3>Supported Renderers for Point Sets</h3>
+<table>
+    <tr><th>Renderer Mode</th><th>Suitable?</th><th>Notes</th></tr>
+    <tr><td>POINTS</td><td>Yes</td><td>Draws a dot at each point position. Point Size controls dot diameter.</td></tr>
+    <tr><td>BRUSHED</td><td>Yes</td><td>Stamps a brush image at each point position. Creates scatter or texture effects.</td></tr>
+    <tr><td>STROKED / FILLED / FILLED_STROKED</td><td>Not useful</td><td>No connecting paths or areas exist; these modes produce no visible output for discrete points.</td></tr>
+</table>
+
+<div class="tip">Combine a point set (POINTS mode) with animated random jitter to create particle-like scatter effects. Use BRUSHED stamps at point positions for distributed texture marks across the canvas.</div>
+
+<a href="#" class="back-to-top">Back to top</a>
+</section>
+
 <!-- ============================================================ SUBDIVISION -->
 <section id="subdivision">
 <h2>Subdivision Tab</h2>
 <p>Subdivision is the core of Loom's pattern generation. The Subdivision tab defines <strong>Params Sets</strong> — named collections of subdivision stages that shapes reference.</p>
+
+<div class="info"><strong>Polygon types only:</strong> Subdivision applies exclusively to shapes whose source is a <strong>Polygon Set</strong> (spline or line) or a <strong>Regular Polygon</strong>. Shapes using Open Curve Sets or Point Sets bypass subdivision entirely and are rendered directly from their base geometry.</div>
 
 <h3>Structure</h3>
 <pre>
@@ -726,9 +832,17 @@ Params Set Collection
 <table>
     <tr><th>Parameter</th><th>Description</th></tr>
     <tr><td><code>Name</code></td><td>Unique identifier used when referencing from the Sprites tab.</td></tr>
-    <tr><td><code>Polygon Set</code></td><td>Which polygon set to use. Dropdown is populated from all polygon definitions in the Polygons tab.</td></tr>
-    <tr><td><code>Params Set</code></td><td>Which subdivision params set to apply. Dropdown shows all Params Sets from the Subdivision tab.</td></tr>
+    <tr><td><code>Source Type</code></td><td>The type of geometry this shape uses. Four options:<br>
+        <strong>Polygon Set Reference</strong> — references a polygon set (spline or regular polygon). Full subdivision pipeline available.<br>
+        <strong>Open Curve Set</strong> — references an open curve set from the Curves sub-tab. Rendered directly as open paths; no subdivision.<br>
+        <strong>Point Set</strong> — references a point set from the Points sub-tab. Rendered as discrete points or brush stamps; no subdivision.<br>
+        <strong>Inline Points</strong> — rarely used; geometry defined inline in the config rather than from a file.
+    </td></tr>
+    <tr><td><code>Polygon Set</code> / <code>Open Curve Set</code> / <code>Point Set</code></td><td>The specific geometry source, selected from the appropriate Geometry sub-tab. The visible dropdown changes based on the selected Source Type.</td></tr>
+    <tr><td><code>Params Set</code></td><td>Which subdivision params set to apply. <strong>Only effective when Source Type is Polygon Set Reference.</strong> Ignored for open curves and point sets.</td></tr>
 </table>
+
+<div class="info">Use the <strong>Refresh List</strong> buttons to update the geometry and params set dropdowns after making changes in the Geometry or Subdivision tabs.</div>
 
 <h3>Shape Transform</h3>
 <p>An optional global transform applied to the entire shape geometry before it is used by sprites:</p>
@@ -849,6 +963,8 @@ Params Set Collection
 <section id="morph">
 <h2>Morph Animation</h2>
 <p>Morph animation blends between the base shape's polygon vertices and a <em>morph target</em>'s vertices frame by frame. The morph target must have the exact same topology as the base shape (same number of polygons, same number of vertices per polygon, same polygon types).</p>
+
+<div class="warning"><strong>Polygon types only:</strong> Morph animation is available exclusively for shapes whose Source Type is <strong>Polygon Set Reference</strong> (spline or regular polygon). Shapes using Open Curve Sets or Point Sets cannot use morph animation — the morph controls are disabled for these source types.</div>
 
 <div class="info">Morph targets are stored as polygon set XML files in the project's <code>morphTargets/</code> directory. They are created and managed within the Sprites tab's Morph panel.</div>
 
@@ -1091,8 +1207,10 @@ Renderer Set Library
     <tr><td><code>project.xml</code></td><td>No (editor only)</td><td>Project manifest listing file paths. Not consumed by the Scala engine.</td></tr>
     <tr><td><code>configuration/global_config.xml</code></td><td>Yes</td><td>Canvas size, colours, quality, animation flags, background image path.</td></tr>
     <tr><td><code>configuration/polygons.xml</code></td><td>Yes</td><td>All polygon set references and regular polygon definitions.</td></tr>
-    <tr><td><code>configuration/subdivision.xml</code></td><td>Yes</td><td>All subdivision params sets.</td></tr>
-    <tr><td><code>configuration/shapes.xml</code></td><td>Yes</td><td>Shape configurations (polygon + subdivision pairings).</td></tr>
+    <tr><td><code>configuration/curves.xml</code></td><td>Yes</td><td>All open curve set references. Read by the Scala engine's curve loader.</td></tr>
+    <tr><td><code>configuration/points.xml</code></td><td>Yes</td><td>All point set references. Read by the Scala engine's point loader.</td></tr>
+    <tr><td><code>configuration/subdivision.xml</code></td><td>Yes</td><td>All subdivision params sets. Only used by polygon-type shapes.</td></tr>
+    <tr><td><code>configuration/shapes.xml</code></td><td>Yes</td><td>Shape configurations — polygon, open curve, and point set pairings.</td></tr>
     <tr><td><code>configuration/sprites.xml</code></td><td>Yes</td><td>Sprite definitions including position, animation, morph targets.</td></tr>
     <tr><td><code>configuration/rendering.xml</code></td><td>Yes</td><td>All renderer sets and individual renderer configurations.</td></tr>
 </table>
@@ -1100,9 +1218,11 @@ Renderer Set Library
 <h3>Asset Directories</h3>
 <table>
     <tr><th>Directory</th><th>Contents</th></tr>
-    <tr><td><code>polygonSets/</code></td><td>Spline polygon XML files drawn in Bezier Draw.</td></tr>
-    <tr><td><code>regularPolygons/</code></td><td>Editor-only regular polygon definition files (reusable/shareable).</td></tr>
-    <tr><td><code>morphTargets/</code></td><td>Morph target polygon set XML files. Same format as polygon sets.</td></tr>
+    <tr><td><code>polygonSets/</code></td><td>Spline polygon XML files drawn in Bezier Draw. Supports subdivision and morph targets.</td></tr>
+    <tr><td><code>regularPolygons/</code></td><td>Editor-only regular polygon definition files (reusable/shareable). Supports subdivision and morph targets.</td></tr>
+    <tr><td><code>curveSets/</code></td><td>Open curve set XML files drawn in Bezier Draw. No subdivision; rendered as open stroked paths or brush stamps.</td></tr>
+    <tr><td><code>pointSets/</code></td><td>Point set XML files drawn in Bezier Draw. No subdivision; rendered as discrete point or brush stamps.</td></tr>
+    <tr><td><code>morphTargets/</code></td><td>Morph target polygon set XML files. Same format as polygon sets; topologically compatible with their base shape.</td></tr>
     <tr><td><code>brushes/</code></td><td>Greyscale brush PNG files for the BRUSHED renderer.</td></tr>
     <tr><td><code>background_image/</code></td><td>Background image files (PNG, JPG) referenced by Global Config.</td></tr>
     <tr><td><code>renders/stills/</code></td><td>Captured still images. Auto-named with timestamp/index.</td></tr>
@@ -1125,6 +1245,18 @@ Renderer Set Library
     <tr><td><code>Cmd+Q</code></td><td>Quit</td></tr>
     <tr><td><code>F1</code></td><td>Open this User Guide</td></tr>
     <tr><td><code>F5</code> (in Loom window)</td><td>Reload from within the running Loom engine</td></tr>
+</table>
+
+<h3>Save Tab Sub-menu</h3>
+<p>Use <strong>File &gt; Save Tab</strong> to save individual configuration files without saving the whole project:</p>
+<table>
+    <tr><th>Action</th><th>Saves</th></tr>
+    <tr><td>Save Global Config</td><td><code>global_config.xml</code></td></tr>
+    <tr><td>Save Rendering Config</td><td><code>rendering.xml</code></td></tr>
+    <tr><td>Save Geometry Config</td><td><code>polygons.xml</code> + <code>curves.xml</code> + <code>points.xml</code></td></tr>
+    <tr><td>Save Subdivision Config</td><td><code>subdivision.xml</code></td></tr>
+    <tr><td>Save Shapes Config</td><td><code>shapes.xml</code></td></tr>
+    <tr><td>Save Sprites Config</td><td><code>sprites.xml</code></td></tr>
 </table>
 
 <a href="#" class="back-to-top">Back to top</a>

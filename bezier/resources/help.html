@@ -46,6 +46,8 @@
   <a href="#overview">Overview</a>
   <a href="#layout">Interface Layout</a>
   <a href="#drawing">Drawing Polygons</a>
+  <a href="#open-curves">Open Curves</a>
+  <a href="#layers">Layers</a>
   <h2>Selection Modes</h2>
   <a href="#point-mode">Point Selection</a>
   <a href="#edge-mode">Edge Selection</a>
@@ -68,6 +70,7 @@
   <a href="#view">View Toggles</a>
   <a href="#refimage">Reference Image</a>
   <a href="#saveload">Save &amp; Load</a>
+  <a href="#opencurvesets">Open Curve Set Files</a>
   <a href="#svg">SVG Export &amp; Import</a>
   <a href="#undo">Undo</a>
   <h2>Reference</h2>
@@ -81,8 +84,14 @@
 <!-- ═══════════════════════════════════════════════════════════ -->
 <section id="overview">
 <h1>Bezier Editor — Help</h1>
-<p>The Bezier Editor is a tool for creating and editing collections of closed cubic Bézier-curve polygons. Each polygon is built from one or more connected cubic Bézier segments. Finished polygon sets are saved as XML files that can be loaded directly into the Loom drawing engine.</p>
+<p>The Bezier Editor is a tool for creating and editing three types of geometry that feed into the Loom drawing engine:</p>
+<ul>
+  <li><strong>Closed polygon sets</strong> — collections of closed cubic Bézier-curve polygons. Saved as <code>.xml</code> polygon set files. Support subdivision, morph targets, and all renderer modes in Loom.</li>
+  <li><strong>Open curve sets</strong> — collections of non-closed cubic Bézier splines. Each curve has a defined start and end; it does not loop back. Saved as <code>.xml</code> open curve set files. Rendered in Loom as stroked paths or brush stamps (no subdivision).</li>
+  <li><strong>Point sets</strong> — collections of discrete anchor positions. Saved as <code>.xml</code> point set files. Rendered in Loom as dot or brush stamps (no subdivision).</li>
+</ul>
 <p>Polygons can be freely transformed, welded together at shared edges, and extruded to build up complex multi-polygon shapes. The Weld Registry keeps track of which anchor points are linked across polygons so that Relational operations move welded neighbours together automatically.</p>
+<p>The editor is organised into <strong>layers</strong>. Each polygon, curve, or set of points belongs to a named layer. Layers can be shown, hidden, reordered, or renamed independently. Only the active layer is selectable; other visible layers appear at reduced opacity as a drawing reference.</p>
 </section>
 
 <!-- ═══════════════════════════════════════════════════════════ -->
@@ -94,7 +103,7 @@
 <table>
   <tr><th>Group</th><th>Buttons</th></tr>
   <tr><td>Selection modes</td><td>Point Selection · Edge Selection · Polygon Selection</td></tr>
-  <tr><td>Creation &amp; Cut</td><td>Create Polygon · Close Polygon · <strong>Intersect</strong> · <strong>Knife Cut</strong></td></tr>
+  <tr><td>Creation &amp; Cut</td><td>Create Polygon · Close Polygon · <strong>Finish Open Curve</strong> · <strong>Intersect</strong> · <strong>Knife Cut</strong></td></tr>
   <tr><td>Editing</td><td>Duplicate · Weld · Flip Horizontal · Flip Vertical</td></tr>
   <tr><td>Snapping</td><td>Snap Anchors · Snap Anchors &amp; Controls · Centre</td></tr>
   <tr><td>Zoom</td><td>Zoom In · Zoom Out</td></tr>
@@ -142,7 +151,65 @@
   <li>Automatically switches to Polygon Selection Mode.</li>
 </ol>
 
-<div class="note">Every polygon in the Bezier Editor is a <strong>closed</strong> cubic Bézier path — open paths are used internally for single-edge elements (connectors from extrude, duplicated edges) but are not drawn as standalone shapes.</div>
+<div class="note">The normal workflow creates <strong>closed</strong> polygons. To create non-closed open curves for use as an Open Curve Set in Loom, use <strong>Finish Open Curve</strong> instead of Close Polygon — see the <a href="#open-curves">Open Curves</a> section.</div>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════════ -->
+<section id="open-curves">
+<h2>Open Curves</h2>
+<p>An <strong>open curve</strong> is a cubic Bézier spline with a distinct start and end point — it does not close back on itself. Open curves are used in Loom's Open Curve Sets, which are rendered as stroked paths or brush stamps without subdivision.</p>
+
+<h3>Creating Open Curves</h3>
+<ol>
+  <li>Click the <strong>Create Polygon</strong> toolbar button to enter drawing mode.</li>
+  <li>Place anchor points on the canvas by clicking. Each click adds a new anchor connected to the previous one by a cubic Bézier segment.</li>
+  <li>When the curve is complete, click <strong>Finish Open Curve</strong> (the toolbar button next to Close Polygon). The editor marks the path as open (no closing segment is added) and adds it to the current layer.</li>
+  <li>A new empty manager is started automatically for the next curve or polygon.</li>
+</ol>
+
+<div class="note">Open curves use the same point and edge selection tools as closed polygons. Scale, rotate, duplicate, and delete all work the same way. However, the Weld, Intersect, and Extrude operations are only meaningful for closed polygons.</div>
+
+<h3>Saving as an Open Curve Set</h3>
+<p>When saving (see <a href="#opencurvesets">Open Curve Set Files</a>), use <strong>Save Open Curve Set</strong> from the File menu or the save panel. The file is written as an <code>&lt;openCurveSet&gt;</code> XML document (not a polygon set). This format is what the Loom Parameter Editor's Curves sub-tab expects.</p>
+
+<h3>Mixed Documents</h3>
+<p>A single Bezier canvas can contain both closed polygons and open curves, on different layers. When saved as a polygon set, open curves in the file are skipped (only closed curves are exported). When saved as an open curve set, closed polygons are skipped (only open curves are exported). Use layers to keep them organised.</p>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════════ -->
+<section id="layers">
+<h2>Layers</h2>
+<p>The Layer Panel appears on the left side of the Bezier Editor window. Every polygon, open curve, and point belongs to exactly one layer. Layers help you organise complex multi-polygon documents and control which geometry is visible and editable at any time.</p>
+
+<h3>Layer Panel Layout</h3>
+<p>The panel contains a table with three columns:</p>
+<table>
+  <tr><th>Column</th><th>Description</th></tr>
+  <tr><td><strong>Vis (eye icon)</strong></td><td>Checkbox controlling layer visibility. Hidden layers are not drawn and cannot be selected. Visible non-active layers are drawn at 20% opacity as a reference.</td></tr>
+  <tr><td><strong># (number)</strong></td><td>Layer order number (display only). The stack order affects draw order: lower-numbered layers draw first (underneath).</td></tr>
+  <tr><td><strong>Name</strong></td><td>The layer's display name. Double-click to rename (or use the Rename button).</td></tr>
+</table>
+
+<h3>Active Layer</h3>
+<p>Click a row in the layer table to make that layer <strong>active</strong>. The active layer is drawn at full opacity. All new geometry (polygons, open curves) is created on the active layer. Selection hit-tests are restricted to the active layer — you cannot accidentally select geometry on other layers.</p>
+
+<h3>Layer Buttons</h3>
+<table>
+  <tr><th>Button</th><th>Action</th></tr>
+  <tr><td><strong>New</strong></td><td>Add a new layer above the current active layer. The new layer becomes active.</td></tr>
+  <tr><td><strong>Rename</strong></td><td>Rename the active layer (opens a text dialog).</td></tr>
+  <tr><td><strong>Dup</strong></td><td>Duplicate the active layer and all its geometry into a new layer.</td></tr>
+  <tr><td><strong>Del</strong></td><td>Delete the active layer and all its geometry. Cannot delete the last remaining layer.</td></tr>
+  <tr><td><strong>↑ / ↓</strong></td><td>Move the active layer up or down in the stack. This changes draw order (lower = drawn first, underneath).</td></tr>
+</table>
+
+<h3>Copy / Paste Between Layers</h3>
+<p>Use <kbd>⌘ Cmd</kbd>+<kbd>C</kbd> to copy the selected geometry on the active layer to the clipboard, then switch to a different layer and use <kbd>⌘ Cmd</kbd>+<kbd>V</kbd> to paste it onto that layer.</p>
+
+<h3>Export Behaviour</h3>
+<p>When you save a polygon set or open curve set, each layer is exported to a separate file (<code>{baseName}_{layerName}.xml</code>). A <em>layer manifest</em> file (<code>{baseName}.layers.xml</code>) is also written, listing all layers in order. The Loom Parameter Editor reads the manifest and treats the set as a layered bundle.</p>
+
+<div class="note">Single-layer documents save as a standard polygon set or open curve set file (no manifest). The manifest is only written when two or more layers exist.</div>
 </section>
 
 <!-- ═══════════════════════════════════════════════════════════ -->
@@ -613,9 +680,9 @@
 <h3>Saving</h3>
 <ol>
   <li>Type a name in the <strong>Name</strong> field in the top panel.</li>
-  <li>Click <strong>Save</strong>.</li>
+  <li>Click <strong>Save Polygons</strong>.</li>
 </ol>
-<p>The polygon set is written as <code>&lt;name&gt;.xml</code> into the project's <code>polygonSets/</code> directory. An SVG copy is also written automatically to an adjacent <code>svgs/</code> directory.</p>
+<p>The polygon set is written as <code>&lt;name&gt;.xml</code> into the project's <code>polygonSets/</code> directory. An SVG copy is also written automatically to an adjacent <code>svgs/</code> directory. Only <strong>closed</strong> curves are included; any open curves on the canvas are skipped.</p>
 
 <h3>Loading</h3>
 <ol>
@@ -624,6 +691,24 @@
   <li>The geometry is loaded onto the canvas, replacing the current content. The Name field is populated automatically.</li>
 </ol>
 <div class="warn">Loading a polygon set <strong>replaces</strong> all current geometry. Use Undo if you load by mistake.</div>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════════ -->
+<section id="opencurvesets">
+<h2>Open Curve Set Files</h2>
+<p>Open curve sets use a different XML format (<code>&lt;openCurveSet&gt;</code> root element) from regular polygon sets (<code>&lt;polygonSet&gt;</code> root). The editor automatically detects which format to use based on whether the canvas contains open or closed curves when you save.</p>
+
+<h3>Saving an Open Curve Set</h3>
+<ol>
+  <li>Ensure your canvas contains open curves (created with <strong>Finish Open Curve</strong>).</li>
+  <li>Type a name in the Name field.</li>
+  <li>Click <strong>Save Open Curves</strong> (or use File → Save as Open Curve Set). The file is written to the <code>curveSets/</code> directory of the current project.</li>
+</ol>
+
+<h3>Loading an Open Curve Set</h3>
+<p>Use <strong>Load</strong> and select an <code>.xml</code> file whose root element is <code>&lt;openCurveSet&gt;</code>. The editor detects the format automatically and loads the geometry as open curves.</p>
+
+<div class="note">The Loom Parameter Editor's <strong>Edit in Bezier</strong> button in the Curves sub-tab passes the correct headers to Bezier Draw automatically. You do not normally need to load open curve set files manually.</div>
 </section>
 
 <!-- ═══════════════════════════════════════════════════════════ -->
