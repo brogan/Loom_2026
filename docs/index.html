@@ -1,0 +1,269 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Loom 2026 — Help Index</title>
+<style>
+  :root {
+    --primary: #1e2330;
+    --accent:  #5b9cf6;
+    --green:   #27ae60;
+    --orange:  #e67e22;
+    --bg:      #f4f6fb;
+    --card:    #ffffff;
+    --border:  #dde2f0;
+    --text:    #222;
+    --muted:   #666;
+  }
+  * { box-sizing: border-box; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    font-size: 14px; line-height: 1.65; color: var(--text);
+    background: var(--bg); margin: 0; padding: 0;
+  }
+  header {
+    background: linear-gradient(135deg, var(--primary) 0%, #2c3e6e 100%);
+    color: white; padding: 48px 40px 36px; text-align: center;
+  }
+  header h1 { margin: 0 0 10px; font-size: 2.2em; letter-spacing: -0.02em; }
+  header p  { margin: 0; opacity: 0.8; font-size: 1.05em; }
+  main { max-width: 960px; margin: 0 auto; padding: 40px 24px 80px; }
+
+  /* ── workflow diagram ── */
+  .flow { display: flex; align-items: center; justify-content: center;
+          flex-wrap: wrap; gap: 0; margin: 32px 0; }
+  .flow-app {
+    background: var(--card); border: 2px solid var(--accent);
+    border-radius: 10px; padding: 18px 24px; text-align: center;
+    min-width: 160px; flex: 0 0 auto;
+  }
+  .flow-app .label { font-size: 11px; font-weight: 700; letter-spacing: 0.06em;
+                     text-transform: uppercase; color: var(--accent); }
+  .flow-app .name  { font-size: 16px; font-weight: 700; color: var(--primary);
+                     margin: 4px 0 2px; }
+  .flow-app .tech  { font-size: 11px; color: var(--muted); }
+  .flow-arrow {
+    font-size: 28px; color: var(--accent); padding: 0 12px;
+    flex: 0 0 auto; line-height: 1;
+  }
+  .flow-arrow .sublabel { font-size: 10px; color: var(--muted);
+                          display: block; text-align: center; margin-top: -4px; }
+
+  /* ── app cards ── */
+  .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+           gap: 24px; margin: 32px 0; }
+  .card {
+    background: var(--card); border: 1px solid var(--border);
+    border-radius: 10px; padding: 28px; display: flex; flex-direction: column;
+    transition: box-shadow 0.2s;
+  }
+  .card:hover { box-shadow: 0 4px 20px rgba(0,0,0,0.08); }
+  .card-tag { font-size: 10px; font-weight: 700; letter-spacing: 0.08em;
+              text-transform: uppercase; padding: 3px 10px; border-radius: 10px;
+              display: inline-block; margin-bottom: 12px; }
+  .tag-bezier  { background: #e8f0ff; color: #2c50a0; }
+  .tag-editor  { background: #e8fff2; color: #1a6e40; }
+  .tag-engine  { background: #fff4e8; color: #a04010; }
+  .card h2 { margin: 0 0 8px; font-size: 18px; color: var(--primary); }
+  .card .tech-note { font-size: 11px; color: var(--muted); margin-bottom: 12px; }
+  .card p  { margin: 0 0 12px; flex: 1; color: #444; font-size: 13px; }
+  .card ul { margin: 0 0 16px; padding-left: 18px; font-size: 13px; color: #444; }
+  .card ul li { margin-bottom: 4px; }
+  .card a.help-link {
+    display: inline-block; background: var(--accent); color: white;
+    text-decoration: none; padding: 8px 18px; border-radius: 6px;
+    font-size: 12px; font-weight: 600; margin-top: auto;
+    transition: background 0.15s;
+  }
+  .card a.help-link:hover { background: #3a7de0; }
+
+  /* ── concepts section ── */
+  .concepts { background: var(--card); border: 1px solid var(--border);
+              border-radius: 10px; padding: 28px; margin: 32px 0; }
+  .concepts h2 { margin-top: 0; color: var(--primary);
+                 border-bottom: 2px solid var(--accent); padding-bottom: 8px; }
+  .concepts h3 { color: var(--accent); margin-top: 20px; font-size: 14px; }
+  .concepts p, .concepts li { font-size: 13px; color: #444; }
+  table { width: 100%; border-collapse: collapse; margin: 12px 0; font-size: 13px; }
+  th { background: var(--bg); padding: 8px 12px; border: 1px solid var(--border);
+       text-align: left; font-weight: 600; color: var(--primary); }
+  td { padding: 7px 12px; border: 1px solid #e8eaf4; vertical-align: top; }
+  tr:nth-child(even) td { background: #fafbff; }
+  code { background: #eef; padding: 0 4px; border-radius: 3px;
+         font-family: monospace; font-size: 11px; }
+
+  footer { text-align: center; padding: 24px; color: var(--muted);
+           font-size: 12px; border-top: 1px solid var(--border); }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>Loom 2026</h1>
+  <p>Help &amp; Documentation Index — Updated March 2026</p>
+</header>
+
+<main>
+
+<!-- ── WORKFLOW ── -->
+<section>
+  <h2 style="color:#1e2330; margin-bottom:4px;">How the tools fit together</h2>
+  <p style="color:#555; margin-top:0;">Loom is a three-application system. Each tool has a specific role; they communicate via XML files on disk.</p>
+
+  <div class="flow">
+    <div class="flow-app">
+      <div class="label">Step 1</div>
+      <div class="name">Bezier Draw</div>
+      <div class="tech">Java / Swing</div>
+    </div>
+    <div class="flow-arrow">→<span class="sublabel">XML geometry</span></div>
+    <div class="flow-app">
+      <div class="label">Step 2</div>
+      <div class="name">Parameter Editor</div>
+      <div class="tech">Python / PyQt6</div>
+    </div>
+    <div class="flow-arrow">→<span class="sublabel">XML config</span></div>
+    <div class="flow-app">
+      <div class="label">Step 3</div>
+      <div class="name">Loom Engine</div>
+      <div class="tech">Scala / Swing</div>
+    </div>
+    <div class="flow-arrow">→<span class="sublabel">PNG output</span></div>
+    <div class="flow-app" style="border-color:#27ae60;">
+      <div class="label" style="color:#27ae60;">Output</div>
+      <div class="name">Stills / Animation</div>
+      <div class="tech">PNG files</div>
+    </div>
+  </div>
+</section>
+
+<!-- ── APP CARDS ── -->
+<div class="cards">
+
+  <div class="card">
+    <span class="card-tag tag-bezier">Step 1 — Draw</span>
+    <h2>Bezier Draw</h2>
+    <p class="tech-note">Java · Swing · <code>bezier/</code></p>
+    <p>An interactive vector editor for creating the geometric source material that Loom renders. Draw with the mouse; every shape is a cubic Bézier spline.</p>
+    <ul>
+      <li>Draw <strong>closed polygon sets</strong> — the main input for Loom's subdivision engine</li>
+      <li>Draw <strong>open curve sets</strong> — non-closed splines rendered as stroked paths or brush stamps</li>
+      <li>Draw <strong>point sets</strong> — discrete positions for dot or brush-stamp effects</li>
+      <li>Organise geometry into named <strong>layers</strong></li>
+      <li>Weld polygons together, cut with the knife, extrude edges</li>
+      <li>Save as XML files consumed directly by the Parameter Editor and Loom</li>
+    </ul>
+    <a class="help-link" href="../bezier/resources/help.html">Bezier Draw Help →</a>
+  </div>
+
+  <div class="card">
+    <span class="card-tag tag-editor">Step 2 — Configure</span>
+    <h2>Parameter Editor</h2>
+    <p class="tech-note">Python · PyQt6 · <code>loom_engine/loom_parameter_editor/</code></p>
+    <p>A GUI for configuring every aspect of the Loom rendering pipeline, without editing XML by hand. Organises configuration into tabs matching the rendering pipeline stages.</p>
+    <ul>
+      <li><strong>Geometry tab</strong> — register polygon sets, open curve sets, and point sets</li>
+      <li><strong>Subdivision tab</strong> — define multi-stage recursive subdivision rules (polygon types only)</li>
+      <li><strong>Shapes tab</strong> — pair geometry with subdivision parameters</li>
+      <li><strong>Sprites tab</strong> — position shapes on canvas, configure animation and morph targets</li>
+      <li><strong>Rendering tab</strong> — define stroke, fill, point, and brush renderer styles</li>
+      <li><strong>Run tab</strong> — launch, reload, and capture output from Loom</li>
+    </ul>
+    <a class="help-link" href="../loom_engine/loom_parameter_editor/resources/help.html">Parameter Editor Help →</a>
+  </div>
+
+  <div class="card">
+    <span class="card-tag tag-engine">Step 3 — Render</span>
+    <h2>Loom Engine</h2>
+    <p class="tech-note">Scala · Swing · <code>loom_engine/</code></p>
+    <p>The rendering engine. Reads all XML config files, builds the scene, and draws it frame by frame — either as a static composition or a continuous animation.</p>
+    <ul>
+      <li>Recursively subdivides polygon geometry through configurable multi-stage pipelines</li>
+      <li>Applies per-stage point-level transforms (spiking, curving, tearing)</li>
+      <li>Renders sprites with STROKED, FILLED, POINTS, or BRUSHED renderers</li>
+      <li>Animates with random jitter, keyframe easing, or polygon vertex morphing</li>
+      <li>Exports high-resolution stills and animation frame sequences</li>
+      <li>Reloads configuration instantly on <kbd>F5</kbd> without restarting</li>
+    </ul>
+    <a class="help-link" href="../loom_engine/resources/help.html">Loom Engine Help →</a>
+  </div>
+
+</div>
+
+<!-- ── CONCEPTS ── -->
+<div class="concepts">
+  <h2>Key Concepts</h2>
+
+  <h3>Geometry types and what each supports</h3>
+  <table>
+    <tr>
+      <th>Type</th>
+      <th>Created in</th>
+      <th>Subdivision?</th>
+      <th>Morph targets?</th>
+      <th>Useful renderers</th>
+    </tr>
+    <tr>
+      <td><strong>Polygon Sets</strong> (closed splines)</td>
+      <td>Bezier Draw → Polygons sub-tab</td>
+      <td>Yes — full pipeline</td>
+      <td>Yes</td>
+      <td>All modes</td>
+    </tr>
+    <tr>
+      <td><strong>Regular Polygons</strong> (mathematical)</td>
+      <td>Parameter Editor → Polygons sub-tab</td>
+      <td>Yes — full pipeline</td>
+      <td>Yes</td>
+      <td>All modes</td>
+    </tr>
+    <tr>
+      <td><strong>Open Curve Sets</strong> (non-closed splines)</td>
+      <td>Bezier Draw → Curves sub-tab</td>
+      <td>No</td>
+      <td>No</td>
+      <td>STROKED, BRUSHED</td>
+    </tr>
+    <tr>
+      <td><strong>Point Sets</strong> (discrete positions)</td>
+      <td>Bezier Draw → Points sub-tab</td>
+      <td>No</td>
+      <td>No</td>
+      <td>POINTS, BRUSHED</td>
+    </tr>
+  </table>
+
+  <h3>Animation modes and geometry restrictions</h3>
+  <table>
+    <tr><th>Mode</th><th>Description</th><th>Requires</th></tr>
+    <tr><td><strong>Random (Jitter)</strong></td><td>Random per-frame perturbations to position, scale, rotation</td><td>Any geometry</td></tr>
+    <tr><td><strong>Keyframe</strong></td><td>Eased interpolation between defined states (41 easing functions)</td><td>Any geometry</td></tr>
+    <tr><td><strong>Jitter Morph</strong></td><td>Random blend each frame between base polygon and morph target</td><td>Polygon sets only</td></tr>
+    <tr><td><strong>Keyframe Morph</strong></td><td>Eased morph amount interpolated alongside position/scale/rotation</td><td>Polygon sets only</td></tr>
+  </table>
+
+  <h3>Typical workflow</h3>
+  <ol style="font-size:13px; color:#444;">
+    <li>In <strong>Bezier Draw</strong>, draw polygon sets (and optionally open curves or point sets). Save to the project's <code>polygonSets/</code>, <code>curveSets/</code>, or <code>pointSets/</code> directories.</li>
+    <li>In the <strong>Parameter Editor</strong>, open the project. Register the geometry in the Geometry tab. Define subdivision rules (Subdivision tab). Compose shapes (Shapes tab). Configure renderers (Rendering tab). Position sprites and set animation (Sprites tab).</li>
+    <li>Press <strong>Run Loom</strong> (<kbd>Cmd+L</kbd>). The editor saves all config files and launches the Loom engine.</li>
+    <li>In the <strong>Loom window</strong>, press <kbd>F5</kbd> to reload after any parameter change, <kbd>S</kbd> to save a still, <kbd>V</kbd> to record animation frames.</li>
+    <li>For the fastest iteration: edit in the Parameter Editor → press <kbd>Cmd+R</kbd> (Reload) → Loom updates in under a second without restarting.</li>
+  </ol>
+
+  <h3>File communication</h3>
+  <p style="font-size:13px; color:#444;">All three applications communicate via files in the project directory — there are no sockets or live connections. Bezier Draw writes geometry XML; the Parameter Editor writes configuration XML; the Loom engine reads them all. Reload and capture commands are signalled via small sentinel files (<code>.reload</code>, <code>.capture_still</code>, <code>.capture_video</code>) that Loom watches for on each draw cycle.</p>
+</div>
+
+</main>
+
+<footer>
+  Loom 2026 &copy; 2024&ndash;2026 &nbsp;|&nbsp;
+  <a href="../bezier/resources/help.html">Bezier Draw Help</a> &nbsp;·&nbsp;
+  <a href="../loom_engine/loom_parameter_editor/resources/help.html">Parameter Editor Help</a> &nbsp;·&nbsp;
+  <a href="../loom_engine/resources/help.html">Loom Engine Help</a>
+</footer>
+
+</body>
+</html>
