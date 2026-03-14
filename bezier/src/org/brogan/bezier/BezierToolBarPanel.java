@@ -135,26 +135,8 @@ public class BezierToolBarPanel extends JPanel {
 
 		// ── Creation / editing ─────────────────────────────────────────────────
 
-		polygonMode = new JToggleButton();
-		initToggle(polygonMode, "Create Polygon Mode", "createPolygon");
-		polygonMode.addActionListener(new ActionListener() {
-			public void actionPerformed(ActionEvent e) {
-				int idx = polygonManager.getPolygonCount();
-				polygonManager.getManager(idx).setAddPoints(polygonMode.isSelected());
-				selectionMode.setSelected(false);
-				pointModeToggle.setSelected(false);
-				edgeSelectionMode.setSelected(false);
-				polygonSelectionMode.setSelected(false);
-				bezier.setPointMode(false);
-				bezier.setEdgeSelectionMode(false);
-				bezier.setPolygonSelectionMode(false);
-				bezier.setPointSelectionMode(false);
-			}
-		});
-		toolBar.add(polygonMode);
-
 		pointModeToggle = new JToggleButton();
-		initToggle(pointModeToggle, "Point Placement Mode", "createPoint");
+		initToggle(pointModeToggle, "Create Points Mode", "createPoint");
 		pointModeToggle.addActionListener(new ActionListener() {
 			public void actionPerformed(ActionEvent e) {
 				int idx = polygonManager.getPolygonCount();
@@ -172,6 +154,24 @@ public class BezierToolBarPanel extends JPanel {
 			}
 		});
 		toolBar.add(pointModeToggle);
+
+		polygonMode = new JToggleButton();
+		initToggle(polygonMode, "Create Polygons Mode", "createPolygon");
+		polygonMode.addActionListener(new ActionListener() {
+			public void actionPerformed(ActionEvent e) {
+				int idx = polygonManager.getPolygonCount();
+				polygonManager.getManager(idx).setAddPoints(polygonMode.isSelected());
+				selectionMode.setSelected(false);
+				pointModeToggle.setSelected(false);
+				edgeSelectionMode.setSelected(false);
+				polygonSelectionMode.setSelected(false);
+				bezier.setPointMode(false);
+				bezier.setEdgeSelectionMode(false);
+				bezier.setPolygonSelectionMode(false);
+				bezier.setPointSelectionMode(false);
+			}
+		});
+		toolBar.add(polygonMode);
 
 		closeCurves = new JButton();
 		initButton(closeCurves, "Close Polygon", "closePolygon");
@@ -202,6 +202,8 @@ public class BezierToolBarPanel extends JPanel {
 			}
 		});
 		toolBar.add(finishOpenCurve);
+
+		toolBar.addSeparator();
 
 		intersect = new JButton();
 		initButton(intersect, "Intersect — build quad mesh between two concentric polygons (Shift: keep inner)", "intersect");
