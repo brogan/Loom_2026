@@ -382,6 +382,9 @@ class MainWindow(QMainWindow):
         open_action.triggered.connect(self._open_project)
         file_menu.addAction(open_action)
 
+        self._recent_menu = file_menu.addMenu("Open Recent Project")
+        self._rebuild_recent_menu()
+
         file_menu.addSeparator()
 
         save_action = QAction("Save All", self)
@@ -687,9 +690,27 @@ class MainWindow(QMainWindow):
             self._update_title()
             self.project_label.setText(project_name)
             self.status_bar.showMessage(f"Created project at {project_dir}", 3000)
+            self._app_settings.add_recent_project(project_dir)
+            self._rebuild_recent_menu()
 
         except Exception as e:
             QMessageBox.critical(self, "Error", f"Failed to create project:\n{e}")
+
+    def _rebuild_recent_menu(self) -> None:
+        """Repopulate the Open Recent Project submenu from app settings."""
+        self._recent_menu.clear()
+        recents = self._app_settings.recent_projects
+        if not recents:
+            no_action = QAction("(no recent projects)", self)
+            no_action.setEnabled(False)
+            self._recent_menu.addAction(no_action)
+        else:
+            for path in recents:
+                name = os.path.basename(path)
+                action = QAction(name, self)
+                action.setToolTip(path)
+                action.triggered.connect(lambda checked, p=path: self._open_recent_project(p))
+                self._recent_menu.addAction(action)
 
     def _notify_tabs_of_project_dir(self) -> None:
         """Notify tabs of the current project directory for cross-references."""
@@ -777,8 +798,35 @@ class MainWindow(QMainWindow):
             )
             return
 
+        self._load_project_dir(project_dir)
+
+    def _open_recent_project(self, project_dir: str) -> None:
+        """Open a project directly from the recent-projects list."""
+        if not self._check_save():
+            return
+
+        if not os.path.isdir(project_dir):
+            QMessageBox.warning(self, "Project Not Found",
+                                f"Project directory no longer exists:\n{project_dir}")
+            self._app_settings.recent_projects = [
+                p for p in self._app_settings.recent_projects if p != project_dir
+            ]
+            self._app_settings.save()
+            self._rebuild_recent_menu()
+            return
+
+        file_path = os.path.join(project_dir, "project.xml")
+        if not os.path.isfile(file_path):
+            QMessageBox.warning(self, "Not a Loom Project",
+                                f"No project.xml found in:\n{project_dir}")
+            return
+
+        self._load_project_dir(project_dir)
+
+    def _load_project_dir(self, project_dir: str) -> None:
+        """Load a project from the given directory (must contain project.xml)."""
+        file_path = os.path.join(project_dir, "project.xml")
         try:
-            project_dir = os.path.dirname(file_path)
             self._project = ProjectIO.load(file_path)
             self._project_path = file_path
             self._project_dir = project_dir
@@ -912,6 +960,8 @@ class MainWindow(QMainWindow):
             self._update_title()
             self.project_label.setText(self._project.name)
             self.status_bar.showMessage(f"Opened {file_path}", 3000)
+            self._app_settings.add_recent_project(project_dir)
+            self._rebuild_recent_menu()
 
         except Exception as e:
             QMessageBox.critical(self, "Error", f"Failed to open project:\n{e}")

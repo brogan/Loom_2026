@@ -115,15 +115,15 @@ class ShapeTab(QWidget):
         source_layout = QFormLayout(source_group)
 
         self.source_type_combo = QComboBox()
-        # Items map: index 0 → POLYGON_SET, index 1 → INLINE_POINTS, index 2 → OPEN_CURVE_SET, index 3 → POINT_SET
-        self.source_type_combo.addItems(["Polygon Set Reference", "Inline Points", "Open Curve Set", "Point Set"])
+        # Items map: index 0 → POLYGON_SET, index 1 → OPEN_CURVE_SET, index 2 → POINT_SET
+        self.source_type_combo.addItems(["Polygon Set Reference", "Open Curve Set", "Point Set"])
         self.source_type_combo.currentIndexChanged.connect(self._on_source_type_changed)
         source_layout.addRow("Source Type:", self.source_type_combo)
 
         # Source-specific widgets in a stacked widget
         self.source_stack = QStackedWidget()
 
-        # Polygon set reference (includes both spline and regular polygon sets)
+        # Polygon set reference (includes both spline and regular polygon sets) — stack index 0
         poly_ref_widget = QWidget()
         poly_ref_layout = QFormLayout(poly_ref_widget)
         self.polygon_set_combo = QComboBox()
@@ -142,14 +142,7 @@ class ShapeTab(QWidget):
 
         self.source_stack.addWidget(poly_ref_widget)
 
-        # Inline points (simplified - just show count)
-        inline_widget = QWidget()
-        inline_layout = QVBoxLayout(inline_widget)
-        self.inline_label = QLabel("Inline points not yet editable in UI")
-        inline_layout.addWidget(self.inline_label)
-        self.source_stack.addWidget(inline_widget)
-
-        # Open curve set reference (index 2)
+        # Open curve set reference — stack index 1
         open_curve_widget = QWidget()
         open_curve_layout = QFormLayout(open_curve_widget)
         self.open_curve_set_combo = QComboBox()
@@ -166,7 +159,7 @@ class ShapeTab(QWidget):
         open_curve_layout.addRow("", oc_refresh_layout)
         self.source_stack.addWidget(open_curve_widget)
 
-        # Point set reference (index 3)
+        # Point set reference — stack index 2
         point_set_widget = QWidget()
         point_set_layout = QFormLayout(point_set_widget)
         self.point_set_combo = QComboBox()
@@ -387,20 +380,17 @@ class ShapeTab(QWidget):
 
             # Source type — map enum to combo index
             # POLYGON_SET (0) → combo 0, REGULAR_POLYGON (1) → combo 0,
-            # INLINE_POINTS (2) → combo 1, OPEN_CURVE_SET (3) → combo 2, POINT_SET (4) → combo 3
-            if shape.source_type == ShapeSourceType.INLINE_POINTS:
+            # INLINE_POINTS (legacy) → combo 0, OPEN_CURVE_SET (3) → combo 1, POINT_SET (4) → combo 2
+            if shape.source_type == ShapeSourceType.OPEN_CURVE_SET:
                 self.source_type_combo.setCurrentIndex(1)
                 self.source_stack.setCurrentIndex(1)
-            elif shape.source_type == ShapeSourceType.OPEN_CURVE_SET:
-                self.source_type_combo.setCurrentIndex(2)
-                self.source_stack.setCurrentIndex(2)
                 self.open_curve_set_combo.setCurrentText(shape.open_curve_set_name)
             elif shape.source_type == ShapeSourceType.POINT_SET:
-                self.source_type_combo.setCurrentIndex(3)
-                self.source_stack.setCurrentIndex(3)
+                self.source_type_combo.setCurrentIndex(2)
+                self.source_stack.setCurrentIndex(2)
                 self.point_set_combo.setCurrentText(shape.point_set_name)
             else:
-                # Both POLYGON_SET and legacy REGULAR_POLYGON show as polygon set reference
+                # POLYGON_SET, REGULAR_POLYGON, and legacy INLINE_POINTS all show as polygon set reference
                 self.source_type_combo.setCurrentIndex(0)
                 self.source_stack.setCurrentIndex(0)
                 self.polygon_set_combo.setCurrentText(shape.polygon_set_name)
@@ -431,19 +421,17 @@ class ShapeTab(QWidget):
 
         self._current_shape.name = self.name_edit.text()
 
-        # Source type — combo index 0=POLYGON_SET, 1=INLINE_POINTS, 2=OPEN_CURVE_SET, 3=POINT_SET
+        # Source type — combo index 0=POLYGON_SET, 1=OPEN_CURVE_SET, 2=POINT_SET
         combo_idx = self.source_type_combo.currentIndex()
-        if combo_idx == 0:
-            self._current_shape.source_type = ShapeSourceType.POLYGON_SET
-            self._current_shape.polygon_set_name = self.polygon_set_combo.currentText()
-        elif combo_idx == 2:
+        if combo_idx == 1:
             self._current_shape.source_type = ShapeSourceType.OPEN_CURVE_SET
             self._current_shape.open_curve_set_name = self.open_curve_set_combo.currentText()
-        elif combo_idx == 3:
+        elif combo_idx == 2:
             self._current_shape.source_type = ShapeSourceType.POINT_SET
             self._current_shape.point_set_name = self.point_set_combo.currentText()
         else:
-            self._current_shape.source_type = ShapeSourceType.INLINE_POINTS
+            self._current_shape.source_type = ShapeSourceType.POLYGON_SET
+            self._current_shape.polygon_set_name = self.polygon_set_combo.currentText()
 
         # Subdivision
         self._current_shape.subdivision_params_set_name = self.subdiv_set_combo.currentText()
