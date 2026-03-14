@@ -254,9 +254,10 @@ class Sprite2D(val shape: Shape2D, val spriteParams: Sprite2DParams, var animato
     val polyCorrected: Polygon2D = coordinateCorrect(pol, view)
     val pt = polyCorrected.points.head
     val ren = rendererSet.getRenderer(rendererSet.selectedIndex)
-    val dotRadius = 3
+    val dotSize = (ren.pointSize).toInt max 2
+    val dotRadius = dotSize / 2
     g2D.setColor(ren.strokeColor)
-    g2D.fillOval(pt.x.toInt - dotRadius, pt.y.toInt - dotRadius, dotRadius * 2, dotRadius * 2)
+    g2D.fillOval(pt.x.toInt - dotRadius, pt.y.toInt - dotRadius, dotSize, dotSize)
   }
 
   def drawLines(g2D: Graphics2D, pol: Polygon2D, view: View): Unit = {
