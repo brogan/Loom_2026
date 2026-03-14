@@ -1,13 +1,17 @@
 package org.brogan.data;
 
 import java.awt.geom.Point2D;
+import java.io.File;
+import java.io.FileOutputStream;
 import java.util.List;
 
 import org.brogan.util.BString;
 import org.brogan.bezier.*;
 
 import nu.xom.Attribute;
+import nu.xom.Document;
 import nu.xom.Element;
+import nu.xom.Serializer;
 
 import org.brogan.ui.*;
 
@@ -74,6 +78,16 @@ public class OpenCurveSetXml extends XmlManager {
 		String xmlFilePath = super.getXmlFilePath();
 		System.out.println("OpenCurveSetXml xmlFilePath: " + xmlFilePath);
 		super.setXml_doc();
-		saveXMLToFile(super.getXml_doc(), xmlFilePath);
+		// Write without DOCTYPE — open curve sets are loaded with non-validating
+		// parser and there is no openCurveSet.dtd in project directories.
+		try {
+			FileOutputStream fos = new FileOutputStream(new File(xmlFilePath));
+			Serializer output = new Serializer(fos, "ISO-8859-1");
+			output.setIndent(4);
+			output.write(super.getXml_doc());
+		} catch (Exception e) {
+			System.err.println("OpenCurveSetXml: failed to save: " + e.getMessage());
+			e.printStackTrace();
+		}
 	}
 }

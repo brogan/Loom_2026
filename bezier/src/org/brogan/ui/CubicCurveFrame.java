@@ -261,11 +261,14 @@ public class CubicCurveFrame extends JFrame implements WindowListener{
 	}
 	/**
 	 * Peek at the root element name of an XML file without full validation.
+	 * Uses a no-external-DTD reader so missing DTD files don't cause failures.
 	 * Returns "" on any error.
 	 */
 	private String peekRootElementName(File f) {
 		try {
-			nu.xom.Builder parser = new nu.xom.Builder(false);
+			org.xml.sax.XMLReader xr = org.xml.sax.helpers.XMLReaderFactory.createXMLReader();
+			try { xr.setFeature("http://apache.org/xml/features/nonvalidating/load-external-dtd", false); } catch (Exception ignore) {}
+			nu.xom.Builder parser = new nu.xom.Builder(xr);
 			nu.xom.Document doc = parser.build(f);
 			return doc.getRootElement().getLocalName();
 		} catch (Exception ex) {

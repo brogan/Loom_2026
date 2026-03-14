@@ -545,7 +545,9 @@ public class CubicCurvePanel extends JPanel implements MouseListener, ChangeList
 		bezier.clearPoints();
 		nu.xom.Document doc;
 		try {
-			nu.xom.Builder parser = new nu.xom.Builder(false);
+			org.xml.sax.XMLReader xr = org.xml.sax.helpers.XMLReaderFactory.createXMLReader();
+			try { xr.setFeature("http://apache.org/xml/features/nonvalidating/load-external-dtd", false); } catch (Exception ignore) {}
+			nu.xom.Builder parser = new nu.xom.Builder(xr);
 			doc = parser.build(f);
 		} catch (Exception ex) {
 			System.out.println("CubicCurvePanel: failed to parse pointSet: " + ex.getMessage());
@@ -567,7 +569,9 @@ public class CubicCurvePanel extends JPanel implements MouseListener, ChangeList
 		bezier.getPolygonManager().clearManagers();
 		Document doc;
 		try {
-			Builder parser = new Builder(false);
+			org.xml.sax.XMLReader xr = org.xml.sax.helpers.XMLReaderFactory.createXMLReader();
+			try { xr.setFeature("http://apache.org/xml/features/nonvalidating/load-external-dtd", false); } catch (Exception ignore) {}
+			Builder parser = new Builder(xr);
 			doc = parser.build(f);
 		} catch (Exception ex) {
 			System.out.println("CubicCurvePanel: failed to parse openCurveSet: " + ex.getMessage());
