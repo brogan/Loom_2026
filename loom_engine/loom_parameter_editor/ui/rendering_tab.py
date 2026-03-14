@@ -383,8 +383,8 @@ class RendererEditor(QWidget):
         point_stroked = has_points and self.point_stroked_check.isChecked()
         self.stroke_width_spin.setEnabled(has_stroke or point_stroked)
         self.stroke_color_picker.setEnabled(has_stroke or point_stroked or has_brush)
-        self.stroke_width_change_editor.setEnabled(has_stroke)
-        self.stroke_color_change_editor.setEnabled(has_stroke or has_brush)
+        self.stroke_width_change_editor.setEnabled(has_stroke or has_points)
+        self.stroke_color_change_editor.setEnabled(has_stroke or has_brush or has_points)
 
         # Fill controls — also enabled in POINTS mode when point_filled is true
         point_filled = has_points and self.point_filled_check.isChecked()
