@@ -18,6 +18,7 @@ from models.sprite_config import (
     SpriteDef, SpriteParams, SpriteSet, SpriteLibrary, Keyframe,
     EASING_TYPES, LOOP_MODES
 )
+from ui.sprite_preview_widget import SpritePreviewWidget
 
 ANIMATOR_TYPES = ["random", "keyframe", "jitter_morph", "keyframe_morph"]
 
@@ -128,6 +129,12 @@ class SpriteTab(QWidget):
         anim_layout = QVBoxLayout(anim_content)
         anim_scroll.setWidget(anim_content)
         inner_tabs.addTab(anim_scroll, "Animation")
+
+        # Preview tab
+        self._inner_tabs = inner_tabs
+        self.preview_widget = SpritePreviewWidget()
+        inner_tabs.addTab(self.preview_widget, "Preview")
+        self.preview_widget.transform_changed.connect(self._on_preview_transform_changed)
 
         # right_layout aliases the General tab layout for the groups below
         right_layout = gen_layout
@@ -635,6 +642,10 @@ class SpriteTab(QWidget):
                 if parent_data:
                     self._current_set = parent_data[1]
             self._load_sprite_to_ui(self._current_sprite)
+            if parent:
+                sprite_set = parent.data(0, Qt.ItemDataRole.UserRole)[1]
+                idx = parent.indexOfChild(current)
+                self.preview_widget.set_sprite_set(sprite_set, idx)
 
     def _clear_sprite_ui(self):
         """Clear the sprite editor UI."""
@@ -794,6 +805,10 @@ class SpriteTab(QWidget):
         current_item = self.tree.currentItem()
         if current_item:
             current_item.setText(1, self._current_sprite.name)
+
+        # Sync preview
+        if self._current_sprite is not None:
+            self._sync_preview_selection()
 
     def _on_name_changed(self):
         if self._updating:
@@ -988,6 +1003,7 @@ class SpriteTab(QWidget):
         """Set the shape library for populating shape set and shape name dropdowns."""
         self._shape_library = library
         self._refresh_shape_set_dropdown()
+        self.preview_widget.set_shape_library(library)
 
     def set_renderer_library(self, library) -> None:
         """Set the renderer library for populating renderer set dropdown."""
@@ -1296,6 +1312,36 @@ class SpriteTab(QWidget):
         """Set the project directory for morph target file operations."""
         self._project_dir = project_dir
         self._refresh_morph_targets()
+        self.preview_widget.set_directories(
+            os.path.join(project_dir, "polygonSets"),
+            os.path.join(project_dir, "curveSets"),
+            os.path.join(project_dir, "pointSets"),
+        )
+
+    def _on_preview_transform_changed(self, loc_x: float, loc_y: float,
+                                       size_x: float, size_y: float,
+                                       rotation: float):
+        """Called when the user drags a sprite in the Preview canvas."""
+        if self._current_sprite is None:
+            return
+        self._updating = True
+        try:
+            self.loc_x_spin.setValue(loc_x)
+            self.loc_y_spin.setValue(loc_y)
+            self.size_x_spin.setValue(size_x)
+            self.size_y_spin.setValue(size_y)
+            self.start_rot_spin.setValue(rotation)
+        finally:
+            self._updating = False
+        self._save_ui_to_sprite()
+        self.modified.emit()
+
+    def _sync_preview_selection(self):
+        """Repaint preview with updated params without re-resolving geometry."""
+        sel = self.tree.currentItem()
+        if sel and sel.parent():
+            idx = sel.parent().indexOfChild(sel)
+            self.preview_widget.set_selected_index(idx)
 
     def _get_morph_targets_dir(self) -> str:
         """Get the morphTargets/ directory path for the current project."""

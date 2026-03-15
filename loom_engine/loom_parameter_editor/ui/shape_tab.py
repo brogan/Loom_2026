@@ -2,6 +2,8 @@
 Shape configuration tab for the parameter editor.
 Provides UI for editing shapes.xml settings.
 """
+
+_SUBDIV_NONE = "(none)"   # sentinel shown in dropdown; maps to empty subdivision_params_set_name
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QFormLayout, QGroupBox,
     QLineEdit, QSpinBox, QDoubleSpinBox, QComboBox, QTreeWidget,
@@ -359,7 +361,7 @@ class ShapeTab(QWidget):
             self.name_edit.clear()
             self.source_type_combo.setCurrentIndex(0)
             self.polygon_set_combo.setCurrentText("")
-            self.subdiv_set_combo.setCurrentText("")
+            self.subdiv_set_combo.setCurrentText(_SUBDIV_NONE)
             self.shape3d_combo.setCurrentIndex(0)
             self.param1_spin.setValue(4)
             self.param2_spin.setValue(4)
@@ -395,8 +397,9 @@ class ShapeTab(QWidget):
                 self.source_stack.setCurrentIndex(0)
                 self.polygon_set_combo.setCurrentText(shape.polygon_set_name)
 
-            # Subdivision
-            self.subdiv_set_combo.setCurrentText(shape.subdivision_params_set_name)
+            # Subdivision — empty name → "(none)" sentinel
+            subdiv_display = shape.subdivision_params_set_name or _SUBDIV_NONE
+            self.subdiv_set_combo.setCurrentText(subdiv_display)
 
             # 3D type
             self.shape3d_combo.setCurrentIndex(shape.shape_3d_type.value)
@@ -433,8 +436,9 @@ class ShapeTab(QWidget):
             self._current_shape.source_type = ShapeSourceType.POLYGON_SET
             self._current_shape.polygon_set_name = self.polygon_set_combo.currentText()
 
-        # Subdivision
-        self._current_shape.subdivision_params_set_name = self.subdiv_set_combo.currentText()
+        # Subdivision — "(none)" sentinel maps back to empty string (no element in XML)
+        subdiv_text = self.subdiv_set_combo.currentText()
+        self._current_shape.subdivision_params_set_name = "" if subdiv_text == _SUBDIV_NONE else subdiv_text
 
         # 3D type
         self._current_shape.shape_3d_type = Shape3DType(self.shape3d_combo.currentIndex())
@@ -706,6 +710,7 @@ class ShapeTab(QWidget):
             current_text = self.subdiv_set_combo.currentText()
 
             self.subdiv_set_combo.clear()
+            self.subdiv_set_combo.addItem(_SUBDIV_NONE)   # always first
 
             if self._subdivision_collection is not None:
                 # Get param set names from the collection
@@ -718,14 +723,16 @@ class ShapeTab(QWidget):
                 except Exception:
                     pass  # Collection not accessible
 
-            # Restore previous selection if it exists
-            if current_text:
+            # Restore previous selection
+            if current_text and current_text != _SUBDIV_NONE:
                 index = self.subdiv_set_combo.findText(current_text)
                 if index >= 0:
                     self.subdiv_set_combo.setCurrentIndex(index)
                 else:
                     # If not found, set as custom text
                     self.subdiv_set_combo.setCurrentText(current_text)
+            else:
+                self.subdiv_set_combo.setCurrentIndex(0)   # select "(none)"
         finally:
             self._updating = False
 
