@@ -16,6 +16,7 @@ import org.brogan.ui.CubicCurveFrame;
 public class Main {
 	
 	public static void main(String[] args) {
+		BezierErrorLogger.install();
 		String saveDir = null;
 		String loadFile = null;
 		String name = null;

@@ -1134,18 +1134,12 @@ public class BezierDrawPanel extends JPanel implements Runnable, MouseListener, 
 				Point2D.Double pos = points[p].getPos();
 				points[p].setPos(new Point2D.Double(pos.x + dx, pos.y + dy));
 				points[p].setOrigPosToPos();
-				// RELATIONAL: propagate only to coincident weld-linked partners.
-				// Stale links (endpoints diverged >5px from a prior DISCRETE resize)
-				// are skipped so unselected polygons are not accidentally dragged.
+				// RELATIONAL: propagate movement to all weld-linked partners.
 				if (relational) {
 					for (CubicPoint linked : wr.getLinked(points[p])) {
 						if (!moved.add(linked)) continue;
-						Point2D.Double linkedPos = linked.getPos();
-						double gap = Math.sqrt(
-							(pos.x - linkedPos.x) * (pos.x - linkedPos.x) +
-							(pos.y - linkedPos.y) * (pos.y - linkedPos.y));
-						if (gap > 5.0) continue; // stale link -- positions diverged, skip
-						linked.setPos(new Point2D.Double(linkedPos.x + dx, linkedPos.y + dy));
+						Point2D.Double lpos = linked.getPos();
+						linked.setPos(new Point2D.Double(lpos.x + dx, lpos.y + dy));
 						linked.setOrigPosToPos();
 					}
 				}
@@ -2905,23 +2899,30 @@ public class BezierDrawPanel extends JPanel implements Runnable, MouseListener, 
 	 * Already-welded pairs (both anchor links already registered) are skipped.
 	 */
 	public void weldAllAdjacent(double thresholdPx) {
-		takeUndoSnapshot();
-		WeldRegistry wr = polygonManager.getWeldRegistry();
-		int tot = polygonManager.getPolygonCount();
-		for (int i = 0; i < tot; i++) {
-			CubicCurveManager mi = polygonManager.getManager(i);
-			CubicCurve[] ci = mi.getCurves().getArrayofCubicCurves();
-			for (int j = i + 1; j < tot; j++) {
-				CubicCurveManager mj = polygonManager.getManager(j);
-				CubicCurve[] cj = mj.getCurves().getArrayofCubicCurves();
-				for (CubicCurve ei : ci) {
-					for (CubicCurve ej : cj) {
-						tryAutoWeld(ei, ej, wr, thresholdPx);
+		try {
+			takeUndoSnapshot();
+			WeldRegistry wr = polygonManager.getWeldRegistry();
+			int tot = polygonManager.getPolygonCount();
+			org.brogan.scaffold.BezierErrorLogger.log(
+				"weldAllAdjacent: " + tot + " polygons, threshold=" + thresholdPx);
+			for (int i = 0; i < tot; i++) {
+				CubicCurveManager mi = polygonManager.getManager(i);
+				CubicCurve[] ci = mi.getCurves().getArrayofCubicCurves();
+				for (int j = i + 1; j < tot; j++) {
+					CubicCurveManager mj = polygonManager.getManager(j);
+					CubicCurve[] cj = mj.getCurves().getArrayofCubicCurves();
+					for (CubicCurve ei : ci) {
+						for (CubicCurve ej : cj) {
+							tryAutoWeld(ei, ej, wr, thresholdPx);
+						}
 					}
 				}
 			}
+			org.brogan.scaffold.BezierErrorLogger.log("weldAllAdjacent: complete");
+			repaint();
+		} catch (Exception e) {
+			org.brogan.scaffold.BezierErrorLogger.log("weldAllAdjacent failed", e);
 		}
-		repaint();
 	}
 
 	/**
