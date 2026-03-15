@@ -54,12 +54,14 @@ class FileSource:
     folder: str = "polygonSet"
     filename: str = ""
     polygon_type: PolygonType = PolygonType.SPLINE_POLYGON
+    filter_type: str = "all"   # "all" | "closed_only"
 
     def copy(self) -> 'FileSource':
         return FileSource(
             folder=self.folder,
             filename=self.filename,
-            polygon_type=self.polygon_type
+            polygon_type=self.polygon_type,
+            filter_type=self.filter_type
         )
 
 

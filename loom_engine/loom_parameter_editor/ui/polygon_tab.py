@@ -49,7 +49,7 @@ class PolygonPreviewWidget(QWidget):
         self._dot_positions = []
         self.update()
 
-    def load_polygon_set(self, filepath: str) -> None:
+    def load_polygon_set(self, filepath: str, filter_open: bool = False) -> None:
         self._anchor_polys = []
         self._ctrl_polys = []
         self._closed_flags = []
@@ -64,6 +64,13 @@ class PolygonPreviewWidget(QWidget):
             self._parse(root)
         except Exception:
             pass
+        if filter_open:
+            filtered = [(a, c, cl) for a, c, cl in
+                        zip(self._anchor_polys, self._ctrl_polys, self._closed_flags) if cl]
+            if filtered:
+                self._anchor_polys, self._ctrl_polys, self._closed_flags = map(list, zip(*filtered))
+            else:
+                self._anchor_polys, self._ctrl_polys, self._closed_flags = [], [], []
         self.update()
 
     # ── XML parsing ───────────────────────────────────────────────────────
@@ -419,6 +426,11 @@ class PolygonTab(QWidget):
         self.poly_type_combo.currentTextChanged.connect(self._on_modified)
         form.addRow("Polygon Type:", self.poly_type_combo)
 
+        self._include_open_curves_check = QCheckBox("Include open curves")
+        self._include_open_curves_check.setChecked(True)
+        self._include_open_curves_check.stateChanged.connect(self._on_include_open_changed)
+        form.addRow("", self._include_open_curves_check)
+
         layout.addWidget(group)
 
         # Preview panel
@@ -585,6 +597,7 @@ class PolygonTab(QWidget):
             self.folder_edit.clear()
             self.filename_combo.setCurrentText("")
             self.poly_type_combo.setCurrentIndex(0)
+            self._include_open_curves_check.setChecked(True)
             self.total_points_spin.setValue(3)
             self.internal_radius_spin.setValue(1.0)
             self.offset_spin.setValue(0.0)
@@ -611,6 +624,9 @@ class PolygonTab(QWidget):
                     self.folder_edit.setText(polygon_set.file_source.folder)
                     self.filename_combo.setCurrentText(polygon_set.file_source.filename)
                     self.poly_type_combo.setCurrentText(polygon_set.file_source.polygon_type.value)
+                    self._include_open_curves_check.setChecked(
+                        polygon_set.file_source.filter_type == "all"
+                    )
             else:
                 self.source_type_combo.setCurrentIndex(1)
                 self.source_stack.setCurrentIndex(1)
@@ -648,6 +664,9 @@ class PolygonTab(QWidget):
                 self._current_set.file_source.polygon_type = PolygonType(self.poly_type_combo.currentText())
             except ValueError:
                 self._current_set.file_source.polygon_type = PolygonType.SPLINE_POLYGON
+            self._current_set.file_source.filter_type = (
+                "all" if self._include_open_curves_check.isChecked() else "closed_only"
+            )
         else:  # Regular
             self._current_set.source_type = PolygonSourceType.REGULAR
             if self._current_set.regular_params is None:
@@ -688,6 +707,14 @@ class PolygonTab(QWidget):
         if self._updating:
             return
         self._save_ui_to_set()
+        self.modified.emit()
+
+    def _on_include_open_changed(self):
+        """Handle Include open curves checkbox change."""
+        if self._updating:
+            return
+        self._save_ui_to_set()
+        self._update_preview()
         self.modified.emit()
 
     def _create_regular_polygon(self):
@@ -843,7 +870,11 @@ class PolygonTab(QWidget):
         fname = self.filename_combo.currentText() if hasattr(self, 'filename_combo') else ""
         if fname and self._polygon_sets_dir:
             fpath = os.path.join(self._polygon_sets_dir, fname)
-            self.preview_widget.load_polygon_set(fpath)
+            filter_open = (
+                hasattr(self, '_include_open_curves_check')
+                and not self._include_open_curves_check.isChecked()
+            )
+            self.preview_widget.load_polygon_set(fpath, filter_open=filter_open)
         else:
             self.preview_widget.clear()
 

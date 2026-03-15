@@ -102,10 +102,13 @@ class PolygonConfigIO:
         except ValueError:
             polygon_type = PolygonType.SPLINE_POLYGON
 
+        filter_type = elem.get("filterType", "all")
+
         return FileSource(
             folder=folder,
             filename=filename,
-            polygon_type=polygon_type
+            polygon_type=polygon_type,
+            filter_type=filter_type
         )
 
     @staticmethod
@@ -145,10 +148,14 @@ class PolygonConfigIO:
     def _build_polygon_set(elem: etree._Element, polygon_set: PolygonSetDef) -> None:
         """Build polygon set XML elements."""
         if polygon_set.source_type == PolygonSourceType.FILE and polygon_set.file_source:
-            source_elem = etree.SubElement(elem, "Source", type="file")
-            PolygonConfigIO._add_element(source_elem, "Folder", polygon_set.file_source.folder)
-            PolygonConfigIO._add_element(source_elem, "Filename", polygon_set.file_source.filename)
-            PolygonConfigIO._add_element(source_elem, "PolygonType", polygon_set.file_source.polygon_type.value)
+            fs = polygon_set.file_source
+            src_attribs = {"type": "file"}
+            if fs.filter_type and fs.filter_type != "all":
+                src_attribs["filterType"] = fs.filter_type
+            source_elem = etree.SubElement(elem, "Source", **src_attribs)
+            PolygonConfigIO._add_element(source_elem, "Folder", fs.folder)
+            PolygonConfigIO._add_element(source_elem, "Filename", fs.filename)
+            PolygonConfigIO._add_element(source_elem, "PolygonType", fs.polygon_type.value)
 
         elif polygon_set.source_type == PolygonSourceType.REGULAR and polygon_set.regular_params:
             source_elem = etree.SubElement(elem, "Source", type="regular")

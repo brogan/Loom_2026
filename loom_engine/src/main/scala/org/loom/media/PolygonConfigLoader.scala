@@ -94,6 +94,10 @@ object PolygonConfigLoader {
     val folder = getTextOrDefault(sourceNode, "Folder", "polygonSet")
     val filename = getTextOrDefault(sourceNode, "Filename", "")
     val polygonTypeStr = getTextOrDefault(sourceNode, "PolygonType", "SPLINE_POLYGON")
+    val filterType = (sourceNode \ "@filterType").text match {
+      case s if s.nonEmpty => s
+      case _               => "all"
+    }
 
     if (filename.isEmpty) {
       println(s"Warning: PolygonSet '$name' has empty filename, skipping")
@@ -111,7 +115,7 @@ object PolygonConfigLoader {
     try {
       val polygons: List[Polygon2D] = polygonTypeStr match {
         case "LINE_POLYGON" => loadLinePolygonsFromFile(filePath)
-        case "SPLINE_POLYGON" | _ => loadSplinePolygonsFromFile(filePath)
+        case "SPLINE_POLYGON" | _ => loadSplinePolygonsFromFile(filePath, filterType)
       }
 
       PolygonSet(polygons, name)
@@ -122,7 +126,7 @@ object PolygonConfigLoader {
     }
   }
 
-  def loadSplinePolygonsFromFile(filePath: String): List[Polygon2D] = {
+  def loadSplinePolygonsFromFile(filePath: String, filterType: String = "all"): List[Polygon2D] = {
     import scala.collection.mutable.ListBuffer
 
     val polys = ListBuffer[Polygon2D]()
@@ -132,6 +136,9 @@ object PolygonConfigLoader {
 
     for (polygon <- polygons) {
       val isClosedAttr = (polygon \ "@isClosed").text
+      if (filterType == "closed_only" && isClosedAttr == "false") {
+        // skip open polygons
+      } else {
       val polyType = if (isClosedAttr == "false") PolygonType.OPEN_SPLINE_POLYGON else PolygonType.SPLINE_POLYGON
 
       val curves: NodeSeq = (polygon \\ "curve")
@@ -148,6 +155,7 @@ object PolygonConfigLoader {
       }
 
       polys += Polygon2D(pts.toList, polyType)
+      } // end else (not filtered out)
     }
 
     polys.toList
