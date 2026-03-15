@@ -416,11 +416,6 @@ public class BezierDrawPanel extends JPanel implements Runnable, MouseListener, 
 			if (!dragSnapshotTaken) {
 				takeUndoSnapshot();
 				dragSnapshotTaken = true;
-				// DISCRETE mode: break weld links to non-selected polygons so that
-				// moving this polygon does not corrupt other polygons via stale links.
-				if (polySubMode == SelectionSubMode.DISCRETE) {
-					breakCrossSelectionWelds();
-				}
 			}
 			polygonMouseMoved = true;  // suppress deferred click-through selection
 			Point2D.Double sp = scaleMouse(mE);
@@ -1139,16 +1134,22 @@ public class BezierDrawPanel extends JPanel implements Runnable, MouseListener, 
 				Point2D.Double pos = points[p].getPos();
 				points[p].setPos(new Point2D.Double(pos.x + dx, pos.y + dy));
 				points[p].setOrigPosToPos();
-				// RELATIONAL: propagate to weld-linked partners in other polygons
+				// RELATIONAL: propagate only to coincident weld-linked partners.
+				// Stale links (endpoints diverged >5px from a prior DISCRETE resize)
+				// are skipped so unselected polygons are not accidentally dragged.
 				if (relational) {
 					for (CubicPoint linked : wr.getLinked(points[p])) {
 						if (!moved.add(linked)) continue;
-						Point2D.Double lpos = linked.getPos();
-						linked.setPos(new Point2D.Double(lpos.x + dx, lpos.y + dy));
+						Point2D.Double linkedPos = linked.getPos();
+						double gap = Math.sqrt(
+							(pos.x - linkedPos.x) * (pos.x - linkedPos.x) +
+							(pos.y - linkedPos.y) * (pos.y - linkedPos.y));
+						if (gap > 5.0) continue; // stale link -- positions diverged, skip
+						linked.setPos(new Point2D.Double(linkedPos.x + dx, linkedPos.y + dy));
 						linked.setOrigPosToPos();
 					}
 				}
-				// DISCRETE: weld partners are left where they are; weld may break
+				// DISCRETE: weld partners stay put; links persist for future use
 			}
 		}
 		curveManager.setCurrentBezierPosition(curveManager.getAverageXY());
@@ -2172,11 +2173,16 @@ public class BezierDrawPanel extends JPanel implements Runnable, MouseListener, 
 		CubicPoint[] p0 = e0.manager.getCurves().getCurve(e0.curveIndex).getPoints();
 		CubicPoint[] p1 = e1.manager.getCurves().getCurve(e1.curveIndex).getPoints();
 		// Auto-detect direction: which pairing of anchor pairs minimises total distance?
+		// When distances are nearly equal (symmetric / coincident edges), use the dot
+		// product sign: anti-parallel edges (dot<0) should use the reversed pairing.
+		double dx0 = p0[3].getPos().x - p0[0].getPos().x, dy0 = p0[3].getPos().y - p0[0].getPos().y;
+		double dx1 = p1[3].getPos().x - p1[0].getPos().x, dy1 = p1[3].getPos().y - p1[0].getPos().y;
+		double dot = dx0*dx1 + dy0*dy1;
 		double distSame    = Formulas.hypotenuse(p0[0].getPos(), p1[0].getPos())
 		                   + Formulas.hypotenuse(p0[3].getPos(), p1[3].getPos());
 		double distReverse = Formulas.hypotenuse(p0[0].getPos(), p1[3].getPos())
 		                   + Formulas.hypotenuse(p0[3].getPos(), p1[0].getPos());
-		boolean reversed = distReverse < distSame;
+		boolean reversed = (Math.abs(distSame - distReverse) < 1.0) ? (dot < 0) : (distReverse < distSame);
 		CubicPoint pa0 = p0[0], pa3 = p0[3];
 		CubicPoint pb0 = reversed ? p1[3] : p1[0];
 		CubicPoint pb3 = reversed ? p1[0] : p1[3];
@@ -2892,6 +2898,71 @@ public class BezierDrawPanel extends JPanel implements Runnable, MouseListener, 
 		}
 		return false;
 	}
+	/**
+	 * Weld all edge pairs across different polygons whose endpoints are within
+	 * {@code thresholdPx} pixels of each other.  Snaps matched endpoints to their
+	 * midpoint and registers weld links, so the grid moves as a unit in RELATIONAL mode.
+	 * Already-welded pairs (both anchor links already registered) are skipped.
+	 */
+	public void weldAllAdjacent(double thresholdPx) {
+		takeUndoSnapshot();
+		WeldRegistry wr = polygonManager.getWeldRegistry();
+		int tot = polygonManager.getPolygonCount();
+		for (int i = 0; i < tot; i++) {
+			CubicCurveManager mi = polygonManager.getManager(i);
+			CubicCurve[] ci = mi.getCurves().getArrayofCubicCurves();
+			for (int j = i + 1; j < tot; j++) {
+				CubicCurveManager mj = polygonManager.getManager(j);
+				CubicCurve[] cj = mj.getCurves().getArrayofCubicCurves();
+				for (CubicCurve ei : ci) {
+					for (CubicCurve ej : cj) {
+						tryAutoWeld(ei, ej, wr, thresholdPx);
+					}
+				}
+			}
+		}
+		repaint();
+	}
+
+	/**
+	 * If edges e0 and e1 have both endpoint pairs within thresholdPx of each other,
+	 * snap them to their midpoints and register weld links.
+	 */
+	private void tryAutoWeld(CubicCurve e0, CubicCurve e1, WeldRegistry wr, double threshold) {
+		CubicPoint[] p0 = e0.getPoints();
+		CubicPoint[] p1 = e1.getPoints();
+		if (p0[0]==null||p0[3]==null||p1[0]==null||p1[3]==null) return;
+		double distSame    = Formulas.hypotenuse(p0[0].getPos(), p1[0].getPos())
+		                   + Formulas.hypotenuse(p0[3].getPos(), p1[3].getPos());
+		double distReverse = Formulas.hypotenuse(p0[0].getPos(), p1[3].getPos())
+		                   + Formulas.hypotenuse(p0[3].getPos(), p1[0].getPos());
+		if (Math.min(distSame, distReverse) > threshold * 2) return;
+		// Determine direction (same tiebreaker as weldSelectedEdges)
+		double adx0 = p0[3].getPos().x - p0[0].getPos().x, ady0 = p0[3].getPos().y - p0[0].getPos().y;
+		double adx1 = p1[3].getPos().x - p1[0].getPos().x, ady1 = p1[3].getPos().y - p1[0].getPos().y;
+		double adot = adx0*adx1 + ady0*ady1;
+		boolean reversed = (Math.abs(distSame - distReverse) < 1.0) ? (adot < 0) : (distReverse < distSame);
+		CubicPoint pa0=p0[0], pa3=p0[3];
+		CubicPoint pb0=reversed?p1[3]:p1[0], pb3=reversed?p1[0]:p1[3];
+		// Skip if both anchor pairs already welded
+		if (wr.getLinked(pa0).contains(pb0) && wr.getLinked(pa3).contains(pb3)) return;
+		// Snap anchors
+		HashSet<CubicPoint> processed = new HashSet<>();
+		Point2D.Double m0 = new Point2D.Double((pa0.getPos().x+pb0.getPos().x)/2, (pa0.getPos().y+pb0.getPos().y)/2);
+		Point2D.Double m3 = new Point2D.Double((pa3.getPos().x+pb3.getPos().x)/2, (pa3.getPos().y+pb3.getPos().y)/2);
+		snapPointToPos(pa0, m0, wr, processed); snapPointToPos(pb0, m0, wr, processed);
+		snapPointToPos(pa3, m3, wr, processed); snapPointToPos(pb3, m3, wr, processed);
+		// Snap control points
+		CubicPoint pc0n=p0[1], pc0f=p0[2];
+		CubicPoint pc1n=reversed?p1[2]:p1[1], pc1f=reversed?p1[1]:p1[2];
+		Point2D.Double cm0 = new Point2D.Double((pc0n.getPos().x+pc1n.getPos().x)/2, (pc0n.getPos().y+pc1n.getPos().y)/2);
+		Point2D.Double cm3 = new Point2D.Double((pc0f.getPos().x+pc1f.getPos().x)/2, (pc0f.getPos().y+pc1f.getPos().y)/2);
+		snapPointToPos(pc0n, cm0, wr, processed); snapPointToPos(pc1n, cm0, wr, processed);
+		snapPointToPos(pc0f, cm3, wr, processed); snapPointToPos(pc1f, cm3, wr, processed);
+		// Register links
+		wr.registerWeld(pa0, pb0); wr.registerWeld(pa3, pb3);
+		wr.registerWeld(pc0n, pc1n); wr.registerWeld(pc0f, pc1f);
+	}
 
 	private void checkDragWeld() {
 		clearPendingWeld();
@@ -2962,11 +3033,14 @@ public class BezierDrawPanel extends JPanel implements Runnable, MouseListener, 
 		WeldRegistry wr = polygonManager.getWeldRegistry();
 		CubicPoint[] p0 = e0.manager.getCurves().getCurve(e0.curveIndex).getPoints();
 		CubicPoint[] p1 = e1.manager.getCurves().getCurve(e1.curveIndex).getPoints();
+		double edx0 = p0[3].getPos().x - p0[0].getPos().x, edy0 = p0[3].getPos().y - p0[0].getPos().y;
+		double edx1 = p1[3].getPos().x - p1[0].getPos().x, edy1 = p1[3].getPos().y - p1[0].getPos().y;
+		double edot = edx0*edx1 + edy0*edy1;
 		double distSame    = Formulas.hypotenuse(p0[0].getPos(), p1[0].getPos())
 		                   + Formulas.hypotenuse(p0[3].getPos(), p1[3].getPos());
 		double distReverse = Formulas.hypotenuse(p0[0].getPos(), p1[3].getPos())
 		                   + Formulas.hypotenuse(p0[3].getPos(), p1[0].getPos());
-		boolean reversed = distReverse < distSame;
+		boolean reversed = (Math.abs(distSame - distReverse) < 1.0) ? (edot < 0) : (distReverse < distSame);
 		CubicPoint pa0=p0[0], pa3=p0[3];
 		CubicPoint pb0=reversed?p1[3]:p1[0], pb3=reversed?p1[0]:p1[3];
 		CubicPoint pc0n=p0[1], pc0f=p0[2];

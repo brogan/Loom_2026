@@ -31,6 +31,7 @@ public class BezierToolBarPanel extends JPanel {
 
 	// Weld — toggle controls auto-weld during polygon drag; also performs manual edge weld
 	private JToggleButton weld;
+	private JButton weldAll;
 
 	public BezierToolBarPanel(BezierDrawPanel bez) {
 		bezier = bez;
@@ -292,6 +293,15 @@ public class BezierToolBarPanel extends JPanel {
 			}
 		});
 		toolBar.add(weld);
+
+		weldAll = new JButton();
+		initButton(weldAll, "Weld All Adjacent — snap and link all edge pairs within 5 px", "weldAll");
+		weldAll.addActionListener(new ActionListener() {
+			public void actionPerformed(ActionEvent e) {
+				bezier.weldAllAdjacent(5.0);
+			}
+		});
+		toolBar.add(weldAll);
 
 		toolBar.addSeparator();
 
