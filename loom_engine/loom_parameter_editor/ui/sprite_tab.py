@@ -43,8 +43,9 @@ class SpriteTab(QWidget):
         self._renderer_library = None  # Reference to renderer library for dropdowns
         self._project_dir = None  # Project directory for morph target file ops
         self._bezier_process = None  # QProcess for Bezier editor
-        self._edit_morph_path = None  # Path of morph target being edited in Bezier
+        self._edit_morph_path = None          # Path of morph target being edited in Bezier
         self._edit_morph_bezier_saved = None  # Actual path where Bezier saves the file
+        self._edit_morph_bezier_name = None   # Clean base name passed to Bezier (for cleanup)
 
         self._setup_ui()
         self._refresh_tree()
@@ -1684,15 +1685,19 @@ class SpriteTab(QWidget):
         base_name, _ = self._strip_morph_suffix(os.path.basename(full_path))
         bezier_name = self._to_bezier_filename(base_name)
 
+        self._edit_morph_bezier_name = bezier_name
+
         # Predict where Bezier actually writes the file:
-        # - polygonSet: honours --save-dir → {morph_dir}/{bezier_name}.xml
+        # - polygonSet: saves a layer bundle to --save-dir; data is in {bezier_name}_layer_1.xml
+        #   (Bezier always uses the layer-bundle format: manifest + per-layer file)
         # - openCurveSet: ignores --save-dir, hardcodes {parent(morph_dir)}/curveSets/
         if suffix == 'curve.xml':
             project_dir = os.path.dirname(morph_dir)
             self._edit_morph_bezier_saved = os.path.join(
                 project_dir, 'curveSets', bezier_name + '.xml')
         else:
-            self._edit_morph_bezier_saved = os.path.join(morph_dir, bezier_name + '.xml')
+            self._edit_morph_bezier_saved = os.path.join(
+                morph_dir, bezier_name + '_layer_1.xml')
 
         args = ["-Xmx4G", "-jar", BEZIER_JAR,
                 "--save-dir", morph_dir,
@@ -1724,20 +1729,23 @@ class SpriteTab(QWidget):
         if target and os.path.isfile(target) and not target.endswith('.curve.xml'):
             self._strip_xml_headers(target)
 
-        # Clean up junk .layers.xml / _layer_N.xml files Bezier writes to morphTargets/
-        # (only relevant for curve type — Bezier always writes a polygon layer bundle to --save-dir)
-        if target and target.endswith('.curve.xml') and bezier_saved:
+        # Clean up junk files Bezier always writes to morphTargets/:
+        #   poly:  {bezier_name}.layers.xml  (manifest; _layer_1.xml was moved above)
+        #   curve: {bezier_name}.layers.xml + {bezier_name}_layer_N.xml files
+        if target and self._edit_morph_bezier_name:
+            bname = self._edit_morph_bezier_name
             morph_dir = os.path.dirname(target)
-            bname = os.path.splitext(os.path.basename(bezier_saved))[0]  # e.g. "s_mt_1"
             junk_candidates = [os.path.join(morph_dir, bname + '.layers.xml')]
-            try:
-                junk_candidates += [
-                    os.path.join(morph_dir, f)
-                    for f in os.listdir(morph_dir)
-                    if f.startswith(bname + '_layer_') and f.endswith('.xml')
-                ]
-            except OSError:
-                pass
+            if target.endswith('.curve.xml'):
+                # Curve type: _layer_N.xml files are also junk (data came from curveSets/)
+                try:
+                    junk_candidates += [
+                        os.path.join(morph_dir, f)
+                        for f in os.listdir(morph_dir)
+                        if f.startswith(bname + '_layer_') and f.endswith('.xml')
+                    ]
+                except OSError:
+                    pass
             for junk in junk_candidates:
                 if os.path.isfile(junk):
                     try:
@@ -1747,6 +1755,7 @@ class SpriteTab(QWidget):
 
         self._edit_morph_path = None
         self._edit_morph_bezier_saved = None
+        self._edit_morph_bezier_name = None
 
     def _add_xml_headers(self, filepath: str) -> None:
         """Add XML declaration and DOCTYPE lines required by Bezier's XOM parser.
