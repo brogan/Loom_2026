@@ -1234,7 +1234,7 @@ class SpriteTab(QWidget):
                 easing_widget = self.kf_table.cellWidget(row, easing_col)
                 easing = easing_widget.currentText() if easing_widget else "LINEAR"
 
-                morph_amount = max(0.0, min(1.0, get_float(6, 0.0))) if has_morph_col else 0.0
+                morph_amount = max(0.0, get_float(6, 0.0)) if has_morph_col else 0.0
 
                 kf = Keyframe(
                     draw_cycle=draw_cycle,
@@ -1715,6 +1715,27 @@ class SpriteTab(QWidget):
         # Strip DOCTYPE/xml-declaration headers (only present on polygon set files)
         if target and os.path.isfile(target) and not target.endswith('.curve.xml'):
             self._strip_xml_headers(target)
+
+        # Clean up junk .layers.xml / _layer_N.xml files Bezier writes to morphTargets/
+        # (only relevant for curve type — Bezier always writes a polygon layer bundle to --save-dir)
+        if target and target.endswith('.curve.xml') and bezier_saved:
+            morph_dir = os.path.dirname(target)
+            bname = os.path.splitext(os.path.basename(bezier_saved))[0]  # e.g. "s_mt_1"
+            junk_candidates = [os.path.join(morph_dir, bname + '.layers.xml')]
+            try:
+                junk_candidates += [
+                    os.path.join(morph_dir, f)
+                    for f in os.listdir(morph_dir)
+                    if f.startswith(bname + '_layer_') and f.endswith('.xml')
+                ]
+            except OSError:
+                pass
+            for junk in junk_candidates:
+                if os.path.isfile(junk):
+                    try:
+                        os.remove(junk)
+                    except Exception as e:
+                        print(f"Warning: could not remove {junk}: {e}")
 
         self._edit_morph_path = None
         self._edit_morph_bezier_saved = None
