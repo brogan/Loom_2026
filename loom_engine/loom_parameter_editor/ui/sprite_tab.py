@@ -468,11 +468,35 @@ class SpriteTab(QWidget):
         )
         morph_outer.addWidget(self.morph_list)
 
-        mt_btn_layout = QHBoxLayout()
-        self.add_morph_btn = QPushButton("Add")
-        self.add_morph_btn.setToolTip("Add a morph target file to the chain")
+        # Row 1: creation buttons
+        mt_create_layout = QHBoxLayout()
+        self.create_morph_btn = QPushButton("Create")
+        self.create_morph_btn.setToolTip(
+            "Create the next morph target.\n"
+            "If the chain is non-empty: copies the last target as the new starting point.\n"
+            "If the chain is empty: opens a file picker to choose the base shape."
+        )
+        self.create_morph_btn.clicked.connect(self._create_morph_default)
+        mt_create_layout.addWidget(self.create_morph_btn)
+
+        self.create_morph_from_base_btn = QPushButton("From Base")
+        self.create_morph_from_base_btn.setToolTip(
+            "Create a morph target by copying the base shape file.\n"
+            "Opens a file picker in polygonSets/ or curveSets/."
+        )
+        self.create_morph_from_base_btn.clicked.connect(self._create_from_base)
+        mt_create_layout.addWidget(self.create_morph_from_base_btn)
+
+        self.add_morph_btn = QPushButton("Add File")
+        self.add_morph_btn.setToolTip("Reference an existing file in morphTargets/ without creating a copy")
         self.add_morph_btn.clicked.connect(self._add_morph_target)
-        mt_btn_layout.addWidget(self.add_morph_btn)
+        mt_create_layout.addWidget(self.add_morph_btn)
+
+        mt_create_layout.addStretch()
+        morph_outer.addLayout(mt_create_layout)
+
+        # Row 2: management buttons
+        mt_btn_layout = QHBoxLayout()
 
         self.remove_morph_btn = QPushButton("Remove")
         self.remove_morph_btn.setToolTip("Remove the selected morph target from the chain")
@@ -1473,14 +1497,121 @@ class SpriteTab(QWidget):
                 return candidate_xml
         return ""
 
+    # === Morph target creation ===
+
+    def _get_base_shape_source_type(self) -> str:
+        """Return 'curve' if the current sprite's shape is an open curve set, else 'poly'."""
+        if self._current_sprite is None or self._shape_library is None:
+            return 'poly'
+        sprite = self._current_sprite
+        shape_set = self._shape_library.get(sprite.shape_set_name)
+        if shape_set is None:
+            return 'poly'
+        for sd in shape_set.shapes:
+            if sd.name == sprite.shape_name:
+                from models.shape_config import ShapeSourceType
+                if sd.source_type == ShapeSourceType.OPEN_CURVE_SET:
+                    return 'curve'
+                return 'poly'
+        return 'poly'
+
+    def _infer_base_from_morph_filename(self, filename: str) -> str:
+        """Strip _mt_N.ext suffix to recover the base name."""
+        import re
+        m = re.match(r'^(.+)_mt_\d+\.(poly|curve)\.xml$', filename)
+        if m:
+            return m.group(1)
+        for ext in ('.poly.xml', '.curve.xml', '.xml'):
+            if filename.lower().endswith(ext):
+                return filename[:-len(ext)]
+        return filename
+
+    def _next_morph_filename(self, base: str, suffix: str, morph_dir: str) -> str:
+        """Return the next available {base}_mt_N.{suffix} filename in morph_dir."""
+        counter = 1
+        while True:
+            name = f"{base}_mt_{counter}.{suffix}"
+            if not os.path.exists(os.path.join(morph_dir, name)):
+                return name
+            counter += 1
+
+    def _create_morph_default(self) -> None:
+        """Create from previous if chain non-empty, else from base."""
+        if self.morph_list.count() > 0:
+            self._create_from_previous()
+        else:
+            self._create_from_base()
+
+    def _create_from_previous(self) -> None:
+        """Copy the last morph target in the chain as the new starting point."""
+        morph_dir = self._get_morph_targets_dir()
+        if not morph_dir:
+            QMessageBox.warning(self, "No Project", "No project directory set.")
+            return
+
+        last = self.morph_list.item(self.morph_list.count() - 1).text()
+        filename = last[:last.rindex("  [")] if "  [" in last and last.endswith("]") else last
+        source_path = os.path.join(morph_dir, filename)
+
+        if not os.path.isfile(source_path):
+            QMessageBox.warning(self, "File Not Found",
+                                f"Previous morph target not found:\n{source_path}")
+            return
+
+        suffix = 'curve.xml' if filename.endswith('.curve.xml') else 'poly.xml'
+        self._copy_and_launch(source_path, suffix, morph_dir)
+
+    def _create_from_base(self) -> None:
+        """Copy the base shape (user picks file) as a new morph target."""
+        morph_dir = self._get_morph_targets_dir()
+        if not morph_dir:
+            QMessageBox.warning(self, "No Project", "No project directory set.")
+            return
+
+        source_type = self._get_base_shape_source_type()
+        if source_type == 'curve':
+            start_dir = os.path.join(self._project_dir, "curveSets") if self._project_dir else ""
+            suffix = 'curve.xml'
+            file_filter = "Open Curve Sets (*.xml)"
+        else:
+            start_dir = os.path.join(self._project_dir, "polygonSets") if self._project_dir else ""
+            suffix = 'poly.xml'
+            file_filter = "Polygon Sets (*.xml)"
+
+        path, _ = QFileDialog.getOpenFileName(
+            self, "Select Base Shape File", start_dir, file_filter
+        )
+        if not path:
+            return
+
+        os.makedirs(morph_dir, exist_ok=True)
+        self._copy_and_launch(path, suffix, morph_dir)
+
+    def _copy_and_launch(self, source_path: str, suffix: str, morph_dir: str) -> None:
+        """Copy source_path to morphTargets/ with the next _mt_N name, add to list, launch Bezier."""
+        base_name = self._infer_base_from_morph_filename(os.path.basename(source_path))
+        target_name = self._next_morph_filename(base_name, suffix, morph_dir)
+        target_path = os.path.join(morph_dir, target_name)
+
+        try:
+            shutil.copy2(source_path, target_path)
+        except Exception as e:
+            QMessageBox.critical(self, "Error", f"Failed to copy file:\n{e}")
+            return
+
+        self.morph_list.addItem(target_name)
+        self.morph_list.setCurrentRow(self.morph_list.count() - 1)
+        self._on_modified()
+
+        self._launch_bezier_for_morph(target_path, morph_dir, suffix)
+
     # === Bezier Morph Target Editing ===
 
     def _edit_morph_target(self) -> None:
         """Launch Bezier to edit the selected morph target file."""
         morph_dir = self._get_morph_targets_dir()
         if not morph_dir or not os.path.isdir(morph_dir):
-            QMessageBox.warning(self, "No Project",
-                                "Please save the project first.")
+            QMessageBox.warning(self, "No Project", "Please save the project first.")
             return
 
         current_item = self.morph_list.currentItem()
@@ -1489,7 +1620,6 @@ class SpriteTab(QWidget):
                                 "Please select a morph target in the list first.")
             return
 
-        # Extract just the filename part (strip optional "[name]" display suffix)
         text = current_item.text()
         target_file = text[:text.rindex("  [")] if "  [" in text and text.endswith("]") else text
 
@@ -1499,6 +1629,11 @@ class SpriteTab(QWidget):
                                 f"Morph target file not found:\n{full_path}")
             return
 
+        suffix = 'curve.xml' if target_file.endswith('.curve.xml') else 'poly.xml'
+        self._launch_bezier_for_morph(full_path, morph_dir, suffix)
+
+    def _launch_bezier_for_morph(self, full_path: str, morph_dir: str, suffix: str) -> None:
+        """Shared Bezier launch for both create and edit flows."""
         if not os.path.isfile(BEZIER_JAR):
             QMessageBox.warning(self, "Bezier Not Found",
                                 f"Bezier JAR not found at:\n{BEZIER_JAR}")
@@ -1506,32 +1641,35 @@ class SpriteTab(QWidget):
 
         if (self._bezier_process is not None
                 and self._bezier_process.state() != QProcess.ProcessState.NotRunning):
-            QMessageBox.information(self, "Bezier Running",
-                                    "Bezier is already running.")
+            QMessageBox.information(self, "Bezier Running", "Bezier is already running.")
             return
 
         self._edit_morph_path = full_path
 
-        # Add XML declaration + DOCTYPE that Bezier's XOM parser requires
-        self._add_xml_headers(full_path)
+        # Polygon sets need DOCTYPE for Bezier's XOM validating parser;
+        # open curve sets use a non-validating parser so no headers needed.
+        if suffix != 'curve.xml':
+            self._add_xml_headers(full_path)
+
+        # Strip .xml → Bezier appends it on save, preserving .poly or .curve in the name
+        morph_name = os.path.basename(full_path)
+        if morph_name.lower().endswith('.xml'):
+            morph_name = morph_name[:-4]
+
+        args = ["-Xmx4G", "-jar", BEZIER_JAR,
+                "--save-dir", morph_dir,
+                "--load", full_path,
+                "--name", morph_name]
+        if suffix != 'curve.xml':
+            args.append("--point-select")
 
         self._bezier_process = QProcess(self)
         self._bezier_process.setWorkingDirectory(BEZIER_WORKING_DIR)
         self._bezier_process.finished.connect(self._on_edit_morph_bezier_finished)
-        morph_name = target_file
-        if morph_name.lower().endswith(".xml"):
-            morph_name = morph_name[:-4]
-
-        self._bezier_process.start("java", [
-            "-Xmx4G", "-jar", BEZIER_JAR,
-            "--save-dir", morph_dir,
-            "--load", full_path,
-            "--name", morph_name,
-            "--point-select"
-        ])
+        self._bezier_process.start("java", args)
 
     def _on_edit_morph_bezier_finished(self, exit_code, exit_status) -> None:
-        """Handle Bezier process finishing after morph target edit."""
+        """Handle Bezier process finishing after morph target create/edit."""
         if self._edit_morph_path and os.path.isfile(self._edit_morph_path):
             self._strip_xml_headers(self._edit_morph_path)
         self._edit_morph_path = None
