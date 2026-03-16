@@ -3,6 +3,7 @@ Sprite configuration tab for the parameter editor.
 Provides UI for editing sprites.xml settings.
 """
 import os
+import re
 import shutil
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QFormLayout, QGroupBox,
@@ -43,6 +44,7 @@ class SpriteTab(QWidget):
         self._project_dir = None  # Project directory for morph target file ops
         self._bezier_process = None  # QProcess for Bezier editor
         self._edit_morph_path = None  # Path of morph target being edited in Bezier
+        self._edit_morph_bezier_saved = None  # Actual path where Bezier saves the file
 
         self._setup_ui()
         self._refresh_tree()
@@ -1632,6 +1634,23 @@ class SpriteTab(QWidget):
         suffix = 'curve.xml' if target_file.endswith('.curve.xml') else 'poly.xml'
         self._launch_bezier_for_morph(full_path, morph_dir, suffix)
 
+    def _to_bezier_filename(self, s: str) -> str:
+        """Replicate Bezier's toFilename() — strips everything except [a-zA-Z0-9_-]."""
+        s = s.strip()
+        s = re.sub(r'\s+', '_', s)
+        s = re.sub(r'[^a-zA-Z0-9_-]', '', s)
+        return s.lower()
+
+    def _strip_morph_suffix(self, filename: str) -> tuple:
+        """Return (base_name, suffix) stripping .poly.xml or .curve.xml or .xml."""
+        if filename.endswith('.poly.xml'):
+            return filename[:-len('.poly.xml')], 'poly.xml'
+        if filename.endswith('.curve.xml'):
+            return filename[:-len('.curve.xml')], 'curve.xml'
+        if filename.endswith('.xml'):
+            return filename[:-len('.xml')], 'xml'
+        return filename, ''
+
     def _launch_bezier_for_morph(self, full_path: str, morph_dir: str, suffix: str) -> None:
         """Shared Bezier launch for both create and edit flows."""
         if not os.path.isfile(BEZIER_JAR):
@@ -1651,15 +1670,26 @@ class SpriteTab(QWidget):
         if suffix != 'curve.xml':
             self._add_xml_headers(full_path)
 
-        # Strip .xml → Bezier appends it on save, preserving .poly or .curve in the name
-        morph_name = os.path.basename(full_path)
-        if morph_name.lower().endswith('.xml'):
-            morph_name = morph_name[:-4]
+        # Bezier's toFilename() strips dots, so passing "s_mt_1.curve" yields "s_mt_1curve".
+        # Instead, pass the clean base name (no .poly/.curve suffix) so Bezier saves as
+        # "{bezier_name}.xml", then rename/move that file to the correct final path afterward.
+        base_name, _ = self._strip_morph_suffix(os.path.basename(full_path))
+        bezier_name = self._to_bezier_filename(base_name)
+
+        # Predict where Bezier actually writes the file:
+        # - polygonSet: honours --save-dir → {morph_dir}/{bezier_name}.xml
+        # - openCurveSet: ignores --save-dir, hardcodes {parent(morph_dir)}/curveSets/
+        if suffix == 'curve.xml':
+            project_dir = os.path.dirname(morph_dir)
+            self._edit_morph_bezier_saved = os.path.join(
+                project_dir, 'curveSets', bezier_name + '.xml')
+        else:
+            self._edit_morph_bezier_saved = os.path.join(morph_dir, bezier_name + '.xml')
 
         args = ["-Xmx4G", "-jar", BEZIER_JAR,
                 "--save-dir", morph_dir,
                 "--load", full_path,
-                "--name", morph_name]
+                "--name", bezier_name]
         if suffix != 'curve.xml':
             args.append("--point-select")
 
@@ -1670,9 +1700,24 @@ class SpriteTab(QWidget):
 
     def _on_edit_morph_bezier_finished(self, exit_code, exit_status) -> None:
         """Handle Bezier process finishing after morph target create/edit."""
-        if self._edit_morph_path and os.path.isfile(self._edit_morph_path):
-            self._strip_xml_headers(self._edit_morph_path)
+        bezier_saved = self._edit_morph_bezier_saved
+        target = self._edit_morph_path
+
+        # Move Bezier's actual save location to the correct .poly.xml / .curve.xml path
+        if (bezier_saved and target
+                and bezier_saved != target
+                and os.path.isfile(bezier_saved)):
+            try:
+                os.replace(bezier_saved, target)
+            except Exception as e:
+                print(f"Warning: could not rename {bezier_saved} -> {target}: {e}")
+
+        # Strip DOCTYPE/xml-declaration headers (only present on polygon set files)
+        if target and os.path.isfile(target) and not target.endswith('.curve.xml'):
+            self._strip_xml_headers(target)
+
         self._edit_morph_path = None
+        self._edit_morph_bezier_saved = None
 
     def _add_xml_headers(self, filepath: str) -> None:
         """Add XML declaration and DOCTYPE lines required by Bezier's XOM parser.
