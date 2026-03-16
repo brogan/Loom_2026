@@ -266,6 +266,8 @@ class PolygonTab(QWidget):
         self._pre_launch_files: set = set()
         self._shape_library = None
         self._sprite_library = None
+        self._pre_edit_topology = None  # (poly_count, vert_count) snapshot before Bezier launch
+        self._edit_file_path: str = ""  # path of file being edited in Bezier
 
         self._setup_ui()
         self._refresh_list()
@@ -1481,6 +1483,30 @@ class PolygonTab(QWidget):
             QMessageBox.critical(self, "Import Failed",
                                  f"Could not import '{filename}':\n{e}")
 
+    def _count_topology(self, file_path: str):
+        """Return (poly_count, total_vertex_count) for a polygon XML, or None on error."""
+        try:
+            from lxml import etree
+            tree = etree.parse(file_path)
+            root = tree.getroot()
+            polys = root.findall(".//polygon") + root.findall(".//openCurve")
+            poly_count = len(polys)
+            vert_count = sum(len(p.findall("point")) + len(p.findall("pt")) for p in polys)
+            return (poly_count, vert_count)
+        except Exception:
+            return None
+
+    def _sprites_with_morph_targets_for(self, filename: str):
+        """Return list of sprite names that reference filename as base and have morph targets."""
+        if self._sprite_library is None:
+            return []
+        affected = []
+        for ss in self._sprite_library.sprite_sets:
+            for sprite in ss.sprites:
+                if sprite.params.morph_targets and sprite.shape_name == filename:
+                    affected.append(f"{ss.name}/{sprite.name}")
+        return affected
+
     def _edit_polygon_set(self) -> None:
         """Launch Bezier to edit the currently selected polygon set file."""
         if not self._polygon_sets_dir or not os.path.isdir(self._polygon_sets_dir):
@@ -1516,6 +1542,18 @@ class PolygonTab(QWidget):
             return
 
         self._edit_file_path = full_path
+        self._pre_edit_topology = self._count_topology(full_path)
+
+        # Warn if any sprites have morph targets referencing this base shape
+        filename = self._current_set.file_source.filename
+        affected = self._sprites_with_morph_targets_for(filename)
+        if affected:
+            QMessageBox.warning(
+                self, "Morph Target Warning",
+                "This polygon set is used as the base shape for sprites with morph targets:\n"
+                + "\n".join(f"  • {s}" for s in affected)
+                + "\n\nEditing it may break the morph chains if polygon or vertex count changes."
+            )
 
         # Bezier's XOM parser requires XML headers
         if full_path.endswith('.layers.xml'):
@@ -1546,3 +1584,21 @@ class PolygonTab(QWidget):
                                 self._strip_xml_headers(fpath)
             else:
                 self._strip_xml_headers(self._edit_file_path)
+
+        # Post-edit topology check: warn if polygon/vertex count changed and sprites are affected
+        if self._edit_file_path and self._pre_edit_topology is not None:
+            post_topo = self._count_topology(self._edit_file_path)
+            if post_topo and post_topo != self._pre_edit_topology:
+                filename = os.path.basename(self._edit_file_path)
+                affected = self._sprites_with_morph_targets_for(filename)
+                if affected:
+                    from PyQt6.QtWidgets import QMessageBox as _QMB
+                    _QMB.warning(
+                        self, "Topology Changed",
+                        f"The polygon/vertex count of '{filename}' changed:\n"
+                        f"  Before: {self._pre_edit_topology[0]} polygons, {self._pre_edit_topology[1]} vertices\n"
+                        f"  After:  {post_topo[0]} polygons, {post_topo[1]} vertices\n\n"
+                        "The following sprites have morph targets that may now be broken:\n"
+                        + "\n".join(f"  • {s}" for s in affected)
+                    )
+        self._pre_edit_topology = None

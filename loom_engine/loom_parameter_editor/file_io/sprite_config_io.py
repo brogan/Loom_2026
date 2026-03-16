@@ -6,7 +6,7 @@ XML format matches Scala SpriteConfigLoader expectations.
 """
 from lxml import etree
 from models.sprite_config import (
-    SpriteLibrary, SpriteSet, SpriteDef, SpriteParams, Keyframe
+    SpriteLibrary, SpriteSet, SpriteDef, SpriteParams, Keyframe, MorphTargetRef
 )
 
 
@@ -157,12 +157,28 @@ class SpriteConfigIO:
                 sprite.params.translation_range_y_min = float(tr_elem.get("yMin", "0"))
                 sprite.params.translation_range_y_max = float(tr_elem.get("yMax", "0"))
 
-            # Morph target data
-            mt_elem = anim_elem.find("MorphTarget")
-            if mt_elem is not None:
-                sprite.params.morph_target_polygon_set = mt_elem.get("polygonSet", "")
-                sprite.params.morph_min = float(mt_elem.get("morphMin", "0"))
-                sprite.params.morph_max = float(mt_elem.get("morphMax", "1"))
+            # Morph target data — new format: <MorphTargets><MorphTarget file="..." name="..."/>...
+            # Backward compat: <MorphTarget polygonSet="..."/> (single target, old format)
+            mts_elem = anim_elem.find("MorphTargets")
+            if mts_elem is not None:
+                refs = []
+                for mt_child in mts_elem.findall("MorphTarget"):
+                    refs.append(MorphTargetRef(
+                        file=mt_child.get("file", ""),
+                        name=mt_child.get("name", ""),
+                    ))
+                sprite.params.morph_targets = refs
+                sprite.params.morph_min = float(mts_elem.get("morphMin", "0"))
+                sprite.params.morph_max = float(mts_elem.get("morphMax", "1"))
+            else:
+                # Old single-target format fallback
+                mt_elem = anim_elem.find("MorphTarget")
+                if mt_elem is not None:
+                    ps = mt_elem.get("polygonSet", "")
+                    if ps:
+                        sprite.params.morph_targets = [MorphTargetRef(file=ps)]
+                    sprite.params.morph_min = float(mt_elem.get("morphMin", "0"))
+                    sprite.params.morph_max = float(mt_elem.get("morphMax", "1"))
 
             # Keyframe animation data
             kfs_elem = anim_elem.find("Keyframes")
@@ -314,13 +330,18 @@ class SpriteConfigIO:
                          yMin=str(params.translation_range_y_min),
                          yMax=str(params.translation_range_y_max))
 
-        # Morph target data (written when morph target is set, preserves data across mode switches)
-        if params.morph_target_polygon_set:
-            mt_attribs = {"polygonSet": params.morph_target_polygon_set}
+        # Morph target chain — new format (written when list is non-empty)
+        if params.morph_targets:
+            mts_attribs = {}
             if anim_type == "jitter_morph":
-                mt_attribs["morphMin"] = str(params.morph_min)
-                mt_attribs["morphMax"] = str(params.morph_max)
-            etree.SubElement(anim_elem, "MorphTarget", **mt_attribs)
+                mts_attribs["morphMin"] = str(params.morph_min)
+                mts_attribs["morphMax"] = str(params.morph_max)
+            mts_elem = etree.SubElement(anim_elem, "MorphTargets", **mts_attribs)
+            for ref in params.morph_targets:
+                mt_attribs = {"file": ref.file}
+                if ref.name:
+                    mt_attribs["name"] = ref.name
+                etree.SubElement(mts_elem, "MorphTarget", **mt_attribs)
 
         # Keyframe data (written regardless of mode, so switching modes preserves data)
         if params.keyframes:

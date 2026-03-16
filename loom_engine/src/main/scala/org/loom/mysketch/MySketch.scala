@@ -543,7 +543,7 @@ class MySketch(width: Int, height: Int) extends Sketch(width, height) {
     // Quality scaling factor for pixel-based animation values
     val qf: Double = if (scaleImage && quality > 1) quality.toDouble else 1.0
 
-    val animator: SpriteAnimator = if ((animatorType == "jitter_morph" || animatorType == "keyframe_morph") && spriteDef.morphTargetPolygonSet.nonEmpty) {
+    val animator: SpriteAnimator = if ((animatorType == "jitter_morph" || animatorType == "keyframe_morph") && spriteDef.morphTargets.nonEmpty) {
       // Morph animation modes — need to build MorphTarget after sprite construction
       // We'll create a placeholder animator here; the morph target gets wired below
       null // placeholder, replaced after sprite construction
@@ -597,7 +597,7 @@ class MySketch(width: Int, height: Int) extends Sketch(width, height) {
 
     // For morph modes, we need a temporary non-morph animator to construct the sprite,
     // then build the MorphTarget from the constructed sprite and swap in the real animator.
-    if (animator == null && (animatorType == "jitter_morph" || animatorType == "keyframe_morph")) {
+    if (animator == null && (animatorType == "jitter_morph" || animatorType == "keyframe_morph") && spriteDef.morphTargets.nonEmpty) {
       // Use a dummy animator for construction
       val dummyAnimator = Animator2D(false, Vector2D(1, 1), 0.0, Vector2D(0, 0))
       val sprite = Sprite2D(shape, spriteParams, dummyAnimator, rendererSet)
@@ -618,73 +618,104 @@ class MySketch(width: Int, height: Int) extends Sketch(width, height) {
 
 
   /**
+   * Load a single morph target file and return it as a post-processed, subdivided,
+   * transformed Shape2D ready for snapshotting. Returns null on failure.
+   */
+  private def loadAndPrepareTargetShape(
+      filePath: String,
+      subdivParams: SubdivisionParamsSet,
+      spriteParams: Sprite2DParams
+  ): Shape2D = {
+    val polygons: List[Polygon2D] = if (filePath.endsWith(".curve.xml")) {
+      val curves = org.loom.media.OpenCurveSetLoader.loadOpenCurvesFromFile(filePath)
+      if (curves.isEmpty) {
+        println(s"  Warning: No curves loaded from morph target: $filePath")
+        return null
+      }
+      curves
+    } else {
+      val polys = PolygonConfigLoader.loadSplinePolygonsFromFile(filePath)
+      if (polys.isEmpty) {
+        println(s"  Warning: No polygons loaded from morph target: $filePath")
+        return null
+      }
+      polys
+    }
+
+    var targetShape = Shape2D(polygons, subdivParams)
+
+    // Same pre-processing as base shapes (standShapesUpright + reverseShapesHorizontally)
+    for (poly <- targetShape.polys) {
+      poly.rotate(180)
+      for (point <- poly.points) {
+        point.x = point.x * -1
+      }
+    }
+
+    // Subdivide if needed
+    if (subdividing && subdivParams != null) {
+      targetShape = targetShape.recursiveSubdivide(subdivParams.toList())
+    }
+
+    // Apply same constructor transforms as Sprite2D
+    val clone = targetShape.clone()
+    clone.translate(spriteParams.rotOffset2D)
+    clone.rotate(spriteParams.startRotation2D)
+    clone.translate(spriteParams.loc2D)
+    clone.scale(spriteParams.size2D)
+    clone
+  }
+
+  /**
    * Build a morph animator (jitter_morph or keyframe_morph) for a constructed sprite.
-   * Loads the morph target polygon set, subdivides with same params, applies same transforms,
-   * validates topology, and creates the appropriate animator.
+   * Supports a chain of morph targets: base → mt1 → mt2 → …
+   * Dispatches on file extension: .curve.xml → OpenCurveSetLoader, else PolygonConfigLoader.
    */
   private def buildMorphAnimator(sprite: Sprite2D, spriteDef: SpriteDef, animationEnabled: Boolean, qf: Double): SpriteAnimator = {
     try {
-      // Load morph target polygon set from morphTargets/ directory
       val morphTargetsDir = ProjectPaths.getMorphTargetsPath(projectName)
-      val morphFilePath = morphTargetsDir + java.io.File.separator + spriteDef.morphTargetPolygonSet
-      val morphFile = java.io.File(morphFilePath)
-      if (!morphFile.exists()) {
-        println(s"  Warning: Morph target file not found: $morphFilePath")
-        return null
-      }
 
-      val targetPolygons = PolygonConfigLoader.loadSplinePolygonsFromFile(morphFilePath)
-      if (targetPolygons.isEmpty) {
-        println(s"  Warning: No polygons loaded from morph target: $morphFilePath")
-        return null
-      }
-
-      // Get the same subdivision params set that was used for the base shape
+      // Get subdivision params for the base shape
       val shapeIndex = shapeNameMap.getOrElse((spriteDef.shapeSetName, spriteDef.shapeName), -1)
       val baseShape2D = if (shapeIndex >= 0 && shapeIndex < shapes2D.size) shapes2D(shapeIndex) else null
       val subdivParams = if (baseShape2D != null) baseShape2D.subdivisionParamsSet else null
 
-      // Create target shape and apply same subdivision
-      var targetShape = Shape2D(targetPolygons, subdivParams)
-
-      // Apply same pre-processing as base shapes
-      for (poly <- targetShape.polys) {
-        poly.rotate(180)  // standShapesUpright
-        for (point <- poly.points) {
-          point.x = point.x * -1  // reverseShapesHorizontally
-        }
-      }
-
-      // Subdivide if needed
-      if (subdividing && subdivParams != null) {
-        targetShape = targetShape.recursiveSubdivide(subdivParams.toList())
-      }
-
-      // Clone target and apply same constructor transforms as Sprite2D
-      // Must use Sprite2DParams to get the same denormalized size2D and loc2D
-      val targetClone = targetShape.clone()
-      val targetParams = Sprite2DParams(
+      val spriteParams = Sprite2DParams(
         "morphTarget",
         spriteDef.position,
         spriteDef.scale,
         spriteDef.rotation
       )
-      targetParams.rotOffset2D = spriteDef.rotationOffset
-      targetClone.translate(targetParams.rotOffset2D)
-      targetClone.rotate(targetParams.startRotation2D)
-      targetClone.translate(targetParams.loc2D)
-      targetClone.scale(targetParams.size2D)
+      spriteParams.rotOffset2D = spriteDef.rotationOffset
 
-      // Validate topology match
-      if (!MorphTarget.validate(sprite.shape, targetClone)) {
-        println(s"  Warning: Morph target topology mismatch for sprite '${spriteDef.name}'")
+      // Build snapshot chain: [base, mt1, mt2, ...]
+      val baseSnap = MorphTarget.snapshot(sprite.shape)
+      val targetSnaps = spriteDef.morphTargets.zipWithIndex.flatMap { case (ref, idx) =>
+        val filePath = morphTargetsDir + java.io.File.separator + ref.file
+        if (!java.io.File(filePath).exists()) {
+          println(s"  Warning: Morph target file not found: $filePath")
+          None
+        } else {
+          val prepared = loadAndPrepareTargetShape(filePath, subdivParams, spriteParams)
+          if (prepared == null) {
+            println(s"  Warning: Failed to load morph target ${idx + 1} for sprite '${spriteDef.name}'")
+            None
+          } else if (!MorphTarget.validate(sprite.shape, prepared)) {
+            println(s"  Warning: Morph target ${idx + 1} topology mismatch for sprite '${spriteDef.name}'")
+            None
+          } else {
+            Some(MorphTarget.snapshot(prepared))
+          }
+        }
+      }.toArray
+
+      if (targetSnaps.isEmpty) {
+        println(s"  Warning: No valid morph targets for sprite '${spriteDef.name}'")
         return null
       }
 
-      // Snapshot base and target points
-      val basePoints = MorphTarget.snapshot(sprite.shape)
-      val targetPoints = MorphTarget.snapshot(targetClone)
-      val morphTarget = MorphTarget(basePoints, targetPoints)
+      val allSnaps: Array[Array[Array[Vector2D]]] = Array(baseSnap) ++ targetSnaps
+      val morphTarget = MorphTarget(allSnaps)
 
       // Create the appropriate morph animator
       spriteDef.animatorType match {

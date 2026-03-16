@@ -12,6 +12,13 @@ from copy import deepcopy
 from typing import List, Optional
 
 
+@dataclass
+class MorphTargetRef:
+    """A reference to a single morph target file in the morphTargets/ directory."""
+    file: str = ""   # filename, e.g. "foo_mt_1.poly.xml" or "foo_mt_1.curve.xml"
+    name: str = ""   # optional display name
+
+
 # All supported easing types (must match Scala EasingType enum)
 EASING_TYPES = [
     "LINEAR",
@@ -101,8 +108,8 @@ class SpriteParams:
     loop_mode: str = "NONE"
     keyframes: List[Keyframe] = field(default_factory=list)
 
-    # Morph target fields
-    morph_target_polygon_set: str = ""  # filename in morphTargets/ directory
+    # Morph target fields (chain: base → mt1 → mt2 → …)
+    morph_targets: List[MorphTargetRef] = field(default_factory=list)
     morph_min: float = 0.0
     morph_max: float = 1.0
 

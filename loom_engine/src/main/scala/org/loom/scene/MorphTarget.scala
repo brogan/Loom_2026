@@ -3,49 +3,57 @@ package org.loom.scene
 import org.loom.geometry.{Shape2D, Vector2D}
 
 /**
- * Holds snapshot point positions for base and target shapes,
- * enabling vertex-level morphing between the two.
+ * Holds a chain of snapshot arrays enabling multi-target morphing:
+ *   snapshots(0) = base shape
+ *   snapshots(1) = morph target 1
+ *   snapshots(2) = morph target 2
+ *   ...
  *
- * Both shapes must have identical topology: same polygon count,
- * same vertex count per polygon, same polygon types (line/spline).
+ * morphAmount (0..N) is interpreted as a continuous position through the chain:
+ *   0.0       → base
+ *   1.0       → mt1
+ *   2.0       → mt2
+ *   k .. k+1  → lerp(snapshots(k), snapshots(k+1), position − k)
  *
- * Usage:
- *   1. Construct sprite with base shape (constructor applies position/scale/rotation)
- *   2. Snapshot base points
- *   3. Load and subdivide morph target, apply same transforms, snapshot target points
- *   4. Each frame: call applyMorph(shape, amount) to lerp between base and target
+ * Single-target sprites (N=1) with morphAmount in [0,1] behave identically to
+ * the original two-array implementation.
+ *
+ * All shapes in the chain must share the same topology (polygon count, vertex
+ * count per polygon, polygon types).
  */
-class MorphTarget(
-  val basePoints: Array[Array[Vector2D]],
-  val targetPoints: Array[Array[Vector2D]]
-) {
+class MorphTarget(val snapshots: Array[Array[Array[Vector2D]]]) {
 
   /**
-   * Lerp all polygon points between base and target by the given amount.
-   * amount = 0.0 → base shape, amount = 1.0 → full morph target.
-   * Writes directly into the shape's polygon points (overwrite, not delta).
+   * Apply morph at the given position (0.0 .. N) to the shape.
+   * Writes directly into shape.polys[pi].points[vi] (overwrite, not delta).
    */
-  def applyMorph(shape: Shape2D, amount: Double): Unit = {
-    val clampedAmount = math.max(0.0, math.min(1.0, amount))
+  def applyMorph(shape: Shape2D, position: Double): Unit = {
+    val n = snapshots.length - 1
+    if (n < 1) return
+    val clamped = math.max(0.0, math.min(position, n.toDouble))
+    val seg = math.min(clamped.toInt, n - 1)
+    val t = clamped - seg
+    val from = snapshots(seg)
+    val to   = snapshots(seg + 1)
     val polys = shape.polys
-    var polyIdx = 0
-    while (polyIdx < polys.length && polyIdx < basePoints.length) {
-      val poly = polys(polyIdx)
-      val base = basePoints(polyIdx)
-      val target = targetPoints(polyIdx)
-      val points = poly.points
-      var ptIdx = 0
-      while (ptIdx < points.length && ptIdx < base.length) {
-        points(ptIdx).x = base(ptIdx).x + (target(ptIdx).x - base(ptIdx).x) * clampedAmount
-        points(ptIdx).y = base(ptIdx).y + (target(ptIdx).y - base(ptIdx).y) * clampedAmount
-        ptIdx += 1
+    var pi = 0
+    while (pi < polys.length && pi < from.length) {
+      val pts   = polys(pi).points
+      val bPts  = from(pi)
+      val tPts  = to(pi)
+      var vi = 0
+      while (vi < pts.length && vi < bPts.length) {
+        pts(vi).x = bPts(vi).x + (tPts(vi).x - bPts(vi).x) * t
+        pts(vi).y = bPts(vi).y + (tPts(vi).y - bPts(vi).y) * t
+        vi += 1
       }
-      polyIdx += 1
+      pi += 1
     }
   }
 
   override def clone(): MorphTarget = {
-    MorphTarget(MorphTarget.deepCopyPoints(basePoints), MorphTarget.deepCopyPoints(targetPoints))
+    val copy = snapshots.map(snap => MorphTarget.deepCopyPoints(snap))
+    MorphTarget(copy)
   }
 }
 

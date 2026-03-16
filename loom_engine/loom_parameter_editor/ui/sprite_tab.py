@@ -7,15 +7,15 @@ import shutil
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QFormLayout, QGroupBox,
     QLineEdit, QDoubleSpinBox, QSpinBox, QComboBox, QTreeWidget, QCheckBox,
-    QTreeWidgetItem, QPushButton, QSplitter, QLabel,
+    QTreeWidgetItem, QPushButton, QSplitter, QLabel, QListWidget,
     QMessageBox, QInputDialog, QScrollArea, QTableWidget, QTableWidgetItem,
     QHeaderView, QStyledItemDelegate, QDialog, QDialogButtonBox, QRadioButton,
-    QButtonGroup, QTabWidget
+    QButtonGroup, QTabWidget, QFileDialog
 )
 from PyQt6.QtCore import pyqtSignal, Qt
 from PyQt6.QtCore import QProcess
 from models.sprite_config import (
-    SpriteDef, SpriteParams, SpriteSet, SpriteLibrary, Keyframe,
+    SpriteDef, SpriteParams, SpriteSet, SpriteLibrary, Keyframe, MorphTargetRef,
     EASING_TYPES, LOOP_MODES
 )
 from ui.sprite_preview_widget import SpritePreviewWidget
@@ -452,33 +452,44 @@ class SpriteTab(QWidget):
         anim_outer_layout.addWidget(self.random_panel)
 
         # === Morph target panel (shown for jitter_morph and keyframe_morph) ===
-        self.morph_panel = QWidget()
-        morph_layout = QFormLayout(self.morph_panel)
-        morph_layout.setContentsMargins(0, 0, 0, 0)
+        self.morph_panel = QGroupBox("Morph Targets")
+        morph_outer = QVBoxLayout(self.morph_panel)
+        morph_outer.setContentsMargins(4, 4, 4, 4)
 
-        # Morph target polygon set combo
-        self.morph_target_combo = QComboBox()
-        self.morph_target_combo.setEditable(True)
-        self.morph_target_combo.setPlaceholderText("Select polygon set from morphTargets/")
-        self.morph_target_combo.currentTextChanged.connect(self._on_modified)
-        morph_layout.addRow("Morph Target:", self.morph_target_combo)
+        morph_outer.addWidget(QLabel(
+            "Chain: base → mt1 → mt2 → …  (morphAmount 0 = base, 1 = mt1, 2 = mt2, …)"
+        ))
 
-        # Create morph target button
-        mt_btn_layout = QHBoxLayout()
-        self.create_morph_btn = QPushButton("Create Morph Target")
-        self.create_morph_btn.setToolTip(
-            "Copy the current sprite's polygon set file to morphTargets/ directory\n"
-            "for use as a morph target. Edit the copy to define the target shape."
+        self.morph_list = QListWidget()
+        self.morph_list.setMaximumHeight(100)
+        self.morph_list.setToolTip(
+            "Morph target chain. Files must be in morphTargets/.\n"
+            "Use .poly.xml for polygon sets, .curve.xml for open curve sets."
         )
-        self.create_morph_btn.clicked.connect(self._create_morph_target)
-        mt_btn_layout.addWidget(self.create_morph_btn)
+        morph_outer.addWidget(self.morph_list)
 
-        self.refresh_morph_btn = QPushButton("Refresh")
-        self.refresh_morph_btn.setToolTip("Refresh the list of available morph targets")
-        self.refresh_morph_btn.clicked.connect(self._refresh_morph_targets)
-        mt_btn_layout.addWidget(self.refresh_morph_btn)
+        mt_btn_layout = QHBoxLayout()
+        self.add_morph_btn = QPushButton("Add")
+        self.add_morph_btn.setToolTip("Add a morph target file to the chain")
+        self.add_morph_btn.clicked.connect(self._add_morph_target)
+        mt_btn_layout.addWidget(self.add_morph_btn)
 
-        self.edit_morph_btn = QPushButton("Edit Morph Target")
+        self.remove_morph_btn = QPushButton("Remove")
+        self.remove_morph_btn.setToolTip("Remove the selected morph target from the chain")
+        self.remove_morph_btn.clicked.connect(self._remove_morph_target)
+        mt_btn_layout.addWidget(self.remove_morph_btn)
+
+        self.morph_up_btn = QPushButton("↑")
+        self.morph_up_btn.setMaximumWidth(30)
+        self.morph_up_btn.clicked.connect(self._morph_move_up)
+        mt_btn_layout.addWidget(self.morph_up_btn)
+
+        self.morph_down_btn = QPushButton("↓")
+        self.morph_down_btn.setMaximumWidth(30)
+        self.morph_down_btn.clicked.connect(self._morph_move_down)
+        mt_btn_layout.addWidget(self.morph_down_btn)
+
+        self.edit_morph_btn = QPushButton("Edit in Bezier")
         self.edit_morph_btn.setToolTip(
             "Open the selected morph target in Bezier for editing.\n"
             "Changes are saved back automatically when Bezier closes."
@@ -487,7 +498,7 @@ class SpriteTab(QWidget):
         mt_btn_layout.addWidget(self.edit_morph_btn)
 
         mt_btn_layout.addStretch()
-        morph_layout.addRow("", mt_btn_layout)
+        morph_outer.addLayout(mt_btn_layout)
 
         # Morph min/max (shown for jitter_morph only)
         self.morph_range_widget = QWidget()
@@ -497,7 +508,7 @@ class SpriteTab(QWidget):
         morph_min_max_layout = QHBoxLayout()
         morph_min_max_layout.addWidget(QLabel("Min:"))
         self.morph_min_spin = QDoubleSpinBox()
-        self.morph_min_spin.setRange(0.0, 1.0)
+        self.morph_min_spin.setRange(0.0, 100.0)
         self.morph_min_spin.setDecimals(3)
         self.morph_min_spin.setSingleStep(0.05)
         self.morph_min_spin.setValue(0.0)
@@ -507,16 +518,16 @@ class SpriteTab(QWidget):
 
         morph_min_max_layout.addWidget(QLabel("Max:"))
         self.morph_max_spin = QDoubleSpinBox()
-        self.morph_max_spin.setRange(0.0, 1.0)
+        self.morph_max_spin.setRange(0.0, 100.0)
         self.morph_max_spin.setDecimals(3)
         self.morph_max_spin.setSingleStep(0.05)
         self.morph_max_spin.setValue(1.0)
-        self.morph_max_spin.setToolTip("Maximum morph amount (1 = full morph target)")
+        self.morph_max_spin.setToolTip("Maximum morph amount (N = full last target, where N = number of targets)")
         self.morph_max_spin.valueChanged.connect(self._on_modified)
         morph_min_max_layout.addWidget(self.morph_max_spin)
         morph_range_layout.addRow("Morph Range:", morph_min_max_layout)
 
-        morph_layout.addRow(self.morph_range_widget)
+        morph_outer.addWidget(self.morph_range_widget)
 
         self.morph_panel.setVisible(False)
         anim_outer_layout.addWidget(self.morph_panel)
@@ -672,7 +683,7 @@ class SpriteTab(QWidget):
             self.speed_y_spin.setValue(0)
             self.loop_mode_combo.setCurrentText("NONE")
             self._clear_kf_table()
-            self.morph_target_combo.setCurrentText("")
+            self.morph_list.clear()
             self.morph_min_spin.setValue(0.0)
             self.morph_max_spin.setValue(1.0)
             self._update_animator_panels()
@@ -737,7 +748,9 @@ class SpriteTab(QWidget):
             self._load_keyframes_to_table(p.keyframes)
 
             # Morph target fields
-            self.morph_target_combo.setCurrentText(p.morph_target_polygon_set)
+            self.morph_list.clear()
+            for ref in p.morph_targets:
+                self.morph_list.addItem(ref.file if not ref.name else f"{ref.file}  [{ref.name}]")
             self.morph_min_spin.setValue(p.morph_min)
             self.morph_max_spin.setValue(p.morph_max)
 
@@ -797,7 +810,7 @@ class SpriteTab(QWidget):
         p.keyframes = self._read_keyframes_from_table()
 
         # Morph target fields
-        p.morph_target_polygon_set = self.morph_target_combo.currentText()
+        p.morph_targets = self._read_morph_list()
         p.morph_min = self.morph_min_spin.value()
         p.morph_max = self.morph_max_spin.value()
 
@@ -1311,7 +1324,6 @@ class SpriteTab(QWidget):
     def set_project_dir(self, project_dir: str) -> None:
         """Set the project directory for morph target file operations."""
         self._project_dir = project_dir
-        self._refresh_morph_targets()
         self.preview_widget.set_directories(
             os.path.join(project_dir, "polygonSets"),
             os.path.join(project_dir, "curveSets"),
@@ -1349,90 +1361,117 @@ class SpriteTab(QWidget):
             return os.path.join(self._project_dir, "morphTargets")
         return ""
 
-    def _refresh_morph_targets(self) -> None:
-        """Refresh the morph target combo with files from morphTargets/ directory."""
-        was_updating = self._updating
-        self._updating = True
+    def _read_morph_list(self):
+        """Read MorphTargetRef list from the list widget."""
+        refs = []
+        for i in range(self.morph_list.count()):
+            text = self.morph_list.item(i).text()
+            # Strip optional display name suffix "  [name]"
+            if "  [" in text and text.endswith("]"):
+                file_part = text[:text.rindex("  [")]
+                name_part = text[text.rindex("  [") + 3:-1]
+            else:
+                file_part = text
+                name_part = ""
+            refs.append(MorphTargetRef(file=file_part, name=name_part))
+        return refs
+
+    def _count_topology(self, file_path: str):
+        """Return (poly_count, total_vertex_count) for a polygon/curve XML, or None on error."""
         try:
-            current_text = self.morph_target_combo.currentText()
-            self.morph_target_combo.clear()
+            from lxml import etree
+            tree = etree.parse(file_path)
+            root = tree.getroot()
+            polys = root.findall(".//polygon") + root.findall(".//openCurve")
+            poly_count = len(polys)
+            vert_count = sum(
+                len(p.findall("point")) + len(p.findall("pt"))
+                for p in polys
+            )
+            return (poly_count, vert_count)
+        except Exception:
+            return None
 
-            morph_dir = self._get_morph_targets_dir()
-            if morph_dir and os.path.isdir(morph_dir):
-                files = sorted(f for f in os.listdir(morph_dir)
-                              if f.endswith('.xml'))
-                self.morph_target_combo.addItems(files)
-
-            if current_text:
-                idx = self.morph_target_combo.findText(current_text)
-                if idx >= 0:
-                    self.morph_target_combo.setCurrentIndex(idx)
-                else:
-                    self.morph_target_combo.setCurrentText(current_text)
-        finally:
-            self._updating = was_updating
-
-    def _create_morph_target(self) -> None:
-        """Copy the current sprite's polygon set to morphTargets/ directory."""
-        if self._current_sprite is None:
-            QMessageBox.warning(self, "No Sprite", "Please select a sprite first.")
-            return
-
+    def _add_morph_target(self) -> None:
+        """Browse for a morph target file and add it to the chain."""
         morph_dir = self._get_morph_targets_dir()
         if not morph_dir:
             QMessageBox.warning(self, "No Project", "No project directory set.")
             return
-
-        # Find the polygon set file for the current sprite's shape
-        polygon_sets_dir = os.path.join(os.path.dirname(morph_dir), "polygonSets")
-        if not os.path.isdir(polygon_sets_dir):
-            QMessageBox.warning(self, "No Polygon Sets",
-                               "polygonSets/ directory not found in project.")
-            return
-
-        # List available polygon set files
-        poly_files = sorted(f for f in os.listdir(polygon_sets_dir)
-                           if f.endswith('.xml'))
-        if not poly_files:
-            QMessageBox.warning(self, "No Polygon Sets",
-                               "No XML files found in polygonSets/ directory.")
-            return
-
-        source_file, ok = QInputDialog.getItem(
-            self, "Select Source Polygon Set",
-            "Choose polygon set file to copy as morph target:",
-            poly_files, 0, False
-        )
-        if not ok or not source_file:
-            return
-
-        # Create morphTargets/ directory if needed
         os.makedirs(morph_dir, exist_ok=True)
 
-        # Generate unique name
-        base_name = os.path.splitext(source_file)[0]
-        counter = 1
-        target_name = f"{base_name}_mt_{counter}.xml"
-        while os.path.exists(os.path.join(morph_dir, target_name)):
-            counter += 1
-            target_name = f"{base_name}_mt_{counter}.xml"
+        path, _ = QFileDialog.getOpenFileName(
+            self, "Add Morph Target", morph_dir,
+            "Morph Target Files (*.poly.xml *.curve.xml *.xml)"
+        )
+        if not path:
+            return
 
-        # Copy file
-        src_path = os.path.join(polygon_sets_dir, source_file)
-        dst_path = os.path.join(morph_dir, target_name)
-        try:
-            shutil.copy2(src_path, dst_path)
-            QMessageBox.information(
-                self, "Morph Target Created",
-                f"Created morph target: {target_name}\n\n"
-                f"Edit this file to define the target shape.\n"
-                f"Location: {dst_path}"
-            )
-            self._refresh_morph_targets()
-            self.morph_target_combo.setCurrentText(target_name)
-            self._on_modified()
-        except Exception as e:
-            QMessageBox.critical(self, "Error", f"Failed to create morph target: {e}")
+        # Store only the filename (must be in morphTargets/)
+        filename = os.path.basename(path)
+
+        # Topology warning: compare against base shape if possible
+        if self._current_sprite is not None and self._project_dir:
+            base_file = self._resolve_base_shape_file()
+            if base_file and os.path.isfile(base_file):
+                base_topo = self._count_topology(base_file)
+                tgt_topo = self._count_topology(path)
+                if base_topo and tgt_topo and base_topo != tgt_topo:
+                    QMessageBox.warning(
+                        self, "Topology Mismatch",
+                        f"The selected morph target has different topology from the base shape:\n"
+                        f"  Base:   {base_topo[0]} polygons, {base_topo[1]} vertices\n"
+                        f"  Target: {tgt_topo[0]} polygons, {tgt_topo[1]} vertices\n\n"
+                        "The morph will still be added but may not render correctly."
+                    )
+
+        self.morph_list.addItem(filename)
+        self._on_modified()
+
+    def _remove_morph_target(self) -> None:
+        """Remove the selected morph target from the chain."""
+        row = self.morph_list.currentRow()
+        if row < 0:
+            return
+        self.morph_list.takeItem(row)
+        self._on_modified()
+
+    def _morph_move_up(self) -> None:
+        """Move the selected morph target up in the chain."""
+        row = self.morph_list.currentRow()
+        if row <= 0:
+            return
+        item = self.morph_list.takeItem(row)
+        self.morph_list.insertItem(row - 1, item)
+        self.morph_list.setCurrentRow(row - 1)
+        self._on_modified()
+
+    def _morph_move_down(self) -> None:
+        """Move the selected morph target down in the chain."""
+        row = self.morph_list.currentRow()
+        if row < 0 or row >= self.morph_list.count() - 1:
+            return
+        item = self.morph_list.takeItem(row)
+        self.morph_list.insertItem(row + 1, item)
+        self.morph_list.setCurrentRow(row + 1)
+        self._on_modified()
+
+    def _resolve_base_shape_file(self) -> str:
+        """Try to find the polygon/curve XML file for the current sprite's base shape."""
+        if self._current_sprite is None or not self._project_dir:
+            return ""
+        shape_name = self._current_sprite.shape_name
+        if not shape_name:
+            return ""
+        # Try polygonSets/ then curveSets/
+        for subdir in ("polygonSets", "curveSets"):
+            candidate = os.path.join(self._project_dir, subdir, shape_name)
+            if os.path.isfile(candidate):
+                return candidate
+            candidate_xml = candidate if candidate.endswith(".xml") else candidate + ".xml"
+            if os.path.isfile(candidate_xml):
+                return candidate_xml
+        return ""
 
     # === Bezier Morph Target Editing ===
 
@@ -1444,11 +1483,15 @@ class SpriteTab(QWidget):
                                 "Please save the project first.")
             return
 
-        target_file = self.morph_target_combo.currentText().strip()
-        if not target_file:
-            QMessageBox.warning(self, "No Morph Target",
-                                "Please select a morph target first.")
+        current_item = self.morph_list.currentItem()
+        if current_item is None:
+            QMessageBox.warning(self, "No Selection",
+                                "Please select a morph target in the list first.")
             return
+
+        # Extract just the filename part (strip optional "[name]" display suffix)
+        text = current_item.text()
+        target_file = text[:text.rindex("  [")] if "  [" in text and text.endswith("]") else text
 
         full_path = os.path.join(morph_dir, target_file)
         if not os.path.isfile(full_path):
@@ -1475,7 +1518,6 @@ class SpriteTab(QWidget):
         self._bezier_process = QProcess(self)
         self._bezier_process.setWorkingDirectory(BEZIER_WORKING_DIR)
         self._bezier_process.finished.connect(self._on_edit_morph_bezier_finished)
-        # Derive name from filename (without .xml) so Bezier saves back to same file
         morph_name = target_file
         if morph_name.lower().endswith(".xml"):
             morph_name = morph_name[:-4]

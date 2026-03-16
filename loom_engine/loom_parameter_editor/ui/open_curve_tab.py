@@ -29,6 +29,9 @@ class OpenCurveTab(QWidget):
         self._updating = False
         self._curve_sets_dir: str = ""
         self._bezier_process: QProcess = None
+        self._sprite_library = None
+        self._pre_edit_topology = None  # snapshot before Bezier launch
+        self._edit_file_path: str = ""
 
         self._setup_ui()
         self._refresh_list()
@@ -292,6 +295,32 @@ class OpenCurveTab(QWidget):
         self._clear_editor()
         self.modified.emit()
 
+    # ── Topology helpers ──────────────────────────────────────────────────────
+
+    def _count_topology(self, file_path: str):
+        """Return (poly_count, total_vertex_count) for a curve XML, or None on error."""
+        try:
+            from lxml import etree
+            tree = etree.parse(file_path)
+            root = tree.getroot()
+            curves = root.findall(".//openCurve") + root.findall(".//polygon")
+            poly_count = len(curves)
+            vert_count = sum(len(c.findall("point")) + len(c.findall("pt")) for c in curves)
+            return (poly_count, vert_count)
+        except Exception:
+            return None
+
+    def _sprites_with_morph_targets_for(self, filename: str):
+        """Return list of sprite names that use filename as base and have morph targets."""
+        if self._sprite_library is None:
+            return []
+        affected = []
+        for ss in self._sprite_library.sprite_sets:
+            for sprite in ss.sprites:
+                if sprite.params.morph_targets and sprite.shape_name == filename:
+                    affected.append(f"{ss.name}/{sprite.name}")
+        return affected
+
     # ── Bezier launch ─────────────────────────────────────────────────────────
 
     def _edit_in_bezier(self):
@@ -309,6 +338,19 @@ class OpenCurveTab(QWidget):
             QMessageBox.information(self, "Bezier Running", "Bezier is already running.")
             return
 
+        self._edit_file_path = full_path
+        self._pre_edit_topology = self._count_topology(full_path)
+
+        # Warn if any sprites have morph targets referencing this base shape
+        affected = self._sprites_with_morph_targets_for(filename)
+        if affected:
+            QMessageBox.warning(
+                self, "Morph Target Warning",
+                "This curve set is used as the base shape for sprites with morph targets:\n"
+                + "\n".join(f"  • {s}" for s in affected)
+                + "\n\nEditing it may break the morph chains if curve or vertex count changes."
+            )
+
         self._bezier_process = QProcess(self)
         self._bezier_process.setWorkingDirectory(BEZIER_WORKING_DIR)
         self._bezier_process.finished.connect(self._on_edit_bezier_finished)
@@ -321,6 +363,24 @@ class OpenCurveTab(QWidget):
     def _on_edit_bezier_finished(self, exit_code, exit_status):
         self._refresh_file_list()
         self._update_preview()
+
+        # Post-edit topology check
+        if self._edit_file_path and self._pre_edit_topology is not None:
+            post_topo = self._count_topology(self._edit_file_path)
+            if post_topo and post_topo != self._pre_edit_topology:
+                filename = os.path.basename(self._edit_file_path)
+                affected = self._sprites_with_morph_targets_for(filename)
+                if affected:
+                    QMessageBox.warning(
+                        self, "Topology Changed",
+                        f"The curve/vertex count of '{filename}' changed:\n"
+                        f"  Before: {self._pre_edit_topology[0]} curves, {self._pre_edit_topology[1]} vertices\n"
+                        f"  After:  {post_topo[0]} curves, {post_topo[1]} vertices\n\n"
+                        "The following sprites have morph targets that may now be broken:\n"
+                        + "\n".join(f"  • {s}" for s in affected)
+                    )
+        self._pre_edit_topology = None
+        self._edit_file_path = ""
 
     # ── Change tracking ───────────────────────────────────────────────────────
 

@@ -4,6 +4,9 @@ import scala.xml.*
 import java.io.File
 import org.loom.geometry.Vector2D
 
+/** A reference to a single morph target file in the morphTargets/ directory. */
+case class MorphTargetRef(file: String, name: String = "")
+
 /**
  * Loads SpriteLibrary from sprites.xml configuration files.
  */
@@ -149,11 +152,23 @@ object SpriteConfigLoader {
         spriteDef.translationRangeY = (yMin, yMax)
       }
 
-      // Morph target data
-      (animNode \ "MorphTarget").headOption.foreach { mtNode =>
-        spriteDef.morphTargetPolygonSet = (mtNode \ "@polygonSet").text
-        spriteDef.morphMin = (mtNode \ "@morphMin").text match { case "" => 0.0; case s => s.toDouble }
-        spriteDef.morphMax = (mtNode \ "@morphMax").text match { case "" => 1.0; case s => s.toDouble }
+      // Morph target chain — new format: <MorphTargets><MorphTarget file="..." name="..."/>...
+      // Backward compat: <MorphTarget polygonSet="..."/> (single target, old format)
+      val newMtFmt = (animNode \ "MorphTargets")
+      if (newMtFmt.nonEmpty) {
+        val mtsNode = newMtFmt.head
+        spriteDef.morphTargets = (mtsNode \ "MorphTarget").map { n =>
+          MorphTargetRef((n \ "@file").text, (n \ "@name").text)
+        }.toSeq
+        spriteDef.morphMin = (mtsNode \ "@morphMin").text match { case "" => 0.0; case s => s.toDouble }
+        spriteDef.morphMax = (mtsNode \ "@morphMax").text match { case "" => 1.0; case s => s.toDouble }
+      } else {
+        (animNode \ "MorphTarget").headOption.foreach { mtNode =>
+          val ps = (mtNode \ "@polygonSet").text
+          if (ps.nonEmpty) spriteDef.morphTargets = Seq(MorphTargetRef(ps))
+          spriteDef.morphMin = (mtNode \ "@morphMin").text match { case "" => 0.0; case s => s.toDouble }
+          spriteDef.morphMax = (mtNode \ "@morphMax").text match { case "" => 1.0; case s => s.toDouble }
+        }
       }
 
       // Keyframe animation data
@@ -231,8 +246,8 @@ class SpriteDef(val name: String) {
   var keyframes: List[KeyframeDef] = List.empty
   var jitter: Boolean = false         // true = oscillate around home position
 
-  // Morph target fields
-  var morphTargetPolygonSet: String = ""  // filename in morphTargets/ directory
+  // Morph target chain (base → mt1 → mt2 → …)
+  var morphTargets: Seq[MorphTargetRef] = Seq.empty
   var morphMin: Double = 0.0
   var morphMax: Double = 1.0
 
