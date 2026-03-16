@@ -1183,7 +1183,7 @@ class SpriteTab(QWidget):
         """Add a single keyframe row to the table."""
         row = self.kf_table.rowCount()
         self.kf_table.insertRow(row)
-        has_morph_col = self.kf_table.columnCount() == 8
+        has_morph_col = self.kf_table.columnCount() == 9
 
         # Draw Cycle (integer)
         dc_item = QTableWidgetItem(str(kf.draw_cycle))
@@ -1197,12 +1197,15 @@ class SpriteTab(QWidget):
             self.kf_table.setItem(row, col, item)
 
         if has_morph_col:
-            # Morph Amount column (col 6)
-            morph_item = QTableWidgetItem(f"{kf.morph_amount:.4g}")
-            self.kf_table.setItem(row, 6, morph_item)
+            # MT Idx (col 6): integer part of morphAmount (which target: 0=base, 1=mt1, 2=mt2…)
+            mt_idx = int(kf.morph_amount)
+            amount = kf.morph_amount - mt_idx
+            self.kf_table.setItem(row, 6, QTableWidgetItem(str(mt_idx)))
+            # Amount (col 7): fraction 0.0–1.0 blending toward next target
+            self.kf_table.setItem(row, 7, QTableWidgetItem(f"{amount:.4g}"))
 
-        # Easing combo (col 6 or 7 depending on morph column)
-        easing_col = 7 if has_morph_col else 6
+        # Easing combo (col 6 normally, col 8 when morph columns present)
+        easing_col = 8 if has_morph_col else 6
         easing_combo = QComboBox()
         easing_combo.addItems(EASING_TYPES)
         idx = easing_combo.findText(kf.easing)
@@ -1214,8 +1217,8 @@ class SpriteTab(QWidget):
     def _read_keyframes_from_table(self) -> list:
         """Read keyframes from the table widget."""
         keyframes = []
-        has_morph_col = self.kf_table.columnCount() == 8
-        easing_col = 7 if has_morph_col else 6
+        has_morph_col = self.kf_table.columnCount() == 9
+        easing_col = 8 if has_morph_col else 6
 
         for row in range(self.kf_table.rowCount()):
             try:
@@ -1234,7 +1237,12 @@ class SpriteTab(QWidget):
                 easing_widget = self.kf_table.cellWidget(row, easing_col)
                 easing = easing_widget.currentText() if easing_widget else "LINEAR"
 
-                morph_amount = max(0.0, get_float(6, 0.0)) if has_morph_col else 0.0
+                if has_morph_col:
+                    mt_idx = max(0, int(get_float(6, 0.0)))
+                    amount = max(0.0, min(1.0, get_float(7, 0.0)))
+                    morph_amount = mt_idx + amount
+                else:
+                    morph_amount = 0.0
 
                 kf = Keyframe(
                     draw_cycle=draw_cycle,
@@ -1783,30 +1791,21 @@ class SpriteTab(QWidget):
         current_cols = self.kf_table.columnCount()
 
         if needs_morph and current_cols == 7:
-            # Add morph amount column
-            self.kf_table.setColumnCount(8)
+            # Add MT Idx + Amount columns (cols 6 & 7), push Easing to col 8
+            self.kf_table.setColumnCount(9)
             self.kf_table.setHorizontalHeaderLabels([
                 "Draw Cycle", "Pos X", "Pos Y", "Scale X", "Scale Y",
-                "Rotation", "Morph (0-1)", "Easing"
+                "Rotation", "MT Idx", "Amount", "Easing"
             ])
             header = self.kf_table.horizontalHeader()
-            header.setSectionResizeMode(6, QHeaderView.ResizeMode.ResizeToContents)
-            header.setSectionResizeMode(7, QHeaderView.ResizeMode.Stretch)
-
-            # Add morph amount cells to existing rows
-            for row in range(self.kf_table.rowCount()):
-                item = QTableWidgetItem("0.0")
-                self.kf_table.setItem(row, 6, item)
-                # Move easing combo from col 6 to col 7
-                easing_combo = self.kf_table.cellWidget(row, 6)
-                # easing_combo is None now because we just inserted a cell item at col 6
-                # We need to reload the table to handle this properly
-            # Reload to fix column positions
+            for col in range(8):
+                header.setSectionResizeMode(col, QHeaderView.ResizeMode.ResizeToContents)
+            header.setSectionResizeMode(8, QHeaderView.ResizeMode.Stretch)
             if self._current_sprite:
                 self._load_keyframes_to_table(self._current_sprite.params.keyframes)
 
-        elif not needs_morph and current_cols == 8:
-            # Remove morph amount column — reload with 7 columns
+        elif not needs_morph and current_cols == 9:
+            # Remove morph columns — reload with 7 columns
             self.kf_table.setColumnCount(7)
             self.kf_table.setHorizontalHeaderLabels([
                 "Draw Cycle", "Pos X", "Pos Y", "Scale X", "Scale Y",
