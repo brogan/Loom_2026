@@ -352,6 +352,8 @@ class MainWindow(QMainWindow):
         self.run_tab._quality_spin.valueChanged.connect(self._update_output_hint)
         self.global_tab.width_spin.valueChanged.connect(self._update_output_hint)
         self.global_tab.height_spin.valueChanged.connect(self._update_output_hint)
+        self.global_tab.width_spin.valueChanged.connect(self._update_preview_canvas_size)
+        self.global_tab.height_spin.valueChanged.connect(self._update_preview_canvas_size)
 
         # Create menus
         self._create_menus()
@@ -590,6 +592,7 @@ class MainWindow(QMainWindow):
             global_config.draw_background_once,
         )
         self.subdivision_tab.set_subdividing(global_config.subdividing)
+        self.sprite_tab.set_canvas_size(global_config.width, global_config.height)
 
         library = self.rendering_tab.create_default_library()
         self.rendering_tab.set_library(library)
@@ -659,6 +662,7 @@ class MainWindow(QMainWindow):
                 global_config.draw_background_once,
             )
             self.subdivision_tab.set_subdividing(global_config.subdividing)
+            self.sprite_tab.set_canvas_size(global_config.width, global_config.height)
 
             library = self.rendering_tab.create_default_library()
             self.rendering_tab.set_library(library)
@@ -854,6 +858,7 @@ class MainWindow(QMainWindow):
                 global_config.draw_background_once,
             )
             self.subdivision_tab.set_subdividing(global_config.subdividing)
+            self.sprite_tab.set_canvas_size(global_config.width, global_config.height)
 
             # Load rendering configuration
             rendering_file = self._project.get_file("rendering")
@@ -1060,6 +1065,7 @@ class MainWindow(QMainWindow):
                 global_config.draw_background_once,
             )
             self.subdivision_tab.set_subdividing(global_config.subdividing)
+            self.sprite_tab.set_canvas_size(global_config.width, global_config.height)
 
             # Notify tabs
             self._notify_tabs_of_project_dir()
@@ -1471,6 +1477,12 @@ class MainWindow(QMainWindow):
         w = self.global_tab.width_spin.value() * self.run_tab.get_quality_multiple()
         h = self.global_tab.height_spin.value() * self.run_tab.get_quality_multiple()
         self.global_tab.update_output_size_hint(w, h)
+
+    def _update_preview_canvas_size(self) -> None:
+        self.sprite_tab.set_canvas_size(
+            self.global_tab.width_spin.value(),
+            self.global_tab.height_spin.value(),
+        )
 
     def _on_background_image_browse(self) -> None:
         """Browse for a background image file."""

@@ -32,15 +32,15 @@
 
   /* ── workflow diagram ── */
   .flow { display: flex; align-items: center; justify-content: center;
-          flex-wrap: wrap; gap: 0; margin: 32px 0; }
+          flex-wrap: nowrap; gap: 0; margin: 32px 0; overflow-x: auto; }
   .flow-app {
     background: var(--card); border: 2px solid var(--accent);
-    border-radius: 10px; padding: 18px 24px; text-align: center;
-    min-width: 160px; flex: 0 0 auto;
+    border-radius: 10px; padding: 12px 16px; text-align: center;
+    min-width: 115px; flex: 0 0 auto;
   }
-  .flow-app .label { font-size: 11px; font-weight: 700; letter-spacing: 0.06em;
+  .flow-app .label { font-size: 10px; font-weight: 700; letter-spacing: 0.06em;
                      text-transform: uppercase; color: var(--accent); }
-  .flow-app .name  { font-size: 16px; font-weight: 700; color: var(--primary);
+  .flow-app .name  { font-size: 14px; font-weight: 700; color: var(--primary);
                      margin: 4px 0 2px; }
   .flow-app .tech  { font-size: 11px; color: var(--muted); }
   .flow-arrow {
@@ -149,7 +149,7 @@
     <ul>
       <li>Draw <strong>closed polygon sets</strong> — the main input for Loom's subdivision engine</li>
       <li>Draw <strong>open curve sets</strong> — non-closed splines rendered as stroked paths or brush stamps</li>
-      <li>Draw <strong>point sets</strong> — discrete positions for dot or brush-stamp effects</li>
+      <li>Draw <strong>point sets</strong> — discrete positions for dot or brush-stamp effects; use with BRUSHED mode to place bitmap images at exact canvas locations</li>
       <li>Organise geometry into named <strong>layers</strong></li>
       <li>Weld polygons together, cut with the knife, extrude edges</li>
       <li>Save as XML files consumed directly by the Parameter Editor and Loom</li>
@@ -222,7 +222,7 @@
       <td><strong>Open Curve Sets</strong> (non-closed splines)</td>
       <td>Bezier Draw → Curves sub-tab</td>
       <td>No</td>
-      <td>No</td>
+      <td>Yes (with <code>.curve.xml</code> morph target files)</td>
       <td>STROKED, BRUSHED</td>
     </tr>
     <tr>
@@ -239,8 +239,8 @@
     <tr><th>Mode</th><th>Description</th><th>Requires</th></tr>
     <tr><td><strong>Random (Jitter)</strong></td><td>Random per-frame perturbations to position, scale, rotation</td><td>Any geometry</td></tr>
     <tr><td><strong>Keyframe</strong></td><td>Eased interpolation between defined states (41 easing functions)</td><td>Any geometry</td></tr>
-    <tr><td><strong>Jitter Morph</strong></td><td>Random blend each frame between base polygon and morph target</td><td>Polygon sets only</td></tr>
-    <tr><td><strong>Keyframe Morph</strong></td><td>Eased morph amount interpolated alongside position/scale/rotation</td><td>Polygon sets only</td></tr>
+    <tr><td><strong>Jitter Morph</strong></td><td>Random blend each frame between base shape and morph target chain (up to N targets)</td><td>Polygon sets; open curve sets (with <code>.curve.xml</code> targets)</td></tr>
+    <tr><td><strong>Keyframe Morph</strong></td><td>Eased morph amount (0..N) interpolated per keyframe alongside position/scale/rotation</td><td>Polygon sets; open curve sets (with <code>.curve.xml</code> targets)</td></tr>
   </table>
 
   <h3>Typical workflow</h3>

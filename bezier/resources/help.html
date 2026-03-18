@@ -73,6 +73,7 @@
   <a href="#refimage">Reference Image</a>
   <a href="#saveload">Save &amp; Load</a>
   <a href="#opencurvesets">Open Curve Set Files</a>
+  <a href="#morphtargets">Morph Target Files</a>
   <a href="#svg">SVG Export &amp; Import</a>
   <a href="#undo">Undo</a>
   <h2>Reference</h2>
@@ -711,6 +712,46 @@
 <p>Use <strong>Load</strong> and select an <code>.xml</code> file whose root element is <code>&lt;openCurveSet&gt;</code>. The editor detects the format automatically and loads the geometry as open curves.</p>
 
 <div class="note">The Loom Parameter Editor's <strong>Edit in Bezier</strong> button in the Curves sub-tab passes the correct headers to Bezier Draw automatically. You do not normally need to load open curve set files manually.</div>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════════ -->
+<section id="morphtargets">
+<h2>Morph Target Files</h2>
+<p>Morph animation in Loom blends a sprite's base shape toward one or more <em>morph target</em> shapes. You create morph targets by drawing an alternate version of the base geometry in Bezier Draw, then saving it to the project's <code>morphTargets/</code> directory. Multiple morph targets form a <strong>chain</strong>: base → mt1 → mt2 → …</p>
+
+<h3>File naming conventions</h3>
+<p>Files in <code>morphTargets/</code> use a suffix to indicate their geometry type:</p>
+<table>
+  <tr><th>Suffix</th><th>Geometry type</th><th>Example</th></tr>
+  <tr><td><code>.poly.xml</code></td><td>Closed polygon set (<code>&lt;polygonSet&gt;</code> root)</td><td><code>myshape_mt_1.poly.xml</code></td></tr>
+  <tr><td><code>.curve.xml</code></td><td>Open curve set (<code>&lt;openCurveSet&gt;</code> root)</td><td><code>myshape_mt_1.curve.xml</code></td></tr>
+</table>
+<p>The suffix determines how Loom loads the file. Both types can coexist in the same <code>morphTargets/</code> directory. Legacy files with no recognised suffix are treated as polygon format for backward compatibility.</p>
+
+<div class="note"><strong>Topology rule:</strong> each morph target must have the same number of polygons/curves, the same number of vertices per polygon/curve, and the same polygon type (SPLINE or LINE) as the base shape. Loom detects mismatches at load time and falls back to the base shape.</div>
+
+<h3>Step-by-step: creating a polygon morph target</h3>
+<ol>
+  <li>In Bezier Draw, open or draw the base polygon set that you want to morph <em>from</em>.</li>
+  <li>Make a note of the polygon count and vertices. You will need to preserve these exactly in every morph target.</li>
+  <li>Edit the polygon shapes to produce the alternate pose (the target you want to morph <em>to</em>). <strong>Do not add, remove, or split polygons</strong>, and do not add or remove anchor points.</li>
+  <li>In the Name field type the target filename, e.g. <code>myshape_mt_1</code>.</li>
+  <li>Click <strong>Save Polygons</strong>. The file is saved as <code>myshape_mt_1.xml</code> in <code>polygonSets/</code>. <em>Move and rename it</em> to <code>morphTargets/myshape_mt_1.poly.xml</code> manually (or use the Parameter Editor's morph target panel to create the initial copy automatically).</li>
+  <li>To create a second target (<code>_mt_2</code>), repeat from a copy of the base and save as <code>myshape_mt_2.poly.xml</code>.</li>
+</ol>
+
+<h3>Step-by-step: creating an open curve morph target</h3>
+<ol>
+  <li>Open or draw the base open curve set. Note the curve count and vertex count per curve.</li>
+  <li>Edit the curve shapes to the desired target pose without adding or removing curves or anchor points.</li>
+  <li>Click <strong>Save Open Curves</strong>. The file is written to <code>curveSets/</code>.</li>
+  <li>Move and rename it to <code>morphTargets/myshape_mt_1.curve.xml</code>.</li>
+</ol>
+
+<h3>Layer bundles and morph targets</h3>
+<p>If the base polygon set uses multiple layers (saved as a <code>.layers.xml</code> bundle), each morph target must be saved in the same bundle format with the same layer structure. The Parameter Editor handles this automatically when you use its <strong>Edit in Bezier</strong> workflow — edit, save, and close Bezier; the editor re-imports the result.</p>
+
+<div class="note">The safest workflow: always start from a copy of the <em>base</em> polygon set file when creating morph targets. This guarantees the initial topology matches exactly. Only then move the vertices to the target pose.</div>
 </section>
 
 <!-- ═══════════════════════════════════════════════════════════ -->

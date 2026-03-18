@@ -14,7 +14,10 @@ object BrushLibrary {
 
   private var brushDir: String = ""
   private val rawCache: mutable.Map[String, BufferedImage] = mutable.Map()
-  private val scaledCache: mutable.Map[(String, Int, Int), BufferedImage] = mutable.Map() // (name, qualityMultiple, blurRadius)
+  // Bounded scaled cache: at quality 8×, a single 64×64 brush becomes 512×512 = 1 MB.
+  // Cap at 32 entries to limit scaled-brush heap to ~32 MB at typical brush sizes.
+  private val MaxScaledCacheSize = 32
+  private val scaledCache: mutable.LinkedHashMap[(String, Int, Int), BufferedImage] = mutable.LinkedHashMap() // (name, qualityMultiple, blurRadius)
   // Bounded tinted cache — with dynamic color changes, unique colors are generated every frame.
   // Cap size to prevent heap exhaustion at high quality multiples.
   private val MaxTintedCacheSize = 64
@@ -34,13 +37,19 @@ object BrushLibrary {
    */
   def getBrush(name: String, qualityMultiple: Int, blurRadius: Int): BufferedImage = {
     val key = (name, qualityMultiple, blurRadius)
-    scaledCache.getOrElseUpdate(key, {
-      val raw = loadRaw(name)
-      if (raw == null) return null
-      var img = if (qualityMultiple > 1) scaleImage(raw, qualityMultiple) else raw
-      if (blurRadius > 0) img = applyBlur(img, blurRadius)
-      img
-    })
+    scaledCache.get(key) match {
+      case Some(img) => img
+      case None =>
+        val raw = loadRaw(name)
+        if (raw == null) return null
+        var img = if (qualityMultiple > 1) scaleImage(raw, qualityMultiple) else raw
+        if (blurRadius > 0) img = applyBlur(img, blurRadius)
+        while (scaledCache.size >= MaxScaledCacheSize) {
+          scaledCache.remove(scaledCache.head._1)
+        }
+        scaledCache(key) = img
+        img
+    }
   }
 
   /**

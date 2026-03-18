@@ -32,6 +32,7 @@ class OpenCurveTab(QWidget):
         self._sprite_library = None
         self._pre_edit_topology = None  # snapshot before Bezier launch
         self._edit_file_path: str = ""
+        self._pre_launch_files: set = set()
 
         self._setup_ui()
         self._refresh_list()
@@ -99,6 +100,10 @@ class OpenCurveTab(QWidget):
         form.addRow("Filename:", self.filename_combo)
 
         btn_row = QHBoxLayout()
+        self.create_btn = QPushButton("Create in Bezier")
+        self.create_btn.clicked.connect(self._create_in_bezier)
+        btn_row.addWidget(self.create_btn)
+
         self.edit_btn = QPushButton("Edit in Bezier")
         self.edit_btn.clicked.connect(self._edit_in_bezier)
         btn_row.addWidget(self.edit_btn)
@@ -322,6 +327,64 @@ class OpenCurveTab(QWidget):
         return affected
 
     # ── Bezier launch ─────────────────────────────────────────────────────────
+
+    def _strip_xml_headers(self, filepath: str) -> None:
+        """Remove XML declaration and DOCTYPE lines from a curve set file."""
+        with open(filepath, 'r', encoding='latin-1') as f:
+            lines = f.readlines()
+        cleaned = [l for l in lines
+                   if not l.strip().startswith('<?xml')
+                   and not l.strip().startswith('<!DOCTYPE')]
+        with open(filepath, 'w', encoding='utf-8') as f:
+            f.writelines(cleaned)
+
+    def _snapshot_files(self) -> set:
+        """Return the set of filenames currently in the curve sets directory."""
+        if not self._curve_sets_dir or not os.path.isdir(self._curve_sets_dir):
+            return set()
+        return set(os.listdir(self._curve_sets_dir))
+
+    def _create_in_bezier(self) -> None:
+        """Launch Bezier to create a new open curve set."""
+        if not self._curve_sets_dir or not os.path.isdir(self._curve_sets_dir):
+            QMessageBox.warning(self, "No Project", "Please save the project first.")
+            return
+        if self._bezier_process is not None and \
+                self._bezier_process.state() != QProcess.ProcessState.NotRunning:
+            QMessageBox.information(self, "Bezier Running", "Bezier is already running.")
+            return
+
+        self._pre_launch_files = self._snapshot_files()
+
+        self._bezier_process = QProcess(self)
+        self._bezier_process.setWorkingDirectory(BEZIER_WORKING_DIR)
+        self._bezier_process.finished.connect(self._on_create_bezier_finished)
+        self._bezier_process.start("java", [
+            "-Xmx4G", "-jar", BEZIER_JAR,
+            "--save-dir", self._curve_sets_dir
+        ])
+
+    def _on_create_bezier_finished(self, exit_code, exit_status) -> None:
+        """Handle Bezier process finishing after create."""
+        if not self._curve_sets_dir or not os.path.isdir(self._curve_sets_dir):
+            return
+
+        current_files = self._snapshot_files()
+        new_files = current_files - self._pre_launch_files
+
+        for fname in new_files:
+            fpath = os.path.join(self._curve_sets_dir, fname)
+            if os.path.isfile(fpath):
+                self._strip_xml_headers(fpath)
+
+        xml_files = sorted(f for f in new_files if f.endswith('.xml'))
+
+        self._refresh_file_list()
+
+        if len(xml_files) == 1:
+            self.filename_combo.setCurrentText(xml_files[0])
+
+        self.modified.emit()
 
     def _edit_in_bezier(self):
         if not self._curve_sets_dir:

@@ -3,15 +3,19 @@ Rendering configuration tab with full editing capabilities.
 """
 from typing import Optional
 import os
+import json
 from PyQt6.QtWidgets import (
     QWidget, QHBoxLayout, QVBoxLayout, QSplitter, QGroupBox,
     QLabel, QDoubleSpinBox, QSpinBox, QCheckBox, QComboBox,
     QScrollArea, QFrame, QListWidget, QPushButton, QInputDialog,
-    QFileDialog, QListWidgetItem, QDialog, QMessageBox, QTabWidget
+    QFileDialog, QListWidgetItem, QDialog, QMessageBox, QTabWidget,
+    QTableWidget, QTableWidgetItem, QHeaderView, QAbstractItemView,
+    QSizePolicy
 )
 from PyQt6.QtCore import pyqtSignal, Qt
+from PyQt6.QtGui import QImage, QPainter, QColor, QPen, QPixmap
 from .widgets.renderer_tree import RendererTreeWidget
-from .widgets.brush_editor import BrushEditorWidget
+from .widgets.brush_editor import BrushEditorWidget  # kept for legacy compatibility
 from .widgets.color_picker import ColorPickerWidget
 from .widgets.enum_dropdown import EnumDropdown
 from .widgets.change_editor import (
@@ -23,6 +27,76 @@ from models.rendering import (
 from models.constants import RenderMode, PlaybackMode, BrushDrawMode, PostCompletionMode
 
 
+# ---------------------------------------------------------------------------
+# BrushPreviewWidget
+# ---------------------------------------------------------------------------
+
+class BrushPreviewWidget(QWidget):
+    """Shows a brush PNG on a dark background with optional grid lines."""
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self._image: Optional[QImage] = None
+        self.setMinimumHeight(100)
+        self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
+        self.setStyleSheet("background: #111111;")
+
+    def set_image(self, image: Optional[QImage]):
+        self._image = image
+        self.update()
+
+    def paintEvent(self, event):
+        painter = QPainter(self)
+        painter.fillRect(self.rect(), QColor(17, 17, 17))
+
+        if self._image is None or self._image.isNull():
+            painter.setPen(QColor(80, 80, 80))
+            painter.drawText(self.rect(), Qt.AlignmentFlag.AlignCenter, "No brush selected")
+            painter.end()
+            return
+
+        w = self.width()
+        h = self.height()
+        img_w = self._image.width()
+        img_h = self._image.height()
+
+        pad = 6
+        scale = min((w - pad * 2) / img_w, (h - pad * 2) / img_h) if img_w and img_h else 1.0
+        draw_w = max(1, int(img_w * scale))
+        draw_h = max(1, int(img_h * scale))
+        ox = (w - draw_w) // 2
+        oy = (h - draw_h) // 2
+
+        # Draw image
+        scaled = self._image.scaled(draw_w, draw_h,
+                                    Qt.AspectRatioMode.IgnoreAspectRatio,
+                                    Qt.TransformationMode.FastTransformation)
+        painter.drawImage(ox, oy, scaled)
+
+        # Grid lines when cells are big enough
+        cell_w = draw_w / img_w
+        cell_h = draw_h / img_h
+        if cell_w >= 3 and cell_h >= 3:
+            painter.setPen(QPen(QColor(50, 50, 50), 1))
+            for c in range(img_w + 1):
+                x = ox + int(c * cell_w)
+                painter.drawLine(x, oy, x, oy + draw_h)
+            for r in range(img_h + 1):
+                y = oy + int(r * cell_h)
+                painter.drawLine(ox, y, ox + draw_w, y)
+
+        # Border
+        painter.setPen(QPen(QColor(80, 80, 80), 1))
+        painter.setBrush(Qt.BrushStyle.NoBrush)
+        painter.drawRect(ox, oy, draw_w, draw_h)
+
+        painter.end()
+
+
+# ---------------------------------------------------------------------------
+# RendererEditor
+# ---------------------------------------------------------------------------
+
 class RendererEditor(QWidget):
     """Editor panel for a single renderer's properties."""
 
@@ -33,11 +107,14 @@ class RendererEditor(QWidget):
         self._renderer: Optional[Renderer] = None
         self._updating = False
         self._brushes_dir: str = ""
+        self._editor_window = None
 
-        # Inner tabs: Basic Properties | Dynamic Changes
+        # Inner tabs: Basic Properties | Brushes | Point Change | Stroke Change | Fill Change
         inner_tabs = QTabWidget()
 
+        # ------------------------------------------------------------------
         # Basic Properties tab
+        # ------------------------------------------------------------------
         basic_scroll = QScrollArea()
         basic_scroll.setWidgetResizable(True)
         basic_scroll.setFrameShape(QFrame.Shape.NoFrame)
@@ -46,34 +123,6 @@ class RendererEditor(QWidget):
         basic_scroll.setWidget(basic_content)
         inner_tabs.addTab(basic_scroll, "Basic Properties")
 
-        # Point Change tab
-        point_scroll = QScrollArea()
-        point_scroll.setWidgetResizable(True)
-        point_scroll.setFrameShape(QFrame.Shape.NoFrame)
-        point_content = QWidget()
-        point_layout = QVBoxLayout(point_content)
-        point_scroll.setWidget(point_content)
-        inner_tabs.addTab(point_scroll, "Point Change")
-
-        # Stroke Change tab
-        stroke_scroll = QScrollArea()
-        stroke_scroll.setWidgetResizable(True)
-        stroke_scroll.setFrameShape(QFrame.Shape.NoFrame)
-        stroke_content = QWidget()
-        stroke_layout = QVBoxLayout(stroke_content)
-        stroke_scroll.setWidget(stroke_content)
-        inner_tabs.addTab(stroke_scroll, "Stroke Change")
-
-        # Fill Change tab
-        fill_scroll = QScrollArea()
-        fill_scroll.setWidgetResizable(True)
-        fill_scroll.setFrameShape(QFrame.Shape.NoFrame)
-        fill_content = QWidget()
-        fill_layout = QVBoxLayout(fill_content)
-        fill_scroll.setWidget(fill_content)
-        inner_tabs.addTab(fill_scroll, "Fill Change")
-
-        # Basic Properties group
         basic_group = QGroupBox("Basic Properties")
         basic_layout = QVBoxLayout(basic_group)
 
@@ -114,7 +163,6 @@ class RendererEditor(QWidget):
         self.point_size_spin.setDecimals(1)
         self.point_size_spin.valueChanged.connect(self._on_changed)
         point_row.addWidget(self.point_size_spin)
-
         point_row.addWidget(QLabel("Hold Length:"))
         self.hold_length_spin = QSpinBox()
         self.hold_length_spin.setRange(1, 100)
@@ -135,41 +183,39 @@ class RendererEditor(QWidget):
         basic_layout.addLayout(point_style_row)
 
         layout.addWidget(basic_group)
+        layout.addStretch()
 
-        # Point Change tab content (enabled controlled by tree PC checkbox)
-        self.point_size_change_editor = SizeChangeEditor("Point Size Change")
-        self.point_size_change_editor.setCheckable(False)
-        self.point_size_change_editor.changed.connect(self._on_changed)
-        point_layout.addWidget(self.point_size_change_editor)
+        # ------------------------------------------------------------------
+        # Brushes tab  (dedicated, between Basic Properties and Point Change)
+        # ------------------------------------------------------------------
+        brush_scroll = QScrollArea()
+        brush_scroll.setWidgetResizable(True)
+        brush_scroll.setFrameShape(QFrame.Shape.NoFrame)
+        brush_content = QWidget()
+        brush_content_layout = QVBoxLayout(brush_content)
+        brush_content_layout.setSpacing(4)
+        brush_scroll.setWidget(brush_content)
+        inner_tabs.addTab(brush_scroll, "Brushes")
 
-        # Stroke Change tab content (enabled controlled by tree SC checkbox)
-        self.stroke_width_change_editor = SizeChangeEditor("Stroke Width Change")
-        self.stroke_width_change_editor.setCheckable(False)
-        self.stroke_width_change_editor.changed.connect(self._on_changed)
-        stroke_layout.addWidget(self.stroke_width_change_editor)
+        # Brush image table (Name | Grid | Pixels | Use)
+        self.brush_table = QTableWidget()
+        self.brush_table.setColumnCount(4)
+        self.brush_table.setHorizontalHeaderLabels(["Name", "Grid", "Pixels", "Use"])
+        hh = self.brush_table.horizontalHeader()
+        hh.setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
+        hh.setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
+        hh.setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
+        hh.setSectionResizeMode(3, QHeaderView.ResizeMode.Fixed)
+        self.brush_table.setColumnWidth(3, 36)
+        self.brush_table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
+        self.brush_table.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
+        self.brush_table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
+        self.brush_table.setMaximumHeight(130)
+        self.brush_table.itemSelectionChanged.connect(self._on_brush_selection_changed)
+        self.brush_table.itemChanged.connect(self._on_brush_table_changed)
+        brush_content_layout.addWidget(self.brush_table)
 
-        self.stroke_color_change_editor = ColorChangeEditor("Stroke Color Change")
-        self.stroke_color_change_editor.setCheckable(False)
-        self.stroke_color_change_editor.changed.connect(self._on_changed)
-        stroke_layout.addWidget(self.stroke_color_change_editor)
-
-        # Fill Change tab content (enabled controlled by tree FC checkbox)
-        self.fill_color_change_editor = FillColorChangeEditor("Fill Color Change")
-        self.fill_color_change_editor.setCheckable(False)
-        self.fill_color_change_editor.changed.connect(self._on_changed)
-        fill_layout.addWidget(self.fill_color_change_editor)
-
-        # Brush Config group (only visible when mode == BRUSHED)
-        self.brush_group = QGroupBox("Brush Configuration")
-        brush_layout = QVBoxLayout(self.brush_group)
-
-        # Brush names list
-        brush_names_label = QLabel("Brush Images:")
-        brush_layout.addWidget(brush_names_label)
-        self.brush_list = QListWidget()
-        self.brush_list.setMaximumHeight(80)
-        brush_layout.addWidget(self.brush_list)
-
+        # Brush buttons
         brush_btn_row = QHBoxLayout()
         self.add_brush_btn = QPushButton("Add...")
         self.add_brush_btn.setToolTip("Add an existing brush PNG from the project's brushes/ folder")
@@ -187,7 +233,11 @@ class RendererEditor(QWidget):
         self.remove_brush_btn.clicked.connect(self._on_remove_brush)
         brush_btn_row.addWidget(self.remove_brush_btn)
         brush_btn_row.addStretch()
-        brush_layout.addLayout(brush_btn_row)
+        brush_content_layout.addLayout(brush_btn_row)
+
+        # Brush settings
+        self.brush_settings_group = QGroupBox("Brush Settings")
+        bs_layout = QVBoxLayout(self.brush_settings_group)
 
         # Draw mode
         draw_mode_row = QHBoxLayout()
@@ -198,13 +248,13 @@ class RendererEditor(QWidget):
         self.draw_mode_combo.currentIndexChanged.connect(self._on_brush_changed)
         draw_mode_row.addWidget(self.draw_mode_combo)
         draw_mode_row.addStretch()
-        brush_layout.addLayout(draw_mode_row)
+        bs_layout.addLayout(draw_mode_row)
 
         # Stamp spacing + easing
         spacing_row = QHBoxLayout()
         spacing_row.addWidget(QLabel("Stamp Spacing:"))
         self.stamp_spacing_spin = QDoubleSpinBox()
-        self.stamp_spacing_spin.setRange(0.5, 100.0)
+        self.stamp_spacing_spin.setRange(0.5, 999.0)
         self.stamp_spacing_spin.setDecimals(1)
         self.stamp_spacing_spin.setSingleStep(0.5)
         self.stamp_spacing_spin.valueChanged.connect(self._on_brush_changed)
@@ -226,12 +276,12 @@ class RendererEditor(QWidget):
         self.spacing_easing_combo.addItems(easing_types)
         self.spacing_easing_combo.currentTextChanged.connect(self._on_brush_changed)
         spacing_row.addWidget(self.spacing_easing_combo)
-        brush_layout.addLayout(spacing_row)
+        bs_layout.addLayout(spacing_row)
 
         # Follow tangent
         self.follow_tangent_check = QCheckBox("Follow Tangent")
         self.follow_tangent_check.stateChanged.connect(self._on_brush_changed)
-        brush_layout.addWidget(self.follow_tangent_check)
+        bs_layout.addWidget(self.follow_tangent_check)
 
         # Perpendicular jitter
         perp_row = QHBoxLayout()
@@ -247,7 +297,7 @@ class RendererEditor(QWidget):
         self.perp_jitter_max_spin.setDecimals(1)
         self.perp_jitter_max_spin.valueChanged.connect(self._on_brush_changed)
         perp_row.addWidget(self.perp_jitter_max_spin)
-        brush_layout.addLayout(perp_row)
+        bs_layout.addLayout(perp_row)
 
         # Scale min/max
         scale_row = QHBoxLayout()
@@ -265,7 +315,7 @@ class RendererEditor(QWidget):
         self.brush_scale_max_spin.setSingleStep(0.1)
         self.brush_scale_max_spin.valueChanged.connect(self._on_brush_changed)
         scale_row.addWidget(self.brush_scale_max_spin)
-        brush_layout.addLayout(scale_row)
+        bs_layout.addLayout(scale_row)
 
         # Opacity min/max
         opacity_row = QHBoxLayout()
@@ -283,9 +333,9 @@ class RendererEditor(QWidget):
         self.opacity_max_spin.setSingleStep(0.05)
         self.opacity_max_spin.valueChanged.connect(self._on_brush_changed)
         opacity_row.addWidget(self.opacity_max_spin)
-        brush_layout.addLayout(opacity_row)
+        bs_layout.addLayout(opacity_row)
 
-        # Progressive reveal settings
+        # Progressive reveal
         self.progressive_group = QGroupBox("Progressive Reveal")
         prog_layout = QVBoxLayout(self.progressive_group)
 
@@ -312,7 +362,7 @@ class RendererEditor(QWidget):
         pcm_row.addStretch()
         prog_layout.addLayout(pcm_row)
 
-        brush_layout.addWidget(self.progressive_group)
+        bs_layout.addWidget(self.progressive_group)
 
         # Blur radius
         blur_row = QHBoxLayout()
@@ -322,18 +372,81 @@ class RendererEditor(QWidget):
         self.blur_radius_spin.valueChanged.connect(self._on_brush_changed)
         blur_row.addWidget(self.blur_radius_spin)
         blur_row.addStretch()
-        brush_layout.addLayout(blur_row)
+        bs_layout.addLayout(blur_row)
 
-        point_layout.addWidget(self.brush_group)
+        brush_content_layout.addWidget(self.brush_settings_group)
 
-        layout.addStretch()
+        # Brush preview at bottom of Brushes tab
+        preview_label = QLabel("Preview:")
+        brush_content_layout.addWidget(preview_label)
+        self.brush_preview = BrushPreviewWidget()
+        self.brush_preview.setMinimumHeight(120)
+        self.brush_preview.setMaximumHeight(180)
+        brush_content_layout.addWidget(self.brush_preview)
+
+        # ------------------------------------------------------------------
+        # Point Change tab
+        # ------------------------------------------------------------------
+        point_scroll = QScrollArea()
+        point_scroll.setWidgetResizable(True)
+        point_scroll.setFrameShape(QFrame.Shape.NoFrame)
+        point_content = QWidget()
+        point_layout = QVBoxLayout(point_content)
+        point_scroll.setWidget(point_content)
+        inner_tabs.addTab(point_scroll, "Point Change")
+
+        self.point_size_change_editor = SizeChangeEditor("Point Size Change")
+        self.point_size_change_editor.setCheckable(False)
+        self.point_size_change_editor.changed.connect(self._on_changed)
+        point_layout.addWidget(self.point_size_change_editor)
         point_layout.addStretch()
+
+        # ------------------------------------------------------------------
+        # Stroke Change tab
+        # ------------------------------------------------------------------
+        stroke_scroll = QScrollArea()
+        stroke_scroll.setWidgetResizable(True)
+        stroke_scroll.setFrameShape(QFrame.Shape.NoFrame)
+        stroke_content = QWidget()
+        stroke_layout = QVBoxLayout(stroke_content)
+        stroke_scroll.setWidget(stroke_content)
+        inner_tabs.addTab(stroke_scroll, "Stroke Change")
+
+        self.stroke_width_change_editor = SizeChangeEditor("Stroke Width Change")
+        self.stroke_width_change_editor.setCheckable(False)
+        self.stroke_width_change_editor.changed.connect(self._on_changed)
+        stroke_layout.addWidget(self.stroke_width_change_editor)
+
+        self.stroke_color_change_editor = ColorChangeEditor("Stroke Color Change")
+        self.stroke_color_change_editor.setCheckable(False)
+        self.stroke_color_change_editor.changed.connect(self._on_changed)
+        stroke_layout.addWidget(self.stroke_color_change_editor)
         stroke_layout.addStretch()
+
+        # ------------------------------------------------------------------
+        # Fill Change tab
+        # ------------------------------------------------------------------
+        fill_scroll = QScrollArea()
+        fill_scroll.setWidgetResizable(True)
+        fill_scroll.setFrameShape(QFrame.Shape.NoFrame)
+        fill_content = QWidget()
+        fill_layout = QVBoxLayout(fill_content)
+        fill_scroll.setWidget(fill_content)
+        inner_tabs.addTab(fill_scroll, "Fill Change")
+
+        self.fill_color_change_editor = FillColorChangeEditor("Fill Color Change")
+        self.fill_color_change_editor.setCheckable(False)
+        self.fill_color_change_editor.changed.connect(self._on_changed)
+        fill_layout.addWidget(self.fill_color_change_editor)
         fill_layout.addStretch()
 
         main_layout = QVBoxLayout(self)
         main_layout.setContentsMargins(0, 0, 0, 0)
         main_layout.addWidget(inner_tabs)
+
+    # ------------------------------------------------------------------
+    # Public API
+    # ------------------------------------------------------------------
 
     def set_renderer(self, renderer: Optional[Renderer]) -> None:
         self._updating = True
@@ -357,20 +470,96 @@ class RendererEditor(QWidget):
             self.fill_color_change_editor.set_change(renderer.fill_color_change)
             self.point_size_change_editor.set_change(renderer.point_size_change)
 
-            # Brush config
             self._load_brush_config(renderer.brush_config)
-
             self._update_mode_visibility()
 
         self._updating = False
 
+    def set_brushes_dir(self, path: str) -> None:
+        self._brushes_dir = path
+
+    # ------------------------------------------------------------------
+    # Brush helpers
+    # ------------------------------------------------------------------
+
+    def _brush_dims(self, filename: str):
+        """Return (grid_w, grid_h, px_w, px_h) for a brush PNG, or Nones if unavailable."""
+        if not self._brushes_dir:
+            return None, None, None, None
+        filepath = os.path.join(self._brushes_dir, filename)
+        if not os.path.exists(filepath):
+            return None, None, None, None
+        img = QImage(filepath)
+        if img.isNull():
+            return None, None, None, None
+        px_w, px_h = img.width(), img.height()
+        grid_w, grid_h = px_w, px_h  # default: same as pixel dims
+        meta_path = filepath + ".meta.json"
+        if os.path.exists(meta_path):
+            try:
+                with open(meta_path) as f:
+                    meta = json.load(f)
+                grid_w = meta.get("grid_w", px_w)
+                grid_h = meta.get("grid_h", px_h)
+            except Exception:
+                pass
+        return grid_w, grid_h, px_w, px_h
+
+    def _add_brush_row(self, filename: str, enabled: bool = True):
+        """Append a row to brush_table for the given filename."""
+        row = self.brush_table.rowCount()
+        self.brush_table.insertRow(row)
+
+        name_item = QTableWidgetItem(filename)
+        name_item.setFlags(name_item.flags() & ~Qt.ItemFlag.ItemIsEditable)
+        self.brush_table.setItem(row, 0, name_item)
+
+        grid_w, grid_h, px_w, px_h = self._brush_dims(filename)
+        grid_text = f"{grid_w}×{grid_h}" if grid_w is not None else "?"
+        px_text = f"{px_w}×{px_h}" if px_w is not None else "?"
+
+        grid_item = QTableWidgetItem(grid_text)
+        grid_item.setFlags(grid_item.flags() & ~Qt.ItemFlag.ItemIsEditable)
+        grid_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.brush_table.setItem(row, 1, grid_item)
+
+        px_item = QTableWidgetItem(px_text)
+        px_item.setFlags(px_item.flags() & ~Qt.ItemFlag.ItemIsEditable)
+        px_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.brush_table.setItem(row, 2, px_item)
+
+        use_item = QTableWidgetItem()
+        use_item.setFlags(Qt.ItemFlag.ItemIsUserCheckable | Qt.ItemFlag.ItemIsEnabled)
+        use_item.setCheckState(Qt.CheckState.Checked if enabled else Qt.CheckState.Unchecked)
+        use_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.brush_table.setItem(row, 3, use_item)
+
+    def _update_brush_preview(self):
+        """Load the selected brush image into the preview widget."""
+        row = self.brush_table.currentRow()
+        if row < 0 or not self._brushes_dir:
+            self.brush_preview.set_image(None)
+            return
+        name_item = self.brush_table.item(row, 0)
+        if not name_item:
+            self.brush_preview.set_image(None)
+            return
+        filepath = os.path.join(self._brushes_dir, name_item.text())
+        if not os.path.exists(filepath):
+            self.brush_preview.set_image(None)
+            return
+        img = QImage(filepath)
+        self.brush_preview.set_image(img if not img.isNull() else None)
+
+    # ------------------------------------------------------------------
+    # Mode / visibility
+    # ------------------------------------------------------------------
+
     def _on_mode_changed(self, *args) -> None:
-        """Handle mode changes - update visibility and trigger change."""
         self._update_mode_visibility()
         self._on_changed()
 
     def _update_mode_visibility(self) -> None:
-        """Enable/disable options based on current render mode."""
         mode = self.mode_dropdown.get_value()
 
         has_stroke = mode in (RenderMode.STROKED, RenderMode.FILLED_STROKED)
@@ -378,49 +567,56 @@ class RendererEditor(QWidget):
         has_points = mode == RenderMode.POINTS
         has_brush = mode == RenderMode.BRUSHED
 
-        # Stroke controls — also enabled in POINTS mode when point_stroked is true
-        # In BRUSHED mode, stroke color is used as brush tint
         point_stroked = has_points and self.point_stroked_check.isChecked()
         self.stroke_width_spin.setEnabled(has_stroke or point_stroked)
         self.stroke_color_picker.setEnabled(has_stroke or point_stroked or has_brush)
         self.stroke_width_change_editor.setEnabled(has_stroke or has_points)
         self.stroke_color_change_editor.setEnabled(has_stroke or has_brush or has_points)
 
-        # Fill controls — also enabled in POINTS mode when point_filled is true
         point_filled = has_points and self.point_filled_check.isChecked()
         self.fill_color_picker.setEnabled(has_fill or point_filled)
         self.fill_color_change_editor.setEnabled(has_fill)
 
-        # Point controls - only relevant in POINTS mode
         self.point_size_spin.setEnabled(has_points)
         self.point_stroked_check.setEnabled(has_points)
         self.point_filled_check.setEnabled(has_points)
         self.point_size_change_editor.setEnabled(has_points)
 
-        # Brush config - only visible in BRUSHED mode
-        self.brush_group.setVisible(has_brush)
+        # Brushes tab content enabled only in BRUSHED mode
+        self.brush_table.setEnabled(has_brush)
+        self.add_brush_btn.setEnabled(has_brush)
+        self.create_brush_btn.setEnabled(has_brush)
+        self.edit_brush_btn.setEnabled(has_brush)
+        self.remove_brush_btn.setEnabled(has_brush)
+        self.brush_settings_group.setEnabled(has_brush)
+        self.brush_preview.setEnabled(has_brush)
 
-        # Progressive reveal settings - only visible when draw mode is PROGRESSIVE
         if has_brush:
             is_progressive = self.draw_mode_combo.currentData() == BrushDrawMode.PROGRESSIVE
             self.progressive_group.setVisible(is_progressive)
         else:
             self.progressive_group.setVisible(False)
 
-
     def _on_point_style_changed(self, *args) -> None:
-        """Handle point stroked/filled checkbox changes — update visibility and trigger change."""
         self._update_mode_visibility()
         self._on_changed()
 
+    # ------------------------------------------------------------------
+    # Load / get brush config
+    # ------------------------------------------------------------------
+
     def _load_brush_config(self, config: 'Optional[BrushConfig]') -> None:
-        """Load brush config values into the UI."""
         if config is None:
             config = BrushConfig()
 
-        self.brush_list.clear()
-        for name in config.brush_names:
-            self.brush_list.addItem(name)
+        self.brush_table.blockSignals(True)
+        self.brush_table.setRowCount(0)
+        for i, name in enumerate(config.brush_names):
+            en = config.brush_enabled[i] if i < len(config.brush_enabled) else True
+            self._add_brush_row(name, en)
+        self.brush_table.blockSignals(False)
+
+        self._update_brush_preview()
 
         idx = self.draw_mode_combo.findData(config.draw_mode)
         if idx >= 0:
@@ -448,15 +644,16 @@ class RendererEditor(QWidget):
         self.blur_radius_spin.setValue(config.blur_radius)
 
     def _get_brush_config(self) -> BrushConfig:
-        """Build a BrushConfig from current UI state."""
-        names = []
-        for i in range(self.brush_list.count()):
-            names.append(self.brush_list.item(i).text())
-        if not names:
-            names = ["default.png"]
-
+        names, enabled = [], []
+        for i in range(self.brush_table.rowCount()):
+            ni = self.brush_table.item(i, 0)
+            ui = self.brush_table.item(i, 3)
+            if ni:
+                names.append(ni.text())
+                enabled.append(ui.checkState() == Qt.CheckState.Checked if ui else True)
         return BrushConfig(
             brush_names=names,
+            brush_enabled=enabled,
             draw_mode=self.draw_mode_combo.currentData() or BrushDrawMode.FULL_PATH,
             stamp_spacing=self.stamp_spacing_spin.value(),
             spacing_easing=self.spacing_easing_combo.currentText(),
@@ -473,23 +670,28 @@ class RendererEditor(QWidget):
             blur_radius=self.blur_radius_spin.value()
         )
 
-    def set_brushes_dir(self, path: str) -> None:
-        """Set the brushes directory for this editor."""
-        self._brushes_dir = path
+    # ------------------------------------------------------------------
+    # Brush list actions
+    # ------------------------------------------------------------------
+
+    def _on_brush_selection_changed(self) -> None:
+        self._update_brush_preview()
+
+    def _on_brush_table_changed(self, item: QTableWidgetItem) -> None:
+        """Only the Use checkbox in col 3 is user-editable; treat as a brush change."""
+        if item.column() == 3 and not self._updating:
+            self._on_brush_changed()
 
     def _on_add_brush(self) -> None:
-        """Add a brush from the project's brushes/ folder or by typing a name."""
         if self._brushes_dir and os.path.isdir(self._brushes_dir):
-            # List available PNGs in the brushes directory
             available = sorted(
                 f for f in os.listdir(self._brushes_dir)
                 if f.lower().endswith(".png")
             )
             if available:
-                # Filter out already-added brushes
-                existing = set()
-                for i in range(self.brush_list.count()):
-                    existing.add(self.brush_list.item(i).text())
+                existing = {self.brush_table.item(i, 0).text()
+                            for i in range(self.brush_table.rowCount())
+                            if self.brush_table.item(i, 0)}
                 choices = [f for f in available if f not in existing]
                 if choices:
                     name, ok = QInputDialog.getItem(
@@ -497,7 +699,9 @@ class RendererEditor(QWidget):
                         choices, 0, False
                     )
                     if ok and name:
-                        self.brush_list.addItem(name)
+                        self.brush_table.blockSignals(True)
+                        self._add_brush_row(name, True)
+                        self.brush_table.blockSignals(False)
                         self._on_brush_changed()
                     return
                 else:
@@ -508,85 +712,85 @@ class RendererEditor(QWidget):
                     )
                     return
 
-        # Fallback: manual text entry
         name, ok = QInputDialog.getText(self, "Add Brush", "Brush PNG filename:")
         if ok and name.strip():
             name = name.strip()
             if not name.lower().endswith(".png"):
                 name += ".png"
-            self.brush_list.addItem(name)
+            self.brush_table.blockSignals(True)
+            self._add_brush_row(name, True)
+            self.brush_table.blockSignals(False)
             self._on_brush_changed()
+
+    def _open_brush_editor(self, initial_file=None) -> None:
+        from .widgets.brush_editor_window import BrushEditorWindow
+        if self._editor_window and self._editor_window.isVisible():
+            self._editor_window.raise_()
+            self._editor_window.activateWindow()
+            if initial_file:
+                self._editor_window.open_file(initial_file)
+            return
+        self._editor_window = BrushEditorWindow(
+            self._brushes_dir, initial_file=initial_file, parent=None)
+        def on_saved(filename):
+            existing = {self.brush_table.item(i, 0).text()
+                        for i in range(self.brush_table.rowCount())
+                        if self.brush_table.item(i, 0)}
+            if filename not in existing:
+                self.brush_table.blockSignals(True)
+                self._add_brush_row(filename, True)
+                self.brush_table.blockSignals(False)
+                self._on_brush_changed()
+            else:
+                # Refresh dims for the existing row
+                for i in range(self.brush_table.rowCount()):
+                    ni = self.brush_table.item(i, 0)
+                    if ni and ni.text() == filename:
+                        grid_w, grid_h, px_w, px_h = self._brush_dims(filename)
+                        gi = self.brush_table.item(i, 1)
+                        pi = self.brush_table.item(i, 2)
+                        if gi:
+                            gi.setText(f"{grid_w}×{grid_h}" if grid_w else "?")
+                        if pi:
+                            pi.setText(f"{px_w}×{px_h}" if px_w else "?")
+                        break
+                self._update_brush_preview()
+        self._editor_window.brushSaved.connect(on_saved)
+        self._editor_window.show()
 
     def _on_create_brush(self) -> None:
-        """Open the brush editor to create a new brush."""
         if not self._brushes_dir:
-            QMessageBox.warning(
-                self, "No Project",
-                "Save or open a project first to create brushes."
-            )
+            QMessageBox.warning(self, "No Project",
+                                "Save or open a project first to create brushes.")
             return
-
         os.makedirs(self._brushes_dir, exist_ok=True)
-
-        dialog = QDialog(self)
-        dialog.setWindowTitle("Create Brush")
-        dialog.setMinimumSize(500, 650)
-        dlg_layout = QVBoxLayout(dialog)
-
-        editor = BrushEditorWidget(self._brushes_dir)
-
-        def on_saved(filename):
-            # Auto-add the new brush to the list
-            self.brush_list.addItem(filename)
-            self._on_brush_changed()
-            dialog.accept()
-
-        editor.brushSaved.connect(on_saved)
-        dlg_layout.addWidget(editor)
-        dialog.exec()
+        self._open_brush_editor(initial_file=None)
 
     def _on_edit_brush(self) -> None:
-        """Open the brush editor for the selected brush."""
-        current = self.brush_list.currentItem()
-        if current is None:
+        row = self.brush_table.currentRow()
+        ni = self.brush_table.item(row, 0) if row >= 0 else None
+        if not ni:
             QMessageBox.information(self, "No Selection", "Select a brush to edit.")
             return
-
-        filename = current.text()
         if not self._brushes_dir:
-            QMessageBox.warning(
-                self, "No Project",
-                "Save or open a project first to edit brushes."
-            )
+            QMessageBox.warning(self, "No Project",
+                                "Save or open a project first to edit brushes.")
             return
-
-        filepath = os.path.join(self._brushes_dir, filename)
-
-        dialog = QDialog(self)
-        dialog.setWindowTitle(f"Edit Brush: {filename}")
-        dialog.setMinimumSize(500, 650)
-        dlg_layout = QVBoxLayout(dialog)
-
-        editor = BrushEditorWidget(self._brushes_dir)
-        if os.path.exists(filepath):
-            editor.canvas.load_image(filepath)
-
-        editor.brushSaved.connect(lambda name: dialog.accept())
-        dlg_layout.addWidget(editor)
-        dialog.exec()
+        filepath = os.path.join(self._brushes_dir, ni.text())
+        if not os.path.exists(filepath):
+            return
+        self._open_brush_editor(initial_file=filepath)
 
     def _on_remove_brush(self) -> None:
-        """Remove the selected brush from the list."""
-        current = self.brush_list.currentRow()
-        if current >= 0:
-            self.brush_list.takeItem(current)
+        row = self.brush_table.currentRow()
+        if row >= 0:
+            self.brush_table.removeRow(row)
+            self._update_brush_preview()
             self._on_brush_changed()
 
     def _on_brush_changed(self, *args) -> None:
-        """Handle any brush config UI change."""
         if self._updating:
             return
-        # Update progressive group visibility
         is_progressive = self.draw_mode_combo.currentData() == BrushDrawMode.PROGRESSIVE
         self.progressive_group.setVisible(is_progressive)
         self._on_changed()
@@ -595,7 +799,6 @@ class RendererEditor(QWidget):
         if self._updating or self._renderer is None:
             return
 
-        # Update renderer from UI (enabled is controlled by tree checkbox, not here)
         self._renderer.mode = self.mode_dropdown.get_value()
         self._renderer.stroke_width = self.stroke_width_spin.value()
         self._renderer.stroke_color = self.stroke_color_picker.get_color()
@@ -605,7 +808,6 @@ class RendererEditor(QWidget):
         self._renderer.point_stroked = self.point_stroked_check.isChecked()
         self._renderer.point_filled = self.point_filled_check.isChecked()
 
-        # Preserve enabled flags (controlled by tree checkboxes, not by non-checkable editors)
         sw_change = self.stroke_width_change_editor.get_change()
         sw_change.enabled = self._renderer.stroke_width_change.enabled
         self._renderer.stroke_width_change = sw_change
@@ -622,12 +824,10 @@ class RendererEditor(QWidget):
         ps_change.enabled = self._renderer.point_size_change.enabled
         self._renderer.point_size_change = ps_change
 
-        # Update brush config
         if self._renderer.mode == RenderMode.BRUSHED:
             self._renderer.brush_config = self._get_brush_config()
         elif self._renderer.brush_config is not None and self._renderer.mode != RenderMode.BRUSHED:
-            # Keep brush config if previously set (user may switch back to BRUSHED)
-            pass
+            pass  # preserve for when user switches back to BRUSHED
 
         self.changed.emit()
 
@@ -690,14 +890,12 @@ class RendererSetConfigPanel(QGroupBox):
         self.setEnabled(enabled)
 
         if renderer_set:
-            # Update mode
             index = self.mode_combo.findData(renderer_set.playback_mode)
             if index >= 0:
                 self.mode_combo.setCurrentIndex(index)
 
-            # Update preferred renderer dropdown
             self.preferred_combo.clear()
-            self.preferred_combo.addItem("")  # Empty option
+            self.preferred_combo.addItem("")
             for r in renderer_set.renderers:
                 self.preferred_combo.addItem(r.name)
             if renderer_set.preferred_renderer:
@@ -735,32 +933,26 @@ class RenderingTab(QWidget):
 
         layout = QHBoxLayout(self)
 
-        # Create splitter for left/right panels
         splitter = QSplitter(Qt.Orientation.Horizontal)
 
-        # Left panel: tree view and set config
         left_panel = QWidget()
         left_layout = QVBoxLayout(left_panel)
         left_layout.setContentsMargins(0, 0, 0, 0)
 
-        # Library name label
         self.library_label = QLabel("Library: (none)")
         left_layout.addWidget(self.library_label)
 
-        # Tree view
         self.tree_widget = RendererTreeWidget()
         self.tree_widget.selectionChanged.connect(self._on_selection_changed)
         self.tree_widget.libraryModified.connect(self._on_library_modified)
         left_layout.addWidget(self.tree_widget)
 
-        # Set configuration
         self.set_config_panel = RendererSetConfigPanel()
         self.set_config_panel.changed.connect(self._on_library_modified)
         left_layout.addWidget(self.set_config_panel)
 
         splitter.addWidget(left_panel)
 
-        # Right panel: renderer editor
         right_panel = QWidget()
         right_layout = QVBoxLayout(right_panel)
         right_layout.setContentsMargins(0, 0, 0, 0)
@@ -773,14 +965,11 @@ class RenderingTab(QWidget):
         right_layout.addWidget(self.renderer_editor)
 
         splitter.addWidget(right_panel)
-
-        # Set splitter sizes
         splitter.setSizes([300, 600])
 
         layout.addWidget(splitter)
 
     def set_library(self, library: Optional[RendererSetLibrary]) -> None:
-        """Set the library to edit."""
         self._library = library
         self._current_set = None
         self._current_renderer = None
@@ -797,7 +986,6 @@ class RenderingTab(QWidget):
         self.renderer_label.setText("Renderer: (none)")
 
     def set_project_dir(self, project_dir: str) -> None:
-        """Set the project directory — forwards brushes/ path to the renderer editor."""
         brushes_dir = os.path.join(project_dir, "brushes")
         os.makedirs(brushes_dir, exist_ok=True)
         self.renderer_editor.set_brushes_dir(brushes_dir)
@@ -806,7 +994,6 @@ class RenderingTab(QWidget):
         return self._library
 
     def _on_selection_changed(self, set_name: str, renderer_name: Optional[str]) -> None:
-        """Handle tree selection changes."""
         if not self._library:
             return
 
@@ -823,10 +1010,6 @@ class RenderingTab(QWidget):
         self.renderer_editor.set_renderer(self._current_renderer)
 
     def _on_library_modified(self) -> None:
-        """Handle library modifications.
-        Auto-enables ModifyInternalParameters when any renderer in the
-        current set has dynamic changes enabled.
-        """
         if self._current_set is not None:
             any_changes = any(r.has_any_changes() for r in self._current_set.renderers)
             if any_changes and not self._current_set.modify_internal_parameters:
@@ -836,7 +1019,6 @@ class RenderingTab(QWidget):
         self.modified.emit()
 
     def create_default_library(self) -> RendererSetLibrary:
-        """Create a default library with one set and one renderer."""
         library = RendererSetLibrary(name="MainLibrary")
         default_set = RendererSet(name="DefaultSet")
         default_renderer = Renderer(

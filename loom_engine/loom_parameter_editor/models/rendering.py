@@ -115,7 +115,8 @@ class FillColorChange(ColorChange):
 @dataclass
 class BrushConfig:
     """Configuration for brush-based rendering (BRUSHED mode)."""
-    brush_names: List[str] = field(default_factory=lambda: ["default.png"])
+    brush_names: List[str] = field(default_factory=list)
+    brush_enabled: List[bool] = field(default_factory=list)
     draw_mode: BrushDrawMode = BrushDrawMode.FULL_PATH
     stamp_spacing: float = 4.0
     spacing_easing: str = "LINEAR"
@@ -134,6 +135,7 @@ class BrushConfig:
     def copy(self) -> 'BrushConfig':
         return BrushConfig(
             brush_names=list(self.brush_names),
+            brush_enabled=list(self.brush_enabled),
             draw_mode=self.draw_mode,
             stamp_spacing=self.stamp_spacing,
             spacing_easing=self.spacing_easing,

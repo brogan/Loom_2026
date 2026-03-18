@@ -3,6 +3,7 @@ loom_engine/target/
 loom_engine/project/target/
 loom_engine/project/project/
 loom_engine/.bsp/
+loom_engine/loom_parameter_editor/target/
 
 # Java / IntelliJ build artifacts
 bezier/out/production/

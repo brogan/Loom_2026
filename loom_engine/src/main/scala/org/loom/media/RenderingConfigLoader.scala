@@ -145,7 +145,14 @@ object RenderingConfigLoader {
   }
 
   private def parseBrushConfig(node: Node): BrushConfig = {
-    val brushNames = (node \ "BrushNames" \ "Brush").map(_.text.trim).toArray
+    val allBrushNames = (node \ "BrushNames" \ "Brush").map(_.text.trim).toArray
+    val brushEnabledFlags = (node \ "BrushEnabled" \ "Enabled").map(_.text.trim.toLowerCase != "false").toArray
+    val brushNames = if (brushEnabledFlags.length == allBrushNames.length) {
+      val enabled = allBrushNames.zip(brushEnabledFlags).collect { case (n, true) => n }
+      if (enabled.nonEmpty) enabled else allBrushNames // fallback: use all if all disabled
+    } else {
+      allBrushNames // legacy file with no BrushEnabled element — use all
+    }
     val drawMode = (node \ "DrawMode").text.trim.toUpperCase match {
       case "PROGRESSIVE" => BrushConfig.PROGRESSIVE
       case _ => BrushConfig.FULL_PATH
@@ -169,7 +176,7 @@ object RenderingConfigLoader {
     val blurRadius = getIntOrDefault(node, "BlurRadius", 0)
 
     BrushConfig(
-      brushNames = if (brushNames.nonEmpty) brushNames else Array("default.png"),
+      brushNames = brushNames,
       drawMode = drawMode,
       stampSpacing = stampSpacing,
       spacingEasing = spacingEasing,

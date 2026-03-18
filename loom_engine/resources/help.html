@@ -196,7 +196,7 @@ SBT_OPTS="-Xmx8G" sbt run</pre>
     <td><strong>Open Curve Sets</strong><br>(non-closed splines)</td>
     <td><code>&lt;openCurveSet&gt;</code> XML</td>
     <td>No — rendered directly</td>
-    <td>No</td>
+    <td>Yes (with <code>.curve.xml</code> morph target files)</td>
     <td>STROKED, BRUSHED</td>
   </tr>
   <tr>
@@ -216,7 +216,7 @@ SBT_OPTS="-Xmx8G" sbt run</pre>
 </ul>
 
 <h3>Open curves</h3>
-<p>Open curves are non-closed cubic Bézier paths with a defined start and end. They are drawn in Bezier Draw using the <em>Finish Open Curve</em> button. Loom renders each open curve as a continuous stroked path or brush-stamp chain. They participate in sprite transforms (position, scale, rotation, jitter animation, keyframe animation) but are not subdivided and do not support morph targets.</p>
+<p>Open curves are non-closed cubic Bézier paths with a defined start and end. They are drawn in Bezier Draw using the <em>Finish Open Curve</em> button. Loom renders each open curve as a continuous stroked path or brush-stamp chain. They participate in sprite transforms (position, scale, rotation, jitter animation, keyframe animation) and also support <strong>morph targets</strong> via <code>.curve.xml</code> files stored in <code>morphTargets/</code>.</p>
 
 <h3>Point sets</h3>
 <p>Point sets are collections of discrete anchor positions. Loom renders each point as a dot stamp (POINTS mode) or brush stamp (BRUSHED mode). They participate in sprite transforms and jitter/keyframe animation but are not subdivided and do not support morph targets.</p>
@@ -280,14 +280,26 @@ SBT_OPTS="-Xmx8G" sbt run</pre>
 <!-- ═══════════════════════════════════════════════════════════ -->
 <section id="animation">
 <h2>Animation</h2>
-<p>Animation requires <em>Animating</em> to be enabled (configured in the Run tab of the Parameter Editor). Three animation modes are available per sprite:</p>
+<p>Animation requires <em>Animating</em> to be enabled (configured in the Run tab of the Parameter Editor). Four animation modes are available per sprite:</p>
 <table>
   <tr><th>Mode</th><th>Description</th><th>Geometry restriction</th></tr>
   <tr><td><strong>Random (Jitter)</strong></td><td>Random perturbations to scale, rotation, and position each frame.</td><td>All geometry types</td></tr>
   <tr><td><strong>Keyframe</strong></td><td>Interpolated transitions between defined states using 41 easing functions.</td><td>All geometry types</td></tr>
-  <tr><td><strong>Jitter Morph</strong></td><td>Random blend amount applied each frame between base shape and morph target.</td><td>Polygon sets only</td></tr>
-  <tr><td><strong>Keyframe Morph</strong></td><td>Eased morph amount interpolated between keyframes.</td><td>Polygon sets only</td></tr>
+  <tr><td><strong>Jitter Morph</strong></td><td>Random morph amount applied each frame across a chain of morph targets (base → mt1 → mt2 → …).</td><td>Polygon sets; open curve sets</td></tr>
+  <tr><td><strong>Keyframe Morph</strong></td><td>Eased morph chain position (0..N) interpolated alongside position/scale/rotation per keyframe.</td><td>Polygon sets; open curve sets</td></tr>
 </table>
+
+<h3>Morph target chains</h3>
+<p>Both Jitter Morph and Keyframe Morph support a <strong>chain</strong> of morph targets. The <code>morphAmount</code> value is a continuous position 0..N:</p>
+<ul>
+  <li><strong>0.0</strong> = base shape</li>
+  <li><strong>1.0</strong> = first morph target (mt1)</li>
+  <li><strong>2.0</strong> = second morph target (mt2)</li>
+  <li><strong>1.5</strong> = halfway between mt1 and mt2</li>
+</ul>
+<p>For polygon-type sprites, morph target files use the <code>.poly.xml</code> suffix. For open curve sprites, they use <code>.curve.xml</code>. Both are stored in the project's <code>morphTargets/</code> directory. Single-target sprites with <code>morphAmount</code> in [0, 1] behave identically to the previous single-target implementation.</p>
+
+<div class="note">Every morph target in the chain must be topologically identical to the base shape (same polygon/curve count, same vertex count per polygon/curve, same polygon type). Loom detects mismatches at load time and falls back to the base shape.</div>
 
 <h3>Draw background once</h3>
 <p>When <em>Draw Background Once</em> is enabled in the Run tab, the background is painted only on frame 1. Subsequent frames are drawn on top, accumulating a layered trail. With a semi-transparent overlay colour, older frames fade slowly — a fading-trail effect. Disable for clean per-frame animation.</p>
@@ -311,6 +323,15 @@ SBT_OPTS="-Xmx8G" sbt run</pre>
 
 <h3>Resolution</h3>
 <p>Output resolution = <em>Canvas Width</em> × <em>Quality Multiple</em> by <em>Canvas Height</em> × <em>Quality Multiple</em>. A 1080×1080 canvas at quality 4 → 4320×4320 px PNG. At quality 8 → 8640×8640 px. Stroke widths are scaled proportionally if <em>Scale Image</em> is enabled in the Parameter Editor.</p>
+
+<h3>Memory at High Quality Multiples</h3>
+<p>At quality 8 or above a single internal image buffer can exceed 270 MB. Loom is configured to launch in its own forked JVM (separate from SBT) with generous heap settings and G1GC tuning to handle these large allocations smoothly:</p>
+<ul>
+  <li>Initial heap 2 GB, maximum 12 GB — set in <code>build.sbt</code> via <code>javaOptions</code>.</li>
+  <li>G1GC with 32 MB regions handles humongous allocations that exceed the default region size.</li>
+  <li>Early concurrent GC (<code>InitiatingHeapOccupancyPercent=25</code>) keeps headroom available before allocations become critical.</li>
+</ul>
+<p>If you see <code>OutOfMemoryError: Java heap space</code> at very high quality multiples, reduce the quality multiple or increase <code>-Xmx</code> in <code>build.sbt</code>.</p>
 </section>
 
 <!-- ═══════════════════════════════════════════════════════════ -->
@@ -355,7 +376,7 @@ SBT_OPTS="-Xmx8G" sbt run</pre>
   <tr><td><code>points.xml</code></td><td>Point set references (file paths relative to <code>pointSets/</code>). No subdivision; rendered directly.</td></tr>
   <tr><td><code>subdivision.xml</code></td><td>All subdivision params sets. Each set contains one or more SubdivisionParams stages with type, transforms, and control point settings.</td></tr>
   <tr><td><code>shapes.xml</code></td><td>Shape configurations. Each shape has a source type (polygonSet, openCurveSet, pointSet) and a reference to the geometry source and (for polygons) the subdivision params set.</td></tr>
-  <tr><td><code>sprites.xml</code></td><td>Sprite definitions: shape reference, renderer set reference, position, size, rotation, and animation configuration (jitter, keyframe, morph).</td></tr>
+  <tr><td><code>sprites.xml</code></td><td>Sprite definitions: shape reference, renderer set reference, position, size, rotation, and animation configuration. Morph targets listed as <code>&lt;MorphTargets&gt;&lt;MorphTarget file="…"/&gt;…&lt;/MorphTargets&gt;</code> with chain ordering preserved.</td></tr>
   <tr><td><code>rendering.xml</code></td><td>Renderer set library. Each set contains one or more named renderers with mode, colours, stroke width, and dynamic change parameters.</td></tr>
 </table>
 
@@ -365,7 +386,7 @@ SBT_OPTS="-Xmx8G" sbt run</pre>
   <tr><td><code>polygonSets/</code></td><td>Closed spline polygon XML files. Read by polygons.xml references.</td></tr>
   <tr><td><code>curveSets/</code></td><td>Open curve set XML files (<code>&lt;openCurveSet&gt;</code> root). Read by curves.xml references.</td></tr>
   <tr><td><code>pointSets/</code></td><td>Point set XML files. Read by points.xml references.</td></tr>
-  <tr><td><code>morphTargets/</code></td><td>Morph target polygon XML files. Must be topologically identical to their corresponding polygon set.</td></tr>
+  <tr><td><code>morphTargets/</code></td><td>Morph target files. Use <code>.poly.xml</code> suffix for polygon targets, <code>.curve.xml</code> suffix for open-curve targets. Each must be topologically identical to its base shape.</td></tr>
   <tr><td><code>brushes/</code></td><td>Greyscale PNG brush images for the BRUSHED renderer.</td></tr>
   <tr><td><code>background_image/</code></td><td>Background image (PNG or JPG). Referenced from global_config.xml.</td></tr>
   <tr><td><code>renders/stills/</code></td><td>Captured still PNG files.</td></tr>

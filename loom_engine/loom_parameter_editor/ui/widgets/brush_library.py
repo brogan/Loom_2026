@@ -6,7 +6,7 @@ from typing import Optional
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
     QListWidget, QListWidgetItem, QFileDialog, QMessageBox,
-    QDialog, QSizePolicy
+    QSizePolicy
 )
 from PyQt6.QtCore import Qt, pyqtSignal, QSize
 from PyQt6.QtGui import QPixmap, QIcon, QImage
@@ -21,6 +21,7 @@ class BrushLibraryWidget(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
         self._brushes_dir = ""
+        self._editor_window = None
 
         layout = QVBoxLayout(self)
 
@@ -111,46 +112,35 @@ class BrushLibraryWidget(QWidget):
         if paths:
             self.refresh()
 
+    def _open_editor(self, initial_file=None):
+        from .brush_editor_window import BrushEditorWindow
+        if self._editor_window and self._editor_window.isVisible():
+            self._editor_window.raise_()
+            self._editor_window.activateWindow()
+            if initial_file:
+                self._editor_window.open_file(initial_file)
+            return
+        self._editor_window = BrushEditorWindow(
+            self._brushes_dir, initial_file=initial_file, parent=None)
+        self._editor_window.brushSaved.connect(lambda _: self.refresh())
+        self._editor_window.show()
+
     def _on_create(self) -> None:
-        """Open brush editor dialog to create a new brush."""
+        """Open brush editor window to create a new brush."""
         if not self._brushes_dir:
             QMessageBox.warning(self, "No Project", "Set a project directory first.")
             return
-
-        dialog = QDialog(self)
-        dialog.setWindowTitle("Create Brush")
-        dialog.setMinimumSize(500, 600)
-        dlg_layout = QVBoxLayout(dialog)
-
-        editor = BrushEditorWidget(self._brushes_dir)
-        editor.brushSaved.connect(lambda name: (self.refresh(), dialog.accept()))
-        dlg_layout.addWidget(editor)
-
-        dialog.exec()
+        self._open_editor(initial_file=None)
 
     def _on_edit(self) -> None:
-        """Open brush editor for the selected brush."""
+        """Open brush editor window for the selected brush."""
         current = self.brush_list.currentItem()
-        if current is None:
+        if not current or not self._brushes_dir:
             return
-        if not self._brushes_dir:
-            return
-
         filepath = os.path.join(self._brushes_dir, current.text())
         if not os.path.exists(filepath):
             return
-
-        dialog = QDialog(self)
-        dialog.setWindowTitle(f"Edit Brush: {current.text()}")
-        dialog.setMinimumSize(500, 600)
-        dlg_layout = QVBoxLayout(dialog)
-
-        editor = BrushEditorWidget(self._brushes_dir)
-        editor.canvas.load_image(filepath)
-        editor.brushSaved.connect(lambda name: (self.refresh(), dialog.accept()))
-        dlg_layout.addWidget(editor)
-
-        dialog.exec()
+        self._open_editor(initial_file=filepath)
 
     def _on_delete(self) -> None:
         """Delete the selected brush file."""

@@ -448,6 +448,16 @@ class RenderingIO:
             if names:
                 config.brush_names = names
 
+        brush_enabled_elem = elem.find("BrushEnabled")
+        if brush_enabled_elem is not None:
+            enabled = [e.text.strip().lower() != "false"
+                       for e in brush_enabled_elem.findall("Enabled")]
+            if enabled:
+                config.brush_enabled = enabled
+        else:
+            # Legacy: default all enabled to match brush_names length
+            config.brush_enabled = [True] * len(config.brush_names)
+
         draw_mode_elem = elem.find("DrawMode")
         if draw_mode_elem is not None and draw_mode_elem.text:
             try:
@@ -520,6 +530,11 @@ class RenderingIO:
         brush_names_elem = etree.SubElement(elem, "BrushNames")
         for name in config.brush_names:
             etree.SubElement(brush_names_elem, "Brush").text = name
+
+        brush_enabled_elem = etree.SubElement(elem, "BrushEnabled")
+        for i, name in enumerate(config.brush_names):
+            enabled = config.brush_enabled[i] if i < len(config.brush_enabled) else True
+            etree.SubElement(brush_enabled_elem, "Enabled").text = str(enabled).lower()
 
         etree.SubElement(elem, "DrawMode").text = config.draw_mode.to_xml_string()
         etree.SubElement(elem, "StampSpacing").text = str(config.stamp_spacing)

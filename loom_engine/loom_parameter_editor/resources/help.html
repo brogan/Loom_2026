@@ -148,7 +148,7 @@
         <li><a href="#shapes">Shapes</a></li>
         <li><a href="#sprites">Sprites</a></li>
         <li><a href="#animation">Animation</a></li>
-        <li><a href="#morph">Morph Animation</a></li>
+        <li><a href="#morph">Morph Animation (multi-target)</a></li>
         <li><a href="#rendering">Rendering</a></li>
         <li><a href="#brushed">Brush Renderer</a></li>
         <li><a href="#run-tab">Run Tab</a></li>
@@ -289,7 +289,7 @@ YourProject/
     <tr><th>Type</th><th>Created in</th><th>Subdivision?</th><th>Morph Targets?</th><th>Renderers</th></tr>
     <tr><td><strong>Polygon Sets</strong><br>(spline or line)</td><td>Bezier Draw → Polygons sub-tab</td><td>Yes — full subdivision pipeline</td><td>Yes</td><td>All modes</td></tr>
     <tr><td><strong>Regular Polygons</strong><br>(mathematically generated)</td><td>Polygons sub-tab → Create</td><td>Yes — full subdivision pipeline</td><td>Yes (polygon topology)</td><td>All modes</td></tr>
-    <tr><td><strong>Open Curve Sets</strong><br>(non-closed splines)</td><td>Bezier Draw → Curves sub-tab</td><td>No — rendered directly as open paths</td><td>No</td><td>STROKED, BRUSHED</td></tr>
+    <tr><td><strong>Open Curve Sets</strong><br>(non-closed splines)</td><td>Bezier Draw → Curves sub-tab</td><td>No — rendered directly as open paths</td><td>Yes (with <code>.curve.xml</code> target files)</td><td>STROKED, BRUSHED</td></tr>
     <tr><td><strong>Point Sets</strong><br>(discrete points)</td><td>Bezier Draw → Points sub-tab</td><td>No — rendered directly as point stamps</td><td>No</td><td>POINTS, BRUSHED</td></tr>
 </table>
 
@@ -534,9 +534,10 @@ YourProject/
 
 <h3>Creating Open Curve Sets</h3>
 <ol class="step-list">
-    <li>In the Curves sub-tab, click <strong>New</strong> to create a named curve set entry. Enter a folder (default: <code>curveSets</code>) and select or type a filename.</li>
-    <li>Click <strong>Edit in Bezier</strong> to launch Bezier Draw. In Bezier Draw, place anchor points and then click <strong>Finish Open Curve</strong> (instead of the normal "Close Polygon" button) to create a non-closed path.</li>
-    <li>Save in Bezier Draw. Return to the editor and click <strong>Refresh Files</strong> to update the filename dropdown.</li>
+    <li>In the Curves sub-tab, click <strong>New</strong> to create a named curve set entry, then click <strong>Create in Bezier</strong> to launch Bezier Draw with the project's <code>curveSets/</code> directory pre-set as the save destination. Draw your open curves and save; when you close Bezier the new file is automatically detected and selected in the dropdown.<br>
+    <em>Alternatively</em>, if the file already exists, select it from the dropdown and click <strong>Edit in Bezier</strong> to open it for editing.</li>
+    <li>In Bezier Draw, place anchor points and then click <strong>Finish Open Curve</strong> (instead of the normal "Close Polygon" button) to create a non-closed path.</li>
+    <li>Save in Bezier Draw. The editor detects the new file on close and updates the dropdown automatically. Click <strong>Refresh Files</strong> if you need to rescan manually.</li>
 </ol>
 
 <h3>Curve Set Properties</h3>
@@ -570,10 +571,12 @@ YourProject/
 
 <h3>Creating Point Sets</h3>
 <ol class="step-list">
-    <li>In the Points sub-tab, click <strong>New</strong> to create a named point set entry.</li>
-    <li>Click <strong>Edit in Bezier</strong> to launch Bezier Draw. Place individual anchor points on the canvas (no need to close or connect them). Save the file.</li>
-    <li>Click <strong>Refresh Files</strong> to update the filename dropdown.</li>
+    <li>In the Points sub-tab, click <strong>New</strong> to create a named point set entry, then click <strong>Create in Bezier</strong> to launch Bezier Draw with the project's <code>pointSets/</code> directory pre-set as the save destination. Place anchor points and save; when you close Bezier the new file is automatically detected and selected.<br>
+    <em>Alternatively</em>, if the file already exists, select it and click <strong>Edit in Bezier</strong> to edit it.</li>
+    <li>In Bezier Draw, place individual anchor points on the canvas. No need to close or connect them — each point is independent. Save the file.</li>
+    <li>The editor detects the new file automatically. Click <strong>Refresh Files</strong> to rescan manually if needed.</li>
 </ol>
+<div class="tip">Use point sets with BRUSHED mode and a brush derived from an image to place bitmapped images at specific locations on the canvas. Combine with stroke colour change animation to dynamically tint the images over time.</div>
 
 <h3>Point Set Properties</h3>
 <table>
@@ -887,6 +890,34 @@ Params Set Collection
 <h3>Animation — Overview</h3>
 <p>Animation mode is selected in the Sprites tab Animation panel. Three modes are available; only one can be active per sprite. See the <a href="#animation">Animation</a> and <a href="#morph">Morph Animation</a> sections for full details.</p>
 
+<h3>Preview Panel</h3>
+<p>The preview canvas on the right side of the Sprites tab shows all sprites at their current positions. You can drag sprites directly in the preview to set their location, scale (drag from a corner), and rotation — the corresponding fields update live.</p>
+
+<h4>Canvas aspect ratio</h4>
+<p>The preview respects the canvas dimensions set in the Global Config tab. The grey buffer area around the canvas shows the correct aspect ratio — an 800×600 canvas appears wider than tall in the preview. Change the Global Config width or height spinboxes and the preview aspect updates immediately.</p>
+
+<h4>Keyframe editing in the preview</h4>
+<p>When the selected sprite uses <strong>Keyframe</strong> or <strong>Keyframe Morph</strong> animation, the preview strip shows a <em>KF</em> dropdown (numbered 1…N) and an <em>Edit KF</em> checkbox:</p>
+<table>
+    <tr><th>Control</th><th>Description</th></tr>
+    <tr><td><strong>KF dropdown</strong></td><td>Selects which keyframe to view and edit. The preview immediately updates to show the sprite at that keyframe's position/scale/rotation. For Keyframe Morph sprites, the geometry is also updated to show the appropriate morph target shape.</td></tr>
+    <tr><td><strong>Edit KF</strong> (checkbox, default on)</td><td>When checked, dragging the sprite in the preview writes the new position/scale/rotation directly into the selected keyframe's row in the keyframe table. When unchecked, dragging the sprite is informational only — the sprite moves in the preview but no data is written.</td></tr>
+</table>
+
+<h4>Transform readout</h4>
+<p>A bold green display on the right side of the preview strip shows the current sprite's <code>Loc X / Loc Y / Size X / Size Y / Rot</code> values updating in real time as you drag.</p>
+
+<h4>Step-by-step: setting keyframe positions in the preview</h4>
+<ol class="step-list">
+    <li>Select a sprite that uses Keyframe or Keyframe Morph animation.</li>
+    <li>Make sure <em>Edit KF</em> is checked in the preview strip.</li>
+    <li>In the <em>KF</em> dropdown, select <em>1</em> to work on the first keyframe.</li>
+    <li>Drag the sprite in the preview to the desired position for keyframe 1. The keyframe table row updates automatically.</li>
+    <li>Select <em>KF 2</em> from the dropdown, drag to the position for keyframe 2, and so on.</li>
+    <li>For Keyframe Morph sprites: the preview shows the geometry at each keyframe's morph target, so you can visually position the morphed shape at each keyframe.</li>
+    <li>Press <kbd>Cmd+R</kbd> to reload Loom and verify the animation.</li>
+</ol>
+
 <a href="#" class="back-to-top">Back to top</a>
 </section>
 
@@ -963,40 +994,74 @@ Params Set Collection
 <!-- ============================================================ MORPH ANIMATION -->
 <section id="morph">
 <h2>Morph Animation</h2>
-<p>Morph animation blends between the base shape's polygon vertices and a <em>morph target</em>'s vertices frame by frame. The morph target must have the exact same topology as the base shape (same number of polygons, same number of vertices per polygon, same polygon types).</p>
+<p>Morph animation blends a sprite's vertices between the base shape and one or more <em>morph targets</em> frame by frame. Targets form a <strong>chain</strong>: base → mt1 → mt2 → … Each morph target must have the exact same topology as the base shape (same number of polygons/curves, same number of vertices, same polygon type).</p>
 
-<div class="warning"><strong>Polygon types only:</strong> Morph animation is available exclusively for shapes whose Source Type is <strong>Polygon Set Reference</strong> (spline or regular polygon). Shapes using Open Curve Sets or Point Sets cannot use morph animation — the morph controls are disabled for these source types.</div>
+<p>Both <strong>polygon sets</strong> and <strong>open curve sets</strong> support morph animation. The morph target file type must match the base shape type — use <code>.poly.xml</code> target files for polygon shapes, <code>.curve.xml</code> target files for open curve shapes.</p>
 
-<div class="info">Morph targets are stored as polygon set XML files in the project's <code>morphTargets/</code> directory. They are created and managed within the Sprites tab's Morph panel.</div>
+<div class="warning">Point sets do not support morph animation. The morph controls are disabled for sprites whose shape source is a Point Set.</div>
 
-<h3>Morph Target Setup</h3>
-<ol>
-    <li>Select a sprite in the Sprites tab.</li>
-    <li>In the Animation panel, choose <strong>Jitter Morph</strong> or <strong>Keyframe Morph</strong> from the animator type selector.</li>
-    <li>Click <strong>Create</strong> to generate a new morph target based on the sprite's current polygon set (creates an editable copy in <code>morphTargets/</code>). Or click <strong>Refresh</strong> to reload the list of existing morph target files.</li>
-    <li>Select the morph target from the dropdown.</li>
-    <li>Edit the morph target polygon set using Bezier Draw to define the target shape. The edited file goes in <code>morphTargets/</code>.</li>
+<h3>Morph amount semantics — 0 to N</h3>
+<p>The <code>morphAmount</code> value is a continuous <strong>chain position</strong> from 0 to N where N is the number of morph targets:</p>
+<table>
+    <tr><th>Value</th><th>Meaning</th></tr>
+    <tr><td><code>0.0</code></td><td>Base shape (no morphing)</td></tr>
+    <tr><td><code>1.0</code></td><td>Fully morphed to first target (mt1)</td></tr>
+    <tr><td><code>2.0</code></td><td>Fully morphed to second target (mt2)</td></tr>
+    <tr><td><code>1.5</code></td><td>Halfway between mt1 and mt2</td></tr>
+    <tr><td><code>N</code></td><td>Fully at the Nth target</td></tr>
+</table>
+<p>Single-target sprites with <code>morphAmount</code> in the range 0–1 behave identically to the previous single-target implementation.</p>
+
+<h3>Morph target file naming</h3>
+<p>Files are stored in the project's <code>morphTargets/</code> directory and identified by suffix:</p>
+<table>
+    <tr><th>Suffix</th><th>Geometry type</th><th>Example</th></tr>
+    <tr><td><code>.poly.xml</code></td><td>Polygon set (<code>&lt;polygonSet&gt;</code> root)</td><td><code>myshape_mt_1.poly.xml</code></td></tr>
+    <tr><td><code>.curve.xml</code></td><td>Open curve set (<code>&lt;openCurveSet&gt;</code> root)</td><td><code>myshape_mt_1.curve.xml</code></td></tr>
+</table>
+<p>Both types can coexist in the same <code>morphTargets/</code> directory. Files without a recognised suffix are treated as polygon format for backward compatibility.</p>
+
+<h3>Adding morph targets in the Sprites tab</h3>
+<ol class="step-list">
+    <li>Select a sprite in the Sprites tab whose shape source is a Polygon Set or Open Curve Set.</li>
+    <li>In the Animation panel, choose <strong>Jitter Morph</strong> or <strong>Keyframe Morph</strong>.</li>
+    <li>In the <strong>Morph Targets</strong> panel, click <strong>Add</strong> to open a file browser pointing at <code>morphTargets/</code>. Select a <code>.poly.xml</code> or <code>.curve.xml</code> file.</li>
+    <li>The target appears in the list. Its position in the list determines its chain index (first entry = mt1, second = mt2, etc.).</li>
+    <li>Repeat to add further targets. Use <strong>↑ / ↓</strong> to reorder or <strong>Remove</strong> to delete.</li>
+    <li>Click <strong>Create Copy</strong> to generate a new morph target file as an editable copy of the base polygon — this creates the initial file in <code>morphTargets/</code> for you to edit in Bezier Draw.</li>
+</ol>
+
+<div class="warning">If the topology warning dialog appears when adding a target, the vertex or polygon count does not match the base shape. Adding it anyway will cause Loom to fall back to the base shape at runtime. Fix the target's vertex count in Bezier Draw before using it.</div>
+
+<h3>Step-by-step: morph chain animation workflow</h3>
+<ol class="step-list">
+    <li><strong>Create the base shape</strong> — draw or import a polygon set in Bezier Draw; register it in the Geometry tab.</li>
+    <li><strong>Create the shape and sprite</strong> — configure a Shape and Sprite using the base geometry as normal.</li>
+    <li><strong>Set the animator to Keyframe Morph</strong> — select the sprite, choose <em>Keyframe Morph</em> in the Animation panel.</li>
+    <li><strong>Add keyframes</strong> — add at least two keyframes. Set <em>Morph Amount</em> on each: e.g. keyframe 0 → 0.0, keyframe 60 → 1.0, keyframe 120 → 2.0 to sweep through two targets.</li>
+    <li><strong>Add morph target files</strong> — click <em>Add</em> in the Morph Targets panel; select the <code>.poly.xml</code> or <code>.curve.xml</code> files in order.</li>
+    <li><strong>Reload Loom</strong> (<kbd>Cmd+R</kbd>) — the animation sweeps base→mt1→mt2 over the specified draw cycles.</li>
 </ol>
 
 <h3>Jitter Morph</h3>
-<p>Each frame, a random morph amount within a specified range is applied. Creates continuously shifting, "breathing" deformation.</p>
+<p>Each frame a random morph amount within a specified range is applied. Creates continuously shifting, "breathing" deformation.</p>
 <table>
     <tr><th>Parameter</th><th>Unit</th><th>Description</th></tr>
-    <tr><td><code>Morph Target</code></td><td>File name</td><td>The polygon set file in <code>morphTargets/</code> to blend toward. Must be topologically compatible with the base shape.</td></tr>
-    <tr><td><code>Morph Min</code></td><td>0.0–1.0</td><td>Minimum morph amount applied each frame. <em>0.0</em>: can fully revert to base shape. <em>0.3</em>: always at least 30% morphed.</td></tr>
-    <tr><td><code>Morph Max</code></td><td>0.0–1.0</td><td>Maximum morph amount applied each frame. <em>1.0</em>: can reach the fully morphed target. The actual value each frame is randomly chosen between Min and Max.</td></tr>
+    <tr><td><code>Morph Min</code></td><td>0.0–N</td><td>Minimum chain position applied each frame. <em>0.0</em>: can fully revert to base. <em>1.0</em>: always at least fully at mt1.</td></tr>
+    <tr><td><code>Morph Max</code></td><td>0.0–N</td><td>Maximum chain position applied each frame. <em>1.0</em>: reaches mt1 at most. <em>2.0</em>: can reach mt2. The actual value each frame is randomly chosen between Min and Max.</td></tr>
 </table>
-<p><em>Example</em>: Morph Min = 0.0, Morph Max = 1.0 with a triangle base morphing to a circle target creates continuous, randomly-paced deformation between the two shapes.</p>
+<p><em>Example</em>: two targets, Morph Min = 0.0, Morph Max = 2.0 creates randomly varying deformation across the full base → mt1 → mt2 chain.</p>
 
 <h3>Keyframe Morph</h3>
-<p>Combines keyframe animation with morph blending. Each keyframe has all the usual position/scale/rotation parameters plus a <strong>Morph Amount</strong> value. Loom interpolates both the transforms and the morph amount between keyframes.</p>
+<p>Each keyframe has all the usual position/scale/rotation parameters plus a <strong>Morph Amount</strong> (chain position 0..N) and a <strong>MT Index</strong> column showing which target the amount lands in. Loom interpolates the chain position alongside the transforms between keyframes.</p>
 <table>
     <tr><th>Parameter</th><th>Unit</th><th>Description</th></tr>
-    <tr><td><code>Morph Target</code></td><td>File name</td><td>Target polygon set file.</td></tr>
-    <tr><td><code>Morph Amount</code> (per keyframe)</td><td>0.0–1.0</td><td>The morph blend amount to reach at this keyframe. Eased from the previous keyframe's morph amount using the keyframe's easing function. <em>0.0</em> at keyframe 0, <em>1.0</em> at keyframe 60 = gradually morphs fully over 60 frames.</td></tr>
+    <tr><td><code>MT Idx</code></td><td>Display only</td><td>Shows which morph target segment this keyframe's amount falls in. <em>0</em> = base, <em>1</em> = between base and mt1, <em>2</em> = between mt1 and mt2, etc.</td></tr>
+    <tr><td><code>Amount</code></td><td>0.0–N</td><td>The chain position at this keyframe. Interpolated from the previous keyframe using the keyframe's easing function. <em>0.0</em> = base; <em>1.0</em> = mt1; <em>2.0</em> = mt2.</td></tr>
 </table>
+<p>The keyframe table has 9 columns in Keyframe Morph mode: Draw Cycle, Pos X, Pos Y, Scale X, Scale Y, Rotation, Easing, MT Idx, Amount.</p>
 
-<div class="warning">The morph target polygon set must be topologically identical to the base polygon set — same number of polygons, same number of vertices per polygon, same polygon type (SPLINE or LINE). Topology mismatch is detected at load time and will fall back to the base shape.</div>
+<div class="warning">Every morph target in the chain must be topologically identical to the base shape — same number of polygons/curves, same vertex count per polygon/curve, same type. Topology mismatch causes Loom to skip the morph and render the base shape only.</div>
 
 <a href="#" class="back-to-top">Back to top</a>
 </section>
@@ -1095,51 +1160,103 @@ Renderer Set Library
 <!-- ============================================================ BRUSH RENDERER -->
 <section id="brushed">
 <h2>Brush Renderer (BRUSHED Mode)</h2>
-<p>The BRUSHED renderer mode stamps greyscale brush images along polygon edges instead of drawing lines or fills. This creates ink-wash, charcoal, watercolour, and hand-drawn stroke effects.</p>
+<p>The BRUSHED renderer mode stamps greyscale brush PNG images along polygon or open curve edges, or at individual point positions. This enables ink-wash, charcoal, watercolour, hand-drawn stroke effects, and — by using point sets — placement of bitmap images at specific canvas locations.</p>
 
 <h3>How It Works</h3>
 <ol>
-    <li>Loom extracts all unique edges from the subdivided polygon set.</li>
-    <li>For each edge, brush stamps (from a greyscale PNG in the project's <code>brushes/</code> directory) are placed at intervals along the edge path.</li>
-    <li>Stamps are tinted using the renderer's <strong>Stroke Color</strong> before being composited onto the canvas.</li>
-    <li>In PROGRESSIVE mode, edges are revealed gradually over time; in FULL_PATH mode, all edges are redrawn every frame.</li>
+    <li>Loom extracts all edges (for polygon/curve types) or point positions (for point sets).</li>
+    <li>Brush stamps from greyscale PNGs in the project's <code>brushes/</code> directory are placed at intervals along edges or at each point position.</li>
+    <li>Stamps are tinted by the renderer's <strong>Stroke Color</strong> before compositing onto the canvas.</li>
+    <li>In PROGRESSIVE mode, edges are revealed gradually; in FULL_PATH mode all edges are redrawn every frame. Point sets always use single-stamp placement.</li>
 </ol>
 
-<h3>Brush Configuration Panel</h3>
-<p>When a renderer's mode is set to BRUSHED, a <em>Brush Config</em> panel appears in the renderer editor.</p>
+<h3>Brushes Tab</h3>
+<p>When a renderer's mode is set to BRUSHED, the renderer editor gains a dedicated <strong>Brushes</strong> tab (between Basic Properties and Point Change). This tab contains:</p>
+
+<h4>Brush List</h4>
+<p>A table listing all brushes assigned to this renderer. Each row shows:</p>
+<table>
+    <tr><th>Column</th><th>Description</th></tr>
+    <tr><td><code>Name</code></td><td>Filename of the brush PNG in the project's <code>brushes/</code> directory.</td></tr>
+    <tr><td><code>Grid</code></td><td>Grid resolution used when the brush was edited (from the <code>.meta.json</code> sidecar). Shows the drawing canvas cell dimensions.</td></tr>
+    <tr><td><code>Pixels</code></td><td>Output PNG pixel dimensions — the actual size of the image stamped by the engine.</td></tr>
+    <tr><td><code>Use</code></td><td>Checkbox — when unchecked, this brush is excluded from stamping. Allows maintaining a library of brushes while activating only specific ones per renderer.</td></tr>
+</table>
+<p>If multiple brushes are enabled, the engine randomly selects from them for each stamp, creating natural variation.</p>
+<p>Below the list, a <strong>Brush Preview</strong> shows the currently selected brush rendered on a dark background with optional grid lines.</p>
+
+<h4>Brush Settings</h4>
 <table>
     <tr><th>Parameter</th><th>Unit</th><th>Description</th></tr>
-    <tr><td><code>Brush Name</code></td><td>File name</td><td>The brush PNG file from the project's <code>brushes/</code> directory. Selected from the brush library dropdown.</td></tr>
-    <tr><td><code>Brush Size</code></td><td>Pixels</td><td>Width and height of each stamp. <em>10</em>: tiny stamps, very fine texture. <em>30</em>: medium brush. <em>80</em>: broad, coarse strokes. Scaled by Quality Multiple when Scale Image is enabled.</td></tr>
-    <tr><td><code>Stamp Spacing</code></td><td>Pixels</td><td>Distance along the edge between consecutive brush stamps. <em>5</em>: dense, overlapping stamps = smooth stroke. <em>20</em>: spaced stamps = visible individual marks. <em>50</em>: very sparse = dotted-line effect.</td></tr>
-    <tr><td><code>Jitter</code></td><td>Pixels</td><td>Random position offset applied to each stamp perpendicular to the edge direction. <em>0</em>: stamps align exactly on the edge. <em>5</em>: slight wobble. <em>20</em>: broad scattered stroke that extends well beyond the edge.</td></tr>
-    <tr><td><code>Opacity</code></td><td>0.0–1.0</td><td>Alpha multiplier for each stamp. Combined with the stamp's inherent greyscale values and the Stroke Color's alpha. <em>0.3</em>: ghostly, transparent. <em>1.0</em>: full opacity.</td></tr>
-    <tr><td><code>Draw Mode</code></td><td>Enum</td><td><strong>FULL_PATH</strong>: all edges are stamped every draw frame. Suitable for still images or animations where the brush texture is static. <strong>PROGRESSIVE</strong>: edges are revealed gradually over multiple frames, as if drawn in real time. Suitable for animated drawing effects.</td></tr>
-    <tr><td><code>Post-Completion Mode</code></td><td>Enum</td><td>What happens after PROGRESSIVE mode finishes drawing all edges: <strong>HOLD</strong> keeps the final state; <strong>CLEAR</strong> wipes and restarts; <strong>REVERSE</strong> retraces in reverse.</td></tr>
-    <tr><td><code>Edges Per Frame</code></td><td>Integer</td><td>In PROGRESSIVE mode: how many edges are added to the drawing each frame. <em>1</em>: very slow, one edge at a time. <em>10</em>: faster reveal.</td></tr>
+    <tr><td><code>Stamp Spacing</code></td><td>Pixels (0.5–999)</td><td>Distance along the edge between consecutive stamps. <em>5</em>: dense overlapping marks. <em>20</em>: spaced individual marks. <em>100+</em>: very sparse, useful for point-set placement at fixed locations.</td></tr>
+    <tr><td><code>Perpendicular Jitter</code></td><td>Pixels (min/max)</td><td>Random offset perpendicular to edge direction. <em>0/0</em>: stamps on the edge. <em>-10/10</em>: broad scattered stroke.</td></tr>
+    <tr><td><code>Scale</code></td><td>0.0–4.0 (min/max)</td><td>Random scale factor applied per stamp. <em>1.0/1.0</em>: uniform. <em>0.8/1.2</em>: slight size variation for organic feel.</td></tr>
+    <tr><td><code>Opacity</code></td><td>0.0–1.0 (min/max)</td><td>Random alpha per stamp. <em>0.3/0.6</em>: translucent layering. <em>1.0/1.0</em>: fully opaque.</td></tr>
+    <tr><td><code>Draw Mode</code></td><td>Enum</td><td><strong>FULL_PATH</strong>: all edges stamped every frame. <strong>PROGRESSIVE</strong>: edges revealed gradually over time.</td></tr>
+    <tr><td><code>Stamps Per Frame</code></td><td>Integer</td><td>PROGRESSIVE mode: how many stamps are placed per frame. Higher = faster reveal.</td></tr>
+    <tr><td><code>Agents</code></td><td>Integer</td><td>PROGRESSIVE mode: number of independent drawing agents advancing along edges simultaneously.</td></tr>
+    <tr><td><code>Post-Completion</code></td><td>Enum</td><td>PROGRESSIVE mode: <strong>HOLD</strong> freezes the final state; <strong>LOOP</strong> restarts; <strong>PING_PONG</strong> reverses.</td></tr>
+    <tr><td><code>Blur Radius</code></td><td>Pixels</td><td>Gaussian blur applied to the brush image before stamping. Softens hard-edged brushes.</td></tr>
+    <tr><td><code>Follow Tangent</code></td><td>Boolean</td><td>When enabled, stamps rotate to align with the edge direction. Disable for upright stamps regardless of edge angle (useful for image placement at points).</td></tr>
+    <tr><td><code>Spacing Easing</code></td><td>String</td><td>Easing function for distributing stamps along an edge. <em>LINEAR</em> (default) gives even spacing.</td></tr>
 </table>
 
 <h3>Brush Library</h3>
-<p>The Brush Library panel manages PNG brush files in the project's <code>brushes/</code> directory. Brushes must be greyscale PNGs; white areas are opaque, black areas are transparent (the greyscale value maps to alpha).</p>
-
-<h4>Library Actions</h4>
+<p>The Brush Library panel (Rendering tab, left of the renderer editor) manages PNG brush files in the project's <code>brushes/</code> directory.</p>
 <ul>
-    <li><strong>Import</strong> — Copy an external PNG file into the project's <code>brushes/</code> directory.</li>
-    <li><strong>Create</strong> — Open the built-in Brush Editor to draw a new brush from scratch.</li>
-    <li><strong>Edit</strong> — Open an existing brush in the Brush Editor.</li>
+    <li><strong>Import</strong> — Copy an external PNG into the project's <code>brushes/</code> directory.</li>
+    <li><strong>Create</strong> — Open the Brush Editor to draw a new brush from scratch.</li>
+    <li><strong>Edit</strong> — Open an existing brush in the Brush Editor for modification.</li>
     <li><strong>Delete</strong> — Remove a brush file from the library.</li>
 </ul>
+<p>Brushes must be greyscale PNGs. The white channel encodes opacity: white = fully opaque, black = fully transparent. The engine applies the renderer's Stroke Color as a tint on top of the greyscale values.</p>
 
-<h3>Brush Editor</h3>
-<p>The built-in pixel editor lets you paint greyscale brush shapes at any size. Paint with white for opaque areas, black for transparent. Several presets are available:</p>
+<h3>Brush Editor Window</h3>
+<p>The Brush Editor is a floating, non-modal window (stays open while you continue using the Parameter Editor). It provides a full-featured pixel editing canvas for creating and modifying brushes.</p>
+
+<h4>Output Size &amp; Grid Resolution</h4>
 <ul>
-    <li><strong>Circle</strong> — Hard-edged circular brush.</li>
-    <li><strong>Soft Circle</strong> — Gaussian-falloff circular brush for smooth, airbrush-like strokes.</li>
-    <li><strong>Scatter</strong> — Random scattered dots for dry-brush or chalk-like texture.</li>
+    <li><strong>Output Width/Height</strong> — The pixel dimensions of the saved PNG (8–512 px). This is what Loom stamps.</li>
+    <li><strong>Grid Rows/Cols</strong> — The editing resolution: the number of cells in the drawing grid. A 32×32 grid on a 128×128 output upsamples 4× on save. Larger grids give more detail; smaller grids give a blockier, pixelated look.</li>
+    <li><strong>Multiplier + Apply ×</strong> — Resample the current grid content to a new grid resolution (e.g. ×2.0 doubles the cell count). Content is resampled via smooth interpolation, preserving the painted shape at higher fidelity.</li>
+    <li><strong>Wrap Shifts</strong> — When enabled, shift operations wrap content around edges (tiling). When disabled, content slides off.</li>
 </ul>
-<p>Custom brushes can be painted manually using the editor's drawing tools. Export to save the PNG to the project's <code>brushes/</code> directory.</p>
 
-<div class="tip">Start with a soft circle brush at size 20–30, spacing 5, jitter 3, opacity 0.5 for a natural ink-wash look. Increase jitter and reduce opacity for a looser, more painterly effect. Combine with semi-transparent stroke colours for layered watercolour effects.</div>
+<h4>Greyscale Palette</h4>
+<p>A row of 11 swatches spanning 0 % (black/transparent) to 100 % (white/opaque) plus a numeric spin box for exact values. Click a swatch to set the current paint value. The spin box accepts 0–255 directly.</p>
+
+<h4>Drawing Tools (Toolbar &amp; Keyboard)</h4>
+<table>
+    <tr><th>Tool / Action</th><th>Shortcut</th><th>Description</th></tr>
+    <tr><td>Draw</td><td>D</td><td>Paint cells with the current palette value.</td></tr>
+    <tr><td>Erase</td><td>E</td><td>Set cells to black (0 / transparent).</td></tr>
+    <tr><td>Image Draw</td><td>I</td><td>Sample the loaded reference image to fill cells. Auto mode samples as you drag; Manual mode uses Apply to All.</td></tr>
+    <tr><td>Select / Deselect</td><td>S / X</td><td>Drag to define a rectangular selection. Transforms apply within the selection when one is active.</td></tr>
+    <tr><td>Shift-click line</td><td>Shift+Draw</td><td>Draw a straight line from the last painted cell to the clicked cell. If the two endpoints have different greyscale values, the line interpolates smoothly between them.</td></tr>
+</table>
+
+<h4>Transform Operations</h4>
+<table>
+    <tr><th>Operation</th><th>Shortcut</th><th>Description</th></tr>
+    <tr><td>Shift Left / Right / Up / Down</td><td>Ctrl+←/→/↑/↓</td><td>Slide all cells (or selection) one step. Wraps if Wrap Shifts is on.</td></tr>
+    <tr><td>Flip Horizontal / Vertical</td><td>Ctrl+Y / Ctrl+U</td><td>Mirror the grid left-right or top-bottom.</td></tr>
+    <tr><td>Mirror H / Mirror V</td><td>Ctrl+J / Ctrl+K</td><td>Copy one half mirrored onto the other half, creating a symmetric brush.</td></tr>
+    <tr><td>Rotate Left / Right</td><td>Ctrl+, / Ctrl+.</td><td>Rotate the grid 90° counter-clockwise or clockwise.</td></tr>
+    <tr><td>Invert</td><td>–</td><td>Negate all values (white↔black).</td></tr>
+    <tr><td>Clear</td><td>–</td><td>Fill all cells (or selection) with black.</td></tr>
+</table>
+
+<h4>Reference Image</h4>
+<p>Load any JPEG or PNG as a ghost overlay. The reference is scaled to fill the grid at its current resolution. Use it as a tracing guide or sample it directly:</p>
+<ul>
+    <li><strong>Auto mode</strong> — While painting with Image Draw, each cell is automatically sampled from the reference image.</li>
+    <li><strong>Manual / Apply to All</strong> — Click <em>Apply to All</em> to instantly fill the entire grid (or current selection) from the reference in one operation.</li>
+    <li><strong>Opacity slider</strong> — Controls how prominently the reference ghost appears over the painting canvas.</li>
+</ul>
+<div class="tip">To incorporate a real image into Loom, load it in the Brush Editor, invert it (so light areas become opaque), use Apply to All to sample it, then save. Assign the brush to a point set sprite in BRUSHED mode to place it at precise canvas locations. Use Stroke Color Change animation to dynamically tint or colourize the image over time.</div>
+
+<h4>Save / Export</h4>
+<p>Ctrl+S saves to the current file; <em>Save As</em> prompts for a new name. The PNG is upsampled from the grid resolution to the output pixel dimensions using smooth interpolation. A small <code>.meta.json</code> sidecar is saved alongside the PNG recording the grid dimensions — this lets the Brushes tab display the grid size in the renderer list.</p>
 
 <a href="#" class="back-to-top">Back to top</a>
 </section>
@@ -1223,7 +1340,7 @@ Renderer Set Library
     <tr><td><code>regularPolygons/</code></td><td>Editor-only regular polygon definition files (reusable/shareable). Supports subdivision and morph targets.</td></tr>
     <tr><td><code>curveSets/</code></td><td>Open curve set XML files drawn in Bezier Draw. No subdivision; rendered as open stroked paths or brush stamps.</td></tr>
     <tr><td><code>pointSets/</code></td><td>Point set XML files drawn in Bezier Draw. No subdivision; rendered as discrete point or brush stamps.</td></tr>
-    <tr><td><code>morphTargets/</code></td><td>Morph target polygon set XML files. Same format as polygon sets; topologically compatible with their base shape.</td></tr>
+    <tr><td><code>morphTargets/</code></td><td>Morph target files. Use <code>.poly.xml</code> suffix for polygon targets, <code>.curve.xml</code> suffix for open curve targets. Files are listed in chain order in <code>sprites.xml</code>.</td></tr>
     <tr><td><code>brushes/</code></td><td>Greyscale brush PNG files for the BRUSHED renderer.</td></tr>
     <tr><td><code>background_image/</code></td><td>Background image files (PNG, JPG) referenced by Global Config.</td></tr>
     <tr><td><code>renders/stills/</code></td><td>Captured still images. Auto-named with timestamp/index.</td></tr>

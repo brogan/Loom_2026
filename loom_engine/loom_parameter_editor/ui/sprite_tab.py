@@ -138,6 +138,7 @@ class SpriteTab(QWidget):
         self.preview_widget = SpritePreviewWidget()
         inner_tabs.addTab(self.preview_widget, "Preview")
         self.preview_widget.transform_changed.connect(self._on_preview_transform_changed)
+        self.preview_widget.kf_transform_changed.connect(self._on_preview_kf_transform_changed)
 
         # right_layout aliases the General tab layout for the groups below
         right_layout = gen_layout
@@ -784,6 +785,7 @@ class SpriteTab(QWidget):
             self._update_animator_panels()
         finally:
             self._updating = False
+        self._update_preview_keyframes()
 
     def _save_ui_to_sprite(self):
         """Save UI values back to the current sprite."""
@@ -1045,6 +1047,9 @@ class SpriteTab(QWidget):
         self._refresh_shape_set_dropdown()
         self.preview_widget.set_shape_library(library)
 
+    def set_canvas_size(self, w: int, h: int) -> None:
+        self.preview_widget.set_canvas_size(w, h)
+
     def set_renderer_library(self, library) -> None:
         """Set the renderer library for populating renderer set dropdown."""
         self._renderer_library = library
@@ -1155,6 +1160,7 @@ class SpriteTab(QWidget):
         if not self._updating:
             self._save_ui_to_sprite()
             self.modified.emit()
+            self._update_preview_keyframes()
 
     def _update_animator_panels(self) -> None:
         """Show/hide panels based on animator type."""
@@ -1284,6 +1290,7 @@ class SpriteTab(QWidget):
 
         self._save_ui_to_sprite()
         self.modified.emit()
+        self._update_preview_keyframes()
 
     def _remove_keyframe(self) -> None:
         """Remove the selected keyframe."""
@@ -1293,6 +1300,7 @@ class SpriteTab(QWidget):
         self.kf_table.removeRow(row)
         self._save_ui_to_sprite()
         self.modified.emit()
+        self._update_preview_keyframes()
 
     def _duplicate_keyframe(self) -> None:
         """Duplicate the selected keyframe with draw_cycle incremented."""
@@ -1308,6 +1316,7 @@ class SpriteTab(QWidget):
             self.kf_table.blockSignals(False)
             self._save_ui_to_sprite()
             self.modified.emit()
+            self._update_preview_keyframes()
 
     def _copy_keyframes_from_sprite(self) -> None:
         """Copy keyframes from another sprite via dialog."""
@@ -1382,6 +1391,38 @@ class SpriteTab(QWidget):
             self._updating = False
         self._save_ui_to_sprite()
         self.modified.emit()
+
+    def _on_preview_kf_transform_changed(self, kf_row: int,
+                                          loc_x: float, loc_y: float,
+                                          size_x: float, size_y: float,
+                                          rotation: float):
+        """Called when the user drags a sprite in keyframe mode with Edit KF checked."""
+        if self._current_sprite is None:
+            return
+        if kf_row < 0 or kf_row >= self.kf_table.rowCount():
+            return
+        self.kf_table.blockSignals(True)
+        try:
+            for col, val in [(1, loc_x), (2, loc_y), (3, size_x), (4, size_y), (5, rotation)]:
+                item = self.kf_table.item(kf_row, col)
+                if item is None:
+                    from PyQt6.QtWidgets import QTableWidgetItem
+                    item = QTableWidgetItem()
+                    self.kf_table.setItem(kf_row, col, item)
+                item.setText(f"{val:.4g}")
+        finally:
+            self.kf_table.blockSignals(False)
+        self._current_sprite.params.keyframes = self._read_keyframes_from_table()
+        self.modified.emit()
+
+    def _update_preview_keyframes(self):
+        """Push current sprite's keyframe data to the preview widget."""
+        if self._current_sprite is None:
+            self.preview_widget.set_keyframes([], "random", [])
+            return
+        p = self._current_sprite.params
+        atype = self._current_sprite.animator_type
+        self.preview_widget.set_keyframes(p.keyframes, atype, p.morph_targets)
 
     def _sync_preview_selection(self):
         """Repaint preview with updated params without re-resolving geometry."""
