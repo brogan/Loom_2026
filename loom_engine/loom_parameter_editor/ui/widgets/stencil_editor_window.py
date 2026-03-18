@@ -21,7 +21,7 @@ from PyQt6.QtWidgets import (
 from PyQt6.QtCore import Qt, pyqtSignal, QPoint, QSize, QRect
 from PyQt6.QtGui import (
     QImage, QPainter, QColor, QPen, QMouseEvent, QKeySequence,
-    QAction, QActionGroup, QPixmap, QBrush
+    QAction, QActionGroup, QPixmap, QBrush, QIcon
 )
 
 
@@ -97,7 +97,7 @@ class ColorSwatchWidget(QWidget):
                     painter.fillRect(x, y, cell, cell, dark)
         painter.fillRect(0, 0, 40, 24, self._color)
         painter.end()
-        self._swatch_btn.setIcon(pix)
+        self._swatch_btn.setIcon(QIcon(pix))
         self._swatch_btn.setIconSize(QSize(40, 24))
 
 

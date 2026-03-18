@@ -94,6 +94,68 @@ class BrushPreviewWidget(QWidget):
 
 
 # ---------------------------------------------------------------------------
+# StencilPreviewWidget
+# ---------------------------------------------------------------------------
+
+class StencilPreviewWidget(QWidget):
+    """Shows a stencil PNG over a checkered background to reveal alpha."""
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self._image: Optional[QImage] = None
+        self.setMinimumHeight(100)
+        self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
+
+    def set_image(self, image: Optional[QImage]):
+        self._image = image
+        self.update()
+
+    def paintEvent(self, event):
+        painter = QPainter(self)
+
+        # Checkered background
+        cell = 8
+        light = QColor(200, 200, 200)
+        dark = QColor(140, 140, 140)
+        for y in range(0, self.height(), cell):
+            for x in range(0, self.width(), cell):
+                if ((x // cell + y // cell) % 2) == 0:
+                    painter.fillRect(x, y, cell, cell, light)
+                else:
+                    painter.fillRect(x, y, cell, cell, dark)
+
+        if self._image is None or self._image.isNull():
+            painter.setPen(QColor(80, 80, 80))
+            painter.drawText(self.rect(), Qt.AlignmentFlag.AlignCenter, "No stencil selected")
+            painter.end()
+            return
+
+        w = self.width()
+        h = self.height()
+        img_w = self._image.width()
+        img_h = self._image.height()
+
+        pad = 6
+        scale = min((w - pad * 2) / img_w, (h - pad * 2) / img_h) if img_w and img_h else 1.0
+        draw_w = max(1, int(img_w * scale))
+        draw_h = max(1, int(img_h * scale))
+        ox = (w - draw_w) // 2
+        oy = (h - draw_h) // 2
+
+        scaled = self._image.scaled(draw_w, draw_h,
+                                    Qt.AspectRatioMode.IgnoreAspectRatio,
+                                    Qt.TransformationMode.FastTransformation)
+        painter.drawImage(ox, oy, scaled)
+
+        # Border
+        painter.setPen(QPen(QColor(80, 80, 80), 1))
+        painter.setBrush(Qt.BrushStyle.NoBrush)
+        painter.drawRect(ox, oy, draw_w, draw_h)
+
+        painter.end()
+
+
+# ---------------------------------------------------------------------------
 # RendererEditor
 # ---------------------------------------------------------------------------
 
@@ -414,6 +476,7 @@ class RendererEditor(QWidget):
         self.stencil_table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         self.stencil_table.setMaximumHeight(130)
         self.stencil_table.itemChanged.connect(self._on_stencil_table_changed)
+        self.stencil_table.itemSelectionChanged.connect(self._update_stencil_preview)
         stencil_content_layout.addWidget(self.stencil_table)
 
         # Stencil buttons
@@ -554,6 +617,14 @@ class RendererEditor(QWidget):
         self.stencil_opacity_change_editor.setCheckable(False)
         self.stencil_opacity_change_editor.changed.connect(self._on_stencil_changed)
         stencil_content_layout.addWidget(self.stencil_opacity_change_editor)
+
+        # Stencil preview at bottom
+        stencil_preview_label = QLabel("Preview:")
+        stencil_content_layout.addWidget(stencil_preview_label)
+        self.stencil_preview = StencilPreviewWidget()
+        self.stencil_preview.setMinimumHeight(120)
+        self.stencil_preview.setMaximumHeight(180)
+        stencil_content_layout.addWidget(self.stencil_preview)
         stencil_content_layout.addStretch()
 
         # Record the brushes tab index for show/hide logic
@@ -785,6 +856,7 @@ class RendererEditor(QWidget):
         self.remove_stencil_btn.setEnabled(has_stencil)
         self.stencil_settings_group.setEnabled(has_stencil)
         self.stencil_opacity_change_editor.setEnabled(has_stencil)
+        self.stencil_preview.setEnabled(has_stencil)
 
         if has_stencil:
             is_progressive = self.stencil_draw_mode_combo.currentData() == BrushDrawMode.PROGRESSIVE
@@ -1061,6 +1133,8 @@ class RendererEditor(QWidget):
             self._add_stencil_row(name, en)
         self.stencil_table.blockSignals(False)
 
+        self._update_stencil_preview()
+
         idx = self.stencil_draw_mode_combo.findData(config.draw_mode)
         if idx >= 0:
             self.stencil_draw_mode_combo.setCurrentIndex(idx)
@@ -1214,10 +1288,29 @@ class RendererEditor(QWidget):
             return
         self._open_stencil_editor(initial_file=filepath)
 
+    def _update_stencil_preview(self) -> None:
+        row = self.stencil_table.currentRow()
+        if row < 0 or not self._stencils_dir:
+            self.stencil_preview.set_image(None)
+            return
+        name_item = self.stencil_table.item(row, 0)
+        if not name_item:
+            self.stencil_preview.set_image(None)
+            return
+        filepath = os.path.join(self._stencils_dir, name_item.text())
+        if not os.path.exists(filepath):
+            self.stencil_preview.set_image(None)
+            return
+        img = QImage(filepath)
+        if not img.isNull():
+            img = img.convertToFormat(QImage.Format.Format_ARGB32)
+        self.stencil_preview.set_image(img if not img.isNull() else None)
+
     def _on_remove_stencil(self) -> None:
         row = self.stencil_table.currentRow()
         if row >= 0:
             self.stencil_table.removeRow(row)
+            self._update_stencil_preview()
             self._on_stencil_changed()
 
     def _on_stencil_changed(self, *args) -> None:
