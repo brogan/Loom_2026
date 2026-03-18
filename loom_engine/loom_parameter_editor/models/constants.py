@@ -6,12 +6,13 @@ from enum import Enum
 
 
 class RenderMode(Enum):
-    """Renderer drawing mode - matches Renderer.POINTS, STROKED, FILLED, FILLED_STROKED, BRUSHED"""
+    """Renderer drawing mode - matches Renderer.POINTS, STROKED, FILLED, FILLED_STROKED, BRUSHED, STENCILED"""
     POINTS = 0
     STROKED = 1
     FILLED = 2
     FILLED_STROKED = 3
     BRUSHED = 4
+    STENCILED = 5
 
     @classmethod
     def from_string(cls, s: str) -> 'RenderMode':

@@ -15,6 +15,8 @@ class Renderer (val name: String, var mode: Int, var strokeWidth: Float, var str
 
   // Brush config for BRUSHED mode (mode == 4)
   var brushConfig: BrushConfig = null
+  // Stencil config for STENCILED mode (mode == 5)
+  var stencilConfig: StencilConfig = null
   //Note: holdLength - how long to hold current renderer in renderSet random or sequential playback - see sprite2D draw
   //overall switch for changing
   private var changing: Boolean = false
@@ -23,10 +25,13 @@ class Renderer (val name: String, var mode: Int, var strokeWidth: Float, var str
   var pointFilled: Boolean = true
 
 
-  private val changeSet: Array[RenderTransform] = Array(new RenderTransform(this, Renderer.NO_CHANGE),
+  private val changeSet: Array[RenderTransform] = Array(
     new RenderTransform(this, Renderer.NO_CHANGE),
     new RenderTransform(this, Renderer.NO_CHANGE),
-    new RenderTransform(this, Renderer.NO_CHANGE))
+    new RenderTransform(this, Renderer.NO_CHANGE),
+    new RenderTransform(this, Renderer.NO_CHANGE),
+    new RenderTransform(this, Renderer.NO_CHANGE)  // STENCIL_OPACITY
+  )
 
   def setPointDrawingStyle(stroky: Int, filly: Int): Unit = {
     if (stroky == Renderer.STROKED) {
@@ -121,6 +126,22 @@ class Renderer (val name: String, var mode: Int, var strokeWidth: Float, var str
     }
   }
 
+  def setChangingStencilOpacity(params: Array[Int], min: Float, max: Float, increment: Float, pauseMax: Int): Unit = {
+    if (mode == Renderer.STENCILED) {
+      changing = true
+      val opacityTransform = changeSet(Renderer.STENCIL_OPACITY)
+      opacityTransform.setChanging(Renderer.STENCIL_OPACITY)
+      renderTransformStoreParams(opacityTransform, params)
+      opacityTransform.setStencilOpacityValues(min, max, increment)
+      if (params(Renderer.CYCLE) != Renderer.CONSTANT) {
+        opacityTransform.setPausing(pauseMax)
+      }
+      opacityTransform.setInitialValues()
+    } else {
+      println("Renderer, setChangingStencilOpacity: not applied, only relevant for STENCILED rendering")
+    }
+  }
+
   private def renderTransformStoreParams(transform: RenderTransform, params: Array[Int]): Unit = {
     transform.setParams(params)
   }
@@ -138,6 +159,7 @@ class Renderer (val name: String, var mode: Int, var strokeWidth: Float, var str
     pointSize = pointSize * factor
     changeSet.foreach(_.scalePixelValues(factor))
     if (brushConfig != null) brushConfig.scalePixelValues(factor.toDouble)
+    if (stencilConfig != null) stencilConfig.scalePixelValues(factor.toDouble)
   }
 
   def update(scale: Int): Unit = {
@@ -161,6 +183,9 @@ class Renderer (val name: String, var mode: Int, var strokeWidth: Float, var str
         changeSet(Renderer.POINT_SIZE).update(Renderer.POINT_SIZE, scale)
       }
 
+      if (changeSet(Renderer.STENCIL_OPACITY).changeType == Renderer.STENCIL_OPACITY) {
+        changeSet(Renderer.STENCIL_OPACITY).update(Renderer.STENCIL_OPACITY, scale)
+      }
 
     }
 
@@ -205,6 +230,7 @@ object Renderer {
   val FILLED: Int = 2
   val FILLED_STROKED: Int = 3
   val BRUSHED: Int = 4
+  val STENCILED: Int = 5
 
   val NOT_STROKED: Int = 4
   val NOT_FILLED: Int = 5
@@ -215,6 +241,7 @@ object Renderer {
   val STROKE_COLOR: Int = 1
   val FILL_COLOR: Int = 2
   val POINT_SIZE: Int = 3
+  val STENCIL_OPACITY: Int = 4
 
   //CHANGE PARAMS
   val KIND: Int = 0

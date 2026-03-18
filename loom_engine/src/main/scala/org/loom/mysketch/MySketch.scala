@@ -773,6 +773,11 @@ class MySketch(width: Int, height: Int) extends Sketch(width, height) {
       BrushLibrary.initialize(ProjectPaths.getBrushesPath(projectName))
     }
 
+    // Initialize stencil library for STENCILED rendering mode
+    if (useProjectConfig && projectName.nonEmpty) {
+      StencilLibrary.initialize(ProjectPaths.getStencilsPath(projectName))
+    }
+
     // Apply colors from project config, or use defaults
     if (globalConfig != null) {
       backgroundColor = globalConfig.backgroundColor

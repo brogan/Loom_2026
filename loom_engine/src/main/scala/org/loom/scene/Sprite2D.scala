@@ -27,6 +27,8 @@ class Sprite2D(val shape: Shape2D, val spriteParams: Sprite2DParams, var animato
 
   // Brush rendering state (lazy-initialized when BRUSHED mode is used)
   var brushState: BrushState = null
+  // Stencil rendering state (lazy-initialized when STENCILED mode is used)
+  var stencilState: BrushState = null
 
   var location: Vector2D = spriteParams.loc2D
   //var size: Vector2D = new Vector2D(spriteParams.size2D.x * spriteParams.sizeFactor.x, spriteParams.size2D.y * spriteParams.sizeFactor.y)
@@ -170,6 +172,12 @@ class Sprite2D(val shape: Shape2D, val spriteParams: Sprite2DParams, var animato
           // BRUSHED handles all polys at once (for edge deduplication) — draw once then skip per-poly loop
           drawBrushed(g2D, Camera.view)
           // Update at both scales so dynamic changes fire regardless of user's scale setting
+          rendererSet.updateRenderer(Renderer.POLY)
+          rendererSet.updateRenderer(Renderer.SPRITE)
+          return
+        case Renderer.STENCILED =>
+          // STENCILED handles all polys at once — draw once then skip per-poly loop
+          drawStenciled(g2D, Camera.view)
           rendererSet.updateRenderer(Renderer.POLY)
           rendererSet.updateRenderer(Renderer.SPRITE)
           return
@@ -448,6 +456,63 @@ class Sprite2D(val shape: Shape2D, val spriteParams: Sprite2DParams, var animato
   private def loadBrushImages(config: BrushConfig, @unused ren: Renderer): Array[BufferedImage] = {
     config.brushNames.flatMap { name =>
       val img = BrushLibrary.getBrush(name, Config.qualityMultiple, config.blurRadius)
+      Option(img)
+    }
+  }
+
+  /**
+   * Draw all polygon edges / points using stencil stamps (full-RGBA PNGs, no tinting).
+   */
+  def drawStenciled(g2D: Graphics2D, view: View): Unit = {
+    val ren = rendererSet.getRenderer(rendererSet.selectedIndex)
+    val config = ren.stencilConfig
+    if (config == null) return
+
+    val stencils = loadStencilImages(config)
+    if (stencils.isEmpty) return
+
+    val opacity = math.max(0f, math.min(1f, config.currentOpacity))
+
+    val correctedPolys: List[org.loom.geometry.Polygon2D] =
+      shape.polys.filter(_.visible).map(p => coordinateCorrect(p, view))
+
+    // POINT_POLYGON: stamp a single stencil at each point position
+    for (poly <- correctedPolys if poly.polyType == org.loom.geometry.PolygonType.POINT_POLYGON) {
+      if (poly.points.nonEmpty)
+        StencilStampEngine.stampAtPoint(g2D, poly.points.head, config, stencils, opacity)
+    }
+
+    val edgePolys = correctedPolys.filter(_.polyType != org.loom.geometry.PolygonType.POINT_POLYGON)
+    if (edgePolys.isEmpty) return
+
+    if (config.drawMode == StencilConfig.FULL_PATH) {
+      val state = new BrushState()
+      state.initializeFromPolys(edgePolys)
+      for (edge <- state.edges) {
+        StencilStampEngine.drawFullEdge(g2D, edge, config, stencils, opacity)
+      }
+    } else {
+      // PROGRESSIVE mode: lazy-init state, advance agents each frame
+      if (stencilState == null || !stencilState.initialized) {
+        stencilState = new BrushState()
+        stencilState.initializeFromPolys(edgePolys)
+        stencilState.createAgents(config.agentCount)
+      }
+      for (agent <- stencilState.agents) {
+        if (!agent.completed) {
+          StencilStampEngine.drawProgressiveStamps(
+            g2D, stencilState.edges, agent, config, stencils,
+            opacity, config.stampsPerFrame
+          )
+        }
+      }
+      stencilState.checkCompletion(config.postCompletionMode)
+    }
+  }
+
+  private def loadStencilImages(config: StencilConfig): Array[BufferedImage] = {
+    config.stencilNames.flatMap { name =>
+      val img = StencilLibrary.getStencil(name, Config.qualityMultiple)
       Option(img)
     }
   }

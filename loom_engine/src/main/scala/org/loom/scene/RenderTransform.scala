@@ -34,6 +34,7 @@ private class RenderTransform(val renderer: Renderer, var changeType: Int) {
 
   private val strokeWidthValues: SizeValues = new SizeValues()
   private val pointSizeValues: SizeValues = new SizeValues()
+  private val opacityValues: SizeValues = new SizeValues()
   private val strokeColorValues: ColorValues = new ColorValues()
   private val fillColorValues: ColorValues = new ColorValues()
 
@@ -45,6 +46,7 @@ private class RenderTransform(val renderer: Renderer, var changeType: Int) {
   def scalePixelValues(factor: Float): Unit = {
     strokeWidthValues.scaleBy(factor)
     pointSizeValues.scaleBy(factor)
+    // opacityValues is a 0-1 float ratio — no pixel scaling needed
   }
 
   //sent from Renderer along with change parameters and values
@@ -66,6 +68,10 @@ private class RenderTransform(val renderer: Renderer, var changeType: Int) {
 
   def setPointSizeValues(min: Float, max: Float, increment: Float): Unit = {
     pointSizeValues.setSizeValues(min, max, increment)
+  }
+
+  def setStencilOpacityValues(min: Float, max: Float, increment: Float): Unit = {
+    opacityValues.setSizeValues(min, max, increment)
   }
 
   def setStrokeColorValues(min: Array[Int], max: Array[Int], increment: Array[Int]): Unit = {
@@ -92,6 +98,7 @@ private class RenderTransform(val renderer: Renderer, var changeType: Int) {
         case Renderer.STROKE_COLOR => renderer.strokeColor = new Color(strokeColorValues.min(0), strokeColorValues.min(1), strokeColorValues.min(2), strokeColorValues.min(3))
         case Renderer.FILL_COLOR => renderer.fillColor = new Color(fillColorValues.min(0), fillColorValues.min(1), fillColorValues.min(2), fillColorValues.min(3))
         case Renderer.POINT_SIZE => renderer.pointSize = pointSizeValues.min
+        case Renderer.STENCIL_OPACITY => if (renderer.stencilConfig != null) renderer.stencilConfig.currentOpacity = opacityValues.min
         case _ =>
       }
     } else if (motion == Renderer.DOWN) {
@@ -100,6 +107,7 @@ private class RenderTransform(val renderer: Renderer, var changeType: Int) {
         case Renderer.STROKE_COLOR => renderer.strokeColor = new Color(strokeColorValues.max(0), strokeColorValues.max(1), strokeColorValues.max(2), strokeColorValues.max(3))
         case Renderer.FILL_COLOR => renderer.fillColor = new Color(fillColorValues.max(0), fillColorValues.max(1), fillColorValues.max(2), fillColorValues.max(3))
         case Renderer.POINT_SIZE => renderer.pointSize = pointSizeValues.max
+        case Renderer.STENCIL_OPACITY => if (renderer.stencilConfig != null) renderer.stencilConfig.currentOpacity = opacityValues.max
         case _ =>
       }
     } else if (motion == Renderer.PING_PONG) {
@@ -109,6 +117,7 @@ private class RenderTransform(val renderer: Renderer, var changeType: Int) {
         case Renderer.STROKE_COLOR => renderer.strokeColor = new Color(strokeColorValues.half(0), strokeColorValues.half(1), strokeColorValues.half(2), strokeColorValues.half(3))
         case Renderer.FILL_COLOR => renderer.fillColor = new Color(fillColorValues.half(0), fillColorValues.half(1), fillColorValues.half(2), fillColorValues.half(3))
         case Renderer.POINT_SIZE => renderer.pointSize = pointSizeValues.half
+        case Renderer.STENCIL_OPACITY => if (renderer.stencilConfig != null) renderer.stencilConfig.currentOpacity = opacityValues.half
         case _ =>
       }
     }
@@ -187,6 +196,7 @@ private class RenderTransform(val renderer: Renderer, var changeType: Int) {
           case Renderer.STROKE_COLOR => updateStrokeColor()
           case Renderer.FILL_COLOR => updateFillColor()
           case Renderer.POINT_SIZE => updatePointSize()
+          case Renderer.STENCIL_OPACITY => updateOpacity()
           case _ => println("RendertTransform update SEQ, cycleEnded but no relevant changeType: " + changeType)
         }
       } else if (kind == Renderer.RAN) { //random
@@ -195,6 +205,9 @@ private class RenderTransform(val renderer: Renderer, var changeType: Int) {
           case Renderer.STROKE_COLOR => renderer.strokeColor = getRandomisedColor(strokeColorValues)
           case Renderer.FILL_COLOR => updateFillColor()//renderer.fillColor = getRandomisedColor(fillColorValues)
           case Renderer.POINT_SIZE => renderer.pointSize = Randomise.range(pointSizeValues.min, pointSizeValues.max).toFloat
+          case Renderer.STENCIL_OPACITY =>
+            if (renderer.stencilConfig != null)
+              renderer.stencilConfig.currentOpacity = Randomise.range(opacityValues.min.toDouble, opacityValues.max.toDouble).toFloat
           case _ => println("RendertTransform update RAN, cycleEnded but no relevant changeType: " + changeType)
         }
         //
@@ -474,6 +487,56 @@ private class RenderTransform(val renderer: Renderer, var changeType: Int) {
 
     }
   }
+  private def updateOpacity(): Unit = {
+    if (renderer.stencilConfig == null) return
+    val sc = renderer.stencilConfig
+    if (motion == Renderer.UP) {
+      if (sc.currentOpacity < opacityValues.max) {
+        sc.currentOpacity = sc.currentOpacity + opacityValues.increment
+      } else {
+        if (pausing) {
+          paused = true
+        } else {
+          sc.currentOpacity = opacityValues.min
+        }
+      }
+    } else if (motion == Renderer.DOWN) {
+      if (sc.currentOpacity > opacityValues.min) {
+        sc.currentOpacity = sc.currentOpacity - opacityValues.increment
+      } else {
+        if (pausing) {
+          paused = true
+        } else {
+          sc.currentOpacity = opacityValues.max
+        }
+      }
+    } else { // PING_PONG
+      if (opacityValues.goingUp) {
+        if (sc.currentOpacity < opacityValues.max) {
+          sc.currentOpacity = sc.currentOpacity + opacityValues.increment
+          if (pausing) {
+            if (pingPongUpComplete) {
+              if (sc.currentOpacity > opacityValues.half) {
+                paused = true
+              }
+            }
+          }
+        } else {
+          pingPongUpComplete = true
+          opacityValues.goingUp = false
+        }
+      } else {
+        if (sc.currentOpacity > opacityValues.min) {
+          sc.currentOpacity = sc.currentOpacity - opacityValues.increment
+        } else {
+          opacityValues.goingUp = true
+        }
+      }
+    }
+    // clamp to [0,1]
+    sc.currentOpacity = math.max(0f, math.min(1f, sc.currentOpacity))
+  }
+
   //Inner data class within RenderTransform class - color values
   private class SizeValues() {
 

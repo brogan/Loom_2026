@@ -3,7 +3,7 @@ package org.loom.media
 import scala.xml.*
 import java.io.File
 import java.awt.Color
-import org.loom.scene.{BrushConfig, Renderer, RendererSet, RendererSetLibrary}
+import org.loom.scene.{BrushConfig, StencilConfig, Renderer, RendererSet, RendererSetLibrary}
 
 /**
  * Loads RendererSetLibrary from rendering.xml configuration files.
@@ -141,6 +141,13 @@ object RenderingConfigLoader {
       renderer.brushConfig = parseBrushConfig(bc)
     }
 
+    // Parse stencil config (for STENCILED mode)
+    (node \ "StencilConfig").headOption.foreach { sc =>
+      renderer.stencilConfig = parseStencilConfig(sc)
+      // Parse optional opacity change animation
+      parseOpacityChange(sc \ "OpacityChange", renderer)
+    }
+
     renderer
   }
 
@@ -192,6 +199,63 @@ object RenderingConfigLoader {
       postCompletionMode = postCompletionMode,
       blurRadius = blurRadius
     )
+  }
+
+  private def parseStencilConfig(node: Node): StencilConfig = {
+    val allStencilNames = (node \ "StencilNames" \ "Stencil").map(_.text.trim).toArray
+    val enabledFlags = (node \ "StencilEnabled" \ "Enabled").map(_.text.trim.toLowerCase != "false").toArray
+    val stencilNames = if (enabledFlags.length == allStencilNames.length) {
+      val enabled = allStencilNames.zip(enabledFlags).collect { case (n, true) => n }
+      if (enabled.nonEmpty) enabled else allStencilNames
+    } else {
+      allStencilNames
+    }
+    val drawMode = (node \ "DrawMode").text.trim.toUpperCase match {
+      case "PROGRESSIVE" => StencilConfig.PROGRESSIVE
+      case _ => StencilConfig.FULL_PATH
+    }
+    val stampSpacing   = getDoubleOrDefault(node, "StampSpacing", 4.0)
+    val spacingEasing  = (node \ "SpacingEasing").headOption.map(_.text.trim).getOrElse("LINEAR")
+    val followTangent  = (node \ "FollowTangent").headOption.map(_.text.trim.toLowerCase == "true").getOrElse(true)
+    val perpJitterMin  = getDoubleOrDefault(node, "PerpendicularJitterMin", -2.0)
+    val perpJitterMax  = getDoubleOrDefault(node, "PerpendicularJitterMax",  2.0)
+    val scaleMin       = getDoubleOrDefault(node, "ScaleMin", 0.8)
+    val scaleMax       = getDoubleOrDefault(node, "ScaleMax", 1.2)
+    val stampsPerFrame = getIntOrDefault(node, "StampsPerFrame", 10)
+    val agentCount     = getIntOrDefault(node, "AgentCount", 1)
+    val postCompletionMode = (node \ "PostCompletionMode").text.trim.toUpperCase match {
+      case "LOOP"      => StencilConfig.LOOP
+      case "PING_PONG" => StencilConfig.PING_PONG
+      case _           => StencilConfig.HOLD
+    }
+    new StencilConfig(
+      stencilNames          = stencilNames,
+      drawMode              = drawMode,
+      stampSpacing          = stampSpacing,
+      spacingEasing         = spacingEasing,
+      followTangent         = followTangent,
+      perpendicularJitterMin = perpJitterMin,
+      perpendicularJitterMax = perpJitterMax,
+      scaleMin              = scaleMin,
+      scaleMax              = scaleMax,
+      stampsPerFrame        = stampsPerFrame,
+      agentCount            = agentCount,
+      postCompletionMode    = postCompletionMode
+    )
+  }
+
+  private def parseOpacityChange(nodeSeq: NodeSeq, renderer: Renderer): Unit = {
+    nodeSeq.headOption.foreach { node =>
+      val enabled = (node \ "@enabled").text.toLowerCase != "false"
+      if (enabled) {
+        val params   = parseChangeParams(node)
+        val min      = getFloatOrDefault(node, "Min",       0.0f)
+        val max      = getFloatOrDefault(node, "Max",       1.0f)
+        val inc      = getFloatOrDefault(node, "Increment", 0.05f)
+        val pauseMax = getIntOrDefault(node, "PauseMax", 10)
+        renderer.setChangingStencilOpacity(params, min, max, inc, pauseMax)
+      }
+    }
   }
 
   private def parseStrokeWidthChange(nodeSeq: NodeSeq, renderer: Renderer): Unit = {
@@ -288,7 +352,8 @@ object RenderingConfigLoader {
       case "STROKED" => Renderer.STROKED
       case "FILLED" => Renderer.FILLED
       case "FILLED_STROKED" => Renderer.FILLED_STROKED
-      case "BRUSHED" => Renderer.BRUSHED
+      case "BRUSHED"   => Renderer.BRUSHED
+      case "STENCILED" => Renderer.STENCILED
       case _ => Renderer.FILLED
     }
   }

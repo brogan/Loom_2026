@@ -154,6 +154,44 @@ class BrushConfig:
 
 
 @dataclass
+class StencilConfig:
+    """Configuration for stencil-based rendering (STENCILED mode).
+    Stamps full-RGBA PNGs; no tinting. Opacity animated via opacity_change."""
+    stencil_names: List[str] = field(default_factory=list)
+    stencil_enabled: List[bool] = field(default_factory=list)
+    draw_mode: BrushDrawMode = BrushDrawMode.FULL_PATH
+    stamp_spacing: float = 4.0
+    spacing_easing: str = "LINEAR"
+    follow_tangent: bool = True
+    perpendicular_jitter_min: float = -2.0
+    perpendicular_jitter_max: float = 2.0
+    scale_min: float = 0.8
+    scale_max: float = 1.2
+    stamps_per_frame: int = 10
+    agent_count: int = 1
+    post_completion_mode: PostCompletionMode = PostCompletionMode.HOLD
+    opacity_change: SizeChange = field(default_factory=SizeChange)
+
+    def copy(self) -> 'StencilConfig':
+        return StencilConfig(
+            stencil_names=list(self.stencil_names),
+            stencil_enabled=list(self.stencil_enabled),
+            draw_mode=self.draw_mode,
+            stamp_spacing=self.stamp_spacing,
+            spacing_easing=self.spacing_easing,
+            follow_tangent=self.follow_tangent,
+            perpendicular_jitter_min=self.perpendicular_jitter_min,
+            perpendicular_jitter_max=self.perpendicular_jitter_max,
+            scale_min=self.scale_min,
+            scale_max=self.scale_max,
+            stamps_per_frame=self.stamps_per_frame,
+            agent_count=self.agent_count,
+            post_completion_mode=self.post_completion_mode,
+            opacity_change=self.opacity_change.copy()
+        )
+
+
+@dataclass
 class Renderer:
     """A single renderer configuration."""
     name: str
@@ -171,6 +209,7 @@ class Renderer:
     fill_color_change: FillColorChange = field(default_factory=FillColorChange)
     point_size_change: SizeChange = field(default_factory=SizeChange)
     brush_config: Optional[BrushConfig] = None
+    stencil_config: Optional[StencilConfig] = None
 
     def copy(self) -> 'Renderer':
         return Renderer(
@@ -188,7 +227,8 @@ class Renderer:
             stroke_color_change=self.stroke_color_change.copy(),
             fill_color_change=self.fill_color_change.copy(),
             point_size_change=self.point_size_change.copy(),
-            brush_config=self.brush_config.copy() if self.brush_config else None
+            brush_config=self.brush_config.copy() if self.brush_config else None,
+            stencil_config=self.stencil_config.copy() if self.stencil_config else None
         )
 
     def has_any_changes(self) -> bool:

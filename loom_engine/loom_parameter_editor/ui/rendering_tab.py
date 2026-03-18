@@ -22,7 +22,7 @@ from .widgets.change_editor import (
     SizeChangeEditor, ColorChangeEditor, FillColorChangeEditor
 )
 from models.rendering import (
-    RendererSetLibrary, RendererSet, Renderer, Color, BrushConfig
+    RendererSetLibrary, RendererSet, Renderer, Color, BrushConfig, StencilConfig
 )
 from models.constants import RenderMode, PlaybackMode, BrushDrawMode, PostCompletionMode
 
@@ -107,10 +107,13 @@ class RendererEditor(QWidget):
         self._renderer: Optional[Renderer] = None
         self._updating = False
         self._brushes_dir: str = ""
+        self._stencils_dir: str = ""
         self._editor_window = None
+        self._stencil_editor_window = None
 
-        # Inner tabs: Basic Properties | Brushes | Point Change | Stroke Change | Fill Change
+        # Inner tabs: Basic Properties | Brushes | Stencils | Point Change | Stroke Change | Fill Change
         inner_tabs = QTabWidget()
+        self._inner_tabs = inner_tabs
 
         # ------------------------------------------------------------------
         # Basic Properties tab
@@ -385,6 +388,178 @@ class RendererEditor(QWidget):
         brush_content_layout.addWidget(self.brush_preview)
 
         # ------------------------------------------------------------------
+        # Stencils tab  (dedicated, after Brushes)
+        # ------------------------------------------------------------------
+        stencil_scroll = QScrollArea()
+        stencil_scroll.setWidgetResizable(True)
+        stencil_scroll.setFrameShape(QFrame.Shape.NoFrame)
+        stencil_content = QWidget()
+        stencil_content_layout = QVBoxLayout(stencil_content)
+        stencil_content_layout.setSpacing(4)
+        stencil_scroll.setWidget(stencil_content)
+        self._stencils_tab_idx = inner_tabs.addTab(stencil_scroll, "Stencils")
+
+        # Stencil image table (Name | Grid | Pixels | Use)
+        self.stencil_table = QTableWidget()
+        self.stencil_table.setColumnCount(4)
+        self.stencil_table.setHorizontalHeaderLabels(["Name", "Grid", "Pixels", "Use"])
+        sh = self.stencil_table.horizontalHeader()
+        sh.setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
+        sh.setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
+        sh.setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
+        sh.setSectionResizeMode(3, QHeaderView.ResizeMode.Fixed)
+        self.stencil_table.setColumnWidth(3, 36)
+        self.stencil_table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
+        self.stencil_table.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
+        self.stencil_table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
+        self.stencil_table.setMaximumHeight(130)
+        self.stencil_table.itemChanged.connect(self._on_stencil_table_changed)
+        stencil_content_layout.addWidget(self.stencil_table)
+
+        # Stencil buttons
+        stencil_btn_row = QHBoxLayout()
+        self.add_stencil_btn = QPushButton("Add...")
+        self.add_stencil_btn.setToolTip("Add an existing stencil PNG from the project's stencils/ folder")
+        self.add_stencil_btn.clicked.connect(self._on_add_stencil)
+        stencil_btn_row.addWidget(self.add_stencil_btn)
+        self.create_stencil_btn = QPushButton("Create...")
+        self.create_stencil_btn.setToolTip("Open the stencil editor to create a new stencil")
+        self.create_stencil_btn.clicked.connect(self._on_create_stencil)
+        stencil_btn_row.addWidget(self.create_stencil_btn)
+        self.edit_stencil_btn = QPushButton("Edit...")
+        self.edit_stencil_btn.setToolTip("Edit the selected stencil in the stencil editor")
+        self.edit_stencil_btn.clicked.connect(self._on_edit_stencil)
+        stencil_btn_row.addWidget(self.edit_stencil_btn)
+        self.remove_stencil_btn = QPushButton("Remove")
+        self.remove_stencil_btn.clicked.connect(self._on_remove_stencil)
+        stencil_btn_row.addWidget(self.remove_stencil_btn)
+        stencil_btn_row.addStretch()
+        stencil_content_layout.addLayout(stencil_btn_row)
+
+        # Stencil settings
+        self.stencil_settings_group = QGroupBox("Stencil Settings")
+        ss_layout = QVBoxLayout(self.stencil_settings_group)
+
+        # Draw mode
+        s_draw_mode_row = QHBoxLayout()
+        s_draw_mode_row.addWidget(QLabel("Draw Mode:"))
+        self.stencil_draw_mode_combo = QComboBox()
+        for dm in BrushDrawMode:
+            self.stencil_draw_mode_combo.addItem(dm.name, dm)
+        self.stencil_draw_mode_combo.currentIndexChanged.connect(self._on_stencil_changed)
+        s_draw_mode_row.addWidget(self.stencil_draw_mode_combo)
+        s_draw_mode_row.addStretch()
+        ss_layout.addLayout(s_draw_mode_row)
+
+        # Stamp spacing + easing
+        s_spacing_row = QHBoxLayout()
+        s_spacing_row.addWidget(QLabel("Stamp Spacing:"))
+        self.stencil_stamp_spacing_spin = QDoubleSpinBox()
+        self.stencil_stamp_spacing_spin.setRange(0.5, 999.0)
+        self.stencil_stamp_spacing_spin.setDecimals(1)
+        self.stencil_stamp_spacing_spin.setSingleStep(0.5)
+        self.stencil_stamp_spacing_spin.valueChanged.connect(self._on_stencil_changed)
+        s_spacing_row.addWidget(self.stencil_stamp_spacing_spin)
+        s_spacing_row.addWidget(QLabel("Easing:"))
+        self.stencil_spacing_easing_combo = QComboBox()
+        easing_types = [
+            "LINEAR", "EASE_IN_QUAD", "EASE_OUT_QUAD", "EASE_IN_OUT_QUAD",
+            "EASE_IN_CUBIC", "EASE_OUT_CUBIC", "EASE_IN_OUT_CUBIC",
+            "EASE_IN_QUART", "EASE_OUT_QUART", "EASE_IN_OUT_QUART",
+            "EASE_IN_QUINT", "EASE_OUT_QUINT", "EASE_IN_OUT_QUINT",
+            "EASE_IN_SINE", "EASE_OUT_SINE", "EASE_IN_OUT_SINE",
+            "EASE_IN_EXPO", "EASE_OUT_EXPO", "EASE_IN_OUT_EXPO",
+            "EASE_IN_CIRC", "EASE_OUT_CIRC", "EASE_IN_OUT_CIRC",
+            "EASE_IN_ELASTIC", "EASE_OUT_ELASTIC", "EASE_IN_OUT_ELASTIC",
+            "EASE_IN_BACK", "EASE_OUT_BACK", "EASE_IN_OUT_BACK",
+            "EASE_IN_BOUNCE", "EASE_OUT_BOUNCE", "EASE_IN_OUT_BOUNCE",
+        ]
+        self.stencil_spacing_easing_combo.addItems(easing_types)
+        self.stencil_spacing_easing_combo.currentTextChanged.connect(self._on_stencil_changed)
+        s_spacing_row.addWidget(self.stencil_spacing_easing_combo)
+        ss_layout.addLayout(s_spacing_row)
+
+        # Follow tangent
+        self.stencil_follow_tangent_check = QCheckBox("Follow Tangent")
+        self.stencil_follow_tangent_check.stateChanged.connect(self._on_stencil_changed)
+        ss_layout.addWidget(self.stencil_follow_tangent_check)
+
+        # Perpendicular jitter
+        s_perp_row = QHBoxLayout()
+        s_perp_row.addWidget(QLabel("Perp. Jitter Min:"))
+        self.stencil_perp_jitter_min_spin = QDoubleSpinBox()
+        self.stencil_perp_jitter_min_spin.setRange(-50.0, 50.0)
+        self.stencil_perp_jitter_min_spin.setDecimals(1)
+        self.stencil_perp_jitter_min_spin.valueChanged.connect(self._on_stencil_changed)
+        s_perp_row.addWidget(self.stencil_perp_jitter_min_spin)
+        s_perp_row.addWidget(QLabel("Max:"))
+        self.stencil_perp_jitter_max_spin = QDoubleSpinBox()
+        self.stencil_perp_jitter_max_spin.setRange(-50.0, 50.0)
+        self.stencil_perp_jitter_max_spin.setDecimals(1)
+        self.stencil_perp_jitter_max_spin.valueChanged.connect(self._on_stencil_changed)
+        s_perp_row.addWidget(self.stencil_perp_jitter_max_spin)
+        ss_layout.addLayout(s_perp_row)
+
+        # Scale min/max
+        s_scale_row = QHBoxLayout()
+        s_scale_row.addWidget(QLabel("Scale Min:"))
+        self.stencil_scale_min_spin = QDoubleSpinBox()
+        self.stencil_scale_min_spin.setRange(0.01, 10.0)
+        self.stencil_scale_min_spin.setDecimals(2)
+        self.stencil_scale_min_spin.setSingleStep(0.1)
+        self.stencil_scale_min_spin.valueChanged.connect(self._on_stencil_changed)
+        s_scale_row.addWidget(self.stencil_scale_min_spin)
+        s_scale_row.addWidget(QLabel("Max:"))
+        self.stencil_scale_max_spin = QDoubleSpinBox()
+        self.stencil_scale_max_spin.setRange(0.01, 10.0)
+        self.stencil_scale_max_spin.setDecimals(2)
+        self.stencil_scale_max_spin.setSingleStep(0.1)
+        self.stencil_scale_max_spin.valueChanged.connect(self._on_stencil_changed)
+        s_scale_row.addWidget(self.stencil_scale_max_spin)
+        ss_layout.addLayout(s_scale_row)
+
+        # Progressive reveal
+        self.stencil_progressive_group = QGroupBox("Progressive Reveal")
+        s_prog_layout = QVBoxLayout(self.stencil_progressive_group)
+
+        s_spf_row = QHBoxLayout()
+        s_spf_row.addWidget(QLabel("Stamps/Frame:"))
+        self.stencil_stamps_per_frame_spin = QSpinBox()
+        self.stencil_stamps_per_frame_spin.setRange(1, 1000)
+        self.stencil_stamps_per_frame_spin.valueChanged.connect(self._on_stencil_changed)
+        s_spf_row.addWidget(self.stencil_stamps_per_frame_spin)
+        s_spf_row.addWidget(QLabel("Agents:"))
+        self.stencil_agent_count_spin = QSpinBox()
+        self.stencil_agent_count_spin.setRange(1, 50)
+        self.stencil_agent_count_spin.valueChanged.connect(self._on_stencil_changed)
+        s_spf_row.addWidget(self.stencil_agent_count_spin)
+        s_prog_layout.addLayout(s_spf_row)
+
+        s_pcm_row = QHBoxLayout()
+        s_pcm_row.addWidget(QLabel("Post-Completion:"))
+        self.stencil_post_completion_combo = QComboBox()
+        for pcm in PostCompletionMode:
+            self.stencil_post_completion_combo.addItem(pcm.name, pcm)
+        self.stencil_post_completion_combo.currentIndexChanged.connect(self._on_stencil_changed)
+        s_pcm_row.addWidget(self.stencil_post_completion_combo)
+        s_pcm_row.addStretch()
+        s_prog_layout.addLayout(s_pcm_row)
+
+        ss_layout.addWidget(self.stencil_progressive_group)
+
+        stencil_content_layout.addWidget(self.stencil_settings_group)
+
+        # Opacity Change — reuses SizeChangeEditor
+        self.stencil_opacity_change_editor = SizeChangeEditor("Opacity Change")
+        self.stencil_opacity_change_editor.setCheckable(False)
+        self.stencil_opacity_change_editor.changed.connect(self._on_stencil_changed)
+        stencil_content_layout.addWidget(self.stencil_opacity_change_editor)
+        stencil_content_layout.addStretch()
+
+        # Record the brushes tab index for show/hide logic
+        self._brushes_tab_idx = inner_tabs.indexOf(brush_scroll)
+
+        # ------------------------------------------------------------------
         # Point Change tab
         # ------------------------------------------------------------------
         point_scroll = QScrollArea()
@@ -471,12 +646,16 @@ class RendererEditor(QWidget):
             self.point_size_change_editor.set_change(renderer.point_size_change)
 
             self._load_brush_config(renderer.brush_config)
+            self._load_stencil_config(renderer.stencil_config)
             self._update_mode_visibility()
 
         self._updating = False
 
     def set_brushes_dir(self, path: str) -> None:
         self._brushes_dir = path
+
+    def set_stencils_dir(self, path: str) -> None:
+        self._stencils_dir = path
 
     # ------------------------------------------------------------------
     # Brush helpers
@@ -566,6 +745,7 @@ class RendererEditor(QWidget):
         has_fill = mode in (RenderMode.FILLED, RenderMode.FILLED_STROKED)
         has_points = mode == RenderMode.POINTS
         has_brush = mode == RenderMode.BRUSHED
+        has_stencil = mode == RenderMode.STENCILED
 
         point_stroked = has_points and self.point_stroked_check.isChecked()
         self.stroke_width_spin.setEnabled(has_stroke or point_stroked)
@@ -596,6 +776,25 @@ class RendererEditor(QWidget):
             self.progressive_group.setVisible(is_progressive)
         else:
             self.progressive_group.setVisible(False)
+
+        # Stencils tab content enabled only in STENCILED mode
+        self.stencil_table.setEnabled(has_stencil)
+        self.add_stencil_btn.setEnabled(has_stencil)
+        self.create_stencil_btn.setEnabled(has_stencil)
+        self.edit_stencil_btn.setEnabled(has_stencil)
+        self.remove_stencil_btn.setEnabled(has_stencil)
+        self.stencil_settings_group.setEnabled(has_stencil)
+        self.stencil_opacity_change_editor.setEnabled(has_stencil)
+
+        if has_stencil:
+            is_progressive = self.stencil_draw_mode_combo.currentData() == BrushDrawMode.PROGRESSIVE
+            self.stencil_progressive_group.setVisible(is_progressive)
+        else:
+            self.stencil_progressive_group.setVisible(False)
+
+        # Show/hide Brushes and Stencils tabs based on mode
+        self._inner_tabs.setTabVisible(self._brushes_tab_idx, has_brush)
+        self._inner_tabs.setTabVisible(self._stencils_tab_idx, has_stencil)
 
     def _on_point_style_changed(self, *args) -> None:
         self._update_mode_visibility()
@@ -795,6 +994,239 @@ class RendererEditor(QWidget):
         self.progressive_group.setVisible(is_progressive)
         self._on_changed()
 
+    # ------------------------------------------------------------------
+    # Stencil helpers
+    # ------------------------------------------------------------------
+
+    def _stencil_dims(self, filename: str):
+        """Return (grid_w, grid_h, px_w, px_h) for a stencil PNG, or Nones if unavailable."""
+        if not self._stencils_dir:
+            return None, None, None, None
+        filepath = os.path.join(self._stencils_dir, filename)
+        if not os.path.exists(filepath):
+            return None, None, None, None
+        img = QImage(filepath)
+        if img.isNull():
+            return None, None, None, None
+        px_w, px_h = img.width(), img.height()
+        grid_w, grid_h = px_w, px_h
+        meta_path = filepath + ".meta.json"
+        if os.path.exists(meta_path):
+            try:
+                with open(meta_path) as f:
+                    meta = json.load(f)
+                grid_w = meta.get("grid_w", px_w)
+                grid_h = meta.get("grid_h", px_h)
+            except Exception:
+                pass
+        return grid_w, grid_h, px_w, px_h
+
+    def _add_stencil_row(self, filename: str, enabled: bool = True):
+        """Append a row to stencil_table for the given filename."""
+        row = self.stencil_table.rowCount()
+        self.stencil_table.insertRow(row)
+
+        name_item = QTableWidgetItem(filename)
+        name_item.setFlags(name_item.flags() & ~Qt.ItemFlag.ItemIsEditable)
+        self.stencil_table.setItem(row, 0, name_item)
+
+        grid_w, grid_h, px_w, px_h = self._stencil_dims(filename)
+        grid_text = f"{grid_w}×{grid_h}" if grid_w is not None else "?"
+        px_text = f"{px_w}×{px_h}" if px_w is not None else "?"
+
+        grid_item = QTableWidgetItem(grid_text)
+        grid_item.setFlags(grid_item.flags() & ~Qt.ItemFlag.ItemIsEditable)
+        grid_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.stencil_table.setItem(row, 1, grid_item)
+
+        px_item = QTableWidgetItem(px_text)
+        px_item.setFlags(px_item.flags() & ~Qt.ItemFlag.ItemIsEditable)
+        px_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.stencil_table.setItem(row, 2, px_item)
+
+        use_item = QTableWidgetItem()
+        use_item.setFlags(Qt.ItemFlag.ItemIsUserCheckable | Qt.ItemFlag.ItemIsEnabled)
+        use_item.setCheckState(Qt.CheckState.Checked if enabled else Qt.CheckState.Unchecked)
+        use_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.stencil_table.setItem(row, 3, use_item)
+
+    def _load_stencil_config(self, config: 'Optional[StencilConfig]') -> None:
+        if config is None:
+            config = StencilConfig()
+
+        self.stencil_table.blockSignals(True)
+        self.stencil_table.setRowCount(0)
+        for i, name in enumerate(config.stencil_names):
+            en = config.stencil_enabled[i] if i < len(config.stencil_enabled) else True
+            self._add_stencil_row(name, en)
+        self.stencil_table.blockSignals(False)
+
+        idx = self.stencil_draw_mode_combo.findData(config.draw_mode)
+        if idx >= 0:
+            self.stencil_draw_mode_combo.setCurrentIndex(idx)
+
+        self.stencil_stamp_spacing_spin.setValue(config.stamp_spacing)
+        easing_idx = self.stencil_spacing_easing_combo.findText(config.spacing_easing)
+        if easing_idx >= 0:
+            self.stencil_spacing_easing_combo.setCurrentIndex(easing_idx)
+
+        self.stencil_follow_tangent_check.setChecked(config.follow_tangent)
+        self.stencil_perp_jitter_min_spin.setValue(config.perpendicular_jitter_min)
+        self.stencil_perp_jitter_max_spin.setValue(config.perpendicular_jitter_max)
+        self.stencil_scale_min_spin.setValue(config.scale_min)
+        self.stencil_scale_max_spin.setValue(config.scale_max)
+        self.stencil_stamps_per_frame_spin.setValue(config.stamps_per_frame)
+        self.stencil_agent_count_spin.setValue(config.agent_count)
+
+        pcm_idx = self.stencil_post_completion_combo.findData(config.post_completion_mode)
+        if pcm_idx >= 0:
+            self.stencil_post_completion_combo.setCurrentIndex(pcm_idx)
+
+        self.stencil_opacity_change_editor.set_change(config.opacity_change)
+
+    def _get_stencil_config(self) -> StencilConfig:
+        names, enabled = [], []
+        for i in range(self.stencil_table.rowCount()):
+            ni = self.stencil_table.item(i, 0)
+            ui = self.stencil_table.item(i, 3)
+            if ni:
+                names.append(ni.text())
+                enabled.append(ui.checkState() == Qt.CheckState.Checked if ui else True)
+        opacity_change = self.stencil_opacity_change_editor.get_change()
+        opacity_change.enabled = self._renderer.stencil_config.opacity_change.enabled if (
+            self._renderer and self._renderer.stencil_config
+        ) else False
+        return StencilConfig(
+            stencil_names=names,
+            stencil_enabled=enabled,
+            draw_mode=self.stencil_draw_mode_combo.currentData() or BrushDrawMode.FULL_PATH,
+            stamp_spacing=self.stencil_stamp_spacing_spin.value(),
+            spacing_easing=self.stencil_spacing_easing_combo.currentText(),
+            follow_tangent=self.stencil_follow_tangent_check.isChecked(),
+            perpendicular_jitter_min=self.stencil_perp_jitter_min_spin.value(),
+            perpendicular_jitter_max=self.stencil_perp_jitter_max_spin.value(),
+            scale_min=self.stencil_scale_min_spin.value(),
+            scale_max=self.stencil_scale_max_spin.value(),
+            stamps_per_frame=self.stencil_stamps_per_frame_spin.value(),
+            agent_count=self.stencil_agent_count_spin.value(),
+            post_completion_mode=self.stencil_post_completion_combo.currentData() or PostCompletionMode.HOLD,
+            opacity_change=opacity_change
+        )
+
+    def _on_stencil_table_changed(self, item: QTableWidgetItem) -> None:
+        if item.column() == 3 and not self._updating:
+            self._on_stencil_changed()
+
+    def _on_add_stencil(self) -> None:
+        if self._stencils_dir and os.path.isdir(self._stencils_dir):
+            available = sorted(
+                f for f in os.listdir(self._stencils_dir)
+                if f.lower().endswith(".png")
+            )
+            if available:
+                existing = {self.stencil_table.item(i, 0).text()
+                            for i in range(self.stencil_table.rowCount())
+                            if self.stencil_table.item(i, 0)}
+                choices = [f for f in available if f not in existing]
+                if choices:
+                    name, ok = QInputDialog.getItem(
+                        self, "Add Stencil", "Select a stencil from the project:",
+                        choices, 0, False
+                    )
+                    if ok and name:
+                        self.stencil_table.blockSignals(True)
+                        self._add_stencil_row(name, True)
+                        self.stencil_table.blockSignals(False)
+                        self._on_stencil_changed()
+                    return
+                else:
+                    QMessageBox.information(
+                        self, "No Stencils",
+                        "All available stencils are already added.\n"
+                        "Use 'Create...' to make a new stencil."
+                    )
+                    return
+
+        name, ok = QInputDialog.getText(self, "Add Stencil", "Stencil PNG filename:")
+        if ok and name.strip():
+            name = name.strip()
+            if not name.lower().endswith(".png"):
+                name += ".png"
+            self.stencil_table.blockSignals(True)
+            self._add_stencil_row(name, True)
+            self.stencil_table.blockSignals(False)
+            self._on_stencil_changed()
+
+    def _open_stencil_editor(self, initial_file=None) -> None:
+        from .widgets.stencil_editor_window import StencilEditorWindow
+        if self._stencil_editor_window and self._stencil_editor_window.isVisible():
+            self._stencil_editor_window.raise_()
+            self._stencil_editor_window.activateWindow()
+            if initial_file:
+                self._stencil_editor_window.open_file(initial_file)
+            return
+        self._stencil_editor_window = StencilEditorWindow(
+            self._stencils_dir, initial_file=initial_file, parent=None)
+        def on_saved(filename):
+            existing = {self.stencil_table.item(i, 0).text()
+                        for i in range(self.stencil_table.rowCount())
+                        if self.stencil_table.item(i, 0)}
+            if filename not in existing:
+                self.stencil_table.blockSignals(True)
+                self._add_stencil_row(filename, True)
+                self.stencil_table.blockSignals(False)
+                self._on_stencil_changed()
+            else:
+                for i in range(self.stencil_table.rowCount()):
+                    ni = self.stencil_table.item(i, 0)
+                    if ni and ni.text() == filename:
+                        grid_w, grid_h, px_w, px_h = self._stencil_dims(filename)
+                        gi = self.stencil_table.item(i, 1)
+                        pi = self.stencil_table.item(i, 2)
+                        if gi:
+                            gi.setText(f"{grid_w}×{grid_h}" if grid_w else "?")
+                        if pi:
+                            pi.setText(f"{px_w}×{px_h}" if px_w else "?")
+                        break
+        self._stencil_editor_window.stencilSaved.connect(on_saved)
+        self._stencil_editor_window.show()
+
+    def _on_create_stencil(self) -> None:
+        if not self._stencils_dir:
+            QMessageBox.warning(self, "No Project",
+                                "Save or open a project first to create stencils.")
+            return
+        os.makedirs(self._stencils_dir, exist_ok=True)
+        self._open_stencil_editor(initial_file=None)
+
+    def _on_edit_stencil(self) -> None:
+        row = self.stencil_table.currentRow()
+        ni = self.stencil_table.item(row, 0) if row >= 0 else None
+        if not ni:
+            QMessageBox.information(self, "No Selection", "Select a stencil to edit.")
+            return
+        if not self._stencils_dir:
+            QMessageBox.warning(self, "No Project",
+                                "Save or open a project first to edit stencils.")
+            return
+        filepath = os.path.join(self._stencils_dir, ni.text())
+        if not os.path.exists(filepath):
+            return
+        self._open_stencil_editor(initial_file=filepath)
+
+    def _on_remove_stencil(self) -> None:
+        row = self.stencil_table.currentRow()
+        if row >= 0:
+            self.stencil_table.removeRow(row)
+            self._on_stencil_changed()
+
+    def _on_stencil_changed(self, *args) -> None:
+        if self._updating:
+            return
+        is_progressive = self.stencil_draw_mode_combo.currentData() == BrushDrawMode.PROGRESSIVE
+        self.stencil_progressive_group.setVisible(is_progressive)
+        self._on_changed()
+
     def _on_changed(self, *args) -> None:
         if self._updating or self._renderer is None:
             return
@@ -826,8 +1258,11 @@ class RendererEditor(QWidget):
 
         if self._renderer.mode == RenderMode.BRUSHED:
             self._renderer.brush_config = self._get_brush_config()
-        elif self._renderer.brush_config is not None and self._renderer.mode != RenderMode.BRUSHED:
-            pass  # preserve for when user switches back to BRUSHED
+        # preserve brush_config when mode changes away from BRUSHED
+
+        if self._renderer.mode == RenderMode.STENCILED:
+            self._renderer.stencil_config = self._get_stencil_config()
+        # preserve stencil_config when mode changes away from STENCILED
 
         self.changed.emit()
 
@@ -989,6 +1424,10 @@ class RenderingTab(QWidget):
         brushes_dir = os.path.join(project_dir, "brushes")
         os.makedirs(brushes_dir, exist_ok=True)
         self.renderer_editor.set_brushes_dir(brushes_dir)
+
+        stencils_dir = os.path.join(project_dir, "stencils")
+        os.makedirs(stencils_dir, exist_ok=True)
+        self.renderer_editor.set_stencils_dir(stencils_dir)
 
     def get_library(self) -> Optional[RendererSetLibrary]:
         return self._library

@@ -5,7 +5,7 @@ from lxml import etree
 from typing import Optional
 from models.rendering import (
     Color, SizeChange, ColorChange, FillColorChange,
-    BrushConfig, Renderer, RendererSet, RendererSetLibrary
+    BrushConfig, StencilConfig, Renderer, RendererSet, RendererSetLibrary
 )
 from models.constants import (
     RenderMode, ChangeKind, Motion, Cycle, Scale, ColorChannel, PlaybackMode,
@@ -154,6 +154,11 @@ class RenderingIO:
         brush_config_elem = elem.find("BrushConfig")
         if brush_config_elem is not None:
             renderer.brush_config = cls._parse_brush_config(brush_config_elem)
+
+        # Parse stencil config (for STENCILED mode)
+        stencil_config_elem = elem.find("StencilConfig")
+        if stencil_config_elem is not None:
+            renderer.stencil_config = cls._parse_stencil_config(stencil_config_elem)
 
         return renderer
 
@@ -353,6 +358,10 @@ class RenderingIO:
         if renderer.brush_config is not None:
             elem.append(cls._build_brush_config(renderer.brush_config))
 
+        # Build stencil config (for STENCILED mode)
+        if renderer.stencil_config is not None:
+            elem.append(cls._build_stencil_config(renderer.stencil_config))
+
         return elem
 
     @classmethod
@@ -521,6 +530,113 @@ class RenderingIO:
             config.blur_radius = int(blur_elem.text.strip())
 
         return config
+
+    @classmethod
+    def _parse_stencil_config(cls, elem: etree._Element) -> StencilConfig:
+        """Parse a StencilConfig element."""
+        config = StencilConfig()
+
+        stencil_names_elem = elem.find("StencilNames")
+        if stencil_names_elem is not None:
+            names = [s.text.strip() for s in stencil_names_elem.findall("Stencil") if s.text]
+            if names:
+                config.stencil_names = names
+
+        stencil_enabled_elem = elem.find("StencilEnabled")
+        if stencil_enabled_elem is not None:
+            enabled = [e.text.strip().lower() != "false"
+                       for e in stencil_enabled_elem.findall("Enabled")]
+            if enabled:
+                config.stencil_enabled = enabled
+        else:
+            config.stencil_enabled = [True] * len(config.stencil_names)
+
+        draw_mode_elem = elem.find("DrawMode")
+        if draw_mode_elem is not None and draw_mode_elem.text:
+            try:
+                config.draw_mode = BrushDrawMode.from_string(draw_mode_elem.text.strip())
+            except (KeyError, ValueError):
+                pass
+
+        spacing_elem = elem.find("StampSpacing")
+        if spacing_elem is not None and spacing_elem.text:
+            config.stamp_spacing = float(spacing_elem.text.strip())
+
+        easing_elem = elem.find("SpacingEasing")
+        if easing_elem is not None and easing_elem.text:
+            config.spacing_easing = easing_elem.text.strip()
+
+        tangent_elem = elem.find("FollowTangent")
+        if tangent_elem is not None and tangent_elem.text:
+            config.follow_tangent = tangent_elem.text.strip().lower() == "true"
+
+        perp_min_elem = elem.find("PerpendicularJitterMin")
+        if perp_min_elem is not None and perp_min_elem.text:
+            config.perpendicular_jitter_min = float(perp_min_elem.text.strip())
+
+        perp_max_elem = elem.find("PerpendicularJitterMax")
+        if perp_max_elem is not None and perp_max_elem.text:
+            config.perpendicular_jitter_max = float(perp_max_elem.text.strip())
+
+        scale_min_elem = elem.find("ScaleMin")
+        if scale_min_elem is not None and scale_min_elem.text:
+            config.scale_min = float(scale_min_elem.text.strip())
+
+        scale_max_elem = elem.find("ScaleMax")
+        if scale_max_elem is not None and scale_max_elem.text:
+            config.scale_max = float(scale_max_elem.text.strip())
+
+        spf_elem = elem.find("StampsPerFrame")
+        if spf_elem is not None and spf_elem.text:
+            config.stamps_per_frame = int(spf_elem.text.strip())
+
+        ac_elem = elem.find("AgentCount")
+        if ac_elem is not None and ac_elem.text:
+            config.agent_count = int(ac_elem.text.strip())
+
+        pcm_elem = elem.find("PostCompletionMode")
+        if pcm_elem is not None and pcm_elem.text:
+            try:
+                config.post_completion_mode = PostCompletionMode.from_string(pcm_elem.text.strip())
+            except (KeyError, ValueError):
+                pass
+
+        opacity_change_elem = elem.find("OpacityChange")
+        if opacity_change_elem is not None:
+            config.opacity_change = cls._parse_size_change(opacity_change_elem)
+
+        return config
+
+    @classmethod
+    def _build_stencil_config(cls, config: StencilConfig) -> etree._Element:
+        """Build a StencilConfig XML element."""
+        elem = etree.Element("StencilConfig")
+
+        stencil_names_elem = etree.SubElement(elem, "StencilNames")
+        for name in config.stencil_names:
+            etree.SubElement(stencil_names_elem, "Stencil").text = name
+
+        stencil_enabled_elem = etree.SubElement(elem, "StencilEnabled")
+        for i, name in enumerate(config.stencil_names):
+            enabled = config.stencil_enabled[i] if i < len(config.stencil_enabled) else True
+            etree.SubElement(stencil_enabled_elem, "Enabled").text = str(enabled).lower()
+
+        etree.SubElement(elem, "DrawMode").text = config.draw_mode.to_xml_string()
+        etree.SubElement(elem, "StampSpacing").text = str(config.stamp_spacing)
+        etree.SubElement(elem, "SpacingEasing").text = config.spacing_easing
+        etree.SubElement(elem, "FollowTangent").text = str(config.follow_tangent).lower()
+        etree.SubElement(elem, "PerpendicularJitterMin").text = str(config.perpendicular_jitter_min)
+        etree.SubElement(elem, "PerpendicularJitterMax").text = str(config.perpendicular_jitter_max)
+        etree.SubElement(elem, "ScaleMin").text = str(config.scale_min)
+        etree.SubElement(elem, "ScaleMax").text = str(config.scale_max)
+        etree.SubElement(elem, "StampsPerFrame").text = str(config.stamps_per_frame)
+        etree.SubElement(elem, "AgentCount").text = str(config.agent_count)
+        etree.SubElement(elem, "PostCompletionMode").text = config.post_completion_mode.to_xml_string()
+
+        # Opacity change animation
+        elem.append(cls._build_size_change("OpacityChange", config.opacity_change))
+
+        return elem
 
     @classmethod
     def _build_brush_config(cls, config: BrushConfig) -> etree._Element:

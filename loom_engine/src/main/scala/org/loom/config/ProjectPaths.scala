@@ -99,6 +99,10 @@ object ProjectPaths {
     getProjectPath(projectName) + File.separator + "brushes"
   }
 
+  def getStencilsPath(projectName: String): String = {
+    getProjectPath(projectName) + File.separator + "stencils"
+  }
+
   /**
    * List all available projects in the projects directory.
    * A valid project is a directory containing a project.xml file.
@@ -136,6 +140,7 @@ object ProjectPaths {
       File(projectDir, "polygonSets").mkdirs()
       File(projectDir, "morphTargets").mkdirs()
       File(projectDir, "brushes").mkdirs()
+      File(projectDir, "stencils").mkdirs()
       File(projectDir, "background_image").mkdirs()
       File(projectDir, "renders").mkdirs()
       File(projectDir, "renders/stills").mkdirs()
