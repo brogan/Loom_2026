@@ -22,7 +22,7 @@ class StencilLibraryWidget(QWidget):
 
         layout = QVBoxLayout(self)
 
-        layout.addWidget(QLabel("Available Stencils:"))
+        layout.addWidget(QLabel("Available Stamps:"))
 
         self.stencil_list = QListWidget()
         self.stencil_list.setIconSize(QSize(32, 32))
@@ -98,7 +98,7 @@ class StencilLibraryWidget(QWidget):
 
         os.makedirs(self._stencils_dir, exist_ok=True)
         paths, _ = QFileDialog.getOpenFileNames(
-            self, "Import Stencil Images", "", "PNG Files (*.png)"
+            self, "Import Stamp Images", "", "PNG Files (*.png)"
         )
         for path in paths:
             import shutil
@@ -149,7 +149,7 @@ class StencilLibraryWidget(QWidget):
 
         filepath = os.path.join(self._stencils_dir, current.text())
         reply = QMessageBox.question(
-            self, "Delete Stencil",
+            self, "Delete Stamp",
             f"Delete '{current.text()}'?",
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
         )

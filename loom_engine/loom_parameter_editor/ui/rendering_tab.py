@@ -126,7 +126,7 @@ class StencilPreviewWidget(QWidget):
 
         if self._image is None or self._image.isNull():
             painter.setPen(QColor(80, 80, 80))
-            painter.drawText(self.rect(), Qt.AlignmentFlag.AlignCenter, "No stencil selected")
+            painter.drawText(self.rect(), Qt.AlignmentFlag.AlignCenter, "No stamp selected")
             painter.end()
             return
 
@@ -459,7 +459,7 @@ class RendererEditor(QWidget):
         stencil_content_layout = QVBoxLayout(stencil_content)
         stencil_content_layout.setSpacing(4)
         stencil_scroll.setWidget(stencil_content)
-        self._stencils_tab_idx = inner_tabs.addTab(stencil_scroll, "Stencils")
+        self._stencils_tab_idx = inner_tabs.addTab(stencil_scroll, "Stamp")
 
         # Stencil image table (Name | Grid | Pixels | Use)
         self.stencil_table = QTableWidget()
@@ -482,15 +482,15 @@ class RendererEditor(QWidget):
         # Stencil buttons
         stencil_btn_row = QHBoxLayout()
         self.add_stencil_btn = QPushButton("Add...")
-        self.add_stencil_btn.setToolTip("Add an existing stencil PNG from the project's stencils/ folder")
+        self.add_stencil_btn.setToolTip("Add an existing stamp PNG from the project's stamps directory")
         self.add_stencil_btn.clicked.connect(self._on_add_stencil)
         stencil_btn_row.addWidget(self.add_stencil_btn)
         self.create_stencil_btn = QPushButton("Create...")
-        self.create_stencil_btn.setToolTip("Open the stencil editor to create a new stencil")
+        self.create_stencil_btn.setToolTip("Open the stamp editor to create a new stamp")
         self.create_stencil_btn.clicked.connect(self._on_create_stencil)
         stencil_btn_row.addWidget(self.create_stencil_btn)
         self.edit_stencil_btn = QPushButton("Edit...")
-        self.edit_stencil_btn.setToolTip("Edit the selected stencil in the stencil editor")
+        self.edit_stencil_btn.setToolTip("Edit the selected stamp in the stamp editor")
         self.edit_stencil_btn.clicked.connect(self._on_edit_stencil)
         stencil_btn_row.addWidget(self.edit_stencil_btn)
         self.remove_stencil_btn = QPushButton("Remove")
@@ -500,7 +500,7 @@ class RendererEditor(QWidget):
         stencil_content_layout.addLayout(stencil_btn_row)
 
         # Stencil settings
-        self.stencil_settings_group = QGroupBox("Stencil Settings")
+        self.stencil_settings_group = QGroupBox("Stamp Settings")
         ss_layout = QVBoxLayout(self.stencil_settings_group)
 
         # Draw mode
@@ -816,7 +816,7 @@ class RendererEditor(QWidget):
         has_fill = mode in (RenderMode.FILLED, RenderMode.FILLED_STROKED)
         has_points = mode == RenderMode.POINTS
         has_brush = mode == RenderMode.BRUSHED
-        has_stencil = mode == RenderMode.STENCILED
+        has_stencil = mode == RenderMode.STAMPED
 
         point_stroked = has_points and self.point_stroked_check.isChecked()
         self.stroke_width_spin.setEnabled(has_stroke or point_stroked)
@@ -848,7 +848,7 @@ class RendererEditor(QWidget):
         else:
             self.progressive_group.setVisible(False)
 
-        # Stencils tab content enabled only in STENCILED mode
+        # Stencils tab content enabled only in STAMPED mode
         self.stencil_table.setEnabled(has_stencil)
         self.add_stencil_btn.setEnabled(has_stencil)
         self.create_stencil_btn.setEnabled(has_stencil)
@@ -1204,7 +1204,7 @@ class RendererEditor(QWidget):
                 choices = [f for f in available if f not in existing]
                 if choices:
                     name, ok = QInputDialog.getItem(
-                        self, "Add Stencil", "Select a stencil from the project:",
+                        self, "Add Stamp", "Select a stamp from the project:",
                         choices, 0, False
                     )
                     if ok and name:
@@ -1215,13 +1215,13 @@ class RendererEditor(QWidget):
                     return
                 else:
                     QMessageBox.information(
-                        self, "No Stencils",
+                        self, "No Stamps",
                         "All available stencils are already added.\n"
-                        "Use 'Create...' to make a new stencil."
+                        "Use 'Create...' to make a new stamp."
                     )
                     return
 
-        name, ok = QInputDialog.getText(self, "Add Stencil", "Stencil PNG filename:")
+        name, ok = QInputDialog.getText(self, "Add Stamp", "Stamp PNG filename:")
         if ok and name.strip():
             name = name.strip()
             if not name.lower().endswith(".png"):
@@ -1268,7 +1268,7 @@ class RendererEditor(QWidget):
     def _on_create_stencil(self) -> None:
         if not self._stencils_dir:
             QMessageBox.warning(self, "No Project",
-                                "Save or open a project first to create stencils.")
+                                "Save or open a project first to create stamps.")
             return
         os.makedirs(self._stencils_dir, exist_ok=True)
         self._open_stencil_editor(initial_file=None)
@@ -1277,11 +1277,11 @@ class RendererEditor(QWidget):
         row = self.stencil_table.currentRow()
         ni = self.stencil_table.item(row, 0) if row >= 0 else None
         if not ni:
-            QMessageBox.information(self, "No Selection", "Select a stencil to edit.")
+            QMessageBox.information(self, "No Selection", "Select a stamp to edit.")
             return
         if not self._stencils_dir:
             QMessageBox.warning(self, "No Project",
-                                "Save or open a project first to edit stencils.")
+                                "Save or open a project first to edit stamps.")
             return
         filepath = os.path.join(self._stencils_dir, ni.text())
         if not os.path.exists(filepath):
@@ -1353,7 +1353,7 @@ class RendererEditor(QWidget):
             self._renderer.brush_config = self._get_brush_config()
         # preserve brush_config when mode changes away from BRUSHED
 
-        if self._renderer.mode == RenderMode.STENCILED:
+        if self._renderer.mode == RenderMode.STAMPED:
             self._renderer.stencil_config = self._get_stencil_config()
         # preserve stencil_config when mode changes away from STENCILED
 

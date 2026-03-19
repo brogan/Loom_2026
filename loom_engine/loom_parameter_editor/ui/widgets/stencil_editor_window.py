@@ -11,10 +11,11 @@ import os
 import json
 from typing import Optional
 
+import math
 from PyQt6.QtWidgets import (
     QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QLabel,
     QSpinBox, QDoubleSpinBox, QPushButton, QCheckBox,
-    QButtonGroup, QGroupBox, QScrollArea,
+    QButtonGroup, QGroupBox, QScrollArea, QSlider,
     QToolBar, QStatusBar, QFileDialog, QMessageBox,
     QApplication, QRadioButton
 )
@@ -260,6 +261,23 @@ class StencilGridCanvas(QWidget):
                 self._grid[r][c] = (px.red(), px.green(), px.blue(), px.alpha())
         self.update(); self.modified.emit()
 
+    def apply_color_select(self, target: tuple, tolerance: int):
+        """Set cells whose RGB Euclidean distance from target <= tolerance to transparent."""
+        tr, tg, tb = target[0], target[1], target[2]
+        changed = False
+        for r in range(self._rows):
+            for c in range(self._cols):
+                rv, gv, bv, av = self._grid[r][c]
+                if av == 0:
+                    continue  # already transparent
+                dist = math.sqrt((rv - tr) ** 2 + (gv - tg) ** 2 + (bv - tb) ** 2)
+                if dist <= tolerance:
+                    self._grid[r][c] = (0, 0, 0, 0)
+                    changed = True
+        if changed:
+            self.update()
+            self.modified.emit()
+
     # ------------------------------------------------------------------
     # Internal helpers
     # ------------------------------------------------------------------
@@ -411,7 +429,7 @@ class StencilEditorWindow(QMainWindow):
         self._ref_image: Optional[QImage] = None
         self._ref_scaled: Optional[QImage] = None
 
-        self.setWindowTitle("Stencil Editor")
+        self.setWindowTitle("Stamp Editor")
         self.setMinimumSize(620, 520)
 
         self._canvas = StencilGridCanvas()
@@ -591,6 +609,7 @@ class StencilEditorWindow(QMainWindow):
         left_layout.addWidget(self._build_output_size_group())
         left_layout.addWidget(self._build_grid_res_group())
         left_layout.addWidget(self._build_color_group())
+        left_layout.addWidget(self._build_select_group())
         left_layout.addWidget(self._build_image_group())
         left_layout.addStretch()
 
@@ -668,6 +687,46 @@ class StencilEditorWindow(QMainWindow):
 
         return grp
 
+    def _build_select_group(self) -> QGroupBox:
+        grp = QGroupBox("Colour Select")
+        lay = QVBoxLayout(grp)
+
+        # Target colour swatch
+        self._select_swatch = ColorSwatchWidget()
+        self._select_swatch._color_swatch_label = None  # reuse widget, label already built in
+        lay.addWidget(self._select_swatch)
+
+        # Tolerance slider
+        tol_row = QHBoxLayout()
+        tol_row.addWidget(QLabel("Tolerance:"))
+        self._tolerance_slider = QSlider(Qt.Orientation.Horizontal)
+        self._tolerance_slider.setRange(0, 255)
+        self._tolerance_slider.setValue(30)
+        self._tolerance_slider.setTickInterval(32)
+        self._tolerance_slider.setTickPosition(QSlider.TickPosition.TicksBelow)
+        tol_row.addWidget(self._tolerance_slider)
+        self._tolerance_label = QLabel("30")
+        self._tolerance_label.setFixedWidth(28)
+        tol_row.addWidget(self._tolerance_label)
+        self._tolerance_slider.valueChanged.connect(
+            lambda v: self._tolerance_label.setText(str(v)))
+        lay.addLayout(tol_row)
+
+        # Action button
+        apply_btn = QPushButton("Make Transparent")
+        apply_btn.setToolTip(
+            "Set cells whose colour is within tolerance of the target to transparent")
+        apply_btn.clicked.connect(self._on_apply_color_select)
+        lay.addWidget(apply_btn)
+
+        return grp
+
+    def _on_apply_color_select(self):
+        c = self._select_swatch.get_color()
+        target = (c.red(), c.green(), c.blue())
+        tolerance = self._tolerance_slider.value()
+        self._canvas.apply_color_select(target, tolerance)
+
     def _build_image_group(self) -> QGroupBox:
         grp = QGroupBox("Reference Image")
         lay = QVBoxLayout(grp)
@@ -735,8 +794,12 @@ class StencilEditorWindow(QMainWindow):
         self._canvas.set_ref_opacity(v)
 
     def _on_load_ref(self):
+        project_dir = os.path.dirname(self._stencils_dir) if self._stencils_dir else ""
+        start = os.path.join(project_dir, "background_image") if project_dir else ""
+        if start and not os.path.isdir(start):
+            start = project_dir
         path, _ = QFileDialog.getOpenFileName(
-            self, "Load Reference Image", "",
+            self, "Load Reference Image", start,
             "Images (*.png *.jpg *.jpeg *.bmp *.tiff *.gif)"
         )
         if not path:
@@ -904,7 +967,7 @@ class StencilEditorWindow(QMainWindow):
             os.path.dirname(self._current_file) if self._current_file else ""
         )
         path, _ = QFileDialog.getSaveFileName(
-            self, "Save Stencil As", start, "PNG Files (*.png)"
+            self, "Save Stamp As", start, "PNG Files (*.png)"
         )
         if path:
             if not path.lower().endswith(".png"):

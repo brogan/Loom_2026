@@ -876,8 +876,12 @@ class BrushEditorWindow(QMainWindow):
         self._canvas.set_ref_opacity(v)
 
     def _on_load_ref(self):
+        project_dir = os.path.dirname(self._brushes_dir) if self._brushes_dir else ""
+        start = os.path.join(project_dir, "background_image") if project_dir else ""
+        if start and not os.path.isdir(start):
+            start = project_dir
         path, _ = QFileDialog.getOpenFileName(
-            self, "Load Reference Image", "",
+            self, "Load Reference Image", start,
             "Images (*.png *.jpg *.jpeg *.bmp *.tiff *.gif)"
         )
         if not path:

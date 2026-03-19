@@ -155,7 +155,7 @@ class RenderingIO:
         if brush_config_elem is not None:
             renderer.brush_config = cls._parse_brush_config(brush_config_elem)
 
-        # Parse stencil config (for STENCILED mode)
+        # Parse stencil config (for STAMPED mode)
         stencil_config_elem = elem.find("StencilConfig")
         if stencil_config_elem is not None:
             renderer.stencil_config = cls._parse_stencil_config(stencil_config_elem)
@@ -358,7 +358,7 @@ class RenderingIO:
         if renderer.brush_config is not None:
             elem.append(cls._build_brush_config(renderer.brush_config))
 
-        # Build stencil config (for STENCILED mode)
+        # Build stencil config (for STAMPED mode)
         if renderer.stencil_config is not None:
             elem.append(cls._build_stencil_config(renderer.stencil_config))
 

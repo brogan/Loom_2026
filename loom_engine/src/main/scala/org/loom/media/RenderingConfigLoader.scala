@@ -353,7 +353,8 @@ object RenderingConfigLoader {
       case "FILLED" => Renderer.FILLED
       case "FILLED_STROKED" => Renderer.FILLED_STROKED
       case "BRUSHED"   => Renderer.BRUSHED
-      case "STENCILED" => Renderer.STENCILED
+      case "STAMPED"   => Renderer.STENCILED
+      case "STENCILED" => Renderer.STENCILED   // backwards compat
       case _ => Renderer.FILLED
     }
   }
