@@ -100,7 +100,7 @@ object ProjectPaths {
   }
 
   def getStencilsPath(projectName: String): String = {
-    getProjectPath(projectName) + File.separator + "stencils"
+    getProjectPath(projectName) + File.separator + "stamps"
   }
 
   /**
@@ -140,7 +140,7 @@ object ProjectPaths {
       File(projectDir, "polygonSets").mkdirs()
       File(projectDir, "morphTargets").mkdirs()
       File(projectDir, "brushes").mkdirs()
-      File(projectDir, "stencils").mkdirs()
+      File(projectDir, "stamps").mkdirs()
       File(projectDir, "background_image").mkdirs()
       File(projectDir, "renders").mkdirs()
       File(projectDir, "renders/stills").mkdirs()

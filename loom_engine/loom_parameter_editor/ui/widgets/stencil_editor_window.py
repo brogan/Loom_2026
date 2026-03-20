@@ -776,7 +776,7 @@ class StencilEditorWindow(QMainWindow):
     def _update_title(self):
         fname = os.path.basename(self._current_file) if self._current_file else "Untitled"
         mod = " *" if self._modified else ""
-        self.setWindowTitle(f"Stencil Editor — {fname}{mod}")
+        self.setWindowTitle(f"Stamp Editor — {fname}{mod}")
 
     # ------------------------------------------------------------------
     # Signal handlers

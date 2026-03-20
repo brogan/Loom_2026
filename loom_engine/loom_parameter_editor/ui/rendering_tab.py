@@ -1518,7 +1518,7 @@ class RenderingTab(QWidget):
         os.makedirs(brushes_dir, exist_ok=True)
         self.renderer_editor.set_brushes_dir(brushes_dir)
 
-        stencils_dir = os.path.join(project_dir, "stencils")
+        stencils_dir = os.path.join(project_dir, "stamps")
         os.makedirs(stencils_dir, exist_ok=True)
         self.renderer_editor.set_stencils_dir(stencils_dir)
 

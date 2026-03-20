@@ -7,7 +7,7 @@ import scala.collection.mutable
 
 /**
  * Singleton that loads and caches full-RGBA stencil PNG images.
- * Stencils are stored in the project's stencils/ directory (separate from brushes/).
+ * Stencils are stored in the project's stamps/ directory (separate from brushes/).
  * Unlike BrushLibrary there is no tinting cache — RGBA data is used as-is.
  */
 object StencilLibrary {

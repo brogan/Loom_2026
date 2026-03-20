@@ -155,7 +155,7 @@ class BrushConfig:
 
 @dataclass
 class StencilConfig:
-    """Configuration for stencil-based rendering (STENCILED mode).
+    """Configuration for stencil-based rendering (STAMPED mode).
     Stamps full-RGBA PNGs; no tinting. Opacity animated via opacity_change."""
     stencil_names: List[str] = field(default_factory=list)
     stencil_enabled: List[bool] = field(default_factory=list)
