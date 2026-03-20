@@ -2,6 +2,7 @@ package org.loom.scene
 
 import org.loom.geometry.Vector2D
 import org.loom.utility.Easing
+import org.loom.scaffold.Config
 
 /**
  * Loop mode constants for keyframe animation.
@@ -69,15 +70,37 @@ class KeyframeAnimator(
     val easedScaleY = Easing.ease(t, kf1.scaleY, kf2.scaleY - kf1.scaleY, duration, kf2.easing)
     val easedRotation = Easing.ease(t, kf1.rotation, kf2.rotation - kf1.rotation, duration, kf2.easing)
 
-    val deltaX = easedPosX - lastPosX
-    val deltaY = easedPosY - lastPosY
+    val canvasW = (Config.width * Config.qualityMultiple).toDouble
+    val canvasH = (Config.height * Config.qualityMultiple).toDouble
+
+    // Translate: posX/posY are in [-200,200] normalised units (100 = half-canvas).
+    // Convert to view-space pixels: delta * canvas / 200.
+    val deltaX_px = (easedPosX - lastPosX) * canvasW / 200.0
+    val deltaY_px = (easedPosY - lastPosY) * canvasH / 200.0
+
     val scaleRatioX = if (lastScaleX != 0) easedScaleX / lastScaleX else 1.0
     val scaleRatioY = if (lastScaleY != 0) easedScaleY / lastScaleY else 1.0
     val deltaRotation = easedRotation - lastRotation
 
-    if (deltaX != 0 || deltaY != 0) sprite.translate(Vector2D(deltaX, deltaY))
-    if (scaleRatioX != 1.0 || scaleRatioY != 1.0) sprite.scale(Vector2D(scaleRatioX, scaleRatioY))
-    if (deltaRotation != 0) sprite.rotate(deltaRotation)
+    if (deltaX_px != 0 || deltaY_px != 0) sprite.translate(Vector2D(deltaX_px, deltaY_px))
+
+    // Scale around the sprite's current centre to prevent position drift.
+    if (scaleRatioX != 1.0 || scaleRatioY != 1.0) {
+      val cx = easedPosX * canvasW / 200.0
+      val cy = easedPosY * canvasH / 200.0
+      sprite.translate(Vector2D(-cx, -cy))
+      sprite.scale(Vector2D(scaleRatioX, scaleRatioY))
+      sprite.translate(Vector2D(cx, cy))
+    }
+
+    // Rotate around the sprite's current centre to prevent position drift.
+    if (deltaRotation != 0) {
+      val cx = easedPosX * canvasW / 200.0
+      val cy = easedPosY * canvasH / 200.0
+      sprite.translate(Vector2D(-cx, -cy))
+      sprite.rotate(deltaRotation)
+      sprite.translate(Vector2D(cx, cy))
+    }
 
     lastPosX = easedPosX
     lastPosY = easedPosY
@@ -128,15 +151,32 @@ class KeyframeAnimator(
 
   private def resetToFirstKeyframe(sprite: Sprite2D): Unit = {
     val kf = keyframes.head
-    val deltaX = kf.posX - lastPosX
-    val deltaY = kf.posY - lastPosY
+    val canvasW = (Config.width * Config.qualityMultiple).toDouble
+    val canvasH = (Config.height * Config.qualityMultiple).toDouble
+
+    val deltaX_px = (kf.posX - lastPosX) * canvasW / 200.0
+    val deltaY_px = (kf.posY - lastPosY) * canvasH / 200.0
     val scaleRatioX = if (lastScaleX != 0) kf.scaleX / lastScaleX else 1.0
     val scaleRatioY = if (lastScaleY != 0) kf.scaleY / lastScaleY else 1.0
     val deltaRotation = kf.rotation - lastRotation
 
-    if (deltaX != 0 || deltaY != 0) sprite.translate(Vector2D(deltaX, deltaY))
-    if (scaleRatioX != 1.0 || scaleRatioY != 1.0) sprite.scale(Vector2D(scaleRatioX, scaleRatioY))
-    if (deltaRotation != 0) sprite.rotate(deltaRotation)
+    if (deltaX_px != 0 || deltaY_px != 0) sprite.translate(Vector2D(deltaX_px, deltaY_px))
+
+    if (scaleRatioX != 1.0 || scaleRatioY != 1.0) {
+      val cx = kf.posX * canvasW / 200.0
+      val cy = kf.posY * canvasH / 200.0
+      sprite.translate(Vector2D(-cx, -cy))
+      sprite.scale(Vector2D(scaleRatioX, scaleRatioY))
+      sprite.translate(Vector2D(cx, cy))
+    }
+
+    if (deltaRotation != 0) {
+      val cx = kf.posX * canvasW / 200.0
+      val cy = kf.posY * canvasH / 200.0
+      sprite.translate(Vector2D(-cx, -cy))
+      sprite.rotate(deltaRotation)
+      sprite.translate(Vector2D(cx, cy))
+    }
 
     lastPosX = kf.posX
     lastPosY = kf.posY
