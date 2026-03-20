@@ -610,10 +610,13 @@ class MySketch(width: Int, height: Int) extends Sketch(width, height) {
         println(s"  Warning: Failed to build morph animator for sprite '${spriteDef.name}', using no animation")
         sprite.animator = Animator2D(false, Vector2D(1, 1), 0.0, Vector2D(0, 0))
       }
+      sprite.spriteTotalDraws = spriteDef.totalDraws
       return sprite
     }
 
-    Sprite2D(shape, spriteParams, animator, rendererSet)
+    val sprite = Sprite2D(shape, spriteParams, animator, rendererSet)
+    sprite.spriteTotalDraws = spriteDef.totalDraws
+    sprite
   }
 
 

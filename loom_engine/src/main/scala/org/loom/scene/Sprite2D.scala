@@ -30,6 +30,10 @@ class Sprite2D(val shape: Shape2D, val spriteParams: Sprite2DParams, var animato
   // Stencil rendering state (lazy-initialized when STENCILED mode is used)
   var stencilState: BrushState = null
 
+  // Per-sprite draw limit (0 = infinite). Set by MySketch after construction.
+  var spriteTotalDraws: Int = 0
+  var spriteDrawCount: Int = 0
+
   var location: Vector2D = spriteParams.loc2D
   //var size: Vector2D = new Vector2D(spriteParams.size2D.x * spriteParams.sizeFactor.x, spriteParams.size2D.y * spriteParams.sizeFactor.y)
   var size: Vector2D = new Vector2D(spriteParams.size2D.x, spriteParams.size2D.y)
@@ -132,8 +136,9 @@ class Sprite2D(val shape: Shape2D, val spriteParams: Sprite2DParams, var animato
     size.x + ", " + size.y + ")  start rotation: " + spriteParams.startRotation2D + "  rotOffset: (" + spriteParams.rotOffset2D.x + ", " + spriteParams.rotOffset2D.y + ")"
 
   def update(): Unit = {
-
-    animator.update(this)
+    if (spriteTotalDraws == 0 || spriteDrawCount < spriteTotalDraws) {
+      animator.update(this)
+    }
   }
   /**
    Draw, draws a sprite
@@ -141,6 +146,10 @@ class Sprite2D(val shape: Shape2D, val spriteParams: Sprite2DParams, var animato
   @param g2D the Graphics2D context
    */
   def draw(g2D: Graphics2D): Unit = {
+    val shouldDraw = spriteTotalDraws == 0 || spriteDrawCount < spriteTotalDraws
+    spriteDrawCount += 1
+    if (!shouldDraw) return
+
     /**
      println("")
      println("drawing at sprite level")
