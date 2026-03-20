@@ -127,6 +127,7 @@ class StencilGridCanvas(QWidget):
         self._mode = DRAW
         self._paint_color: tuple = (255, 255, 255, 255)
         self._painting = False
+        self._last_paint_pos: Optional[tuple] = None   # (r, c) of last painted cell
         self._wrapping = False
         self._update_fixed_size()
         self.setMouseTracking(True)
@@ -313,6 +314,15 @@ class StencilGridCanvas(QWidget):
         elif self._mode == DESELECT:
             self._sel = None
             self.update()
+        elif (self._mode in (DRAW, ERASE) and
+              event.modifiers() & Qt.KeyboardModifier.ShiftModifier and
+              self._last_paint_pos is not None):
+            # Shift+click: draw/erase a solid line from the last painted cell to here
+            r0, c0 = self._last_paint_pos
+            self._paint_line(r0, c0, r, c)
+            self._last_paint_pos = (r, c)
+            self.update()
+            self.modified.emit()
         else:
             self._apply_paint(r, c)
 
@@ -337,15 +347,51 @@ class StencilGridCanvas(QWidget):
     def _apply_paint(self, r: int, c: int):
         if self._mode == DRAW:
             self._grid[r][c] = self._paint_color
+            self._last_paint_pos = (r, c)
         elif self._mode == ERASE:
             self._grid[r][c] = (0, 0, 0, 0)
+            self._last_paint_pos = (r, c)
         elif self._mode == IMAGE_DRAW:
             if self._ref_scaled:
                 px = self._ref_scaled.pixelColor(c, r)
                 self._grid[r][c] = (px.red(), px.green(), px.blue(), px.alpha())
+                self._last_paint_pos = (r, c)
         self.update()
         self.cellPainted.emit(r, c)
         self.modified.emit()
+
+    def _bresenham(self, r0: int, c0: int, r1: int, c1: int) -> list:
+        """Return list of (r, c) cells on a Bresenham line from (r0,c0) to (r1,c1)."""
+        cells = []
+        dr = abs(r1 - r0)
+        dc = abs(c1 - c0)
+        sr = 1 if r1 > r0 else -1
+        sc = 1 if c1 > c0 else -1
+        err = dr - dc
+        r, c = r0, c0
+        while True:
+            cells.append((r, c))
+            if r == r1 and c == c1:
+                break
+            e2 = 2 * err
+            if e2 > -dc:
+                err -= dc
+                r += sr
+            if e2 < dr:
+                err += dr
+                c += sc
+        return cells
+
+    def _paint_line(self, r0: int, c0: int, r1: int, c1: int):
+        """Paint/erase a solid Bresenham line from (r0,c0) to (r1,c1).
+
+        DRAW mode: every cell is set to the current paint colour (no fading).
+        ERASE mode: every cell is set to transparent (0,0,0,0).
+        """
+        color = self._paint_color if self._mode == DRAW else (0, 0, 0, 0)
+        for r, c in self._bresenham(r0, c0, r1, c1):
+            if 0 <= r < self._rows and 0 <= c < self._cols:
+                self._grid[r][c] = color
 
     # ------------------------------------------------------------------
     # Paint event — checkered background + RGBA cells

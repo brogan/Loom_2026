@@ -314,10 +314,15 @@ class BrushGridCanvas(QWidget):
         elif (self._mode in (DRAW, ERASE) and
               event.modifiers() & Qt.KeyboardModifier.ShiftModifier and
               self._last_paint_pos is not None):
-            # Shift+click: draw interpolated line from last painted cell to here
+            # Shift+click: draw/erase a line from last painted cell to here.
+            # DRAW: interpolate greyscale from v0→v1.
+            # ERASE: uniform 0.0 (never fade from a previous draw value).
             r0, c0 = self._last_paint_pos
-            v0 = self._last_paint_value
-            v1 = self._paint_value if self._mode == DRAW else 0.0
+            if self._mode == DRAW:
+                v0 = self._last_paint_value
+                v1 = self._paint_value
+            else:
+                v0, v1 = 0.0, 0.0
             self._paint_line(r0, c0, v0, r, c, v1)
             self._last_paint_pos = (r, c)
             self._last_paint_value = v1
