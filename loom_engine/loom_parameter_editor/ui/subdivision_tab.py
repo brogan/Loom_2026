@@ -2,6 +2,9 @@
 Subdivision configuration tab for the parameter editor.
 Provides UI for editing subdivision.xml settings.
 """
+import os
+import re
+import shlex
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QFormLayout, QGroupBox,
     QLineEdit, QSpinBox, QDoubleSpinBox, QComboBox, QCheckBox,
@@ -10,7 +13,7 @@ from PyQt6.QtWidgets import (
     QTabWidget
 )
 from typing import Optional
-from PyQt6.QtCore import pyqtSignal, Qt
+from PyQt6.QtCore import pyqtSignal, Qt, QProcess, QProcessEnvironment
 from models.subdivision_config import (
     SubdivisionType, VisibilityRule, Vector2D, Range, RangeXY, Transform2D,
     SubdivisionParams, SubdivisionParamsSet, SubdivisionParamsSetCollection
@@ -27,6 +30,7 @@ class SubdivisionTab(QWidget):
 
     modified = pyqtSignal()
     subdividing_changed = pyqtSignal(bool)
+    polygon_baked = pyqtSignal()
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -35,6 +39,8 @@ class SubdivisionTab(QWidget):
         self._current_params: SubdivisionParams = None
         self._updating = False
         self._checking = False
+        self._project_dir: str = ""
+        self._bake_process = None
 
         self._setup_ui()
         self._refresh_tree()
@@ -63,6 +69,7 @@ class SubdivisionTab(QWidget):
         self.tree.setColumnWidth(5, 40)
         self.tree.itemClicked.connect(self._on_item_clicked)
         self.tree.itemChanged.connect(self._on_item_check_changed)
+        self.tree.setStyleSheet("QTreeWidget::indicator { width: 13px; height: 13px; }")
         left_layout.addWidget(self.tree)
 
         # Buttons for sets
@@ -87,25 +94,15 @@ class SubdivisionTab(QWidget):
         params_btn_layout.addWidget(self.remove_params_btn)
         left_layout.addLayout(params_btn_layout)
 
-        # Set buttons row 2: rename/duplicate
-        set_btn_layout2 = QHBoxLayout()
-        self.rename_set_btn = QPushButton("Rename Set")
-        self.rename_set_btn.clicked.connect(self._rename_set)
-        self.duplicate_set_btn = QPushButton("Duplicate Set")
-        self.duplicate_set_btn.clicked.connect(self._duplicate_set)
-        set_btn_layout2.addWidget(self.rename_set_btn)
-        set_btn_layout2.addWidget(self.duplicate_set_btn)
-        left_layout.addLayout(set_btn_layout2)
-
-        # Params buttons row 2: rename/duplicate
-        params_btn_layout2 = QHBoxLayout()
-        self.rename_params_btn = QPushButton("Rename Params")
-        self.rename_params_btn.clicked.connect(self._rename_params)
-        self.duplicate_params_btn = QPushButton("Duplicate Params")
-        self.duplicate_params_btn.clicked.connect(self._duplicate_params)
-        params_btn_layout2.addWidget(self.rename_params_btn)
-        params_btn_layout2.addWidget(self.duplicate_params_btn)
-        left_layout.addLayout(params_btn_layout2)
+        # Shared rename/duplicate buttons
+        rename_dup_layout = QHBoxLayout()
+        self.rename_btn = QPushButton("Rename")
+        self.rename_btn.clicked.connect(self._rename_selected)
+        self.duplicate_btn = QPushButton("Duplicate")
+        self.duplicate_btn.clicked.connect(self._duplicate_selected)
+        rename_dup_layout.addWidget(self.rename_btn)
+        rename_dup_layout.addWidget(self.duplicate_btn)
+        left_layout.addLayout(rename_dup_layout)
 
         # Reorder buttons
         reorder_layout = QHBoxLayout()
@@ -117,6 +114,10 @@ class SubdivisionTab(QWidget):
         self.move_down_btn.clicked.connect(self._move_down)
         reorder_layout.addWidget(self.move_up_btn)
         reorder_layout.addWidget(self.move_down_btn)
+        self.bake_btn = QPushButton("Bake\u2026")
+        self.bake_btn.setToolTip("Run subdivision and save result as a polygon set")
+        self.bake_btn.clicked.connect(self._on_bake)
+        reorder_layout.addWidget(self.bake_btn)
         reorder_layout.addStretch()
         left_layout.addLayout(reorder_layout)
 
@@ -618,6 +619,8 @@ class SubdivisionTab(QWidget):
         for params_set in self._collection.params_sets:
             set_item = QTreeWidgetItem(["", params_set.name, "", "", "", ""])
             set_item.setData(0, Qt.ItemDataRole.UserRole, ("set", params_set))
+            set_item.setFlags(set_item.flags() | Qt.ItemFlag.ItemIsUserCheckable)
+            set_item.setCheckState(0, Qt.CheckState.Unchecked)
             self.tree.addTopLevelItem(set_item)
 
             for params in params_set.params_list:
@@ -908,28 +911,10 @@ class SubdivisionTab(QWidget):
         is_params = selected_type == "params"
         has_selection = selected_type is not None
 
-        self.rename_set_btn.setEnabled(is_set)
-        self.duplicate_set_btn.setEnabled(is_set)
-        self.rename_params_btn.setEnabled(is_params)
-        self.duplicate_params_btn.setEnabled(is_params)
+        self.rename_btn.setEnabled(has_selection)
+        self.duplicate_btn.setEnabled(has_selection)
         self.move_up_btn.setEnabled(has_selection)
         self.move_down_btn.setEnabled(has_selection)
-
-    def _rename_set(self):
-        """Rename the selected params set."""
-        if self._current_set is None:
-            return
-
-        new_name, ok = QInputDialog.getText(
-            self, "Rename Params Set", "New name:", text=self._current_set.name
-        )
-        if ok and new_name and new_name != self._current_set.name:
-            if self._collection.get_params_set(new_name):
-                QMessageBox.warning(self, "Duplicate Name", f"A params set named '{new_name}' already exists.")
-                return
-            self._current_set.name = new_name
-            self._refresh_tree()
-            self.modified.emit()
 
     def _next_copy_name(self, base: str, exists_fn) -> str:
         """Return base_001, base_002, … — whichever is the first not taken."""
@@ -940,67 +925,75 @@ class SubdivisionTab(QWidget):
                 return candidate
             counter += 1
 
-    def _duplicate_set(self):
-        """Duplicate the selected params set."""
+    def _rename_selected(self):
+        """Rename the selected params set or individual params."""
         if self._current_set is None:
             return
+        if self._current_params is None:
+            # Rename the set
+            new_name, ok = QInputDialog.getText(
+                self, "Rename Params Set", "New name:", text=self._current_set.name
+            )
+            if ok and new_name and new_name != self._current_set.name:
+                if self._collection.get_params_set(new_name):
+                    QMessageBox.warning(self, "Duplicate Name", f"A params set named '{new_name}' already exists.")
+                    return
+                self._current_set.name = new_name
+                self._refresh_tree()
+                self.modified.emit()
+        else:
+            # Rename the individual params
+            new_name, ok = QInputDialog.getText(
+                self, "Rename Params", "New name:", text=self._current_params.name
+            )
+            if ok and new_name and new_name != self._current_params.name:
+                if self._current_set.get_params(new_name):
+                    QMessageBox.warning(self, "Duplicate Name", f"Params named '{new_name}' already exists in this set.")
+                    return
+                self._current_params.name = new_name
+                self._refresh_tree()
+                self.modified.emit()
 
-        new_name = self._next_copy_name(
-            self._current_set.name,
-            lambda n: self._collection.get_params_set(n) is not None
-        )
-
-        new_name, ok = QInputDialog.getText(
-            self, "Duplicate Params Set", "Name for copy:", text=new_name
-        )
-        if ok and new_name:
-            if self._collection.get_params_set(new_name):
-                QMessageBox.warning(self, "Duplicate Name", f"A params set named '{new_name}' already exists.")
-                return
-            new_set = self._current_set.copy()
-            new_set.name = new_name
-            self._collection.add_params_set(new_set)
-            self._refresh_tree()
-            self.modified.emit()
-
-    def _rename_params(self):
-        """Rename the selected params."""
-        if self._current_params is None or self._current_set is None:
+    def _duplicate_selected(self):
+        """Duplicate the selected params set or individual params."""
+        if self._current_set is None:
             return
-
-        new_name, ok = QInputDialog.getText(
-            self, "Rename Params", "New name:", text=self._current_params.name
-        )
-        if ok and new_name and new_name != self._current_params.name:
-            if self._current_set.get_params(new_name):
-                QMessageBox.warning(self, "Duplicate Name", f"Params named '{new_name}' already exists in this set.")
-                return
-            self._current_params.name = new_name
-            self._refresh_tree()
-            self.modified.emit()
-
-    def _duplicate_params(self):
-        """Duplicate the selected params."""
-        if self._current_params is None or self._current_set is None:
-            return
-
-        new_name = self._next_copy_name(
-            self._current_params.name,
-            lambda n: self._current_set.get_params(n) is not None
-        )
-
-        new_name, ok = QInputDialog.getText(
-            self, "Duplicate Params", "Name for copy:", text=new_name
-        )
-        if ok and new_name:
-            if self._current_set.get_params(new_name):
-                QMessageBox.warning(self, "Duplicate Name", f"Params named '{new_name}' already exists in this set.")
-                return
-            new_params = self._current_params.copy()
-            new_params.name = new_name
-            self._current_set.add_params(new_params)
-            self._refresh_tree()
-            self.modified.emit()
+        if self._current_params is None:
+            # Duplicate the set
+            new_name = self._next_copy_name(
+                self._current_set.name,
+                lambda n: self._collection.get_params_set(n) is not None
+            )
+            new_name, ok = QInputDialog.getText(
+                self, "Duplicate Params Set", "Name for copy:", text=new_name
+            )
+            if ok and new_name:
+                if self._collection.get_params_set(new_name):
+                    QMessageBox.warning(self, "Duplicate Name", f"A params set named '{new_name}' already exists.")
+                    return
+                new_set = self._current_set.copy()
+                new_set.name = new_name
+                self._collection.add_params_set(new_set)
+                self._refresh_tree()
+                self.modified.emit()
+        else:
+            # Duplicate the individual params
+            new_name = self._next_copy_name(
+                self._current_params.name,
+                lambda n: self._current_set.get_params(n) is not None
+            )
+            new_name, ok = QInputDialog.getText(
+                self, "Duplicate Params", "Name for copy:", text=new_name
+            )
+            if ok and new_name:
+                if self._current_set.get_params(new_name):
+                    QMessageBox.warning(self, "Duplicate Name", f"Params named '{new_name}' already exists in this set.")
+                    return
+                new_params = self._current_params.copy()
+                new_params.name = new_name
+                self._current_set.add_params(new_params)
+                self._refresh_tree()
+                self.modified.emit()
 
     def _move_up(self):
         """Move selected item up."""
@@ -1146,6 +1139,108 @@ class SubdivisionTab(QWidget):
             self._current_params.transform_set = dialog.get_transform_set()
             self._update_transform_status(self._current_params.transform_set)
             self.modified.emit()
+
+    # --- Bake subdivision ---
+
+    def set_project_dir(self, d: str) -> None:
+        """Called by MainWindow when a project is loaded."""
+        self._project_dir = d
+
+    def _on_bake(self) -> None:
+        """Open the bake dialog and start a bake if confirmed."""
+        if not self._project_dir:
+            QMessageBox.warning(self, "No Project", "No project is open.")
+            return
+        poly_dir = os.path.join(self._project_dir, "polygonSets")
+        if not os.path.isdir(poly_dir):
+            QMessageBox.warning(self, "No polygonSets", f"polygonSets directory not found:\n{poly_dir}")
+            return
+        subdiv_xml = os.path.join(self._project_dir, "configuration", "subdivision.xml")
+        if not os.path.isfile(subdiv_xml):
+            QMessageBox.warning(self, "No subdivision.xml", f"Subdivision config not found:\n{subdiv_xml}")
+            return
+
+        dialog = BakeSubdivisionDialog(poly_dir, self._collection, self)
+        if dialog.exec() != QDialog.DialogCode.Accepted:
+            return
+
+        input_path = dialog.selected_polygon_set()
+        set_name = dialog.selected_set_name()
+        stem = dialog.output_name()
+
+        if not stem:
+            QMessageBox.warning(self, "No Output Name", "Please enter an output file name.")
+            return
+
+        output_path = os.path.join(poly_dir, stem + ".xml")
+        if os.path.exists(output_path):
+            res = QMessageBox.question(
+                self, "Overwrite?",
+                f"'{stem}.xml' already exists. Overwrite?",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+            )
+            if res != QMessageBox.StandardButton.Yes:
+                return
+
+        self._run_bake(input_path, subdiv_xml, set_name, output_path)
+
+    def _run_bake(self, input_path: str, subdiv_xml: str, set_name: str, output_path: str) -> None:
+        """Launch sbt bake-subdivision as a QProcess."""
+        LOOM_ENGINE_PATH = "/Users/broganbunt/Loom_2026/loom_engine"
+        shell_cmd = (
+            f'sbt "run --bake-subdivision '
+            f'{shlex.quote(input_path)} '
+            f'{shlex.quote(subdiv_xml)} '
+            f'{shlex.quote(set_name)} '
+            f'{shlex.quote(output_path)}"'
+        )
+
+        self._bake_process = QProcess(self)
+        self._bake_process.setWorkingDirectory(LOOM_ENGINE_PATH)
+        env = QProcessEnvironment.systemEnvironment()
+        self._bake_process.setProcessEnvironment(env)
+        self._bake_process.finished.connect(
+            lambda code, _status: self._on_bake_finished(code, output_path)
+        )
+        self._bake_process.errorOccurred.connect(self._on_bake_error)
+
+        self.bake_btn.setEnabled(False)
+        self.bake_btn.setText("Baking\u2026")
+        self._bake_process.start("/bin/zsh", ["-l", "-c", shell_cmd])
+
+    def _on_bake_finished(self, exit_code: int, output_path: str) -> None:
+        """Handle bake process completion."""
+        self.bake_btn.setEnabled(True)
+        self.bake_btn.setText("Bake\u2026")
+        self._bake_process = None
+
+        if exit_code == 0 and os.path.isfile(output_path):
+            self.polygon_baked.emit()
+            QMessageBox.information(
+                self, "Bake Complete",
+                f"Subdivision baked to:\n{output_path}"
+            )
+        else:
+            QMessageBox.warning(
+                self, "Bake Failed",
+                f"Bake process exited with code {exit_code}.\n"
+                f"Check the terminal for details."
+            )
+
+    def _on_bake_error(self, error) -> None:
+        """Handle bake process error."""
+        self.bake_btn.setEnabled(True)
+        self.bake_btn.setText("Bake\u2026")
+        self._bake_process = None
+        error_msgs = {
+            QProcess.ProcessError.FailedToStart: "Failed to start sbt",
+            QProcess.ProcessError.Crashed: "Process crashed",
+            QProcess.ProcessError.Timedout: "Timed out",
+            QProcess.ProcessError.WriteError: "Write error",
+            QProcess.ProcessError.ReadError: "Read error",
+        }
+        msg = error_msgs.get(error, f"Unknown error ({error})")
+        QMessageBox.critical(self, "Bake Error", f"Process error: {msg}")
 
 
 class TransformSetDialog(QDialog):
@@ -1617,3 +1712,104 @@ class TransformSetDialog(QDialog):
     def get_transform_set(self) -> TransformSetConfig:
         """Return the edited transform set."""
         return self._ts
+
+
+class BakeSubdivisionDialog(QDialog):
+    """Dialog for configuring a subdivision bake operation."""
+
+    def __init__(self, poly_dir: str, collection: SubdivisionParamsSetCollection, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("Bake Subdivision")
+        self.setMinimumWidth(440)
+        self._poly_dir = poly_dir
+        self._collection = collection
+        self._setup_ui()
+
+    def _setup_ui(self) -> None:
+        layout = QVBoxLayout(self)
+        form = QFormLayout()
+
+        # Source polygon set combo — all .xml in polygonSets/, excluding *_SD*.xml
+        self._source_combo = QComboBox()
+        xml_files = sorted(
+            f for f in os.listdir(self._poly_dir)
+            if f.endswith(".xml")
+            and not f.endswith(".layers.xml")
+            and "_SD" not in f
+        )
+        for fname in xml_files:
+            self._source_combo.addItem(fname, os.path.join(self._poly_dir, fname))
+        self._source_combo.currentIndexChanged.connect(self._on_source_changed)
+        form.addRow("Source polygon set:", self._source_combo)
+
+        # Subdivision set combo
+        self._set_combo = QComboBox()
+        for ps in self._collection.params_sets:
+            self._set_combo.addItem(ps.name)
+        self._set_combo.currentIndexChanged.connect(self._on_set_changed)
+        form.addRow("Subdivision set:", self._set_combo)
+
+        # Output name
+        self._output_edit = QLineEdit()
+        form.addRow("Output name:", self._output_edit)
+
+        # Warning label for many passes
+        self._warning_label = QLabel()
+        self._warning_label.setStyleSheet("color: orange;")
+        self._warning_label.setWordWrap(True)
+        self._warning_label.hide()
+        form.addRow("", self._warning_label)
+
+        layout.addLayout(form)
+
+        # OK / Cancel
+        buttons = QDialogButtonBox(
+            QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel
+        )
+        buttons.accepted.connect(self.accept)
+        buttons.rejected.connect(self.reject)
+        layout.addWidget(buttons)
+
+        # Populate initial values
+        self._on_source_changed(0)
+        self._on_set_changed(0)
+
+    def _on_source_changed(self, _index: int) -> None:
+        """Auto-fill output name from source stem."""
+        fname = self._source_combo.currentText()
+        if not fname:
+            return
+        # Strip .layers.xml or .xml suffix
+        stem = re.sub(r"\.layers\.xml$", "", fname)
+        stem = re.sub(r"\.xml$", "", stem)
+        # Strip _layer_N suffix
+        stem = re.sub(r"_layer_\d+$", "", stem)
+        self._output_edit.setText(stem + "_SD")
+
+    def _on_set_changed(self, _index: int) -> None:
+        """Show warning if selected set has more than 3 passes."""
+        set_name = self._set_combo.currentText()
+        ps = self._collection.get_params_set(set_name)
+        if ps is None:
+            self._warning_label.hide()
+            return
+        n = len(ps.params_list)
+        if n > 3:
+            self._warning_label.setText(
+                f"\u26a0 {n} passes \u2014 output \u2248 input \u00d7 4^{n} polygons."
+            )
+            self._warning_label.show()
+        else:
+            self._warning_label.hide()
+
+    def selected_polygon_set(self) -> str:
+        """Return the full path of the selected source polygon set."""
+        return self._source_combo.currentData() or ""
+
+    def selected_set_name(self) -> str:
+        """Return the name of the selected subdivision set."""
+        return self._set_combo.currentText()
+
+    def output_name(self) -> str:
+        """Return the output stem (without .xml extension)."""
+        return self._output_edit.text().strip()

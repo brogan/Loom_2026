@@ -12,7 +12,7 @@ from PyQt6.QtWidgets import (
     QTableWidget, QTableWidgetItem, QHeaderView, QSizePolicy
 )
 import datetime
-from PyQt6.QtCore import Qt, QUrl
+from PyQt6.QtCore import Qt, QUrl, QTimer
 from PyQt6.QtGui import QAction, QKeySequence, QDesktopServices
 from .rendering_tab import RenderingTab
 from .global_tab import GlobalTab
@@ -326,6 +326,7 @@ class MainWindow(QMainWindow):
 
         self.subdivision_tab = SubdivisionTab()
         self.subdivision_tab.modified.connect(self._on_modified)
+        self.subdivision_tab.polygon_baked.connect(self._on_polygon_baked)
         self.tab_widget.addTab(self.subdivision_tab, "Subdivision")
 
         self.shape_tab = ShapeTab()
@@ -341,6 +342,14 @@ class MainWindow(QMainWindow):
         self.rendering_tab = RenderingTab()
         self.rendering_tab.modified.connect(self._on_modified)
         self.tab_widget.addTab(self.rendering_tab, "Rendering")
+
+        # Wire geometry convenience-panel signals to refresh downstream tabs
+        self.geometry_tab.shapeLibraryChanged.connect(self._on_geometry_shape_library_changed)
+        self.geometry_tab.subdivisionChanged.connect(self._on_geometry_subdivision_changed)
+        self.geometry_tab.spriteLibraryChanged.connect(self._on_geometry_sprite_library_changed)
+        self.geometry_tab.rendererLibraryChanged.connect(self._on_geometry_renderer_library_changed)
+        self.geometry_tab.newShapeCreated.connect(self._on_geometry_new_shape_created)
+        self.geometry_tab.newSpriteCreated.connect(self._on_geometry_new_sprite_created)
 
         self.run_tab = RunTab(save_callback=self._save_project)
         self.tab_widget.addTab(self.run_tab, "Run")
@@ -770,6 +779,13 @@ class MainWindow(QMainWindow):
             if hasattr(self.sprite_tab, 'set_renderer_library'):
                 self.sprite_tab.set_renderer_library(self.rendering_tab.get_library())
 
+            # Notify geometry tab of subdivision and renderer libraries for convenience panel
+            if hasattr(self.geometry_tab, 'set_subdivision_collection'):
+                self.geometry_tab.set_subdivision_collection(
+                    self.subdivision_tab.get_collection())
+            if hasattr(self.geometry_tab, 'set_renderer_library'):
+                self.geometry_tab.set_renderer_library(self.rendering_tab.get_library())
+
             # Notify rendering tab of brushes directory
             if hasattr(self.rendering_tab, 'set_project_dir'):
                 self.rendering_tab.set_project_dir(self._project_dir)
@@ -777,6 +793,10 @@ class MainWindow(QMainWindow):
             # Notify sprite tab of project directory for morph targets
             if hasattr(self.sprite_tab, 'set_project_dir'):
                 self.sprite_tab.set_project_dir(self._project_dir)
+
+            # Notify subdivision tab of project directory for bake feature
+            if hasattr(self.subdivision_tab, 'set_project_dir'):
+                self.subdivision_tab.set_project_dir(self._project_dir)
 
             # Notify run tab of project directory
             self.run_tab.set_project_dir(self._project_dir)
@@ -1392,6 +1412,12 @@ class MainWindow(QMainWindow):
         # Update cross-references when tabs are modified
         self._notify_tabs_of_project_dir()
 
+    def _on_polygon_baked(self) -> None:
+        """Add baked polygon set to library and refresh the geometry tab."""
+        if hasattr(self, 'geometry_tab'):
+            self.geometry_tab.polygon_tab._refresh_file_list()
+            self.geometry_tab.polygon_tab._reconcile_polygon_sets()
+
     def _on_polygon_library_changed(self) -> None:
         """Propagate polygon library changes to the shape tab."""
         if hasattr(self, 'shape_tab'):
@@ -1412,6 +1438,32 @@ class MainWindow(QMainWindow):
         self._on_polygon_library_changed()
         self._on_open_curve_library_changed()
         self._on_point_set_library_changed()
+
+    def _on_geometry_shape_library_changed(self) -> None:
+        if hasattr(self, 'shape_tab'):
+            self.shape_tab._refresh_tree()
+
+    def _on_geometry_subdivision_changed(self) -> None:
+        if hasattr(self, 'subdivision_tab'):
+            self.subdivision_tab._refresh_tree()
+
+    def _on_geometry_sprite_library_changed(self) -> None:
+        if hasattr(self, 'sprite_tab'):
+            self.sprite_tab._refresh_tree()
+
+    def _on_geometry_renderer_library_changed(self) -> None:
+        if hasattr(self, 'rendering_tab') and hasattr(self.rendering_tab, 'tree_widget'):
+            self.rendering_tab.tree_widget._refresh_tree()
+
+    def _on_geometry_new_shape_created(self, set_name: str, shape_name: str) -> None:
+        """After shape_tab refreshes, select the newly created shape."""
+        if hasattr(self, 'shape_tab'):
+            QTimer.singleShot(0, lambda: self.shape_tab._select_shape(set_name, shape_name))
+
+    def _on_geometry_new_sprite_created(self, set_name: str, sprite_name: str) -> None:
+        """After sprite_tab refreshes, select the newly created sprite."""
+        if hasattr(self, 'sprite_tab'):
+            QTimer.singleShot(0, lambda: self.sprite_tab._select_sprite(set_name, sprite_name))
 
     def _save_geometry_config(self) -> None:
         """Save all three geometry config files."""

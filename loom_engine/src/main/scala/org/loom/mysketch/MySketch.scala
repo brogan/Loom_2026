@@ -77,6 +77,9 @@ class MySketch(width: Int, height: Int) extends Sketch(width, height) {
   val initialSubdivisionType: Int = Subdivision.QUAD //a default
   val subdivisionParamsSetCollection: SubdivisionParamsSetCollection = createSubdivisionParamsSetCollection()
 
+  // Map built inside make2DShapes() using actual indices of successfully created shapes
+  private var _shapeNameMap: Map[(String, String), Int] = Map.empty
+
   //make a list of shapes based on polyCollection
   val shapes2D: ListBuffer[Shape2D] = make2DShapes()
 
@@ -303,16 +306,21 @@ class MySketch(width: Int, height: Int) extends Sketch(width, height) {
       ProjectConfigManager.getShapeConfig match {
         case Some(shapeLibrary) =>
           println(s"Creating shapes from ShapeLibrary: ${shapeLibrary.name}")
+          val nameMap = mutable.Map[(String, String), Int]()
           for (shapeSet <- shapeLibrary.shapeSets) {
             for (shapeDef <- shapeSet.shapes) {
               val shape = createShapeFromDef(shapeDef)
               if (shape != null) {
+                nameMap((shapeSet.name, shapeDef.name)) = shapes.size
                 shapes += shape
                 println(s"  Created shape: ${shapeDef.name}")
               }
             }
           }
-          if (shapes.nonEmpty) return shapes
+          if (shapes.nonEmpty) {
+            _shapeNameMap = nameMap.toMap
+            return shapes
+          }
           println("No shapes created from config, falling back to hard-coded")
         case None =>
           println("No shape config in project, falling back to hard-coded")
@@ -391,25 +399,10 @@ class MySketch(width: Int, height: Int) extends Sketch(width, height) {
 
 
   /**
-   * Build a map from (shapeSetName, shapeName) to the index in shapes2D.
-   * Iterates shape sets/shapes in the same order as make2DShapes() to ensure indices match.
+   * Returns the map from (shapeSetName, shapeName) to index in shapes2D.
+   * Populated by make2DShapes() using actual indices so null shapes are not counted.
    */
-  private def buildShapeNameMap(): Map[(String, String), Int] = {
-    if (!useProjectConfig) return Map.empty
-    ProjectConfigManager.getShapeConfig match {
-      case Some(shapeLibrary) =>
-        val map = mutable.Map[(String, String), Int]()
-        var idx = 0
-        for (shapeSet <- shapeLibrary.shapeSets) {
-          for (shapeDef <- shapeSet.shapes) {
-            map((shapeSet.name, shapeDef.name)) = idx
-            idx += 1
-          }
-        }
-        map.toMap
-      case None => Map.empty
-    }
-  }
+  private def buildShapeNameMap(): Map[(String, String), Int] = _shapeNameMap
 
 
   /**

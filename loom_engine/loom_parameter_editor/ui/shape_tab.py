@@ -58,6 +58,7 @@ class ShapeTab(QWidget):
         self.tree.setColumnWidth(2, 80)
         self.tree.currentItemChanged.connect(self._on_item_selected)
         self.tree.itemChanged.connect(self._on_item_check_changed)
+        self.tree.setStyleSheet("QTreeWidget::indicator { width: 13px; height: 13px; }")
         left_layout.addWidget(self.tree)
 
         # Buttons for sets
@@ -84,6 +85,10 @@ class ShapeTab(QWidget):
         self.duplicate_btn = QPushButton("Duplicate")
         self.duplicate_btn.clicked.connect(self._duplicate_shape)
         shape_btn_layout.addWidget(self.duplicate_btn)
+
+        self.rename_shape_btn = QPushButton("Rename")
+        self.rename_shape_btn.clicked.connect(self._rename_shape)
+        shape_btn_layout.addWidget(self.rename_shape_btn)
         left_layout.addLayout(shape_btn_layout)
 
         # Delete Selected button
@@ -307,6 +312,8 @@ class ShapeTab(QWidget):
         for shape_set in self._library.shape_sets:
             set_item = QTreeWidgetItem(["", shape_set.name, "Set"])
             set_item.setData(0, Qt.ItemDataRole.UserRole, ("set", shape_set))
+            set_item.setFlags(set_item.flags() | Qt.ItemFlag.ItemIsUserCheckable)
+            set_item.setCheckState(0, Qt.CheckState.Unchecked)
 
             for shape in shape_set.shapes:
                 abbrev = self._SHAPE_TYPE_ABBREV.get(shape.source_type.name, shape.source_type.name)
@@ -532,7 +539,7 @@ class ShapeTab(QWidget):
             # Select the new set
             for i in range(self.tree.topLevelItemCount()):
                 item = self.tree.topLevelItem(i)
-                if item.text(0) == name:
+                if item.text(1) == name:
                     self.tree.setCurrentItem(item)
                     break
             self.modified.emit()
@@ -599,27 +606,96 @@ class ShapeTab(QWidget):
             self.modified.emit()
 
     def _duplicate_shape(self):
-        """Duplicate the selected shape."""
-        if self._current_shape is None or self._current_set is None:
+        """Duplicate the selected item — set if a set is selected, shape otherwise."""
+        if self._current_set is None:
             return
 
-        base_name = self._current_shape.name
-        counter = 1
-        while True:
-            new_name = f"{base_name}_{counter:03d}"
-            if not self._current_set.get(new_name):
-                break
-            counter += 1
+        if self._current_shape is None:
+            # ── Duplicate the shape set ──────────────────────────────────────
+            base_name = self._current_set.name
+            counter = 1
+            while True:
+                new_name = f"{base_name}_{counter:03d}"
+                if not self._library.get(new_name):
+                    break
+                counter += 1
+            new_name, ok = QInputDialog.getText(
+                self, "Duplicate Shape Set", "Name for copy:", text=new_name)
+            if not ok or not new_name.strip():
+                return
+            new_name = new_name.strip()
+            if self._library.get(new_name):
+                QMessageBox.warning(self, "Duplicate Name",
+                                    f"A shape set named '{new_name}' already exists.")
+                return
+            from copy import deepcopy
+            new_set = deepcopy(self._current_set)
+            new_set.name = new_name
+            self._library.add(new_set)
+            self._refresh_tree()
+            for i in range(self.tree.topLevelItemCount()):
+                if self.tree.topLevelItem(i).text(1) == new_name:
+                    self.tree.setCurrentItem(self.tree.topLevelItem(i))
+                    break
+        else:
+            # ── Duplicate the shape ──────────────────────────────────────────
+            base_name = self._current_shape.name
+            counter = 1
+            while True:
+                new_name = f"{base_name}_{counter:03d}"
+                if not self._current_set.get(new_name):
+                    break
+                counter += 1
+            from dataclasses import replace
+            new_shape = replace(self._current_shape, name=new_name)
+            new_shape.inline_points = [Vector2D(p.x, p.y) for p in self._current_shape.inline_points]
+            self._current_set.add(new_shape)
+            self._refresh_tree()
+            self._select_shape(self._current_set.name, new_name)
 
-        # Create a copy
-        from dataclasses import replace
-        new_shape = replace(self._current_shape, name=new_name)
-        # Deep copy the inline points if any
-        new_shape.inline_points = [Vector2D(p.x, p.y) for p in self._current_shape.inline_points]
+        self.modified.emit()
 
-        self._current_set.add(new_shape)
-        self._refresh_tree()
-        self._select_shape(self._current_set.name, new_name)
+    def _rename_shape(self):
+        """Rename the selected item — set if a set is selected, shape otherwise."""
+        if self._current_set is None:
+            return
+
+        if self._current_shape is None:
+            # ── Rename the shape set ─────────────────────────────────────────
+            new_name, ok = QInputDialog.getText(
+                self, "Rename Shape Set", "New name:", text=self._current_set.name)
+            if not ok or not new_name.strip():
+                return
+            new_name = new_name.strip()
+            if new_name == self._current_set.name:
+                return
+            if self._library.get(new_name):
+                QMessageBox.warning(self, "Duplicate Name",
+                                    f"A shape set named '{new_name}' already exists.")
+                return
+            self._current_set.name = new_name
+            self._refresh_tree()
+            for i in range(self.tree.topLevelItemCount()):
+                if self.tree.topLevelItem(i).text(1) == new_name:
+                    self.tree.setCurrentItem(self.tree.topLevelItem(i))
+                    break
+        else:
+            # ── Rename the shape ─────────────────────────────────────────────
+            new_name, ok = QInputDialog.getText(
+                self, "Rename Shape", "New name:", text=self._current_shape.name)
+            if not ok or not new_name.strip():
+                return
+            new_name = new_name.strip()
+            if new_name == self._current_shape.name:
+                return
+            if self._current_set.get(new_name):
+                QMessageBox.warning(self, "Duplicate Name",
+                                    f"A shape named '{new_name}' already exists in this set.")
+                return
+            self._current_shape.name = new_name
+            self._refresh_tree()
+            self._select_shape(self._current_set.name, new_name)
+
         self.modified.emit()
 
     def _on_item_check_changed(self, item, column):
@@ -628,36 +704,52 @@ class ShapeTab(QWidget):
             return
 
     def _delete_selected(self):
-        """Delete all checked shape items."""
-        to_delete = []  # list of (shape_set, shape_index) tuples
+        """Delete all checked items (sets or shapes)."""
+        sets_to_delete = []    # ShapeSet objects
+        shapes_to_delete = []  # (shape_set, shape) pairs
         for i in range(self.tree.topLevelItemCount()):
             set_item = self.tree.topLevelItem(i)
             set_data = set_item.data(0, Qt.ItemDataRole.UserRole)
             if not set_data or set_data[0] != "set":
                 continue
             shape_set = set_data[1]
-            for j in range(set_item.childCount()):
-                shape_item = set_item.child(j)
-                if shape_item.checkState(0) == Qt.CheckState.Checked:
-                    data = shape_item.data(0, Qt.ItemDataRole.UserRole)
-                    if data and data[0] == "shape":
-                        to_delete.append((shape_set, data[1]))
+            if set_item.checkState(0) == Qt.CheckState.Checked:
+                sets_to_delete.append(shape_set)
+            else:
+                for j in range(set_item.childCount()):
+                    shape_item = set_item.child(j)
+                    if shape_item.checkState(0) == Qt.CheckState.Checked:
+                        data = shape_item.data(0, Qt.ItemDataRole.UserRole)
+                        if data and data[0] == "shape":
+                            shapes_to_delete.append((shape_set, data[1]))
 
-        if not to_delete:
+        total = len(sets_to_delete) + len(shapes_to_delete)
+        if total == 0:
             QMessageBox.information(self, "No Selection", "No items are checked for deletion.")
             return
 
+        parts = []
+        if sets_to_delete:
+            parts.append(f"{len(sets_to_delete)} set(s)")
+        if shapes_to_delete:
+            parts.append(f"{len(shapes_to_delete)} shape(s)")
         result = QMessageBox.question(
             self, "Delete Selected",
-            f"Delete {len(to_delete)} checked shape(s)?",
+            f"Delete {' and '.join(parts)}?",
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
         )
         if result == QMessageBox.StandardButton.Yes:
-            for shape_set, shape in to_delete:
+            for shape_set in sets_to_delete:
+                for idx, s in enumerate(self._library.shape_sets):
+                    if s is shape_set:
+                        self._library.remove(idx)
+                        break
+            for shape_set, shape in shapes_to_delete:
                 for idx, s in enumerate(shape_set.shapes):
                     if s is shape:
                         shape_set.remove(idx)
                         break
+            self._current_set = None
             self._current_shape = None
             self._clear_shape_ui()
             self._refresh_tree()
@@ -667,10 +759,10 @@ class ShapeTab(QWidget):
         """Select a shape in the tree by set and shape name."""
         for i in range(self.tree.topLevelItemCount()):
             set_item = self.tree.topLevelItem(i)
-            if set_item.text(0) == set_name:
+            if set_item.text(1) == set_name:
                 for j in range(set_item.childCount()):
                     shape_item = set_item.child(j)
-                    if shape_item.text(0) == shape_name:
+                    if shape_item.text(1) == shape_name:
                         self.tree.setCurrentItem(shape_item)
                         return
 

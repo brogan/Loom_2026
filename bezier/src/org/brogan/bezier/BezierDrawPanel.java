@@ -2916,6 +2916,7 @@ public class BezierDrawPanel extends JPanel implements Runnable, MouseListener, 
 							tryAutoWeld(ei, ej, wr, thresholdPx);
 						}
 					}
+					tryAutoWeldCorners(ci, cj, wr, thresholdPx);
 				}
 			}
 			org.brogan.scaffold.BezierErrorLogger.log("weldAllAdjacent: complete");
@@ -2963,6 +2964,59 @@ public class BezierDrawPanel extends JPanel implements Runnable, MouseListener, 
 		// Register links
 		wr.registerWeld(pa0, pb0); wr.registerWeld(pa3, pb3);
 		wr.registerWeld(pc0n, pc1n); wr.registerWeld(pc0f, pc1f);
+	}
+
+	/**
+	 * Link corner-only contacts between polygons ci and cj: anchor points from
+	 * different polygons within threshold px of each other that are not already
+	 * linked via edge welds.  Registers pairwise links between the full weld groups
+	 * so that translatePolygonBy reaches all corner co-inhabitants.
+	 */
+	private void tryAutoWeldCorners(CubicCurve[] ci, CubicCurve[] cj, WeldRegistry wr, double threshold) {
+		Set<CubicPoint> anchorsI = new LinkedHashSet<>();
+		Set<CubicPoint> anchorsJ = new LinkedHashSet<>();
+		for (CubicCurve c : ci) {
+			CubicPoint[] p = c.getPoints();
+			if (p[0] != null) anchorsI.add(p[0]);
+			if (p[3] != null) anchorsI.add(p[3]);
+		}
+		for (CubicCurve c : cj) {
+			CubicPoint[] p = c.getPoints();
+			if (p[0] != null) anchorsJ.add(p[0]);
+			if (p[3] != null) anchorsJ.add(p[3]);
+		}
+		for (CubicPoint ai : anchorsI) {
+			for (CubicPoint aj : anchorsJ) {
+				if (wr.getLinked(ai).contains(aj)) continue;
+				double dist = Formulas.hypotenuse(ai.getPos(), aj.getPos());
+				if (dist > threshold) continue;
+				Point2D.Double mid = new Point2D.Double(
+					(ai.getPos().x + aj.getPos().x) / 2,
+					(ai.getPos().y + aj.getPos().y) / 2);
+				HashSet<CubicPoint> processed = new HashSet<>();
+				snapPointToPos(ai, mid, wr, processed);
+				snapPointToPos(aj, mid, wr, processed);
+				Set<CubicPoint> groupI = collectWeldGroup(ai, wr);
+				Set<CubicPoint> groupJ = collectWeldGroup(aj, wr);
+				for (CubicPoint a : groupI) {
+					for (CubicPoint b : groupJ) {
+						if (!wr.getLinked(a).contains(b)) wr.registerWeld(a, b);
+					}
+				}
+			}
+		}
+	}
+
+	private Set<CubicPoint> collectWeldGroup(CubicPoint start, WeldRegistry wr) {
+		Set<CubicPoint> group = new HashSet<>();
+		Queue<CubicPoint> queue = new LinkedList<>();
+		queue.add(start);
+		while (!queue.isEmpty()) {
+			CubicPoint p = queue.poll();
+			if (!group.add(p)) continue;
+			for (CubicPoint linked : wr.getLinked(p)) queue.add(linked);
+		}
+		return group;
 	}
 
 	private void checkDragWeld() {

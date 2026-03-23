@@ -26,6 +26,7 @@ class RunTab(QWidget):
         self._save_callback = save_callback
         self._loom_path = self.DEFAULT_LOOM_PATH
         self._process = None
+        self._last_render_type: str = ""
 
         self._init_ui()
 
@@ -79,6 +80,11 @@ class RunTab(QWidget):
         self._reload_btn = QPushButton("Reload")
         self._reload_btn.clicked.connect(self._on_reload)
         process_layout.addWidget(self._reload_btn)
+
+        self._renders_btn = QPushButton("Renders")
+        self._renders_btn.setToolTip("Open the renders folder in Finder")
+        self._renders_btn.clicked.connect(self._on_open_renders)
+        process_layout.addWidget(self._renders_btn)
 
         self._stop_btn = QPushButton("Stop Loom")
         self._stop_btn.setEnabled(False)
@@ -344,6 +350,7 @@ class RunTab(QWidget):
         if not self._project_dir:
             self._append_output("[Editor] No project loaded.\n")
             return
+        self._last_render_type = "stills"
         # Write render path if custom
         self._write_render_path_if_needed()
         if self._write_sentinel(".capture_still"):
@@ -353,10 +360,25 @@ class RunTab(QWidget):
         if not self._project_dir:
             self._append_output("[Editor] No project loaded.\n")
             return
+        self._last_render_type = "animations"
         # Write render path if custom
         self._write_render_path_if_needed()
         if self._write_sentinel(".capture_video"):
             self._append_output("[Editor] Capture video toggle signal sent.\n")
+
+    def _on_open_renders(self):
+        """Open the renders folder (stills/animations/root) in Finder."""
+        if not self._project_dir:
+            self._append_output("[Editor] No project loaded.\n")
+            return
+        # Use custom render dest if set, otherwise default
+        render_dest = self._render_dest_edit.text().strip()
+        base = render_dest if render_dest else os.path.join(self._project_dir, "renders")
+        path = os.path.join(base, self._last_render_type) if self._last_render_type else base
+        if not os.path.isdir(path):
+            os.makedirs(path, exist_ok=True)
+        import subprocess
+        subprocess.Popen(["open", path])
 
     def _clear_pause(self):
         """Reset pause state: uncheck button and remove .pause sentinel."""

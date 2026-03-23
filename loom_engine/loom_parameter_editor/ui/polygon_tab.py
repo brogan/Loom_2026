@@ -4,6 +4,7 @@ Provides UI for editing polygons.xml settings.
 """
 from __future__ import annotations
 import os
+import re
 import shutil
 import xml.etree.ElementTree as ET
 from PyQt6.QtWidgets import (
@@ -12,14 +13,35 @@ from PyQt6.QtWidgets import (
     QTreeWidgetItem, QPushButton, QSplitter, QLabel, QStackedWidget,
     QMessageBox, QInputDialog, QFileDialog, QCheckBox, QSizePolicy
 )
-from PyQt6.QtCore import pyqtSignal, Qt, QProcess
-from PyQt6.QtGui import QFont, QPainter, QPen, QColor, QPainterPath
+from PyQt6.QtCore import pyqtSignal, Qt, QProcess, QFileSystemWatcher
+from PyQt6.QtGui import QFont, QPainter, QPen, QColor, QPainterPath, QBrush
+from PyQt6.QtWidgets import QStyledItemDelegate
 from models.polygon_config import (
     PolygonSourceType, PolygonType, RegularPolygonParams,
     FileSource, PolygonSetDef, PolygonSetLibrary
 )
+from models.shape_config import ShapeDef, ShapeSet, ShapeSourceType
+from models.sprite_config import SpriteDef, SpriteSet
+from models.subdivision_config import SubdivisionParams, SubdivisionParamsSet, SubdivisionType
+from models.rendering import Renderer, RendererSet
+from models.constants import RenderMode
 from file_io.regular_polygon_io import RegularPolygonIO
 from ui.regular_polygon_dialog import RegularPolygonDialog
+
+_COL_ORANGE = QColor("#CC6600")   # editing-only (layers manifest / non-usable layer files)
+_COL_GREEN  = QColor("#1A6B1A")   # usable by Loom
+_COL_SEL_GREEN = "#1A6B1A"        # CSS string for selected convenience-combo text
+
+
+class _FilenameDelegate(QStyledItemDelegate):
+    """Item delegate that forces ForegroundRole colour rendering on macOS native combos."""
+
+    def initStyleOption(self, option, index):
+        super().initStyleOption(option, index)
+        brush = index.data(Qt.ItemDataRole.ForegroundRole)
+        if brush is not None:
+            color = brush.color() if hasattr(brush, 'color') else brush
+            option.palette.setColor(option.palette.ColorRole.Text, color)
 
 BEZIER_JAR = "/Users/broganbunt/Loom_2026/bezier/out/artifacts/Bezier_jar/Bezier.jar"
 BEZIER_WORKING_DIR = "/Users/broganbunt/Loom_2026/bezier"
@@ -253,6 +275,12 @@ class PolygonTab(QWidget):
     """Tab widget for editing polygon configuration."""
 
     modified = pyqtSignal()
+    shapeLibraryChanged    = pyqtSignal()
+    subdivisionChanged     = pyqtSignal()
+    spriteLibraryChanged   = pyqtSignal()
+    rendererLibraryChanged = pyqtSignal()
+    newShapeCreated        = pyqtSignal(str, str)   # (set_name, shape_name)
+    newSpriteCreated       = pyqtSignal(str, str)   # (set_name, sprite_name)
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -266,8 +294,17 @@ class PolygonTab(QWidget):
         self._pre_launch_files: set = set()
         self._shape_library = None
         self._sprite_library = None
+        self._subdivision_collection = None
+        self._renderer_library = None
         self._pre_edit_topology = None  # (poly_count, vert_count) snapshot before Bezier launch
         self._edit_file_path: str = ""  # path of file being edited in Bezier
+        self._conv_sub_group = None
+        self._conv_shape_group = None
+        self._conv_sprite_group = None
+        self._conv_render_group = None
+
+        self._fs_watcher = QFileSystemWatcher()
+        self._fs_watcher.directoryChanged.connect(self._on_dir_changed)
 
         self._setup_ui()
         self._refresh_list()
@@ -407,8 +444,10 @@ class PolygonTab(QWidget):
         # Filename as dropdown populated from polygonSets directory
         self.filename_combo = QComboBox()
         self.filename_combo.setEditable(True)  # Allow custom entry if file not in list
+        self.filename_combo.setItemDelegate(_FilenameDelegate(self.filename_combo))
         self.filename_combo.currentTextChanged.connect(self._on_modified)
         self.filename_combo.currentTextChanged.connect(self._update_preview)
+        self.filename_combo.currentTextChanged.connect(lambda _: self._update_convenience_borders())
         form.addRow("Filename:", self.filename_combo)
 
         # Edit and Refresh buttons
@@ -443,8 +482,161 @@ class PolygonTab(QWidget):
         preview_layout.addWidget(self.preview_widget)
         layout.addWidget(preview_group)
 
+        # ── Convenience panel ──────────────────────────────────────────────
+        qs_label = QLabel("Quick Setup")
+        qs_label.setStyleSheet("font-weight: bold; margin-top: 4px;")
+        layout.addWidget(qs_label)
+        layout.addWidget(self._create_convenience_panel())
+
         layout.addStretch()
         return widget
+
+    def _create_convenience_panel(self) -> QWidget:
+        """Build the sequential workflow panel (horizontal layout).
+
+        Row 1: Subdivision | Shapes | Sprites
+        Row 2: Rendering
+        """
+        container = QWidget()
+        outer = QVBoxLayout(container)
+        outer.setContentsMargins(0, 0, 0, 0)
+        outer.setSpacing(4)
+
+        # ── Row 1: Subdivision | Shapes | Sprites ──────────────────────────
+        row1 = QHBoxLayout()
+        row1.setSpacing(4)
+
+        # Subdivision group
+        sub_group = QGroupBox("Subdivision")
+        self._conv_sub_group = sub_group
+        sub_layout = QVBoxLayout(sub_group)
+        sub_layout.setContentsMargins(4, 4, 4, 4)
+        make_sub_btn = QPushButton("Make Subdivision Set")
+        make_sub_btn.clicked.connect(self._on_conv_make_subdivision_set)
+        sub_layout.addWidget(make_sub_btn)
+        sub_layout.addStretch()
+        row1.addWidget(sub_group)
+
+        # Shapes group
+        shape_group = QGroupBox("Shapes")
+        self._conv_shape_group = shape_group
+        sg_layout = QVBoxLayout(shape_group)
+        sg_layout.setContentsMargins(4, 4, 4, 4)
+        sg_layout.setSpacing(4)
+        srow = QHBoxLayout()
+        srow.addWidget(QLabel("Set:"))
+        self.conv_shape_set_combo = QComboBox()
+        self.conv_shape_set_combo.setMinimumWidth(80)
+        self.conv_shape_set_combo.currentIndexChanged.connect(
+            lambda: self._update_conv_combo_style(self.conv_shape_set_combo))
+        srow.addWidget(self.conv_shape_set_combo, 1)
+        add_shape_set_btn = QPushButton("+ Set")
+        add_shape_set_btn.setMaximumWidth(48)
+        add_shape_set_btn.clicked.connect(self._on_conv_add_shape_set)
+        srow.addWidget(add_shape_set_btn)
+        sg_layout.addLayout(srow)
+        make_shape_btn = QPushButton("Make Shape")
+        make_shape_btn.clicked.connect(self._on_conv_make_shape)
+        sg_layout.addWidget(make_shape_btn)
+        sg_layout.addStretch()
+        row1.addWidget(shape_group)
+
+        # Sprites group
+        sprite_group = QGroupBox("Sprites")
+        self._conv_sprite_group = sprite_group
+        sprite_layout = QVBoxLayout(sprite_group)
+        sprite_layout.setContentsMargins(4, 4, 4, 4)
+        sprite_layout.setSpacing(4)
+        sprow = QHBoxLayout()
+        sprow.addWidget(QLabel("Set:"))
+        self.conv_sprite_set_combo = QComboBox()
+        self.conv_sprite_set_combo.setMinimumWidth(80)
+        self.conv_sprite_set_combo.currentIndexChanged.connect(
+            lambda: self._update_conv_combo_style(self.conv_sprite_set_combo))
+        sprow.addWidget(self.conv_sprite_set_combo, 1)
+        add_sprite_set_btn = QPushButton("+ Set")
+        add_sprite_set_btn.setMaximumWidth(48)
+        add_sprite_set_btn.clicked.connect(self._on_conv_add_sprite_set)
+        sprow.addWidget(add_sprite_set_btn)
+        sprite_layout.addLayout(sprow)
+        make_sprite_btn = QPushButton("Make Sprite")
+        make_sprite_btn.clicked.connect(self._on_conv_make_sprite)
+        sprite_layout.addWidget(make_sprite_btn)
+        sprite_layout.addStretch()
+        row1.addWidget(sprite_group)
+
+        outer.addLayout(row1)
+
+        # ── Row 2: Rendering ───────────────────────────────────────────────
+        render_group = QGroupBox("Rendering")
+        self._conv_render_group = render_group
+        rlay = QHBoxLayout(render_group)
+        rlay.setContentsMargins(4, 4, 4, 4)
+        rlay.setSpacing(6)
+        rlay.addWidget(QLabel("Set:"))
+        self.conv_renderer_set_combo = QComboBox()
+        self.conv_renderer_set_combo.setMinimumWidth(80)
+        self.conv_renderer_set_combo.currentIndexChanged.connect(
+            lambda: self._update_conv_combo_style(self.conv_renderer_set_combo))
+        rlay.addWidget(self.conv_renderer_set_combo, 1)
+        add_renderer_set_btn = QPushButton("+ Set")
+        add_renderer_set_btn.setMaximumWidth(48)
+        add_renderer_set_btn.clicked.connect(self._on_conv_add_renderer_set)
+        rlay.addWidget(add_renderer_set_btn)
+        rlay.addWidget(QLabel("Mode:"))
+        self.conv_mode_combo = QComboBox()
+        for mode in RenderMode:
+            self.conv_mode_combo.addItem(mode.name, mode)
+        self.conv_mode_combo.setCurrentIndex(2)  # FILLED
+        rlay.addWidget(self.conv_mode_combo)
+        make_renderer_btn = QPushButton("Make Renderer")
+        make_renderer_btn.clicked.connect(self._on_conv_make_renderer)
+        rlay.addWidget(make_renderer_btn)
+        outer.addWidget(render_group)
+
+        return container
+
+    _CONV_GREEN_BORDER = (
+        "QGroupBox { border: 2px solid #1A6B1A; border-radius: 4px; "
+        "margin-top: 6px; padding-top: 4px; } "
+        "QGroupBox::title { subcontrol-origin: margin; padding: 0 3px; }"
+    )
+
+    def _update_convenience_borders(self) -> None:
+        """Apply green border to convenience groups whose workflow step is done."""
+        groups = (self._conv_sub_group, self._conv_shape_group,
+                  self._conv_sprite_group, self._conv_render_group)
+        if any(g is None for g in groups):
+            return
+        root = self._convenience_root()
+        if not root:
+            for g in groups:
+                g.setStyleSheet("")
+            return
+        shape_name = f"{root}_shape"
+
+        sub_done = bool(self._subdivision_collection and any(
+            ps.name == f"{root}_Subdivide"
+            for ps in getattr(self._subdivision_collection, 'params_sets', [])))
+
+        shape_done = bool(self._shape_library and any(
+            any(s.name == shape_name for s in ss.shapes)
+            for ss in getattr(self._shape_library, 'shape_sets', [])))
+
+        sprite_done = bool(self._sprite_library and any(
+            any(getattr(sp, 'shape_name', '') == shape_name for sp in ss.sprites)
+            for ss in getattr(self._sprite_library, 'sprite_sets', [])))
+
+        renderer_name = f"{root}_renderer"
+        render_done = bool(self._renderer_library and any(
+            any(r.name == renderer_name for r in rs.renderers)
+            for rs in getattr(self._renderer_library, 'renderer_sets', [])))
+
+        gs = self._CONV_GREEN_BORDER
+        self._conv_sub_group.setStyleSheet(gs if sub_done else "")
+        self._conv_shape_group.setStyleSheet(gs if shape_done else "")
+        self._conv_sprite_group.setStyleSheet(gs if sprite_done else "")
+        self._conv_render_group.setStyleSheet(gs if render_done else "")
 
     def _create_regular_editor(self) -> QWidget:
         """Create the regular polygon parameters editor widget."""
@@ -1063,11 +1255,291 @@ class PolygonTab(QWidget):
         """Set the shape library used to compute per-polygon-set shape usage counts."""
         self._shape_library = library
         self._refresh_list()
+        self._refresh_convenience_combos()
 
     def set_sprite_library(self, library) -> None:
         """Set the sprite library used to compute per-polygon-set sprite usage counts."""
         self._sprite_library = library
         self._refresh_list()
+        self._refresh_convenience_combos()
+
+    def set_subdivision_collection(self, coll) -> None:
+        self._subdivision_collection = coll
+        self._refresh_convenience_combos()
+
+    def set_renderer_library(self, lib) -> None:
+        self._renderer_library = lib
+        self._refresh_convenience_combos()
+
+    # ── Auto-refresh (QFileSystemWatcher) ─────────────────────────────────
+
+    def _on_dir_changed(self, path: str) -> None:
+        self._refresh_file_list()
+        self._refresh_list()
+
+    # ── File colour helper ─────────────────────────────────────────────────
+
+    def _file_color(self, filename: str) -> QColor:
+        """Return display colour for a file in the polygon combo/tree.
+
+        Polygon rules:
+          *.layers.xml          → orange (manifest, not Loom-usable)
+          *_layer_N.xml         → green  (usable polygon-set layer file)
+          other *.xml           → green
+        """
+        if filename.lower().endswith('.layers.xml'):
+            return _COL_ORANGE
+        return _COL_GREEN
+
+    # ── Convenience panel helpers ──────────────────────────────────────────
+
+    def _convenience_root(self) -> str:
+        """Root name from selected filename, stripping extension and _layer_N."""
+        f = self.filename_combo.currentText()
+        if not f:
+            return ""
+        stem = f
+        for ext in ('.layers.xml', '.xml'):
+            if stem.lower().endswith(ext):
+                stem = stem[:-len(ext)]
+                break
+        return re.sub(r'_layer_\d+$', '', stem, flags=re.IGNORECASE)
+
+    def _update_conv_combo_style(self, combo: QComboBox) -> None:
+        """Show green text when a set is selected, default otherwise."""
+        if combo.currentText():
+            combo.setStyleSheet(f"QComboBox {{ color: {_COL_SEL_GREEN}; }}")
+        else:
+            combo.setStyleSheet("")
+
+    def _refresh_convenience_combos(self) -> None:
+        if not hasattr(self, 'conv_shape_set_combo'):
+            return
+        shape_sel = self.conv_shape_set_combo.currentText()
+        sprite_sel = self.conv_sprite_set_combo.currentText()
+        renderer_sel = self.conv_renderer_set_combo.currentText()
+        self.conv_shape_set_combo.blockSignals(True)
+        self.conv_sprite_set_combo.blockSignals(True)
+        self.conv_renderer_set_combo.blockSignals(True)
+        try:
+            self.conv_shape_set_combo.clear()
+            if self._shape_library:
+                for s in self._shape_library.shape_sets:
+                    self.conv_shape_set_combo.addItem(s.name)
+            self.conv_sprite_set_combo.clear()
+            if self._sprite_library:
+                for s in self._sprite_library.sprite_sets:
+                    self.conv_sprite_set_combo.addItem(s.name)
+            self.conv_renderer_set_combo.clear()
+            if self._renderer_library:
+                for rs in self._renderer_library.renderer_sets:
+                    self.conv_renderer_set_combo.addItem(rs.name)
+        finally:
+            self.conv_shape_set_combo.blockSignals(False)
+            self.conv_sprite_set_combo.blockSignals(False)
+            self.conv_renderer_set_combo.blockSignals(False)
+        for combo, sel in [
+            (self.conv_shape_set_combo, shape_sel),
+            (self.conv_sprite_set_combo, sprite_sel),
+            (self.conv_renderer_set_combo, renderer_sel),
+        ]:
+            if sel:
+                idx = combo.findText(sel)
+                if idx >= 0:
+                    combo.setCurrentIndex(idx)
+            self._update_conv_combo_style(combo)
+
+    def _on_conv_add_shape_set(self) -> None:
+        root = self._convenience_root()
+        suggestion = f"{root}_polygonSet" if root else "polygonSet"
+        name, ok = QInputDialog.getText(self, "Add Shape Set", "Name:", text=suggestion)
+        if not ok or not name.strip():
+            return
+        name = name.strip()
+        if self._shape_library is None:
+            QMessageBox.warning(self, "No Shape Library", "Shape library not available.")
+            return
+        if any(s.name == name for s in self._shape_library.shape_sets):
+            QMessageBox.warning(self, "Duplicate", f"Shape set '{name}' already exists.")
+            return
+        self._shape_library.add(ShapeSet(name=name))
+        self._refresh_convenience_combos()
+        idx = self.conv_shape_set_combo.findText(name)
+        if idx >= 0:
+            self.conv_shape_set_combo.setCurrentIndex(idx)
+        self.shapeLibraryChanged.emit()
+        self.modified.emit()
+
+    def _on_conv_make_shape(self) -> None:
+        root = self._convenience_root()
+        if not root:
+            QMessageBox.warning(self, "No File", "Select a polygon file first.")
+            return
+        set_name = self.conv_shape_set_combo.currentText()
+        if not set_name or self._shape_library is None:
+            QMessageBox.warning(self, "No Shape Set", "Select or create a shape set first.")
+            return
+        shape_set = next((s for s in self._shape_library.shape_sets if s.name == set_name), None)
+        if shape_set is None:
+            return
+        name = f"{root}_shape"
+        if any(s.name == name for s in shape_set.shapes):
+            QMessageBox.warning(self, "Duplicate", f"Shape '{name}' already exists in '{set_name}'.")
+            return
+        # Use the currently-selected polygon set name from the library list
+        poly_set_name = ""
+        if self._current_set:
+            poly_set_name = self._current_set.name
+        elif self._library.polygon_sets:
+            fname = self.filename_combo.currentText()
+            for ps in self._library.polygon_sets:
+                if ps.file_source and ps.file_source.filename == fname:
+                    poly_set_name = ps.name
+                    break
+        # Auto-link to a subdivision set if one was created for this file
+        sub_set_name = ""
+        if self._subdivision_collection:
+            candidate = f"{root}_Subdivide"
+            if self._subdivision_collection.get_params_set(candidate):
+                sub_set_name = candidate
+        shape_set.add(ShapeDef(
+            name=name,
+            source_type=ShapeSourceType.POLYGON_SET,
+            polygon_set_name=poly_set_name,
+            subdivision_params_set_name=sub_set_name,
+        ))
+        self.newShapeCreated.emit(set_name, name)
+        self.shapeLibraryChanged.emit()
+        self.modified.emit()
+        self._update_convenience_borders()
+
+    def _on_conv_make_subdivision_set(self) -> None:
+        root = self._convenience_root()
+        if not root:
+            QMessageBox.warning(self, "No File", "Select a polygon file first.")
+            return
+        if self._subdivision_collection is None:
+            QMessageBox.warning(self, "No Subdivision Collection", "Subdivision collection not available.")
+            return
+        set_name = f"{root}_Subdivide"
+        if self._subdivision_collection.get_params_set(set_name):
+            QMessageBox.warning(self, "Duplicate", f"Subdivision set '{set_name}' already exists.")
+            return
+        ps = SubdivisionParamsSet(name=set_name)
+        ps.add_params(SubdivisionParams(name="A", subdivision_type=SubdivisionType.QUAD, enabled=True))
+        self._subdivision_collection.add_params_set(ps)
+        self.subdivisionChanged.emit()
+        self.modified.emit()
+        self._update_convenience_borders()
+
+    def _on_conv_add_sprite_set(self) -> None:
+        root = self._convenience_root()
+        suggestion = f"{root}_sprite" if root else "sprite"
+        name, ok = QInputDialog.getText(self, "Add Sprite Set", "Name:", text=suggestion)
+        if not ok or not name.strip():
+            return
+        name = name.strip()
+        if self._sprite_library is None:
+            QMessageBox.warning(self, "No Sprite Library", "Sprite library not available.")
+            return
+        if any(s.name == name for s in self._sprite_library.sprite_sets):
+            QMessageBox.warning(self, "Duplicate", f"Sprite set '{name}' already exists.")
+            return
+        self._sprite_library.add(SpriteSet(name=name))
+        self._refresh_convenience_combos()
+        idx = self.conv_sprite_set_combo.findText(name)
+        if idx >= 0:
+            self.conv_sprite_set_combo.setCurrentIndex(idx)
+        self.spriteLibraryChanged.emit()
+        self.modified.emit()
+
+    def _on_conv_make_sprite(self) -> None:
+        root = self._convenience_root()
+        if not root:
+            QMessageBox.warning(self, "No File", "Select a polygon file first.")
+            return
+        set_name = self.conv_sprite_set_combo.currentText()
+        if not set_name or self._sprite_library is None:
+            QMessageBox.warning(self, "No Sprite Set", "Select or create a sprite set first.")
+            return
+        sprite_set = next((s for s in self._sprite_library.sprite_sets if s.name == set_name), None)
+        if sprite_set is None:
+            return
+        count = len(sprite_set.sprites) + 1
+        name = f"{set_name}_{count:03d}"
+        while any(s.name == name for s in sprite_set.sprites):
+            count += 1
+            name = f"{set_name}_{count:03d}"
+        shape_set_name = self.conv_shape_set_combo.currentText()
+        shape_name = ""
+        if shape_set_name and self._shape_library:
+            ss = next((s for s in self._shape_library.shape_sets if s.name == shape_set_name), None)
+            if ss and any(sh.name == f"{root}_shape" for sh in ss.shapes):
+                shape_name = f"{root}_shape"
+        sprite_set.add(SpriteDef(
+            name=name,
+            shape_set_name=shape_set_name,
+            shape_name=shape_name,
+            renderer_set_name="DefaultSet",
+        ))
+        self.newSpriteCreated.emit(set_name, name)
+        self.spriteLibraryChanged.emit()
+        self.modified.emit()
+        self._update_convenience_borders()
+
+    def _on_conv_add_renderer_set(self) -> None:
+        root = self._convenience_root()
+        suggestion = f"{root}_renderSet" if root else "renderSet"
+        name, ok = QInputDialog.getText(self, "Add Renderer Set", "Name:", text=suggestion)
+        if not ok or not name.strip():
+            return
+        name = name.strip()
+        if self._renderer_library is None:
+            QMessageBox.warning(self, "No Renderer Library", "Renderer library not available.")
+            return
+        if any(rs.name == name for rs in self._renderer_library.renderer_sets):
+            QMessageBox.warning(self, "Duplicate", f"Renderer set '{name}' already exists.")
+            return
+        self._renderer_library.add_renderer_set(RendererSet(name=name))
+        self._refresh_convenience_combos()
+        idx = self.conv_renderer_set_combo.findText(name)
+        if idx >= 0:
+            self.conv_renderer_set_combo.setCurrentIndex(idx)
+        self.rendererLibraryChanged.emit()
+        self.modified.emit()
+
+    def _on_conv_make_renderer(self) -> None:
+        root = self._convenience_root()
+        if not root:
+            QMessageBox.warning(self, "No File", "Select a polygon file first.")
+            return
+        rs_name = self.conv_renderer_set_combo.currentText()
+        if not rs_name or self._renderer_library is None:
+            QMessageBox.warning(self, "No Renderer Set", "Select or create a renderer set first.")
+            return
+        rs = next((r for r in self._renderer_library.renderer_sets if r.name == rs_name), None)
+        if rs is None:
+            return
+        name = f"{root}_renderer"
+        if any(r.name == name for r in rs.renderers):
+            QMessageBox.warning(self, "Duplicate", f"Renderer '{name}' already exists in '{rs_name}'.")
+            return
+        mode = self.conv_mode_combo.currentData()
+        rs.add_renderer(Renderer(name=name, mode=mode))
+        # Update any sprite whose shape points back to this root to use this renderer set
+        shape_name = f"{root}_shape"
+        if self._sprite_library:
+            updated = False
+            for sprite_set in self._sprite_library.sprite_sets:
+                for sprite in sprite_set.sprites:
+                    if getattr(sprite, 'shape_name', '') == shape_name:
+                        sprite.renderer_set_name = rs_name
+                        updated = True
+            if updated:
+                self.spriteLibraryChanged.emit()
+        self.rendererLibraryChanged.emit()
+        self.modified.emit()
+        self._update_convenience_borders()
 
     def _compute_usage_counts(self) -> dict:
         """Return {polygon_set_name: (shape_count, sprite_count)} for all polygon sets."""
@@ -1108,6 +1580,10 @@ class PolygonTab(QWidget):
     def set_polygon_sets_directory(self, directory: str) -> None:
         """Set the directory to scan for polygon set files."""
         self._polygon_sets_dir = directory
+        if self._fs_watcher.directories():
+            self._fs_watcher.removePaths(self._fs_watcher.directories())
+        if directory and os.path.isdir(directory):
+            self._fs_watcher.addPath(directory)
         self._refresh_file_list()
         self._reconcile_polygon_sets()
 
@@ -1203,7 +1679,10 @@ class PolygonTab(QWidget):
                             if f.lower().endswith(extensions) or '.' not in f:
                                 files.append(f)
                     files.sort()
-                    self.filename_combo.addItems(files)
+                    for i, f in enumerate(files):
+                        self.filename_combo.addItem(f)
+                        self.filename_combo.setItemData(
+                            i, QBrush(self._file_color(f)), Qt.ItemDataRole.ForegroundRole)
                 except OSError:
                     pass  # Directory not accessible
 
@@ -1233,26 +1712,26 @@ class PolygonTab(QWidget):
     def _add_xml_headers(self, filepath: str) -> None:
         """Add XML declaration and DOCTYPE lines required by Bezier's XOM parser.
         Also ensures the DTD file exists at the expected relative path."""
+        # Always ensure DTD is available at ../dtd/ relative to the XML file
+        # (even if the file already has <?xml from Bezier's own XOM Serializer save)
+        xml_dir = os.path.dirname(filepath)
+        dtd_dir = os.path.join(os.path.dirname(xml_dir), "dtd")
+        dtd_dest = os.path.join(dtd_dir, "polygonSet.dtd")
+        if not os.path.isfile(dtd_dest):
+            dtd_source = os.path.join(BEZIER_WORKING_DIR, "resources", "dtd", "polygonSet.dtd")
+            if os.path.isfile(dtd_source):
+                os.makedirs(dtd_dir, exist_ok=True)
+                shutil.copy2(dtd_source, dtd_dest)
+
         with open(filepath, 'r', encoding='utf-8') as f:
             content = f.read()
-        # Don't add if already present
+        # Don't add headers if already present
         if content.lstrip().startswith('<?xml'):
             return
         header = ('<?xml version="1.0" encoding="ISO-8859-1"?>\n'
                   '<!DOCTYPE polygonSet SYSTEM "../dtd/polygonSet.dtd">\n')
         with open(filepath, 'w', encoding='utf-8') as f:
             f.write(header + content)
-
-        # Ensure DTD is available at ../dtd/ relative to the XML file
-        xml_dir = os.path.dirname(filepath)
-        dtd_dir = os.path.join(os.path.dirname(xml_dir), "dtd")
-        dtd_dest = os.path.join(dtd_dir, "polygonSet.dtd")
-        if not os.path.isfile(dtd_dest):
-            # Copy from Bezier's resources
-            dtd_source = os.path.join(BEZIER_WORKING_DIR, "resources", "dtd", "polygonSet.dtd")
-            if os.path.isfile(dtd_source):
-                os.makedirs(dtd_dir, exist_ok=True)
-                shutil.copy2(dtd_source, dtd_dest)
 
     def _add_xml_headers_layerset(self, filepath: str) -> None:
         """Add XML declaration for a .layers.xml manifest or layer XML file.

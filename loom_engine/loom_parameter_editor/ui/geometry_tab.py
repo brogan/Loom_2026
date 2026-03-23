@@ -10,6 +10,12 @@ from .point_tab import PointTab
 
 class GeometryTab(QWidget):
     modified = pyqtSignal()
+    shapeLibraryChanged    = pyqtSignal()
+    subdivisionChanged     = pyqtSignal()
+    spriteLibraryChanged   = pyqtSignal()
+    rendererLibraryChanged = pyqtSignal()
+    newShapeCreated        = pyqtSignal(str, str)   # (set_name, shape_name)
+    newSpriteCreated       = pyqtSignal(str, str)   # (set_name, sprite_name)
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -30,6 +36,14 @@ class GeometryTab(QWidget):
         self.polygon_tab.modified.connect(self.modified)
         self.open_curve_tab.modified.connect(self.modified)
         self.point_tab.modified.connect(self.modified)
+
+        for tab in (self.polygon_tab, self.open_curve_tab, self.point_tab):
+            tab.shapeLibraryChanged.connect(self.shapeLibraryChanged)
+            tab.subdivisionChanged.connect(self.subdivisionChanged)
+            tab.spriteLibraryChanged.connect(self.spriteLibraryChanged)
+            tab.rendererLibraryChanged.connect(self.rendererLibraryChanged)
+            tab.newShapeCreated.connect(self.newShapeCreated)
+            tab.newSpriteCreated.connect(self.newSpriteCreated)
 
     # ── Directory setters ─────────────────────────────────────────────────────
 
@@ -78,10 +92,24 @@ class GeometryTab(QWidget):
     def create_default_point_library(self):
         return self.point_tab.create_default_library()
 
-    # ── Shape / Sprite cross-refs (used by main_window for polygon counts) ────
+    # ── Shape / Sprite cross-refs ─────────────────────────────────────────────
 
     def set_shape_library(self, lib):
-        self.polygon_tab.set_shape_library(lib)
+        for tab in (self.polygon_tab, self.open_curve_tab, self.point_tab):
+            if hasattr(tab, 'set_shape_library'):
+                tab.set_shape_library(lib)
 
     def set_sprite_library(self, lib):
-        self.polygon_tab.set_sprite_library(lib)
+        for tab in (self.polygon_tab, self.open_curve_tab, self.point_tab):
+            if hasattr(tab, 'set_sprite_library'):
+                tab.set_sprite_library(lib)
+
+    def set_subdivision_collection(self, coll):
+        for tab in (self.polygon_tab, self.open_curve_tab, self.point_tab):
+            if hasattr(tab, 'set_subdivision_collection'):
+                tab.set_subdivision_collection(coll)
+
+    def set_renderer_library(self, lib):
+        for tab in (self.polygon_tab, self.open_curve_tab, self.point_tab):
+            if hasattr(tab, 'set_renderer_library'):
+                tab.set_renderer_library(lib)

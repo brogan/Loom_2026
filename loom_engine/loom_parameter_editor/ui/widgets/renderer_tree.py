@@ -45,6 +45,7 @@ class RendererTreeWidget(QWidget):
         self.tree.headerItem().setToolTip(5, "FC = Fill Change")
         self.tree.itemSelectionChanged.connect(self._on_selection_changed)
         self.tree.itemChanged.connect(self._on_item_check_changed)
+        self.tree.setStyleSheet("QTreeWidget::indicator { width: 13px; height: 13px; }")
         layout.addWidget(self.tree)
 
         # Set buttons row 1: add/remove
@@ -57,16 +58,6 @@ class RendererTreeWidget(QWidget):
         set_buttons.addWidget(self.remove_set_btn)
         layout.addLayout(set_buttons)
 
-        # Set buttons row 2: rename/duplicate
-        set_buttons2 = QHBoxLayout()
-        self.rename_set_btn = QPushButton("Rename Set")
-        self.rename_set_btn.clicked.connect(self._rename_set)
-        self.duplicate_set_btn = QPushButton("Duplicate Set")
-        self.duplicate_set_btn.clicked.connect(self._duplicate_set)
-        set_buttons2.addWidget(self.rename_set_btn)
-        set_buttons2.addWidget(self.duplicate_set_btn)
-        layout.addLayout(set_buttons2)
-
         # Renderer buttons row 1: add/remove
         renderer_buttons = QHBoxLayout()
         self.add_renderer_btn = QPushButton("+ Renderer")
@@ -77,15 +68,15 @@ class RendererTreeWidget(QWidget):
         renderer_buttons.addWidget(self.remove_renderer_btn)
         layout.addLayout(renderer_buttons)
 
-        # Renderer buttons row 2: rename/duplicate
-        renderer_buttons2 = QHBoxLayout()
-        self.rename_renderer_btn = QPushButton("Rename Renderer")
-        self.rename_renderer_btn.clicked.connect(self._rename_renderer)
-        self.duplicate_renderer_btn = QPushButton("Duplicate Renderer")
-        self.duplicate_renderer_btn.clicked.connect(self._duplicate_renderer)
-        renderer_buttons2.addWidget(self.rename_renderer_btn)
-        renderer_buttons2.addWidget(self.duplicate_renderer_btn)
-        layout.addLayout(renderer_buttons2)
+        # Shared rename/duplicate buttons
+        rename_dup_buttons = QHBoxLayout()
+        self.rename_btn = QPushButton("Rename")
+        self.rename_btn.clicked.connect(self._rename_selected)
+        self.duplicate_btn = QPushButton("Duplicate")
+        self.duplicate_btn.clicked.connect(self._duplicate_selected)
+        rename_dup_buttons.addWidget(self.rename_btn)
+        rename_dup_buttons.addWidget(self.duplicate_btn)
+        layout.addLayout(rename_dup_buttons)
 
         # Reorder buttons
         reorder_buttons = QHBoxLayout()
@@ -175,12 +166,10 @@ class RendererTreeWidget(QWidget):
 
         self.add_set_btn.setEnabled(has_library)
         self.remove_set_btn.setEnabled(has_selection and is_set_selected)
-        self.rename_set_btn.setEnabled(has_selection and is_set_selected)
-        self.duplicate_set_btn.setEnabled(has_selection and is_set_selected)
         self.add_renderer_btn.setEnabled(has_selection)
         self.remove_renderer_btn.setEnabled(has_selection and is_renderer_selected)
-        self.rename_renderer_btn.setEnabled(has_selection and is_renderer_selected)
-        self.duplicate_renderer_btn.setEnabled(has_selection and is_renderer_selected)
+        self.rename_btn.setEnabled(has_selection)
+        self.duplicate_btn.setEnabled(has_selection)
         self.move_up_btn.setEnabled(has_selection)
         self.move_down_btn.setEnabled(has_selection)
 
@@ -271,116 +260,93 @@ class RendererTreeWidget(QWidget):
             self._refresh_tree()
             self.libraryModified.emit()
 
-    def _rename_set(self) -> None:
-        set_name, _ = self._get_selection()
+    def _rename_selected(self) -> None:
+        set_name, renderer_name = self._get_selection()
         if not set_name or not self._library:
             return
-
         rs = self._library.get_renderer_set(set_name)
         if not rs:
             return
-
-        new_name, ok = QInputDialog.getText(
-            self, "Rename Renderer Set", "New name:", text=set_name
-        )
-        if ok and new_name and new_name != set_name:
-            if self._library.get_renderer_set(new_name):
-                QMessageBox.warning(self, "Error", f"A set named '{new_name}' already exists.")
+        if renderer_name is None:
+            # Rename the set
+            new_name, ok = QInputDialog.getText(
+                self, "Rename Renderer Set", "New name:", text=set_name
+            )
+            if ok and new_name and new_name != set_name:
+                if self._library.get_renderer_set(new_name):
+                    QMessageBox.warning(self, "Error", f"A set named '{new_name}' already exists.")
+                    return
+                rs.name = new_name
+                self._refresh_tree()
+                self.libraryModified.emit()
+        else:
+            # Rename the renderer
+            renderer = rs.get_renderer(renderer_name)
+            if not renderer:
                 return
-            rs.name = new_name
-            self._refresh_tree()
-            self.libraryModified.emit()
+            new_name, ok = QInputDialog.getText(
+                self, "Rename Renderer", "New name:", text=renderer_name
+            )
+            if ok and new_name and new_name != renderer_name:
+                if rs.get_renderer(new_name):
+                    QMessageBox.warning(self, "Error", f"A renderer named '{new_name}' already exists in this set.")
+                    return
+                if rs.preferred_renderer == renderer_name:
+                    rs.preferred_renderer = new_name
+                renderer.name = new_name
+                self._refresh_tree()
+                self.libraryModified.emit()
 
-    def _duplicate_set(self) -> None:
-        set_name, _ = self._get_selection()
+    def _duplicate_selected(self) -> None:
+        set_name, renderer_name = self._get_selection()
         if not set_name or not self._library:
             return
-
         rs = self._library.get_renderer_set(set_name)
         if not rs:
             return
-
-        # Generate a unique name
-        base_name = f"{set_name}_copy"
-        new_name = base_name
-        counter = 1
-        while self._library.get_renderer_set(new_name):
-            new_name = f"{base_name}_{counter}"
-            counter += 1
-
-        new_name, ok = QInputDialog.getText(
-            self, "Duplicate Renderer Set", "Name for copy:", text=new_name
-        )
-        if ok and new_name:
-            if self._library.get_renderer_set(new_name):
-                QMessageBox.warning(self, "Error", f"A set named '{new_name}' already exists.")
+        if renderer_name is None:
+            # Duplicate the set
+            base_name = f"{set_name}_copy"
+            new_name = base_name
+            counter = 1
+            while self._library.get_renderer_set(new_name):
+                new_name = f"{base_name}_{counter}"
+                counter += 1
+            new_name, ok = QInputDialog.getText(
+                self, "Duplicate Renderer Set", "Name for copy:", text=new_name
+            )
+            if ok and new_name:
+                if self._library.get_renderer_set(new_name):
+                    QMessageBox.warning(self, "Error", f"A set named '{new_name}' already exists.")
+                    return
+                new_set = rs.copy()
+                new_set.name = new_name
+                self._library.add_renderer_set(new_set)
+                self._refresh_tree()
+                self.libraryModified.emit()
+        else:
+            # Duplicate the renderer
+            renderer = rs.get_renderer(renderer_name)
+            if not renderer:
                 return
-            new_set = rs.copy()
-            new_set.name = new_name
-            self._library.add_renderer_set(new_set)
-            self._refresh_tree()
-            self.libraryModified.emit()
-
-    def _rename_renderer(self) -> None:
-        set_name, renderer_name = self._get_selection()
-        if not set_name or not renderer_name or not self._library:
-            return
-
-        rs = self._library.get_renderer_set(set_name)
-        if not rs:
-            return
-
-        renderer = rs.get_renderer(renderer_name)
-        if not renderer:
-            return
-
-        new_name, ok = QInputDialog.getText(
-            self, "Rename Renderer", "New name:", text=renderer_name
-        )
-        if ok and new_name and new_name != renderer_name:
-            if rs.get_renderer(new_name):
-                QMessageBox.warning(self, "Error", f"A renderer named '{new_name}' already exists in this set.")
-                return
-            # Update preferred_renderer if it was the renamed one
-            if rs.preferred_renderer == renderer_name:
-                rs.preferred_renderer = new_name
-            renderer.name = new_name
-            self._refresh_tree()
-            self.libraryModified.emit()
-
-    def _duplicate_renderer(self) -> None:
-        set_name, renderer_name = self._get_selection()
-        if not set_name or not renderer_name or not self._library:
-            return
-
-        rs = self._library.get_renderer_set(set_name)
-        if not rs:
-            return
-
-        renderer = rs.get_renderer(renderer_name)
-        if not renderer:
-            return
-
-        # Generate a unique name
-        base_name = f"{renderer_name}_copy"
-        new_name = base_name
-        counter = 1
-        while rs.get_renderer(new_name):
-            new_name = f"{base_name}_{counter}"
-            counter += 1
-
-        new_name, ok = QInputDialog.getText(
-            self, "Duplicate Renderer", "Name for copy:", text=new_name
-        )
-        if ok and new_name:
-            if rs.get_renderer(new_name):
-                QMessageBox.warning(self, "Error", f"A renderer named '{new_name}' already exists in this set.")
-                return
-            new_renderer = renderer.copy()
-            new_renderer.name = new_name
-            rs.add_renderer(new_renderer)
-            self._refresh_tree()
-            self.libraryModified.emit()
+            base_name = f"{renderer_name}_copy"
+            new_name = base_name
+            counter = 1
+            while rs.get_renderer(new_name):
+                new_name = f"{base_name}_{counter}"
+                counter += 1
+            new_name, ok = QInputDialog.getText(
+                self, "Duplicate Renderer", "Name for copy:", text=new_name
+            )
+            if ok and new_name:
+                if rs.get_renderer(new_name):
+                    QMessageBox.warning(self, "Error", f"A renderer named '{new_name}' already exists in this set.")
+                    return
+                new_renderer = renderer.copy()
+                new_renderer.name = new_name
+                rs.add_renderer(new_renderer)
+                self._refresh_tree()
+                self.libraryModified.emit()
 
     def _move_up(self) -> None:
         self._move(-1)

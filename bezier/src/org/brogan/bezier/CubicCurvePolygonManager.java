@@ -242,6 +242,7 @@ public class CubicCurvePolygonManager {
 		CubicCurveManager newManager = new CubicCurveManager(strokeColor, this);
 		if (layerManager != null) newManager.setLayerId(layerManager.getActiveLayerId());
 		newManager.setAllPoints(pts, strokeColor);
+		newManager.setIsClosed(true);
 		newManager.setCurrentBezierPosition(newManager.getAverageXY());
 		polys.addPolygon(newManager.getCurves());
 		cubicCurveManagers.add(cubicCurveManagers.size() - 1, newManager);

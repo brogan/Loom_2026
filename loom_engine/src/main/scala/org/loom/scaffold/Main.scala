@@ -31,6 +31,10 @@ object Main {
       case "--help" :: _ =>
         printHelp()
 
+      case "--bake-subdivision" :: inputPath :: subdivXmlPath :: setName :: outputPath :: _ =>
+        org.loom.tools.SubdivisionBaker.bake(inputPath, subdivXmlPath, setName, outputPath)
+        System.exit(0)
+
       case Nil =>
         // Default: GUI mode
         runGuiMode()
@@ -138,6 +142,7 @@ object Main {
         |  loom                              Start in GUI mode (project selector)
         |  loom --project <name>             Load project from ~/.loom_projects/
         |  loom --cli <sketch> <config>      Legacy CLI mode (sketches directory)
+        |  loom --bake-subdivision <in> <subdiv.xml> <setName> <out>  Bake subdivision to file
         |  loom --help                       Show this help message
         |
         |Examples:
