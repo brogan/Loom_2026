@@ -46,6 +46,7 @@ class SizeChange:
     max_val: float = 1.0
     increment: float = 0.1
     pause_max: int = 0
+    size_palette: List[float] = field(default_factory=list)
 
     def copy(self) -> 'SizeChange':
         return SizeChange(
@@ -57,7 +58,8 @@ class SizeChange:
             min_val=self.min_val,
             max_val=self.max_val,
             increment=self.increment,
-            pause_max=self.pause_max
+            pause_max=self.pause_max,
+            size_palette=list(self.size_palette)
         )
 
 
@@ -73,6 +75,10 @@ class ColorChange:
     max_color: Color = field(default_factory=lambda: Color(255, 255, 255, 255))
     increment: Color = field(default_factory=lambda: Color(1, 1, 1, 1))
     pause_max: int = 0
+    palette: List[Color] = field(default_factory=list)
+    pause_channel: ColorChannel = ColorChannel.GREEN
+    pause_color_min: Color = field(default_factory=Color)
+    pause_color_max: Color = field(default_factory=Color)
 
     def copy(self) -> 'ColorChange':
         return ColorChange(
@@ -84,16 +90,17 @@ class ColorChange:
             min_color=self.min_color.copy(),
             max_color=self.max_color.copy(),
             increment=self.increment.copy(),
-            pause_max=self.pause_max
+            pause_max=self.pause_max,
+            palette=[c.copy() for c in self.palette],
+            pause_channel=self.pause_channel,
+            pause_color_min=self.pause_color_min.copy(),
+            pause_color_max=self.pause_color_max.copy()
         )
 
 
 @dataclass
 class FillColorChange(ColorChange):
-    """Configuration for fill color animation with additional pause channel settings."""
-    pause_channel: ColorChannel = ColorChannel.GREEN
-    pause_color_min: Color = field(default_factory=Color)
-    pause_color_max: Color = field(default_factory=Color)
+    """Configuration for fill color animation. Uses a dedicated Scala method for dispatch."""
 
     def copy(self) -> 'FillColorChange':
         return FillColorChange(
@@ -106,6 +113,7 @@ class FillColorChange(ColorChange):
             max_color=self.max_color.copy(),
             increment=self.increment.copy(),
             pause_max=self.pause_max,
+            palette=[c.copy() for c in self.palette],
             pause_channel=self.pause_channel,
             pause_color_min=self.pause_color_min.copy(),
             pause_color_max=self.pause_color_max.copy()

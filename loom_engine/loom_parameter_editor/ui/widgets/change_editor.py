@@ -9,6 +9,8 @@ from PyQt6.QtWidgets import (
 from PyQt6.QtCore import pyqtSignal
 from .color_picker import ColorPickerWidget
 from .enum_dropdown import EnumDropdown
+from .palette_editor import PaletteEditorWidget
+from .size_palette_editor import SizePaletteEditorWidget
 from models.rendering import SizeChange, ColorChange, FillColorChange, Color
 from models.constants import ChangeKind, Motion, Cycle, Scale, ColorChannel
 
@@ -18,10 +20,12 @@ class SizeChangeEditor(QGroupBox):
 
     changed = pyqtSignal()
 
-    def __init__(self, title: str, parent=None):
+    def __init__(self, title: str, preview_mode: str = None, parent=None):
+        """preview_mode: 'stroke' or 'point' to enable size palette; None disables palette."""
         super().__init__(title, parent)
         self._change: Optional[SizeChange] = None
         self._updating = False
+        self._has_palette = preview_mode is not None
 
         self.setCheckable(True)
         self.toggled.connect(self._on_enabled_changed)
@@ -32,6 +36,8 @@ class SizeChangeEditor(QGroupBox):
         row1 = QHBoxLayout()
         self.kind_dropdown = EnumDropdown(ChangeKind, "Kind:")
         self.kind_dropdown.valueChanged.connect(self._on_value_changed)
+        if self._has_palette:
+            self.kind_dropdown.valueChanged.connect(self._on_kind_changed)
         row1.addWidget(self.kind_dropdown)
         self.motion_dropdown = EnumDropdown(Motion, "Motion:")
         self.motion_dropdown.valueChanged.connect(self._on_value_changed)
@@ -49,7 +55,9 @@ class SizeChangeEditor(QGroupBox):
         layout.addLayout(row2)
 
         # Min, Max, Increment row
-        row3 = QHBoxLayout()
+        self._min_max_widget = QWidget()
+        row3 = QHBoxLayout(self._min_max_widget)
+        row3.setContentsMargins(0, 0, 0, 0)
         row3.addWidget(QLabel("Min:"))
         self.min_spin = QDoubleSpinBox()
         self.min_spin.setRange(0, 100)
@@ -71,7 +79,14 @@ class SizeChangeEditor(QGroupBox):
         self.inc_spin.setSingleStep(0.1)
         self.inc_spin.valueChanged.connect(self._on_value_changed)
         row3.addWidget(self.inc_spin)
-        layout.addLayout(row3)
+        layout.addWidget(self._min_max_widget)
+
+        # Size palette (only for stroke width / point size editors)
+        if self._has_palette:
+            self.size_palette_editor = SizePaletteEditorWidget(preview_mode)
+            self.size_palette_editor.paletteChanged.connect(self._on_value_changed)
+            layout.addWidget(self.size_palette_editor)
+            self.size_palette_editor.setVisible(False)
 
         # Pause Max row
         row4 = QHBoxLayout()
@@ -82,6 +97,12 @@ class SizeChangeEditor(QGroupBox):
         row4.addWidget(self.pause_max_spin)
         row4.addStretch()
         layout.addLayout(row4)
+
+    def _on_kind_changed(self, kind) -> None:
+        is_palette = kind in (ChangeKind.PAL_SEQ, ChangeKind.PAL_RAN)
+        self._min_max_widget.setVisible(not is_palette)
+        if self._has_palette:
+            self.size_palette_editor.setVisible(is_palette)
 
     def set_change(self, change: SizeChange) -> None:
         self._updating = True
@@ -96,23 +117,30 @@ class SizeChangeEditor(QGroupBox):
         self.max_spin.setValue(change.max_val)
         self.inc_spin.setValue(change.increment)
         self.pause_max_spin.setValue(change.pause_max)
+        if self._has_palette:
+            self.size_palette_editor.set_palette(change.size_palette)
 
         self._updating = False
+        if self._has_palette:
+            self._on_kind_changed(change.kind)
 
     def get_change(self) -> SizeChange:
         if self._change is None:
             return SizeChange()
 
+        kind = self.kind_dropdown.get_value()
+        is_pal = self._has_palette and kind in (ChangeKind.PAL_SEQ, ChangeKind.PAL_RAN)
         return SizeChange(
             enabled=self.isChecked(),
-            kind=self.kind_dropdown.get_value(),
+            kind=kind,
             motion=self.motion_dropdown.get_value(),
             cycle=self.cycle_dropdown.get_value(),
             scale=self.scale_dropdown.get_value(),
             min_val=self.min_spin.value(),
             max_val=self.max_spin.value(),
             increment=self.inc_spin.value(),
-            pause_max=self.pause_max_spin.value()
+            pause_max=self.pause_max_spin.value(),
+            size_palette=self.size_palette_editor.get_palette() if is_pal else []
         )
 
     def _on_enabled_changed(self, enabled: bool) -> None:
@@ -144,6 +172,7 @@ class ColorChangeEditor(QGroupBox):
         row1 = QHBoxLayout()
         self.kind_dropdown = EnumDropdown(ChangeKind, "Kind:")
         self.kind_dropdown.valueChanged.connect(self._on_value_changed)
+        self.kind_dropdown.valueChanged.connect(self._on_kind_changed)
         row1.addWidget(self.kind_dropdown)
         self.motion_dropdown = EnumDropdown(Motion, "Motion:")
         self.motion_dropdown.valueChanged.connect(self._on_value_changed)
@@ -175,6 +204,12 @@ class ColorChangeEditor(QGroupBox):
         self.inc_color_picker.colorChanged.connect(self._on_value_changed)
         layout.addWidget(self.inc_color_picker)
 
+        # Palette editor (shown only for PAL_SEQ / PAL_RAN)
+        self.palette_editor = PaletteEditorWidget()
+        self.palette_editor.paletteChanged.connect(self._on_value_changed)
+        layout.addWidget(self.palette_editor)
+        self.palette_editor.setVisible(False)
+
         # Pause Max row
         row_pause = QHBoxLayout()
         row_pause.addWidget(QLabel("Pause Max:"))
@@ -184,6 +219,27 @@ class ColorChangeEditor(QGroupBox):
         row_pause.addWidget(self.pause_max_spin)
         row_pause.addStretch()
         layout.addLayout(row_pause)
+
+        # Pause channel section (hidden for PAL_*)
+        self._pause_channel_group = QGroupBox("Pause Channel Settings")
+        pause_layout = QVBoxLayout(self._pause_channel_group)
+        self.pause_channel_dropdown = EnumDropdown(ColorChannel, "Pause Channel:")
+        self.pause_channel_dropdown.valueChanged.connect(self._on_value_changed)
+        pause_layout.addWidget(self.pause_channel_dropdown)
+        self.pause_color_min_picker = ColorPickerWidget("Pause Color Min:")
+        self.pause_color_min_picker.colorChanged.connect(self._on_value_changed)
+        pause_layout.addWidget(self.pause_color_min_picker)
+        self.pause_color_max_picker = ColorPickerWidget("Pause Color Max:")
+        self.pause_color_max_picker.colorChanged.connect(self._on_value_changed)
+        pause_layout.addWidget(self.pause_color_max_picker)
+        layout.addWidget(self._pause_channel_group)
+
+    def _on_kind_changed(self, kind) -> None:
+        is_palette = kind in (ChangeKind.PAL_SEQ, ChangeKind.PAL_RAN)
+        for w in (self.min_color_picker, self.max_color_picker, self.inc_color_picker):
+            w.setVisible(not is_palette)
+        self.palette_editor.setVisible(is_palette)
+        self._pause_channel_group.setVisible(not is_palette)
 
     def set_change(self, change: ColorChange) -> None:
         self._updating = True
@@ -197,24 +253,35 @@ class ColorChangeEditor(QGroupBox):
         self.min_color_picker.set_color(change.min_color)
         self.max_color_picker.set_color(change.max_color)
         self.inc_color_picker.set_color(change.increment)
+        self.palette_editor.set_palette(change.palette)
         self.pause_max_spin.setValue(change.pause_max)
+        self.pause_channel_dropdown.set_value(change.pause_channel)
+        self.pause_color_min_picker.set_color(change.pause_color_min)
+        self.pause_color_max_picker.set_color(change.pause_color_max)
 
         self._updating = False
+        self._on_kind_changed(change.kind)
 
     def get_change(self) -> ColorChange:
         if self._change is None:
             return ColorChange()
 
+        kind = self.kind_dropdown.get_value()
+        is_pal = kind in (ChangeKind.PAL_SEQ, ChangeKind.PAL_RAN)
         return ColorChange(
             enabled=self.isChecked(),
-            kind=self.kind_dropdown.get_value(),
+            kind=kind,
             motion=self.motion_dropdown.get_value(),
             cycle=self.cycle_dropdown.get_value(),
             scale=self.scale_dropdown.get_value(),
             min_color=self.min_color_picker.get_color(),
             max_color=self.max_color_picker.get_color(),
             increment=self.inc_color_picker.get_color(),
-            pause_max=self.pause_max_spin.value()
+            pause_max=self.pause_max_spin.value(),
+            palette=self.palette_editor.get_palette() if is_pal else [],
+            pause_channel=self.pause_channel_dropdown.get_value(),
+            pause_color_min=self.pause_color_min_picker.get_color(),
+            pause_color_max=self.pause_color_max_picker.get_color()
         )
 
     def _on_enabled_changed(self, enabled: bool) -> None:
@@ -246,6 +313,7 @@ class FillColorChangeEditor(QGroupBox):
         row1 = QHBoxLayout()
         self.kind_dropdown = EnumDropdown(ChangeKind, "Kind:")
         self.kind_dropdown.valueChanged.connect(self._on_value_changed)
+        self.kind_dropdown.valueChanged.connect(self._on_kind_changed)
         row1.addWidget(self.kind_dropdown)
         self.motion_dropdown = EnumDropdown(Motion, "Motion:")
         self.motion_dropdown.valueChanged.connect(self._on_value_changed)
@@ -277,6 +345,12 @@ class FillColorChangeEditor(QGroupBox):
         self.inc_color_picker.colorChanged.connect(self._on_value_changed)
         layout.addWidget(self.inc_color_picker)
 
+        # Palette editor (shown only for PAL_SEQ / PAL_RAN)
+        self.palette_editor = PaletteEditorWidget()
+        self.palette_editor.paletteChanged.connect(self._on_value_changed)
+        layout.addWidget(self.palette_editor)
+        self.palette_editor.setVisible(False)
+
         # Pause Max row
         row_pause = QHBoxLayout()
         row_pause.addWidget(QLabel("Pause Max:"))
@@ -287,9 +361,9 @@ class FillColorChangeEditor(QGroupBox):
         row_pause.addStretch()
         layout.addLayout(row_pause)
 
-        # Pause channel section
-        pause_group = QGroupBox("Pause Channel Settings")
-        pause_layout = QVBoxLayout(pause_group)
+        # Pause channel section (hidden for PAL_*)
+        self._pause_channel_group = QGroupBox("Pause Channel Settings")
+        pause_layout = QVBoxLayout(self._pause_channel_group)
 
         self.pause_channel_dropdown = EnumDropdown(ColorChannel, "Pause Channel:")
         self.pause_channel_dropdown.valueChanged.connect(self._on_value_changed)
@@ -303,7 +377,14 @@ class FillColorChangeEditor(QGroupBox):
         self.pause_color_max_picker.colorChanged.connect(self._on_value_changed)
         pause_layout.addWidget(self.pause_color_max_picker)
 
-        layout.addWidget(pause_group)
+        layout.addWidget(self._pause_channel_group)
+
+    def _on_kind_changed(self, kind) -> None:
+        is_palette = kind in (ChangeKind.PAL_SEQ, ChangeKind.PAL_RAN)
+        for w in (self.min_color_picker, self.max_color_picker, self.inc_color_picker):
+            w.setVisible(not is_palette)
+        self.palette_editor.setVisible(is_palette)
+        self._pause_channel_group.setVisible(not is_palette)
 
     def set_change(self, change: FillColorChange) -> None:
         self._updating = True
@@ -317,20 +398,24 @@ class FillColorChangeEditor(QGroupBox):
         self.min_color_picker.set_color(change.min_color)
         self.max_color_picker.set_color(change.max_color)
         self.inc_color_picker.set_color(change.increment)
+        self.palette_editor.set_palette(change.palette)
         self.pause_max_spin.setValue(change.pause_max)
         self.pause_channel_dropdown.set_value(change.pause_channel)
         self.pause_color_min_picker.set_color(change.pause_color_min)
         self.pause_color_max_picker.set_color(change.pause_color_max)
 
         self._updating = False
+        self._on_kind_changed(change.kind)
 
     def get_change(self) -> FillColorChange:
         if self._change is None:
             return FillColorChange()
 
+        kind = self.kind_dropdown.get_value()
+        is_pal = kind in (ChangeKind.PAL_SEQ, ChangeKind.PAL_RAN)
         return FillColorChange(
             enabled=self.isChecked(),
-            kind=self.kind_dropdown.get_value(),
+            kind=kind,
             motion=self.motion_dropdown.get_value(),
             cycle=self.cycle_dropdown.get_value(),
             scale=self.scale_dropdown.get_value(),
@@ -338,6 +423,7 @@ class FillColorChangeEditor(QGroupBox):
             max_color=self.max_color_picker.get_color(),
             increment=self.inc_color_picker.get_color(),
             pause_max=self.pause_max_spin.value(),
+            palette=self.palette_editor.get_palette() if is_pal else [],
             pause_channel=self.pause_channel_dropdown.get_value(),
             pause_color_min=self.pause_color_min_picker.get_color(),
             pause_color_max=self.pause_color_max_picker.get_color()
@@ -364,7 +450,7 @@ class ChangeEditorWidget(QWidget):
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
 
-        self.stroke_width_editor = SizeChangeEditor("Stroke Width Change")
+        self.stroke_width_editor = SizeChangeEditor("Stroke Width Change", preview_mode='stroke')
         self.stroke_width_editor.changed.connect(self.changed.emit)
         layout.addWidget(self.stroke_width_editor)
 
@@ -376,7 +462,7 @@ class ChangeEditorWidget(QWidget):
         self.fill_color_editor.changed.connect(self.changed.emit)
         layout.addWidget(self.fill_color_editor)
 
-        self.point_size_editor = SizeChangeEditor("Point Size Change")
+        self.point_size_editor = SizeChangeEditor("Point Size Change", preview_mode='point')
         self.point_size_editor.changed.connect(self.changed.emit)
         layout.addWidget(self.point_size_editor)
 

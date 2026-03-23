@@ -50,9 +50,11 @@ class PostCompletionMode(Enum):
 
 
 class ChangeKind(Enum):
-    """Kind of parameter change - matches Renderer.SEQ, RAN"""
-    SEQ = 0  # Sequential change
-    RAN = 1  # Random change
+    """Kind of parameter change - matches Renderer.SEQ, RAN, PAL_SEQ, PAL_RAN"""
+    SEQ     = 0  # Sequential numeric change
+    RAN     = 1  # Random numeric change
+    PAL_SEQ = 2  # Sequential palette change
+    PAL_RAN = 3  # Random palette change
 
     @classmethod
     def from_string(cls, s: str) -> 'ChangeKind':

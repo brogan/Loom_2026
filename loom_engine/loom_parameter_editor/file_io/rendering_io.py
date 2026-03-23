@@ -210,6 +210,14 @@ class RenderingIO:
         if pause_max_elem is not None and pause_max_elem.text:
             change.pause_max = int(pause_max_elem.text.strip())
 
+        size_pal_elem = elem.find("SizePalette")
+        if size_pal_elem is not None:
+            change.size_palette = [
+                float(e.text.strip())
+                for e in size_pal_elem.findall("PaletteEntry")
+                if e.text
+            ]
+
         return change
 
     @classmethod
@@ -250,26 +258,13 @@ class RenderingIO:
         if pause_max_elem is not None and pause_max_elem.text:
             change.pause_max = int(pause_max_elem.text.strip())
 
-        return change
+        palette_elem = elem.find("Palette")
+        if palette_elem is not None:
+            change.palette = [
+                cls._parse_color(ce)
+                for ce in palette_elem.findall("PaletteColor")
+            ]
 
-    @classmethod
-    def _parse_fill_color_change(cls, elem: etree._Element) -> FillColorChange:
-        """Parse a fill color change configuration with pause channel settings."""
-        # Start with base color change parsing
-        base = cls._parse_color_change(elem)
-        change = FillColorChange(
-            enabled=base.enabled,
-            kind=base.kind,
-            motion=base.motion,
-            cycle=base.cycle,
-            scale=base.scale,
-            min_color=base.min_color,
-            max_color=base.max_color,
-            increment=base.increment,
-            pause_max=base.pause_max
-        )
-
-        # Parse fill-specific elements
         pause_channel_elem = elem.find("PauseChannel")
         if pause_channel_elem is not None and pause_channel_elem.text:
             change.pause_channel = ColorChannel.from_string(pause_channel_elem.text.strip())
@@ -283,6 +278,26 @@ class RenderingIO:
             change.pause_color_max = cls._parse_color(pause_color_max_elem)
 
         return change
+
+    @classmethod
+    def _parse_fill_color_change(cls, elem: etree._Element) -> FillColorChange:
+        """Parse a fill color change configuration."""
+        base = cls._parse_color_change(elem)
+        return FillColorChange(
+            enabled=base.enabled,
+            kind=base.kind,
+            motion=base.motion,
+            cycle=base.cycle,
+            scale=base.scale,
+            min_color=base.min_color,
+            max_color=base.max_color,
+            increment=base.increment,
+            pause_max=base.pause_max,
+            palette=base.palette,
+            pause_channel=base.pause_channel,
+            pause_color_min=base.pause_color_min,
+            pause_color_max=base.pause_color_max
+        )
 
     @classmethod
     def _build_library(cls, library: RendererSetLibrary) -> etree._Element:
@@ -384,9 +399,16 @@ class RenderingIO:
         etree.SubElement(elem, "Motion").text = change.motion.to_xml_string()
         etree.SubElement(elem, "Cycle").text = change.cycle.to_xml_string()
         etree.SubElement(elem, "Scale").text = change.scale.to_xml_string()
-        etree.SubElement(elem, "Min").text = str(change.min_val)
-        etree.SubElement(elem, "Max").text = str(change.max_val)
-        etree.SubElement(elem, "Increment").text = str(change.increment)
+
+        if change.kind in (ChangeKind.PAL_SEQ, ChangeKind.PAL_RAN):
+            pal_elem = etree.SubElement(elem, "SizePalette")
+            for v in change.size_palette:
+                etree.SubElement(pal_elem, "PaletteEntry").text = str(v)
+        else:
+            etree.SubElement(elem, "Min").text = str(change.min_val)
+            etree.SubElement(elem, "Max").text = str(change.max_val)
+            etree.SubElement(elem, "Increment").text = str(change.increment)
+
         etree.SubElement(elem, "PauseMax").text = str(change.pause_max)
 
         return elem
@@ -402,49 +424,55 @@ class RenderingIO:
         etree.SubElement(elem, "Cycle").text = change.cycle.to_xml_string()
         etree.SubElement(elem, "Scale").text = change.scale.to_xml_string()
 
-        min_elem = etree.SubElement(elem, "Min")
-        min_elem.set("r", str(change.min_color.r))
-        min_elem.set("g", str(change.min_color.g))
-        min_elem.set("b", str(change.min_color.b))
-        min_elem.set("a", str(change.min_color.a))
+        is_palette = change.kind in (ChangeKind.PAL_SEQ, ChangeKind.PAL_RAN)
+        if is_palette:
+            pal_elem = etree.SubElement(elem, "Palette")
+            for c in change.palette:
+                ce = etree.SubElement(pal_elem, "PaletteColor")
+                ce.set("r", str(c.r))
+                ce.set("g", str(c.g))
+                ce.set("b", str(c.b))
+                ce.set("a", str(c.a))
+        else:
+            min_elem = etree.SubElement(elem, "Min")
+            min_elem.set("r", str(change.min_color.r))
+            min_elem.set("g", str(change.min_color.g))
+            min_elem.set("b", str(change.min_color.b))
+            min_elem.set("a", str(change.min_color.a))
 
-        max_elem = etree.SubElement(elem, "Max")
-        max_elem.set("r", str(change.max_color.r))
-        max_elem.set("g", str(change.max_color.g))
-        max_elem.set("b", str(change.max_color.b))
-        max_elem.set("a", str(change.max_color.a))
+            max_elem = etree.SubElement(elem, "Max")
+            max_elem.set("r", str(change.max_color.r))
+            max_elem.set("g", str(change.max_color.g))
+            max_elem.set("b", str(change.max_color.b))
+            max_elem.set("a", str(change.max_color.a))
 
-        inc_elem = etree.SubElement(elem, "Increment")
-        inc_elem.set("r", str(change.increment.r))
-        inc_elem.set("g", str(change.increment.g))
-        inc_elem.set("b", str(change.increment.b))
-        inc_elem.set("a", str(change.increment.a))
+            inc_elem = etree.SubElement(elem, "Increment")
+            inc_elem.set("r", str(change.increment.r))
+            inc_elem.set("g", str(change.increment.g))
+            inc_elem.set("b", str(change.increment.b))
+            inc_elem.set("a", str(change.increment.a))
 
         etree.SubElement(elem, "PauseMax").text = str(change.pause_max)
+
+        if not is_palette:
+            etree.SubElement(elem, "PauseChannel").text = change.pause_channel.to_xml_string()
+            pause_min_elem = etree.SubElement(elem, "PauseColorMin")
+            pause_min_elem.set("r", str(change.pause_color_min.r))
+            pause_min_elem.set("g", str(change.pause_color_min.g))
+            pause_min_elem.set("b", str(change.pause_color_min.b))
+            pause_min_elem.set("a", str(change.pause_color_min.a))
+            pause_max_elem = etree.SubElement(elem, "PauseColorMax")
+            pause_max_elem.set("r", str(change.pause_color_max.r))
+            pause_max_elem.set("g", str(change.pause_color_max.g))
+            pause_max_elem.set("b", str(change.pause_color_max.b))
+            pause_max_elem.set("a", str(change.pause_color_max.a))
 
         return elem
 
     @classmethod
     def _build_fill_color_change(cls, tag: str, change: FillColorChange) -> etree._Element:
-        """Build a fill color change element with pause channel settings."""
-        elem = cls._build_color_change(tag, change)
-
-        # Add fill-specific elements
-        etree.SubElement(elem, "PauseChannel").text = change.pause_channel.to_xml_string()
-
-        pause_min_elem = etree.SubElement(elem, "PauseColorMin")
-        pause_min_elem.set("r", str(change.pause_color_min.r))
-        pause_min_elem.set("g", str(change.pause_color_min.g))
-        pause_min_elem.set("b", str(change.pause_color_min.b))
-        pause_min_elem.set("a", str(change.pause_color_min.a))
-
-        pause_max_elem = etree.SubElement(elem, "PauseColorMax")
-        pause_max_elem.set("r", str(change.pause_color_max.r))
-        pause_max_elem.set("g", str(change.pause_color_max.g))
-        pause_max_elem.set("b", str(change.pause_color_max.b))
-        pause_max_elem.set("a", str(change.pause_color_max.a))
-
-        return elem
+        """Build a fill color change element."""
+        return cls._build_color_change(tag, change)
 
     @classmethod
     def _parse_brush_config(cls, elem: etree._Element) -> BrushConfig:

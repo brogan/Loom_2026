@@ -38,6 +38,22 @@ private class RenderTransform(val renderer: Renderer, var changeType: Int) {
   private val strokeColorValues: ColorValues = new ColorValues()
   private val fillColorValues: ColorValues = new ColorValues()
 
+  // Color palette fields for PAL_SEQ / PAL_RAN kinds
+  private var strokePalette: Array[java.awt.Color] = Array.empty
+  private var fillPalette: Array[java.awt.Color] = Array.empty
+  private var strokePaletteIndex: Int = 0
+  private var fillPaletteIndex: Int = 0
+  private var strokePaletteDir: Int = 1
+  private var fillPaletteDir: Int = 1
+
+  // Size palette fields for PAL_SEQ / PAL_RAN kinds
+  private var strokeWidthPalette: Array[Float] = Array.empty
+  private var pointSizePalette: Array[Float] = Array.empty
+  private var strokeWidthPaletteIndex: Int = 0
+  private var pointSizePaletteIndex: Int = 0
+  private var strokeWidthPaletteDir: Int = 1
+  private var pointSizePaletteDir: Int = 1
+
 
   /**
    * Scale pixel-based size values (stroke width and point size change ranges)
@@ -82,6 +98,22 @@ private class RenderTransform(val renderer: Renderer, var changeType: Int) {
     fillColorValues.setColorValues(min, max, increment)
   }
 
+  def setStrokePalette(p: Array[java.awt.Color]): Unit = {
+    strokePalette = p; strokePaletteIndex = 0; strokePaletteDir = 1
+  }
+
+  def setFillPalette(p: Array[java.awt.Color]): Unit = {
+    fillPalette = p; fillPaletteIndex = 0; fillPaletteDir = 1
+  }
+
+  def setStrokeWidthPalette(p: Array[Float]): Unit = {
+    strokeWidthPalette = p; strokeWidthPaletteIndex = 0; strokeWidthPaletteDir = 1
+  }
+
+  def setPointSizePalette(p: Array[Float]): Unit = {
+    pointSizePalette = p; pointSizePaletteIndex = 0; pointSizePaletteDir = 1
+  }
+
   private def getRandomisedColor(col: ColorValues): Color = {
     val r: Int = Randomise.range(col.min(0), col.max(0))
     val g: Int = Randomise.range(col.min(1), col.max(1))
@@ -92,7 +124,31 @@ private class RenderTransform(val renderer: Renderer, var changeType: Int) {
 
   // Set renderer value to start-of-cycle position (min for UP, max for DOWN, midpoint for PING_PONG)
   def setInitialValues(): Unit = {
-    if (motion == Renderer.UP) {
+    if (kind == Renderer.PAL_SEQ || kind == Renderer.PAL_RAN) {
+      changeType match {
+        case Renderer.STROKE_COLOR =>
+          if (strokePalette.nonEmpty) {
+            strokePaletteIndex = if (motion == Renderer.DOWN) strokePalette.length - 1 else 0
+            renderer.strokeColor = strokePalette(strokePaletteIndex)
+          }
+        case Renderer.FILL_COLOR =>
+          if (fillPalette.nonEmpty) {
+            fillPaletteIndex = if (motion == Renderer.DOWN) fillPalette.length - 1 else 0
+            renderer.fillColor = fillPalette(fillPaletteIndex)
+          }
+        case Renderer.STROKE_WIDTH =>
+          if (strokeWidthPalette.nonEmpty) {
+            strokeWidthPaletteIndex = if (motion == Renderer.DOWN) strokeWidthPalette.length - 1 else 0
+            renderer.strokeWidth = strokeWidthPalette(strokeWidthPaletteIndex)
+          }
+        case Renderer.POINT_SIZE =>
+          if (pointSizePalette.nonEmpty) {
+            pointSizePaletteIndex = if (motion == Renderer.DOWN) pointSizePalette.length - 1 else 0
+            renderer.pointSize = pointSizePalette(pointSizePaletteIndex)
+          }
+        case _ =>
+      }
+    } else if (motion == Renderer.UP) {
       changeType match {
         case Renderer.STROKE_WIDTH => renderer.strokeWidth = strokeWidthValues.min
         case Renderer.STROKE_COLOR => renderer.strokeColor = new Color(strokeColorValues.min(0), strokeColorValues.min(1), strokeColorValues.min(2), strokeColorValues.min(3))
@@ -202,8 +258,8 @@ private class RenderTransform(val renderer: Renderer, var changeType: Int) {
       } else if (kind == Renderer.RAN) { //random
         changeType match {
           case Renderer.STROKE_WIDTH => renderer.strokeWidth = Randomise.range(strokeWidthValues.min, strokeWidthValues.max).toFloat
-          case Renderer.STROKE_COLOR => renderer.strokeColor = getRandomisedColor(strokeColorValues)
-          case Renderer.FILL_COLOR => updateFillColor()//renderer.fillColor = getRandomisedColor(fillColorValues)
+          case Renderer.STROKE_COLOR => updateStrokeColor()
+          case Renderer.FILL_COLOR => updateFillColor()
           case Renderer.POINT_SIZE => renderer.pointSize = Randomise.range(pointSizeValues.min, pointSizeValues.max).toFloat
           case Renderer.STENCIL_OPACITY =>
             if (renderer.stencilConfig != null)
@@ -211,6 +267,14 @@ private class RenderTransform(val renderer: Renderer, var changeType: Int) {
           case _ => println("RendertTransform update RAN, cycleEnded but no relevant changeType: " + changeType)
         }
         //
+      } else if (kind == Renderer.PAL_SEQ || kind == Renderer.PAL_RAN) {
+        changeType match {
+          case Renderer.STROKE_COLOR => updateStrokeColorPalette()
+          case Renderer.FILL_COLOR   => updateFillColorPalette()
+          case Renderer.STROKE_WIDTH => updateStrokeWidthPalette()
+          case Renderer.POINT_SIZE   => updatePointSizePalette()
+          case _ =>
+        }
       } else {
         println("RenderTransform update, no relevant kind")
       }
@@ -266,72 +330,90 @@ private class RenderTransform(val renderer: Renderer, var changeType: Int) {
   }
 
   private def updateStrokeColor(): Unit = {
-
-    val newColor: Array[Int] = Array(0,0,0,0)
     val currCol: Array[Int] = Colors.colorToArray(renderer.strokeColor)
+    var newColor: Array[Int] = currCol
     for (i <- 0 until 4) {
-      val colVal: Int = currCol(i)
-      if (motion == Renderer.UP) {
-        if (colVal < strokeColorValues.max(i)) {
-          newColor(i) = colVal + strokeColorValues.increments(i)
-          if (newColor(i) > 255) {
-            newColor(i) = 255
-          }
-        } else {//reached end of UP
-          if (pausing) {
-            paused = true
-          } else {
-            newColor(i) = strokeColorValues.min(i)
-          }
-        }
-      } else if (motion == Renderer.DOWN) {
-        if (colVal > strokeColorValues.min(i)) {
-          newColor(i) = colVal - strokeColorValues.increments(i)
-          if (newColor(i) < 0) {
-            newColor(i) = 0
-          }
-        } else {//reached end of DOWN
-          if (pausing) {
-            paused = true
-          } else {
-            newColor(i) = strokeColorValues.max(i)
-          }
-        }
-      } else { //PING_PONG
-        if (strokeColorValues.goingUp) {
-          if (colVal < strokeColorValues.max(i)) {
-            newColor(i) = colVal + strokeColorValues.increments(i)
-            if (newColor(i) > 255) {
-              newColor(i) = 255
-            }
-            if (pausing) {
-              if (pingPongUpComplete) {
-                if (colVal > strokeColorValues.half(i)) {
+      if (!paused) {
+        val colVal: Int = currCol(i)
+        if (kind == Renderer.SEQ) {
+          if (motion == Renderer.UP) {
+            if (colVal < strokeColorValues.max(i)) {
+              newColor(i) = colVal + strokeColorValues.increments(i)
+              if (newColor(i) >= strokeColorValues.max(i)) newColor(i) = strokeColorValues.max(i)
+            } else {
+              if (pausing) {
+                if (i == pauseChan) {
                   paused = true
+                  if (fixedPauseCol) newColor = pauseColMax
+                  else newColor = Randomise.getRandomisedColorArray(pauseColMin, pauseColMax)
                 }
+              } else {
+                newColor(i) = strokeColorValues.min(i)
               }
             }
-          } else {
-            pingPongUpComplete = true
-            strokeColorValues.goingUp = false
-          }
-        } else {
-          if (colVal > strokeColorValues.min(i)) {
-            newColor(i) = colVal - strokeColorValues.increments(i)
-            if (newColor(i) < 0) {
-              newColor(i) = 0
+          } else if (motion == Renderer.DOWN) {
+            if (colVal > strokeColorValues.min(i)) {
+              newColor(i) = colVal - strokeColorValues.increments(i)
+              if (newColor(i) <= strokeColorValues.min(i)) newColor(i) = strokeColorValues.min(i)
+            } else {
+              if (pausing) {
+                if (i == pauseChan) {
+                  paused = true
+                  if (fixedPauseCol) newColor = pauseColMax
+                  else newColor = Randomise.getRandomisedColorArray(pauseColMin, pauseColMax)
+                } else {
+                  newColor(i) = strokeColorValues.max(i)
+                }
+              } else {
+                newColor(i) = strokeColorValues.max(i)
+              }
             }
+          } else { // PING_PONG
+            if (strokeColorValues.goingUp) {
+              if (colVal < strokeColorValues.max(i)) {
+                newColor(i) = colVal + strokeColorValues.increments(i)
+                if (newColor(i) > 255) strokeColorValues.goingUp = false
+                if (pausing) {
+                  if (pingPongUpComplete) {
+                    if (newColor(i) > strokeColorValues.half(i)) {
+                      if (i == pauseChan) paused = true
+                    }
+                  }
+                }
+              } else {
+                pingPongUpComplete = true
+                strokeColorValues.goingUp = false
+              }
+            } else {
+              if (colVal > strokeColorValues.min(i)) {
+                newColor(i) = colVal - strokeColorValues.increments(i)
+                if (newColor(i) < 0) strokeColorValues.goingUp = true
+              }
+            }
+          }
+        } else if (kind == Renderer.RAN) {
+          if (ranCount < ranMax) {
+            newColor = Colors.colorToArray(getRandomisedColor(strokeColorValues))
           } else {
-            strokeColorValues.goingUp = true
+            if (pausing) {
+              if (i == pauseChan) {
+                paused = true
+                ranCount = 0
+                if (fixedPauseCol) newColor = pauseColMax
+                else newColor = Randomise.getRandomisedColorArray(pauseColMin, pauseColMax)
+              } else {
+                newColor = Colors.colorToArray(getRandomisedColor(strokeColorValues))
+              }
+            } else {
+              ranCount = 0
+              newColor = Colors.colorToArray(getRandomisedColor(strokeColorValues))
+            }
           }
         }
       }
     }
-    //println("updating stroke color: "+ newColor(0) + ", " + newColor(1) + ", " + newColor(2) + ", " + newColor(3))
+    ranCount = ranCount + 1
     renderer.strokeColor = new Color(newColor(0), newColor(1), newColor(2), newColor(3))
-    //val newCol: Array[Int] = Colors.colorToArray(renderer.strokeColor)
-    //println("RenderTransform, updating STROKE color, newColor: " + Output.printColor(newColor))
-
   }
 
   private def updateFillColor(): Unit = {
@@ -535,6 +617,102 @@ private class RenderTransform(val renderer: Renderer, var changeType: Int) {
     }
     // clamp to [0,1]
     sc.currentOpacity = math.max(0f, math.min(1f, sc.currentOpacity))
+  }
+
+  private def updateStrokeWidthPalette(): Unit = {
+    if (strokeWidthPalette.isEmpty) return
+    if (kind == Renderer.PAL_RAN) {
+      strokeWidthPaletteIndex = Randomise.range(0, strokeWidthPalette.length - 1)
+    } else {
+      if (motion == Renderer.UP) {
+        val next = strokeWidthPaletteIndex + 1
+        if (next < strokeWidthPalette.length) strokeWidthPaletteIndex = next
+        else { if (pausing) paused = true else strokeWidthPaletteIndex = 0 }
+      } else if (motion == Renderer.DOWN) {
+        val next = strokeWidthPaletteIndex - 1
+        if (next >= 0) strokeWidthPaletteIndex = next
+        else { if (pausing) paused = true else strokeWidthPaletteIndex = strokeWidthPalette.length - 1 }
+      } else { // PING_PONG
+        val next = strokeWidthPaletteIndex + strokeWidthPaletteDir
+        if (next >= 0 && next < strokeWidthPalette.length) strokeWidthPaletteIndex = next
+        else { strokeWidthPaletteDir = -strokeWidthPaletteDir; if (pausing) paused = true }
+      }
+    }
+    renderer.strokeWidth = strokeWidthPalette(strokeWidthPaletteIndex)
+  }
+
+  private def updatePointSizePalette(): Unit = {
+    if (pointSizePalette.isEmpty) return
+    if (kind == Renderer.PAL_RAN) {
+      pointSizePaletteIndex = Randomise.range(0, pointSizePalette.length - 1)
+    } else {
+      if (motion == Renderer.UP) {
+        val next = pointSizePaletteIndex + 1
+        if (next < pointSizePalette.length) pointSizePaletteIndex = next
+        else { if (pausing) paused = true else pointSizePaletteIndex = 0 }
+      } else if (motion == Renderer.DOWN) {
+        val next = pointSizePaletteIndex - 1
+        if (next >= 0) pointSizePaletteIndex = next
+        else { if (pausing) paused = true else pointSizePaletteIndex = pointSizePalette.length - 1 }
+      } else { // PING_PONG
+        val next = pointSizePaletteIndex + pointSizePaletteDir
+        if (next >= 0 && next < pointSizePalette.length) pointSizePaletteIndex = next
+        else { pointSizePaletteDir = -pointSizePaletteDir; if (pausing) paused = true }
+      }
+    }
+    renderer.pointSize = pointSizePalette(pointSizePaletteIndex)
+  }
+
+  private def updateStrokeColorPalette(): Unit = {
+    if (strokePalette.isEmpty) return
+    if (kind == Renderer.PAL_RAN) {
+      strokePaletteIndex = Randomise.range(0, strokePalette.length - 1)
+    } else { // PAL_SEQ
+      if (motion == Renderer.UP) {
+        val next = strokePaletteIndex + 1
+        if (next < strokePalette.length) strokePaletteIndex = next
+        else { if (pausing) paused = true else strokePaletteIndex = 0 }
+      } else if (motion == Renderer.DOWN) {
+        val next = strokePaletteIndex - 1
+        if (next >= 0) strokePaletteIndex = next
+        else { if (pausing) paused = true else strokePaletteIndex = strokePalette.length - 1 }
+      } else { // PING_PONG
+        val next = strokePaletteIndex + strokePaletteDir
+        if (next >= 0 && next < strokePalette.length) {
+          strokePaletteIndex = next
+        } else {
+          strokePaletteDir = -strokePaletteDir
+          if (pausing) paused = true
+        }
+      }
+    }
+    renderer.strokeColor = strokePalette(strokePaletteIndex)
+  }
+
+  private def updateFillColorPalette(): Unit = {
+    if (fillPalette.isEmpty) return
+    if (kind == Renderer.PAL_RAN) {
+      fillPaletteIndex = Randomise.range(0, fillPalette.length - 1)
+    } else { // PAL_SEQ
+      if (motion == Renderer.UP) {
+        val next = fillPaletteIndex + 1
+        if (next < fillPalette.length) fillPaletteIndex = next
+        else { if (pausing) paused = true else fillPaletteIndex = 0 }
+      } else if (motion == Renderer.DOWN) {
+        val next = fillPaletteIndex - 1
+        if (next >= 0) fillPaletteIndex = next
+        else { if (pausing) paused = true else fillPaletteIndex = fillPalette.length - 1 }
+      } else { // PING_PONG
+        val next = fillPaletteIndex + fillPaletteDir
+        if (next >= 0 && next < fillPalette.length) {
+          fillPaletteIndex = next
+        } else {
+          fillPaletteDir = -fillPaletteDir
+          if (pausing) paused = true
+        }
+      }
+    }
+    renderer.fillColor = fillPalette(fillPaletteIndex)
   }
 
   //Inner data class within RenderTransform class - color values

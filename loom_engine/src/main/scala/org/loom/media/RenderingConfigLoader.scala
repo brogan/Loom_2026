@@ -263,11 +263,17 @@ object RenderingConfigLoader {
       val enabled = (node \ "@enabled").text.toLowerCase != "false"
       if (enabled) {
         val params = parseChangeParams(node)
-        val min = getFloatOrDefault(node, "Min", 0.1f)
-        val max = getFloatOrDefault(node, "Max", 5.0f)
-        val inc = getFloatOrDefault(node, "Increment", 0.1f)
         val pauseMax = getIntOrDefault(node, "PauseMax", 10)
-        renderer.setChangingStrokeWidth(params, min, max, inc, pauseMax)
+        val kindStr = (node \ "Kind").text
+        if (kindStr == "PAL_SEQ" || kindStr == "PAL_RAN") {
+          val palette = parseSizePalette(node \ "SizePalette")
+          renderer.setChangingStrokeWidthPalette(params, palette, pauseMax)
+        } else {
+          val min = getFloatOrDefault(node, "Min", 0.1f)
+          val max = getFloatOrDefault(node, "Max", 5.0f)
+          val inc = getFloatOrDefault(node, "Increment", 0.1f)
+          renderer.setChangingStrokeWidth(params, min, max, inc, pauseMax)
+        }
       }
     }
   }
@@ -277,11 +283,20 @@ object RenderingConfigLoader {
       val enabled = (node \ "@enabled").text.toLowerCase != "false"
       if (enabled) {
         val params = parseChangeParams(node)
-        val minColor = parseColorArray(node \ "Min", Array(0, 0, 0, 0))
-        val maxColor = parseColorArray(node \ "Max", Array(255, 255, 255, 255))
-        val incColor = parseColorArray(node \ "Increment", Array(1, 1, 1, 1))
         val pauseMax = getIntOrDefault(node, "PauseMax", 10)
-        renderer.setChangingStrokeColor(params, minColor, maxColor, incColor, pauseMax)
+        val kindStr = (node \ "Kind").text
+        if (kindStr == "PAL_SEQ" || kindStr == "PAL_RAN") {
+          val palette = parsePalette(node \ "Palette")
+          renderer.setChangingStrokeColorPalette(params, palette, pauseMax)
+        } else {
+          val minColor = parseColorArray(node \ "Min", Array(0, 0, 0, 0))
+          val maxColor = parseColorArray(node \ "Max", Array(255, 255, 255, 255))
+          val incColor = parseColorArray(node \ "Increment", Array(1, 1, 1, 1))
+          val pauseChannel = parsePauseChannel((node \ "PauseChannel").text)
+          val pauseColorMin = parseColorArray(node \ "PauseColorMin", Array(0, 0, 0, 255))
+          val pauseColorMax = parseColorArray(node \ "PauseColorMax", Array(255, 255, 255, 255))
+          renderer.setChangingStrokeColor(params, minColor, maxColor, incColor, pauseMax, pauseChannel, pauseColorMin, pauseColorMax)
+        }
       }
     }
   }
@@ -291,14 +306,20 @@ object RenderingConfigLoader {
       val enabled = (node \ "@enabled").text.toLowerCase != "false"
       if (enabled) {
         val params = parseChangeParams(node)
-        val minColor = parseColorArray(node \ "Min", Array(0, 0, 0, 0))
-        val maxColor = parseColorArray(node \ "Max", Array(255, 255, 255, 255))
-        val incColor = parseColorArray(node \ "Increment", Array(1, 1, 1, 1))
         val pauseMax = getIntOrDefault(node, "PauseMax", 10)
-        val pauseChannel = parsePauseChannel((node \ "PauseChannel").text)
-        val pauseColorMin = parseColorArray(node \ "PauseColorMin", Array(0, 0, 0, 255))
-        val pauseColorMax = parseColorArray(node \ "PauseColorMax", Array(255, 255, 255, 255))
-        renderer.setChangingFillColor(params, minColor, maxColor, incColor, pauseMax, pauseChannel, pauseColorMin, pauseColorMax)
+        val kindStr = (node \ "Kind").text
+        if (kindStr == "PAL_SEQ" || kindStr == "PAL_RAN") {
+          val palette = parsePalette(node \ "Palette")
+          renderer.setChangingFillColorPalette(params, palette, pauseMax)
+        } else {
+          val minColor = parseColorArray(node \ "Min", Array(0, 0, 0, 0))
+          val maxColor = parseColorArray(node \ "Max", Array(255, 255, 255, 255))
+          val incColor = parseColorArray(node \ "Increment", Array(1, 1, 1, 1))
+          val pauseChannel = parsePauseChannel((node \ "PauseChannel").text)
+          val pauseColorMin = parseColorArray(node \ "PauseColorMin", Array(0, 0, 0, 255))
+          val pauseColorMax = parseColorArray(node \ "PauseColorMax", Array(255, 255, 255, 255))
+          renderer.setChangingFillColor(params, minColor, maxColor, incColor, pauseMax, pauseChannel, pauseColorMin, pauseColorMax)
+        }
       }
     }
   }
@@ -308,19 +329,27 @@ object RenderingConfigLoader {
       val enabled = (node \ "@enabled").text.toLowerCase != "false"
       if (enabled) {
         val params = parseChangeParams(node)
-        val min = getFloatOrDefault(node, "Min", 1.0f)
-        val max = getFloatOrDefault(node, "Max", 10.0f)
-        val inc = getFloatOrDefault(node, "Increment", 0.5f)
         val pauseMax = getIntOrDefault(node, "PauseMax", 10)
-        renderer.setChangingPointSize(params, min, max, inc, pauseMax)
+        val kindStr = (node \ "Kind").text
+        if (kindStr == "PAL_SEQ" || kindStr == "PAL_RAN") {
+          val palette = parseSizePalette(node \ "SizePalette")
+          renderer.setChangingPointSizePalette(params, palette, pauseMax)
+        } else {
+          val min = getFloatOrDefault(node, "Min", 1.0f)
+          val max = getFloatOrDefault(node, "Max", 10.0f)
+          val inc = getFloatOrDefault(node, "Increment", 0.5f)
+          renderer.setChangingPointSize(params, min, max, inc, pauseMax)
+        }
       }
     }
   }
 
   private def parseChangeParams(node: Node): Array[Int] = {
     val kind = (node \ "Kind").text match {
-      case "RAN" => Renderer.RAN
-      case _ => Renderer.SEQ
+      case "RAN"     => Renderer.RAN
+      case "PAL_SEQ" => Renderer.PAL_SEQ
+      case "PAL_RAN" => Renderer.PAL_RAN
+      case _         => Renderer.SEQ
     }
 
     val motion = (node \ "Motion").text match {
@@ -344,6 +373,27 @@ object RenderingConfigLoader {
     }
 
     Array(kind, motion, cycle, scale)
+  }
+
+  private def parseSizePalette(nodeSeq: NodeSeq): Array[Float] = {
+    nodeSeq.headOption.map { node =>
+      (node \ "PaletteEntry").flatMap { e =>
+        val s = e.text.trim
+        try { Some(s.toFloat) } catch { case _: NumberFormatException => None }
+      }.toArray
+    }.getOrElse(Array.empty)
+  }
+
+  private def parsePalette(nodeSeq: NodeSeq): Array[java.awt.Color] = {
+    nodeSeq.headOption.map { node =>
+      (node \ "PaletteColor").map { pc =>
+        val r = (pc \ "@r").text match { case "" => 0; case s => s.toInt }
+        val g = (pc \ "@g").text match { case "" => 0; case s => s.toInt }
+        val b = (pc \ "@b").text match { case "" => 0; case s => s.toInt }
+        val a = (pc \ "@a").text match { case "" => 255; case s => s.toInt }
+        new java.awt.Color(r, g, b, a)
+      }.toArray
+    }.getOrElse(Array.empty)
   }
 
   private def parseRenderMode(modeStr: String): Int = {

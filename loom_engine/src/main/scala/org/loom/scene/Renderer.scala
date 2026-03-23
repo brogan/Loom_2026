@@ -73,7 +73,7 @@ class Renderer (val name: String, var mode: Int, var strokeWidth: Float, var str
     }
   }
 
-  def setChangingStrokeColor(params: Array[Int], min: Array[Int], max: Array[Int], increment: Array[Int], pauseMax: Int): Unit = {
+  def setChangingStrokeColor(params: Array[Int], min: Array[Int], max: Array[Int], increment: Array[Int], pauseMax: Int, pauseChan: Int, pauseColMin: Array[Int], pauseColMax: Array[Int]): Unit = {
     if (mode != Renderer.FILLED) {
       changing = true
       val strokeColorTransform = changeSet(Renderer.STROKE_COLOR)
@@ -81,7 +81,7 @@ class Renderer (val name: String, var mode: Int, var strokeWidth: Float, var str
       strokeColorTransform.setChanging(Renderer.STROKE_COLOR)
       strokeColorTransform.setStrokeColorValues(min, max, increment)
       if (params(Renderer.CYCLE) != Renderer.CONSTANT) {
-        strokeColorTransform.setPausing(pauseMax)
+        strokeColorTransform.setPausing(pauseMax, pauseChan, pauseColMin, pauseColMax)
       }
 
       strokeColorTransform.setInitialValues()
@@ -106,6 +106,54 @@ class Renderer (val name: String, var mode: Int, var strokeWidth: Float, var str
       fillColorTransform.setInitialValues()
     } else {
       println("Renderer, setChangingFillColor: not applied, this method is not relevant for exclusively STROKED rendering")
+    }
+  }
+
+  def setChangingStrokeColorPalette(params: Array[Int], palette: Array[java.awt.Color], pauseMax: Int): Unit = {
+    if (mode != Renderer.FILLED) {
+      changing = true
+      val t = changeSet(Renderer.STROKE_COLOR)
+      renderTransformStoreParams(t, params)
+      t.setChanging(Renderer.STROKE_COLOR)
+      t.setStrokePalette(palette)
+      if (params(Renderer.CYCLE) != Renderer.CONSTANT) t.setPausing(pauseMax)
+      t.setInitialValues()
+    }
+  }
+
+  def setChangingFillColorPalette(params: Array[Int], palette: Array[java.awt.Color], pauseMax: Int): Unit = {
+    if (mode != Renderer.STROKED) {
+      changing = true
+      val t = changeSet(Renderer.FILL_COLOR)
+      renderTransformStoreParams(t, params)
+      t.setChanging(Renderer.FILL_COLOR)
+      t.setFillPalette(palette)
+      if (params(Renderer.CYCLE) != Renderer.CONSTANT) t.setPausing(pauseMax)
+      t.setInitialValues()
+    }
+  }
+
+  def setChangingStrokeWidthPalette(params: Array[Int], palette: Array[Float], pauseMax: Int): Unit = {
+    if (mode != Renderer.FILLED) {
+      changing = true
+      val t = changeSet(Renderer.STROKE_WIDTH)
+      renderTransformStoreParams(t, params)
+      t.setChanging(Renderer.STROKE_WIDTH)
+      t.setStrokeWidthPalette(palette)
+      if (params(Renderer.CYCLE) != Renderer.CONSTANT) t.setPausing(pauseMax)
+      t.setInitialValues()
+    }
+  }
+
+  def setChangingPointSizePalette(params: Array[Int], palette: Array[Float], pauseMax: Int): Unit = {
+    if (mode == Renderer.POINTS) {
+      changing = true
+      val t = changeSet(Renderer.POINT_SIZE)
+      renderTransformStoreParams(t, params)
+      t.setChanging(Renderer.POINT_SIZE)
+      t.setPointSizePalette(palette)
+      if (params(Renderer.CYCLE) != Renderer.CONSTANT) t.setPausing(pauseMax)
+      t.setInitialValues()
     }
   }
 
@@ -249,8 +297,10 @@ object Renderer {
   val CYCLE: Int = 2
 
   //kind
-  val SEQ: Int = 0
-  val RAN: Int = 1
+  val SEQ:     Int = 0
+  val RAN:     Int = 1
+  val PAL_SEQ: Int = 2
+  val PAL_RAN: Int = 3
 
   //motion
   val UP: Int = 1
