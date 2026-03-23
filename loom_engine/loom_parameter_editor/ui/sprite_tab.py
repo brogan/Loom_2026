@@ -2,6 +2,7 @@
 Sprite configuration tab for the parameter editor.
 Provides UI for editing sprites.xml settings.
 """
+import math
 import os
 import re
 import shutil
@@ -48,6 +49,7 @@ class SpriteTab(QWidget):
         self._edit_morph_bezier_name = None   # Clean base name passed to Bezier (for cleanup)
 
         self._setup_ui()
+        self.preview_widget.set_sprite_library(self._library)
         self._refresh_tree()
 
     def _setup_ui(self):
@@ -71,6 +73,7 @@ class SpriteTab(QWidget):
         self.tree.setColumnWidth(3, 40)
         self.tree.currentItemChanged.connect(self._on_item_selected)
         self.tree.itemChanged.connect(self._on_item_check_changed)
+        self.tree.setStyleSheet("QTreeWidget::indicator { width: 13px; height: 13px; }")
         left_layout.addWidget(self.tree)
 
         # Buttons for sets
@@ -97,6 +100,10 @@ class SpriteTab(QWidget):
         self.duplicate_btn = QPushButton("Duplicate")
         self.duplicate_btn.clicked.connect(self._duplicate_sprite)
         sprite_btn_layout.addWidget(self.duplicate_btn)
+
+        self.rename_sprite_btn = QPushButton("Rename")
+        self.rename_sprite_btn.clicked.connect(self._rename_sprite)
+        sprite_btn_layout.addWidget(self.rename_sprite_btn)
         left_layout.addLayout(sprite_btn_layout)
 
         # Delete Selected button
@@ -461,7 +468,7 @@ class SpriteTab(QWidget):
         morph_outer.setContentsMargins(4, 4, 4, 4)
 
         morph_outer.addWidget(QLabel(
-            "Chain: base → mt1 → mt2 → …  (morphAmount 0 = base, 1 = mt1, 2 = mt2, …)"
+            "MT# = which target (1=mt1, 2=mt2…). MT+ = blend amount 0–1 toward that target (0 = no morph, 1 = fully morphed)."
         ))
 
         self.morph_list = QListWidget()
@@ -635,6 +642,8 @@ class SpriteTab(QWidget):
         for sprite_set in self._library.sprite_sets:
             set_item = QTreeWidgetItem(["", sprite_set.name, "", ""])
             set_item.setData(0, Qt.ItemDataRole.UserRole, ("set", sprite_set))
+            set_item.setFlags(set_item.flags() | Qt.ItemFlag.ItemIsUserCheckable)
+            set_item.setCheckState(0, Qt.CheckState.Unchecked)
 
             for sprite in sprite_set.sprites:
                 sprite_item = QTreeWidgetItem(["", sprite.name, "", ""])
@@ -685,6 +694,7 @@ class SpriteTab(QWidget):
                 sprite_set = parent.data(0, Qt.ItemDataRole.UserRole)[1]
                 idx = parent.indexOfChild(current)
                 self.preview_widget.set_sprite_set(sprite_set, idx)
+                self._update_preview_keyframes()
 
     def _clear_sprite_ui(self):
         """Clear the sprite editor UI."""
@@ -875,7 +885,7 @@ class SpriteTab(QWidget):
             self._library.add(new_set)
             self._refresh_tree()
             for i in range(self.tree.topLevelItemCount()):
-                if self.tree.topLevelItem(i).text(0) == name:
+                if self.tree.topLevelItem(i).text(1) == name:
                     self.tree.setCurrentItem(self.tree.topLevelItem(i))
                     break
             self.modified.emit()
@@ -934,26 +944,98 @@ class SpriteTab(QWidget):
             self.modified.emit()
 
     def _duplicate_sprite(self):
-        """Duplicate the selected sprite."""
-        if self._current_sprite is None or self._current_set is None:
+        """Duplicate the selected item — set if a set is selected, sprite otherwise."""
+        if self._current_set is None:
             return
-        base_name = self._current_sprite.name
-        counter = 1
-        while True:
-            new_name = f"{base_name}_{counter:03d}"
-            if not self._current_set.get(new_name):
-                break
-            counter += 1
 
-        from dataclasses import replace
-        from copy import deepcopy
-        new_params = replace(self._current_sprite.params,
-                             keyframes=[kf.copy() for kf in self._current_sprite.params.keyframes])
-        new_sprite = replace(self._current_sprite, name=new_name, params=new_params)
+        if self._current_sprite is None:
+            # ── Duplicate the sprite set ─────────────────────────────────────
+            base_name = self._current_set.name
+            counter = 1
+            while True:
+                new_name = f"{base_name}_{counter:03d}"
+                if not self._library.get(new_name):
+                    break
+                counter += 1
+            new_name, ok = QInputDialog.getText(
+                self, "Duplicate Sprite Set", "Name for copy:", text=new_name)
+            if not ok or not new_name.strip():
+                return
+            new_name = new_name.strip()
+            if self._library.get(new_name):
+                QMessageBox.warning(self, "Duplicate Name",
+                                    f"A sprite set named '{new_name}' already exists.")
+                return
+            from copy import deepcopy
+            new_set = deepcopy(self._current_set)
+            new_set.name = new_name
+            self._library.add(new_set)
+            self._refresh_tree()
+            for i in range(self.tree.topLevelItemCount()):
+                if self.tree.topLevelItem(i).text(1) == new_name:
+                    self.tree.setCurrentItem(self.tree.topLevelItem(i))
+                    break
+        else:
+            # ── Duplicate the sprite ─────────────────────────────────────────
+            base_name = self._current_sprite.name
+            counter = 1
+            while True:
+                new_name = f"{base_name}_{counter:03d}"
+                if not self._current_set.get(new_name):
+                    break
+                counter += 1
+            from dataclasses import replace
+            from copy import deepcopy
+            new_params = replace(self._current_sprite.params,
+                                 keyframes=[kf.copy() for kf in self._current_sprite.params.keyframes])
+            new_sprite = replace(self._current_sprite, name=new_name, params=new_params)
+            self._current_set.add(new_sprite)
+            self._refresh_tree()
+            self._select_sprite(self._current_set.name, new_name)
 
-        self._current_set.add(new_sprite)
-        self._refresh_tree()
-        self._select_sprite(self._current_set.name, new_name)
+        self.modified.emit()
+
+    def _rename_sprite(self):
+        """Rename the selected item — set if a set is selected, sprite otherwise."""
+        if self._current_set is None:
+            return
+
+        if self._current_sprite is None:
+            # ── Rename the sprite set ────────────────────────────────────────
+            new_name, ok = QInputDialog.getText(
+                self, "Rename Sprite Set", "New name:", text=self._current_set.name)
+            if not ok or not new_name.strip():
+                return
+            new_name = new_name.strip()
+            if new_name == self._current_set.name:
+                return
+            if self._library.get(new_name):
+                QMessageBox.warning(self, "Duplicate Name",
+                                    f"A sprite set named '{new_name}' already exists.")
+                return
+            self._current_set.name = new_name
+            self._refresh_tree()
+            for i in range(self.tree.topLevelItemCount()):
+                if self.tree.topLevelItem(i).text(1) == new_name:
+                    self.tree.setCurrentItem(self.tree.topLevelItem(i))
+                    break
+        else:
+            # ── Rename the sprite ────────────────────────────────────────────
+            new_name, ok = QInputDialog.getText(
+                self, "Rename Sprite", "New name:", text=self._current_sprite.name)
+            if not ok or not new_name.strip():
+                return
+            new_name = new_name.strip()
+            if new_name == self._current_sprite.name:
+                return
+            if self._current_set.get(new_name):
+                QMessageBox.warning(self, "Duplicate Name",
+                                    f"A sprite named '{new_name}' already exists in this set.")
+                return
+            self._current_sprite.name = new_name
+            self._refresh_tree()
+            self._select_sprite(self._current_set.name, new_name)
+
         self.modified.emit()
 
     def _on_item_check_changed(self, item, column):
@@ -973,36 +1055,52 @@ class SpriteTab(QWidget):
             self.modified.emit()
 
     def _delete_selected(self):
-        """Delete all checked sprite items."""
-        to_delete = []  # list of (sprite_set, sprite) tuples
+        """Delete all checked items (sets or sprites)."""
+        sets_to_delete = []    # SpriteSet objects
+        sprites_to_delete = [] # (sprite_set, sprite) pairs
         for i in range(self.tree.topLevelItemCount()):
             set_item = self.tree.topLevelItem(i)
             set_data = set_item.data(0, Qt.ItemDataRole.UserRole)
             if not set_data or set_data[0] != "set":
                 continue
             sprite_set = set_data[1]
-            for j in range(set_item.childCount()):
-                sprite_item = set_item.child(j)
-                if sprite_item.checkState(0) == Qt.CheckState.Checked:
-                    data = sprite_item.data(0, Qt.ItemDataRole.UserRole)
-                    if data and data[0] == "sprite":
-                        to_delete.append((sprite_set, data[1]))
+            if set_item.checkState(0) == Qt.CheckState.Checked:
+                sets_to_delete.append(sprite_set)
+            else:
+                for j in range(set_item.childCount()):
+                    sprite_item = set_item.child(j)
+                    if sprite_item.checkState(0) == Qt.CheckState.Checked:
+                        data = sprite_item.data(0, Qt.ItemDataRole.UserRole)
+                        if data and data[0] == "sprite":
+                            sprites_to_delete.append((sprite_set, data[1]))
 
-        if not to_delete:
+        total = len(sets_to_delete) + len(sprites_to_delete)
+        if total == 0:
             QMessageBox.information(self, "No Selection", "No items are checked for deletion.")
             return
 
+        parts = []
+        if sets_to_delete:
+            parts.append(f"{len(sets_to_delete)} set(s)")
+        if sprites_to_delete:
+            parts.append(f"{len(sprites_to_delete)} sprite(s)")
         result = QMessageBox.question(
             self, "Delete Selected",
-            f"Delete {len(to_delete)} checked sprite(s)?",
+            f"Delete {' and '.join(parts)}?",
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
         )
         if result == QMessageBox.StandardButton.Yes:
-            for sprite_set, sprite in to_delete:
+            for sprite_set in sets_to_delete:
+                for idx, s in enumerate(self._library.sprite_sets):
+                    if s is sprite_set:
+                        self._library.remove(idx)
+                        break
+            for sprite_set, sprite in sprites_to_delete:
                 for idx, s in enumerate(sprite_set.sprites):
                     if s is sprite:
                         sprite_set.remove(idx)
                         break
+            self._current_set = None
             self._current_sprite = None
             self._clear_sprite_ui()
             self._refresh_tree()
@@ -1012,10 +1110,10 @@ class SpriteTab(QWidget):
         """Select a sprite in the tree."""
         for i in range(self.tree.topLevelItemCount()):
             set_item = self.tree.topLevelItem(i)
-            if set_item.text(0) == set_name:
+            if set_item.text(1) == set_name:
                 for j in range(set_item.childCount()):
                     sprite_item = set_item.child(j)
-                    if sprite_item.text(0) == sprite_name:
+                    if sprite_item.text(1) == sprite_name:
                         self.tree.setCurrentItem(sprite_item)
                         return
 
@@ -1026,6 +1124,7 @@ class SpriteTab(QWidget):
     def set_library(self, library: SpriteLibrary) -> None:
         """Set the library to display."""
         self._library = library
+        self.preview_widget.set_sprite_library(library)
         self._refresh_tree()
 
     def create_default_library(self) -> SpriteLibrary:
@@ -1204,12 +1303,17 @@ class SpriteTab(QWidget):
             self.kf_table.setItem(row, col, item)
 
         if has_morph_col:
-            # MT Idx (col 6): integer part of morphAmount (which target: 0=base, 1=mt1, 2=mt2…)
-            mt_idx = int(kf.morph_amount)
-            amount = kf.morph_amount - mt_idx
-            self.kf_table.setItem(row, 6, QTableWidgetItem(str(mt_idx)))
-            # Amount (col 7): fraction 0.0–1.0 blending toward next target
-            self.kf_table.setItem(row, 7, QTableWidgetItem(f"{amount:.4g}"))
+            # MT# (col 6): 1-based target index (1=mt1, 2=mt2…)
+            # MT+ (col 7): blend amount 0.0–1.0 toward that target
+            # morph_amount = (MT# - 1) + MT+, so MT#=1/MT+=0 → 0.0 (base), MT#=1/MT+=1 → 1.0 (fully at mt1)
+            ma = kf.morph_amount
+            if ma <= 0.0:
+                mt_num, mt_plus = 1, 0.0
+            else:
+                mt_num = max(1, math.ceil(ma))
+                mt_plus = ma - (mt_num - 1)
+            self.kf_table.setItem(row, 6, QTableWidgetItem(str(mt_num)))
+            self.kf_table.setItem(row, 7, QTableWidgetItem(f"{mt_plus:.4g}"))
 
         # Easing combo (col 6 normally, col 8 when morph columns present)
         easing_col = 8 if has_morph_col else 6
@@ -1245,9 +1349,9 @@ class SpriteTab(QWidget):
                 easing = easing_widget.currentText() if easing_widget else "LINEAR"
 
                 if has_morph_col:
-                    mt_idx = max(0, int(get_float(6, 0.0)))
-                    amount = max(0.0, min(1.0, get_float(7, 0.0)))
-                    morph_amount = mt_idx + amount
+                    mt_num = max(1, int(get_float(6, 1.0)))
+                    mt_plus = max(0.0, min(1.0, get_float(7, 0.0)))
+                    morph_amount = (mt_num - 1) + mt_plus
                 else:
                     morph_amount = 0.0
 
@@ -1429,7 +1533,7 @@ class SpriteTab(QWidget):
         sel = self.tree.currentItem()
         if sel and sel.parent():
             idx = sel.parent().indexOfChild(sel)
-            self.preview_widget.set_selected_index(idx)
+            self.preview_widget.refresh_for_params_change(idx)
 
     def _get_morph_targets_dir(self) -> str:
         """Get the morphTargets/ directory path for the current project."""
@@ -1715,16 +1819,19 @@ class SpriteTab(QWidget):
 
         self._edit_morph_path = full_path
 
-        # Polygon sets need DOCTYPE for Bezier's XOM validating parser;
-        # open curve sets use a non-validating parser so no headers needed.
-        if suffix != 'curve.xml':
-            self._add_xml_headers(full_path)
-
-        # Bezier's toFilename() strips dots, so passing "s_mt_1.curve" yields "s_mt_1curve".
-        # Instead, pass the clean base name (no .poly/.curve suffix) so Bezier saves as
-        # "{bezier_name}.xml", then rename/move that file to the correct final path afterward.
+        # For polygon files, wrap the .poly.xml in a .layers.xml bundle so Bezier
+        # dispatches to loadLayerSet() → Builder(false) (non-validating).
+        # Loading the .poly.xml directly would hit loadPolygonSet() → XmlManager →
+        # Builder(true) (validating), which throws ValidityException with no DOCTYPE
+        # → XmlManager.root stays empty → blank canvas.
+        # Open curve sets use a non-validating parser directly; no bundle needed.
         base_name, _ = self._strip_morph_suffix(os.path.basename(full_path))
         bezier_name = self._to_bezier_filename(base_name)
+
+        if suffix != 'curve.xml':
+            load_path = self._create_morph_bundle(full_path, morph_dir, base_name)
+        else:
+            load_path = full_path
 
         self._edit_morph_bezier_name = bezier_name
 
@@ -1742,7 +1849,7 @@ class SpriteTab(QWidget):
 
         args = ["-Xmx4G", "-jar", BEZIER_JAR,
                 "--save-dir", morph_dir,
-                "--load", full_path,
+                "--load", load_path,
                 "--name", bezier_name]
         if suffix != 'curve.xml':
             args.append("--point-select")
@@ -1798,6 +1905,46 @@ class SpriteTab(QWidget):
         self._edit_morph_bezier_saved = None
         self._edit_morph_bezier_name = None
 
+    def _create_morph_bundle(self, poly_path: str, morph_dir: str, base_name: str) -> str:
+        """Create a .layers.xml bundle wrapping a single .poly.xml file.
+
+        Bezier dispatches '*.layers.xml' paths to loadLayerSet() which uses
+        Builder(false) — the non-validating parser.  The layer file is found
+        via a relative path from the bundle's directory, so both files must
+        live in morph_dir (which they do).
+
+        The bundle is written to morph_dir/{base_name}.layers.xml.  After Bezier
+        saves it will overwrite this file; _on_edit_morph_bezier_finished then
+        deletes it as part of normal cleanup.
+        """
+        poly_filename = os.path.basename(poly_path)
+        bundle_path = os.path.join(morph_dir, base_name + '.layers.xml')
+        bundle_content = (
+            '<?xml version="1.0" encoding="ISO-8859-1"?>\n'
+            '<layerSet>\n'
+            f'    <overallName>{base_name}</overallName>\n'
+            '    <layer>\n'
+            '        <name>Layer 1</name>\n'
+            f'        <file>{poly_filename}</file>\n'
+            '        <visible>true</visible>\n'
+            '    </layer>\n'
+            '</layerSet>\n'
+        )
+        with open(bundle_path, 'w', encoding='utf-8') as f:
+            f.write(bundle_content)
+        return bundle_path
+
+    def _add_xml_declaration_only(self, filepath: str) -> None:
+        """Add only the XML declaration (no DOCTYPE) so Bezier uses its
+        non-validating parser.  This avoids DTD-resolution failures for
+        morph-target polygon files stored outside the polygonSets directory."""
+        with open(filepath, 'r', encoding='utf-8') as f:
+            content = f.read()
+        if content.lstrip().startswith('<?xml'):
+            return
+        with open(filepath, 'w', encoding='utf-8') as f:
+            f.write('<?xml version="1.0" encoding="ISO-8859-1"?>\n' + content)
+
     def _add_xml_headers(self, filepath: str) -> None:
         """Add XML declaration and DOCTYPE lines required by Bezier's XOM parser.
         Also ensures the DTD file exists at the expected relative path."""
@@ -1841,11 +1988,11 @@ class SpriteTab(QWidget):
         current_cols = self.kf_table.columnCount()
 
         if needs_morph and current_cols == 7:
-            # Add MT Idx + Amount columns (cols 6 & 7), push Easing to col 8
+            # Add MT# + MT+ columns (cols 6 & 7), push Easing to col 8
             self.kf_table.setColumnCount(9)
             self.kf_table.setHorizontalHeaderLabels([
                 "Draw Cycle", "Pos X", "Pos Y", "Scale X", "Scale Y",
-                "Rotation", "MT Idx", "Amount", "Easing"
+                "Rotation", "MT#", "MT+", "Easing"
             ])
             header = self.kf_table.horizontalHeader()
             for col in range(8):

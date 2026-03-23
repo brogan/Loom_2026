@@ -157,9 +157,15 @@ class SpritePreviewCanvas(QWidget):
     _HANDLE_HIT_RADIUS = 6
     _MARGIN = 20
 
+    # Colour constants
+    _COL_SELECTED   = QColor(80, 200, 120)    # bright green
+    _COL_SAME_SET   = QColor(65, 110, 160)    # mid-blue  (same perceived luminance as grey)
+    _COL_OTHER_SET  = QColor(100, 100, 100)   # mid-grey
+
     def __init__(self, parent=None):
         super().__init__(parent)
         self._sprite_set = None
+        self._sprite_library = None            # full library for cross-set rendering
         self._selected_index: int = -1
         self._shape_library = None
         self._polygon_sets_dir: str = ""
@@ -189,6 +195,10 @@ class SpritePreviewCanvas(QWidget):
 
     def set_selected_index(self, index: int):
         self._selected_index = index
+        self.update()
+
+    def set_sprite_library(self, lib):
+        self._sprite_library = lib
         self.update()
 
     def set_shape_library(self, lib):
@@ -446,47 +456,68 @@ class SpritePreviewCanvas(QWidget):
         painter.fillRect(0, 0, w, h, QColor(28, 28, 28))
         self._paint_grid(painter)
 
-        if self._sprite_set is None:
-            painter.end()
-            return
+        # Collect all enabled sprites from the full library (or just current set as fallback).
+        # Each entry: (sprite, local_idx, is_selected, is_same_set)
+        # local_idx is the sprite's position within _sprite_set; -1 for sprites from other sets.
+        to_draw = []
+        source = self._sprite_library.sprite_sets if self._sprite_library is not None else (
+            [self._sprite_set] if self._sprite_set is not None else []
+        )
+        for sprite_set in source:
+            same_set = (sprite_set is self._sprite_set)
+            for i, sprite in enumerate(sprite_set.sprites):
+                if not sprite.enabled:
+                    continue
+                is_selected = same_set and (i == self._selected_index)
+                local_idx = i if same_set else -1
+                to_draw.append((sprite, local_idx, is_selected, same_set))
 
-        for i, sprite in enumerate(self._sprite_set.sprites):
-            if not sprite.enabled:
-                continue
-            geo = (self._active_geo if (i == self._selected_index and self._active_geo is not None)
-                   else self._resolve_geometry(sprite))
-            loc_x, loc_y, size_x, size_y, rot = self._get_sprite_display_params(sprite, i)
-            is_selected = (i == self._selected_index)
-
-            if geo is not None and (geo.anchor_polys or geo.dot_positions):
-                dot_color = QColor(80, 200, 120) if is_selected else QColor(140, 140, 140)
-                if geo.anchor_polys:
-                    path = self._build_path(geo, loc_x, loc_y, size_x, size_y, rot)
-                    if is_selected:
-                        pen = QPen(QColor(80, 200, 120))
-                        pen.setWidthF(1.5)
-                    else:
-                        pen = QPen(QColor(100, 100, 100))
-                        pen.setWidthF(1.0)
-                    painter.setPen(pen)
-                    painter.setBrush(Qt.BrushStyle.NoBrush)
-                    painter.drawPath(path)
-                if geo.dot_positions:
-                    painter.setPen(Qt.PenStyle.NoPen)
-                    painter.setBrush(QBrush(dot_color))
-                    for dpx, dpy in geo.dot_positions:
-                        wx, wy = self._transform_point(dpx, dpy, loc_x, loc_y, size_x, size_y, rot)
-                        dsx, dsy = self._world_to_screen(wx, wy)
-                        painter.drawEllipse(QPointF(dsx, dsy), 4, 4)
-            else:
-                self._paint_placeholder(painter, self._sprite_bbox_world(sprite, None, i), is_selected)
-
+        # Draw background (non-selected) sprites first so the selected sprite renders on top.
+        for sprite, local_idx, is_selected, is_same_set in to_draw:
+            if not is_selected:
+                self._paint_sprite(painter, sprite, local_idx, False, is_same_set)
+        for sprite, local_idx, is_selected, is_same_set in to_draw:
             if is_selected:
-                bbox = self._sprite_bbox_world(sprite, geo, i)
-                if bbox:
-                    self._paint_handles(painter, bbox)
+                self._paint_sprite(painter, sprite, local_idx, True, is_same_set)
 
         painter.end()
+
+    def _paint_sprite(self, painter: QPainter, sprite,
+                      local_idx: int, is_selected: bool, is_same_set: bool):
+        """Draw a single sprite with colour determined by its selection/set status."""
+        geo = (self._active_geo if (is_selected and self._active_geo is not None)
+               else self._resolve_geometry(sprite))
+        loc_x, loc_y, size_x, size_y, rot = self._get_sprite_display_params(sprite, local_idx)
+
+        if is_selected:
+            color = self._COL_SELECTED
+        elif is_same_set:
+            color = self._COL_SAME_SET
+        else:
+            color = self._COL_OTHER_SET
+
+        if geo is not None and (geo.anchor_polys or geo.dot_positions):
+            if geo.anchor_polys:
+                path = self._build_path(geo, loc_x, loc_y, size_x, size_y, rot)
+                pen = QPen(color)
+                pen.setWidthF(1.5 if is_selected else 1.0)
+                painter.setPen(pen)
+                painter.setBrush(Qt.BrushStyle.NoBrush)
+                painter.drawPath(path)
+            if geo.dot_positions:
+                painter.setPen(Qt.PenStyle.NoPen)
+                painter.setBrush(QBrush(color))
+                for dpx, dpy in geo.dot_positions:
+                    wx, wy = self._transform_point(dpx, dpy, loc_x, loc_y, size_x, size_y, rot)
+                    dsx, dsy = self._world_to_screen(wx, wy)
+                    painter.drawEllipse(QPointF(dsx, dsy), 4, 4)
+        else:
+            self._paint_placeholder(painter, self._sprite_bbox_world(sprite, None, local_idx), color)
+
+        if is_selected:
+            bbox = self._sprite_bbox_world(sprite, geo, local_idx)
+            if bbox:
+                self._paint_handles(painter, bbox)
 
     def _paint_grid(self, painter: QPainter):
         cx, cy, cw, ch = self._canvas_rect()
@@ -525,18 +556,14 @@ class SpritePreviewCanvas(QWidget):
         sx2, sy2 = self._world_to_screen(1.0, -1.0)
         painter.drawRect(QRectF(sx1, sy1, sx2 - sx1, sy2 - sy1))
 
-    def _paint_placeholder(self, painter: QPainter, bbox, is_selected: bool):
+    def _paint_placeholder(self, painter: QPainter, bbox, color: QColor):
         if bbox is None:
             return
         min_wx, min_wy, max_wx, max_wy = bbox
         sx1, sy1 = self._world_to_screen(min_wx, max_wy)
         sx2, sy2 = self._world_to_screen(max_wx, min_wy)
-        if is_selected:
-            fill = QColor(80, 200, 120, 50)
-            stroke = QColor(80, 200, 120, 120)
-        else:
-            fill = QColor(100, 100, 100, 30)
-            stroke = QColor(100, 100, 100, 70)
+        fill = QColor(color.red(), color.green(), color.blue(), 50)
+        stroke = QColor(color.red(), color.green(), color.blue(), 120)
         painter.fillRect(QRectF(sx1, sy1, sx2 - sx1, sy2 - sy1), fill)
         painter.setPen(QPen(stroke))
         painter.setBrush(Qt.BrushStyle.NoBrush)
@@ -591,7 +618,7 @@ class SpritePreviewCanvas(QWidget):
                     self._start_drag(ep, sprite, 'move')
                     return
 
-        self._try_select(ep)
+        # Don't allow selection changes from canvas clicks — use the tree instead
 
     def _try_select(self, pos: QPointF):
         """Select the sprite whose bounding box contains pos."""
@@ -791,11 +818,19 @@ class SpritePreviewWidget(QWidget):
             self._transform_label.setText("")
             return
         kf_idx = self._kf_combo.currentIndex()
-        if self._kf_combo.isEnabled() and 0 <= kf_idx < len(self._keyframes):
-            kf = self._keyframes[kf_idx]
-            self._update_transform_label(kf.pos_x, kf.pos_y, kf.scale_x, kf.scale_y, kf.rotation)
+        kf_data_idx = kf_idx - 1
+        p = ss.sprites[sprite_idx].params
+        if self._kf_combo.isEnabled() and kf_data_idx >= 0 and kf_data_idx < len(self._keyframes):
+            # Show the combined display values (base + KF delta) to match what is drawn
+            kf = self._keyframes[kf_data_idx]
+            kf0 = self._keyframes[0]
+            disp_loc_x = p.location_x + (kf.pos_x - kf0.pos_x)
+            disp_loc_y = p.location_y + (kf.pos_y - kf0.pos_y)
+            disp_size_x = p.size_x * (kf.scale_x / kf0.scale_x if kf0.scale_x != 0 else kf.scale_x)
+            disp_size_y = p.size_y * (kf.scale_y / kf0.scale_y if kf0.scale_y != 0 else kf.scale_y)
+            disp_rot = p.start_rotation + (kf.rotation - kf0.rotation)
+            self._update_transform_label(disp_loc_x, disp_loc_y, disp_size_x, disp_size_y, disp_rot)
         else:
-            p = ss.sprites[sprite_idx].params
             self._update_transform_label(p.location_x, p.location_y,
                                          p.size_x, p.size_y, p.start_rotation)
 
@@ -803,9 +838,28 @@ class SpritePreviewWidget(QWidget):
                                       size_x: float, size_y: float, rot: float):
         self._update_transform_label(loc_x, loc_y, size_x, size_y, rot)
         kf_idx = self._kf_combo.currentIndex()
-        if self._kf_combo.isEnabled() and 0 <= kf_idx < len(self._keyframes):
+        kf_data_idx = kf_idx - 1
+        if self._kf_combo.isEnabled() and kf_data_idx >= 0 and kf_data_idx < len(self._keyframes):
             if self._edit_kf_check.isChecked():
-                self.kf_transform_changed.emit(kf_idx, loc_x, loc_y, size_x, size_y, rot)
+                # The canvas loc_x/loc_y/size/rot are the COMBINED (base + delta) values.
+                # Convert back to raw KF values (absolute pos, ratio scale, absolute rot)
+                # so they can be stored directly in the keyframe table.
+                kf0 = self._keyframes[0]
+                ss = self._canvas._sprite_set
+                si = self._canvas._selected_index
+                if ss is not None and 0 <= si < len(ss.sprites):
+                    p = ss.sprites[si].params
+                    kf_pos_x = loc_x - p.location_x + kf0.pos_x
+                    kf_pos_y = loc_y - p.location_y + kf0.pos_y
+                    kf_scale_x = (size_x / p.size_x * kf0.scale_x) if p.size_x != 0 else size_x
+                    kf_scale_y = (size_y / p.size_y * kf0.scale_y) if p.size_y != 0 else size_y
+                    kf_rot = rot - p.start_rotation + kf0.rotation
+                else:
+                    kf_pos_x, kf_pos_y = loc_x, loc_y
+                    kf_scale_x, kf_scale_y = size_x, size_y
+                    kf_rot = rot
+                self.kf_transform_changed.emit(kf_data_idx, kf_pos_x, kf_pos_y,
+                                               kf_scale_x, kf_scale_y, kf_rot)
         else:
             self.transform_changed.emit(loc_x, loc_y, size_x, size_y, rot)
 
@@ -837,31 +891,69 @@ class SpritePreviewWidget(QWidget):
         self._kf_combo.blockSignals(True)
         self._kf_combo.clear()
         if enabled:
+            self._kf_combo.addItem("—")   # index 0 = no KF / show base params
             for i in range(len(self._keyframes)):
                 self._kf_combo.addItem(str(i + 1))
-            self._kf_combo.setCurrentIndex(0)
+            self._kf_combo.setCurrentIndex(0)  # start at "—" → sprites at params position
         self._kf_combo.setEnabled(enabled)
         self._edit_kf_check.setEnabled(enabled)
         self._kf_combo.blockSignals(False)
         self._apply_kf_selection()
 
     def _apply_kf_selection(self):
-        """Sync canvas active state to the selected KF entry."""
+        """Sync canvas active state to the selected KF entry.
+
+        Index 0 in the combo is the "—" sentinel → show sprites at base params (home state).
+        Actual keyframes start at combo index 1 → self._keyframes[0].
+
+        The Scala KeyframeMorphAnimator applies KF transforms as deltas relative to KF[0]:
+          dx = kf[n].posX − kf[0].posX  (position offset added to base)
+          sx = kf[n].scaleX / kf[0].scaleX  (scale multiplied onto base)
+          dr = kf[n].rotation − kf[0].rotation  (rotation added to base)
+        So the preview for KF[n] is: base_params + (kf[n] − kf[0]) delta.
+        """
         idx = self._kf_combo.currentIndex()
-        if not self._kf_combo.isEnabled() or idx < 0 or idx >= len(self._keyframes):
+        if not self._kf_combo.isEnabled() or idx <= 0:
             self._canvas.clear_active_state()
             self._refresh_transform_label()
             return
-        kf = self._keyframes[idx]
+        kf_idx = idx - 1
+        if kf_idx >= len(self._keyframes):
+            self._canvas.clear_active_state()
+            self._refresh_transform_label()
+            return
+        kf = self._keyframes[kf_idx]
+        kf0 = self._keyframes[0]
         geo = (self._load_morph_geo_for_keyframe(kf)
                if self._animator_type == "keyframe_morph" else None)
-        self._canvas.set_active_state(kf.pos_x, kf.pos_y, kf.scale_x, kf.scale_y,
-                                      kf.rotation, geo)
+
+        # Combine base sprite params with the KF delta from KF[0]
+        ss = self._canvas._sprite_set
+        si = self._canvas._selected_index
+        if ss is not None and 0 <= si < len(ss.sprites):
+            p = ss.sprites[si].params
+            loc_x = p.location_x + (kf.pos_x - kf0.pos_x)
+            loc_y = p.location_y + (kf.pos_y - kf0.pos_y)
+            size_x = p.size_x * (kf.scale_x / kf0.scale_x if kf0.scale_x != 0 else kf.scale_x)
+            size_y = p.size_y * (kf.scale_y / kf0.scale_y if kf0.scale_y != 0 else kf.scale_y)
+            rotation = p.start_rotation + (kf.rotation - kf0.rotation)
+        else:
+            loc_x, loc_y = kf.pos_x, kf.pos_y
+            size_x, size_y = kf.scale_x, kf.scale_y
+            rotation = kf.rotation
+
+        self._canvas.set_active_state(loc_x, loc_y, size_x, size_y, rotation, geo)
         self._refresh_transform_label()
 
     def _load_morph_geo_for_keyframe(self, kf) -> Optional[ParsedGeo]:
-        """Load the morph target geometry for kf.morph_amount (e.g. 1.5 → mt[0])."""
+        """Load the morph target geometry for kf.morph_amount.
+
+        morph_amount: 0=base, 1=mt1, 2=mt2; fractional values blend adjacent targets.
+        Preview snaps to nearest integer target (int truncation): 0.x → base, 1.x → mt1, etc.
+        """
         mt_idx = int(kf.morph_amount) - 1   # morph_amount 1→index 0, 2→index 1, …
+        # Clamp to valid range; morph_amount=N.0 at boundary still shows the last target
+        mt_idx = min(mt_idx, len(self._morph_targets) - 1)
         if mt_idx < 0 or mt_idx >= len(self._morph_targets):
             return None
         poly_dir = self._canvas._polygon_sets_dir
@@ -902,8 +994,21 @@ class SpritePreviewWidget(QWidget):
         self._canvas.set_selected_index(index)
         self._refresh_transform_label()
 
+    def set_sprite_library(self, lib):
+        self._canvas.set_sprite_library(lib)
+
     def set_shape_library(self, lib):
         self._canvas.set_shape_library(lib)
+
+    def refresh_for_params_change(self, canvas_index: int):
+        """Called when sprite base params change.
+
+        Updates the canvas selected index and re-applies the current KF combo
+        selection (if any) with the new base params — without resetting the combo.
+        """
+        self._canvas.set_selected_index(canvas_index)
+        self._apply_kf_selection()
+        self._refresh_transform_label()
 
     def set_directories(self, poly_dir: str, curve_dir: str, point_dir: str):
         self._canvas.set_directories(poly_dir, curve_dir, point_dir)
