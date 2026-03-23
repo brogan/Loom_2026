@@ -641,7 +641,7 @@ class RendererEditor(QWidget):
         point_scroll.setWidget(point_content)
         inner_tabs.addTab(point_scroll, "Point Change")
 
-        self.point_size_change_editor = SizeChangeEditor("Point Size Change")
+        self.point_size_change_editor = SizeChangeEditor("Point Size Change", preview_mode='point')
         self.point_size_change_editor.setCheckable(False)
         self.point_size_change_editor.changed.connect(self._on_changed)
         point_layout.addWidget(self.point_size_change_editor)
@@ -658,7 +658,7 @@ class RendererEditor(QWidget):
         stroke_scroll.setWidget(stroke_content)
         inner_tabs.addTab(stroke_scroll, "Stroke Change")
 
-        self.stroke_width_change_editor = SizeChangeEditor("Stroke Width Change")
+        self.stroke_width_change_editor = SizeChangeEditor("Stroke Width Change", preview_mode='stroke')
         self.stroke_width_change_editor.setCheckable(False)
         self.stroke_width_change_editor.changed.connect(self._on_changed)
         stroke_layout.addWidget(self.stroke_width_change_editor)
