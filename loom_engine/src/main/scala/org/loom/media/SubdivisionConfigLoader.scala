@@ -396,6 +396,45 @@ object SubdivisionConfigLoader {
 
       icp.probability = getDoubleOrDefault(icpNode, "Probability", 100.0)
 
+      // Refer-to-outer mode (quad curves)
+      (icpNode \ "ReferToOuter").text.toUpperCase match {
+        case "FOLLOW"     => icp.setQuadReferToOuter(InnerControlPoints.FOLLOW_OUTER)
+        case "EXAGGERATE" => icp.setQuadReferToOuter(InnerControlPoints.EXAGGERATE_OUTER)
+        case "COUNTER"    => icp.setQuadReferToOuter(InnerControlPoints.COUNTER_OUTER)
+        case _            => // NONE or absent — referToOuter stays false (default)
+      }
+
+      // Inner/outer multipliers (used by quad refer-to-outer mode)
+      val innerMulX = (icpNode \ "InnerMultiplierX").text match { case "" => 1.0; case s => s.toDouble }
+      val innerMulY = (icpNode \ "InnerMultiplierY").text match { case "" => 1.0; case s => s.toDouble }
+      icp.innerMultiplier = new Vector2D(innerMulX, innerMulY)
+      val outerMulX = (icpNode \ "OuterMultiplierX").text match { case "" => 1.0; case s => s.toDouble }
+      val outerMulY = (icpNode \ "OuterMultiplierY").text match { case "" => 1.0; case s => s.toDouble }
+      icp.outerMultiplier = new Vector2D(outerMulX, outerMulY)
+
+      // Inner/outer ratios (used by tri curves)
+      icp.innerRatio  = getDoubleOrDefault(icpNode, "InnerRatio",  -0.15)
+      icp.outerRatio  = getDoubleOrDefault(icpNode, "OuterRatio",   1.1)
+      icp.randomRatio = (icpNode \ "RandomRatio").text.toLowerCase == "true"
+      (icpNode \ "RandomInnerRatio").headOption.foreach { n =>
+        val min = (n \ "@min").text match { case "" => -0.5; case s => s.toDouble }
+        val max = (n \ "@max").text match { case "" =>  0.5; case s => s.toDouble }
+        icp.ranInnerRatio = new Range(min, max)
+      }
+      (icpNode \ "RandomOuterRatio").headOption.foreach { n =>
+        val min = (n \ "@min").text match { case "" => -0.5; case s => s.toDouble }
+        val max = (n \ "@max").text match { case "" =>  0.5; case s => s.toDouble }
+        icp.ranOuterRatio = new Range(min, max)
+      }
+
+      // Common-line mode
+      (icpNode \ "CommonLine").text.toUpperCase match {
+        case "ODD"    => icp.setCommonLine(InnerControlPoints.ODD_COMMON)
+        case "RANDOM" => icp.setCommonLine(InnerControlPoints.RANDOM_COMMON)
+        case "NONE"   => icp.commonLine = false
+        case _        => icp.setCommonLine(InnerControlPoints.EVEN_COMMON) // EVEN or absent
+      }
+
       // Replace in params
       params.innerControlPoints = icp
       params.transformSet(4) = icp

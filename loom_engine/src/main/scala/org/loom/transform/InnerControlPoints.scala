@@ -445,8 +445,8 @@ class InnerControlPoints(curving: Boolean) extends Transform (curving) {
 
 				vectorDiffA = Formulas.differenceBetweenTwoVectors(anchors(i*2)(0), outerControls(i)(0))//anchor 0 to control 0
 				vectorDiffB = Formulas.differenceBetweenTwoVectors(anchors(i*2)(1), outerControls(i)(1))//anchor 1 to control 1
-				vectorDiffC1 = Formulas.differenceBetweenTwoVectors(outerControls(i)(0), anchors(i*2)(0))//outer control 0 to anchor 0
-				vectorDiffC2 = Formulas.differenceBetweenTwoVectors(outerControls(i)(1), anchors(i*2)(1))//outer control 1 to anchor 1
+				vectorDiffC1 = Formulas.differenceBetweenTwoVectors(anchors(i*2)(0), controls(i*2)(0))//anchor 0 to inner control 0
+				vectorDiffC2 = Formulas.differenceBetweenTwoVectors(anchors(i*2)(1), controls(i*2)(1))//anchor 1 to inner control 1
 
 
 				if(followOuter) {

@@ -1137,7 +1137,9 @@ class SubdivisionTab(QWidget):
         dialog = TransformSetDialog(self._current_params.transform_set, self)
         if dialog.exec() == QDialog.DialogCode.Accepted:
             self._current_params.transform_set = dialog.get_transform_set()
+            self._current_params.polys_transform_points = self._current_params.transform_set.has_any_enabled()
             self._update_transform_status(self._current_params.transform_set)
+            self._refresh_tree()
             self.modified.emit()
 
     # --- Bake subdivision ---
