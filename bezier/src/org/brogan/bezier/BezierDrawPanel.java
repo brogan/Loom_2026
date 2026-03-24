@@ -297,7 +297,9 @@ public class BezierDrawPanel extends JPanel implements Runnable, MouseListener, 
 			}
 			grid.draw(dBufferGraphics);
 			gridAxes.draw(dBufferGraphics);
-			polygonManager.draw((Graphics2D)dBufferGraphics);
+			synchronized (polygonManager) {
+				polygonManager.draw((Graphics2D)dBufferGraphics);
+			}
 
 			// Rubber-band selection rectangle
 			if (rubberBanding && rubberBandStart != null && rubberBandEnd != null) {
@@ -715,8 +717,10 @@ public class BezierDrawPanel extends JPanel implements Runnable, MouseListener, 
 			double dx = knifeEnd.x - knifeStart.x, dy = knifeEnd.y - knifeStart.y;
 			if (Math.sqrt(dx*dx + dy*dy) > 5) {
 				takeUndoSnapshot();
-				BezierKnifeTool.performCut(polygonManager, knifeStart, knifeEnd,
-				                           strokeColor, preKnifeSelection, selectedPolygons);
+				synchronized (polygonManager) {
+					BezierKnifeTool.performCut(polygonManager, knifeStart, knifeEnd,
+					                           strokeColor, preKnifeSelection, selectedPolygons);
+				}
 			}
 			knifeStart = null; knifeEnd = null;
 			return;
