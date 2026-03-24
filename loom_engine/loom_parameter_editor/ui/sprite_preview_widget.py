@@ -821,14 +821,13 @@ class SpritePreviewWidget(QWidget):
         kf_data_idx = kf_idx - 1
         p = ss.sprites[sprite_idx].params
         if self._kf_combo.isEnabled() and kf_data_idx >= 0 and kf_data_idx < len(self._keyframes):
-            # Show the combined display values (base + KF delta) to match what is drawn
+            # Show combined display values (base + absolute KF offset) to match what is drawn
             kf = self._keyframes[kf_data_idx]
-            kf0 = self._keyframes[0]
-            disp_loc_x = p.location_x + (kf.pos_x - kf0.pos_x)
-            disp_loc_y = p.location_y + (kf.pos_y - kf0.pos_y)
-            disp_size_x = p.size_x * (kf.scale_x / kf0.scale_x if kf0.scale_x != 0 else kf.scale_x)
-            disp_size_y = p.size_y * (kf.scale_y / kf0.scale_y if kf0.scale_y != 0 else kf.scale_y)
-            disp_rot = p.start_rotation + (kf.rotation - kf0.rotation)
+            disp_loc_x = p.location_x + kf.pos_x
+            disp_loc_y = p.location_y + kf.pos_y
+            disp_size_x = p.size_x * kf.scale_x
+            disp_size_y = p.size_y * kf.scale_y
+            disp_rot = p.start_rotation + kf.rotation
             self._update_transform_label(disp_loc_x, disp_loc_y, disp_size_x, disp_size_y, disp_rot)
         else:
             self._update_transform_label(p.location_x, p.location_y,
@@ -841,19 +840,17 @@ class SpritePreviewWidget(QWidget):
         kf_data_idx = kf_idx - 1
         if self._kf_combo.isEnabled() and kf_data_idx >= 0 and kf_data_idx < len(self._keyframes):
             if self._edit_kf_check.isChecked():
-                # The canvas loc_x/loc_y/size/rot are the COMBINED (base + delta) values.
-                # Convert back to raw KF values (absolute pos, ratio scale, absolute rot)
-                # so they can be stored directly in the keyframe table.
-                kf0 = self._keyframes[0]
+                # The canvas loc_x/loc_y/size/rot are the COMBINED (base + absolute KF) values.
+                # Convert back to raw KF values: kf.pos = canvas_pos - base_pos, etc.
                 ss = self._canvas._sprite_set
                 si = self._canvas._selected_index
                 if ss is not None and 0 <= si < len(ss.sprites):
                     p = ss.sprites[si].params
-                    kf_pos_x = loc_x - p.location_x + kf0.pos_x
-                    kf_pos_y = loc_y - p.location_y + kf0.pos_y
-                    kf_scale_x = (size_x / p.size_x * kf0.scale_x) if p.size_x != 0 else size_x
-                    kf_scale_y = (size_y / p.size_y * kf0.scale_y) if p.size_y != 0 else size_y
-                    kf_rot = rot - p.start_rotation + kf0.rotation
+                    kf_pos_x = loc_x - p.location_x
+                    kf_pos_y = loc_y - p.location_y
+                    kf_scale_x = (size_x / p.size_x) if p.size_x != 0 else size_x
+                    kf_scale_y = (size_y / p.size_y) if p.size_y != 0 else size_y
+                    kf_rot = rot - p.start_rotation
                 else:
                     kf_pos_x, kf_pos_y = loc_x, loc_y
                     kf_scale_x, kf_scale_y = size_x, size_y
@@ -906,11 +903,12 @@ class SpritePreviewWidget(QWidget):
         Index 0 in the combo is the "—" sentinel → show sprites at base params (home state).
         Actual keyframes start at combo index 1 → self._keyframes[0].
 
-        The Scala KeyframeMorphAnimator applies KF transforms as deltas relative to KF[0]:
-          dx = kf[n].posX − kf[0].posX  (position offset added to base)
-          sx = kf[n].scaleX / kf[0].scaleX  (scale multiplied onto base)
-          dr = kf[n].rotation − kf[0].rotation  (rotation added to base)
-        So the preview for KF[n] is: base_params + (kf[n] − kf[0]) delta.
+        KF posX/posY/scaleX/scaleY/rotation are ABSOLUTE offsets from the sprite's base params:
+          display_loc_x  = base.location_x  + kf.pos_x
+          display_loc_y  = base.location_y  + kf.pos_y
+          display_size_x = base.size_x      * kf.scale_x
+          display_size_y = base.size_y      * kf.scale_y
+          display_rot    = base.start_rotation + kf.rotation
         """
         idx = self._kf_combo.currentIndex()
         if not self._kf_combo.isEnabled() or idx <= 0:
@@ -923,20 +921,19 @@ class SpritePreviewWidget(QWidget):
             self._refresh_transform_label()
             return
         kf = self._keyframes[kf_idx]
-        kf0 = self._keyframes[0]
         geo = (self._load_morph_geo_for_keyframe(kf)
                if self._animator_type == "keyframe_morph" else None)
 
-        # Combine base sprite params with the KF delta from KF[0]
+        # KF values are absolute offsets from the sprite's base params.
         ss = self._canvas._sprite_set
         si = self._canvas._selected_index
         if ss is not None and 0 <= si < len(ss.sprites):
             p = ss.sprites[si].params
-            loc_x = p.location_x + (kf.pos_x - kf0.pos_x)
-            loc_y = p.location_y + (kf.pos_y - kf0.pos_y)
-            size_x = p.size_x * (kf.scale_x / kf0.scale_x if kf0.scale_x != 0 else kf.scale_x)
-            size_y = p.size_y * (kf.scale_y / kf0.scale_y if kf0.scale_y != 0 else kf.scale_y)
-            rotation = p.start_rotation + (kf.rotation - kf0.rotation)
+            loc_x = p.location_x + kf.pos_x
+            loc_y = p.location_y + kf.pos_y
+            size_x = p.size_x * kf.scale_x
+            size_y = p.size_y * kf.scale_y
+            rotation = p.start_rotation + kf.rotation
         else:
             loc_x, loc_y = kf.pos_x, kf.pos_y
             size_x, size_y = kf.scale_x, kf.scale_y

@@ -42,23 +42,19 @@ class KeyframeAnimator(
   val loopMode: String
 ) extends SpriteAnimator {
 
-  private var drawCount: Int = 0
+  // Start drawCount at the first keyframe's drawCycle so the very first update applies
+  // kf[0].posX/posY as an absolute displacement from the sprite's base position.
+  private var drawCount: Int = if (keyframes.nonEmpty) keyframes.head.drawCycle else 0
   private var direction: Int = 1
-  private var lastPosX: Double = 0.0
+  private var lastPosX: Double = 0.0   // 0 = sprite base position (absolute convention)
   private var lastPosY: Double = 0.0
-  private var lastScaleX: Double = 1.0
+  private var lastScaleX: Double = 1.0 // 1.0 = sprite base scale
   private var lastScaleY: Double = 1.0
   private var lastRotation: Double = 0.0
-  private var initialized: Boolean = false
   private var finished: Boolean = false
 
   def update(sprite: Sprite2D): Unit = {
     if (!animating || keyframes.length < 2 || finished) return
-
-    if (!initialized) {
-      initializeFromFirstKeyframe()
-      initialized = true
-    }
 
     val (kf1, kf2) = findBracketingKeyframes()
     val duration = (kf2.drawCycle - kf1.drawCycle).toDouble
@@ -138,17 +134,6 @@ class KeyframeAnimator(
     }
   }
 
-  private def initializeFromFirstKeyframe(): Unit = {
-    if (keyframes.nonEmpty) {
-      val kf = keyframes.head
-      lastPosX = kf.posX
-      lastPosY = kf.posY
-      lastScaleX = kf.scaleX
-      lastScaleY = kf.scaleY
-      lastRotation = kf.rotation
-    }
-  }
-
   private def resetToFirstKeyframe(sprite: Sprite2D): Unit = {
     val kf = keyframes.head
     val canvasW = (Config.width * Config.qualityMultiple).toDouble
@@ -207,7 +192,6 @@ class KeyframeAnimator(
     cloned.lastScaleX = lastScaleX
     cloned.lastScaleY = lastScaleY
     cloned.lastRotation = lastRotation
-    cloned.initialized = initialized
     cloned.finished = finished
     cloned
   }
