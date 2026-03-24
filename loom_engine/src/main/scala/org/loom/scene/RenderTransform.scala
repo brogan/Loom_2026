@@ -62,6 +62,8 @@ private class RenderTransform(val renderer: Renderer, var changeType: Int) {
   def scalePixelValues(factor: Float): Unit = {
     strokeWidthValues.scaleBy(factor)
     pointSizeValues.scaleBy(factor)
+    strokeWidthPalette = strokeWidthPalette.map(_ * factor)
+    pointSizePalette = pointSizePalette.map(_ * factor)
     // opacityValues is a 0-1 float ratio — no pixel scaling needed
   }
 

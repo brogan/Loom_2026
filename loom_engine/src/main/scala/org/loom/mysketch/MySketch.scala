@@ -543,7 +543,7 @@ class MySketch(width: Int, height: Int) extends Sketch(width, height) {
     } else if (animatorType == "keyframe" && spriteDef.keyframes.nonEmpty) {
       // Keyframe animation mode — scale position values by quality factor
       val kfs = spriteDef.keyframes.map { kd =>
-        Keyframe(kd.drawCycle, kd.posX * qf, kd.posY * qf, kd.scaleX, kd.scaleY, kd.rotation, kd.easing)
+        Keyframe(kd.drawCycle, kd.posX, kd.posY, kd.scaleX, kd.scaleY, kd.rotation, kd.easing)
       }.sortBy(_.drawCycle).toArray
       KeyframeAnimator(animationEnabled, kfs, spriteDef.loopMode)
     } else {
@@ -596,7 +596,7 @@ class MySketch(width: Int, height: Int) extends Sketch(width, height) {
       val sprite = Sprite2D(shape, spriteParams, dummyAnimator, rendererSet)
 
       // Build morph target
-      val morphAnimator = buildMorphAnimator(sprite, spriteDef, animationEnabled, qf)
+      val morphAnimator = buildMorphAnimator(sprite, spriteDef, animationEnabled)
       if (morphAnimator != null) {
         sprite.animator = morphAnimator
       } else {
@@ -667,7 +667,7 @@ class MySketch(width: Int, height: Int) extends Sketch(width, height) {
    * Supports a chain of morph targets: base → mt1 → mt2 → …
    * Dispatches on file extension: .curve.xml → OpenCurveSetLoader, else PolygonConfigLoader.
    */
-  private def buildMorphAnimator(sprite: Sprite2D, spriteDef: SpriteDef, animationEnabled: Boolean, qf: Double): SpriteAnimator = {
+  private def buildMorphAnimator(sprite: Sprite2D, spriteDef: SpriteDef, animationEnabled: Boolean): SpriteAnimator = {
     try {
       val morphTargetsDir = ProjectPaths.getMorphTargetsPath(projectName)
 
@@ -719,7 +719,7 @@ class MySketch(width: Int, height: Int) extends Sketch(width, height) {
           JitterMorphAnimator(animationEnabled, morphTarget, spriteDef.morphMin, spriteDef.morphMax)
         case "keyframe_morph" if spriteDef.keyframes.nonEmpty =>
           val mkfs = spriteDef.keyframes.map { kd =>
-            MorphKeyframe(kd.drawCycle, kd.posX * qf, kd.posY * qf, kd.scaleX, kd.scaleY, kd.rotation, kd.morphAmount, kd.easing)
+            MorphKeyframe(kd.drawCycle, kd.posX, kd.posY, kd.scaleX, kd.scaleY, kd.rotation, kd.morphAmount, kd.easing)
           }.sortBy(_.drawCycle).toArray
           KeyframeMorphAnimator(animationEnabled, mkfs, spriteDef.loopMode, morphTarget)
         case _ =>
