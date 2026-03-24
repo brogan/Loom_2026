@@ -265,7 +265,7 @@ object RenderingConfigLoader {
         val params = parseChangeParams(node)
         val pauseMax = getIntOrDefault(node, "PauseMax", 10)
         val kindStr = (node \ "Kind").text
-        if (kindStr == "PAL_SEQ" || kindStr == "PAL_RAN") {
+        if (kindStr == "SEQ" || kindStr == "RAN" || kindStr == "PAL_SEQ" || kindStr == "PAL_RAN") {
           val palette = parseSizePalette(node \ "SizePalette")
           renderer.setChangingStrokeWidthPalette(params, palette, pauseMax)
         } else {
@@ -285,7 +285,7 @@ object RenderingConfigLoader {
         val params = parseChangeParams(node)
         val pauseMax = getIntOrDefault(node, "PauseMax", 10)
         val kindStr = (node \ "Kind").text
-        if (kindStr == "PAL_SEQ" || kindStr == "PAL_RAN") {
+        if (kindStr == "SEQ" || kindStr == "RAN" || kindStr == "PAL_SEQ" || kindStr == "PAL_RAN") {
           val palette = parsePalette(node \ "Palette")
           renderer.setChangingStrokeColorPalette(params, palette, pauseMax)
         } else {
@@ -308,7 +308,7 @@ object RenderingConfigLoader {
         val params = parseChangeParams(node)
         val pauseMax = getIntOrDefault(node, "PauseMax", 10)
         val kindStr = (node \ "Kind").text
-        if (kindStr == "PAL_SEQ" || kindStr == "PAL_RAN") {
+        if (kindStr == "SEQ" || kindStr == "RAN" || kindStr == "PAL_SEQ" || kindStr == "PAL_RAN") {
           val palette = parsePalette(node \ "Palette")
           renderer.setChangingFillColorPalette(params, palette, pauseMax)
         } else {
@@ -331,7 +331,7 @@ object RenderingConfigLoader {
         val params = parseChangeParams(node)
         val pauseMax = getIntOrDefault(node, "PauseMax", 10)
         val kindStr = (node \ "Kind").text
-        if (kindStr == "PAL_SEQ" || kindStr == "PAL_RAN") {
+        if (kindStr == "SEQ" || kindStr == "RAN" || kindStr == "PAL_SEQ" || kindStr == "PAL_RAN") {
           val palette = parseSizePalette(node \ "SizePalette")
           renderer.setChangingPointSizePalette(params, palette, pauseMax)
         } else {
@@ -346,10 +346,13 @@ object RenderingConfigLoader {
 
   private def parseChangeParams(node: Node): Array[Int] = {
     val kind = (node \ "Kind").text match {
-      case "RAN"     => Renderer.RAN
-      case "PAL_SEQ" => Renderer.PAL_SEQ
-      case "PAL_RAN" => Renderer.PAL_RAN
-      case _         => Renderer.SEQ
+      case "NUM_RAN"           => Renderer.NUM_RAN
+      case "SEQ"               => Renderer.SEQ
+      case "RAN"               => Renderer.RAN
+      case "PAL_SEQ"           => Renderer.SEQ      // backward compat
+      case "PAL_RAN"           => Renderer.RAN      // backward compat
+      case "NUM_SEQ"           => Renderer.NUM_SEQ
+      case _                   => Renderer.NUM_SEQ  // default
     }
 
     val motion = (node \ "Motion").text match {

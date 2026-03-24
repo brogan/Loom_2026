@@ -50,15 +50,17 @@ class PostCompletionMode(Enum):
 
 
 class ChangeKind(Enum):
-    """Kind of parameter change - matches Renderer.SEQ, RAN, PAL_SEQ, PAL_RAN"""
-    SEQ     = 0  # Sequential numeric change
-    RAN     = 1  # Random numeric change
-    PAL_SEQ = 2  # Sequential palette change
-    PAL_RAN = 3  # Random palette change
+    """Kind of parameter change - matches Renderer.NUM_SEQ, NUM_RAN, SEQ, RAN"""
+    NUM_SEQ = 0  # Sequential numeric change
+    NUM_RAN = 1  # Random numeric change
+    SEQ     = 2  # Sequential palette change
+    RAN     = 3  # Random palette change
 
     @classmethod
     def from_string(cls, s: str) -> 'ChangeKind':
-        return cls[s.upper()]
+        # Backward compat: old XML used PAL_SEQ/PAL_RAN before rename
+        _legacy = {'PAL_SEQ': cls.SEQ, 'PAL_RAN': cls.RAN}
+        return _legacy.get(s, cls[s.upper()])
 
     def to_xml_string(self) -> str:
         return self.name

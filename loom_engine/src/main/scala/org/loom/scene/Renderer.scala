@@ -297,10 +297,10 @@ object Renderer {
   val CYCLE: Int = 2
 
   //kind
-  val SEQ:     Int = 0
-  val RAN:     Int = 1
-  val PAL_SEQ: Int = 2
-  val PAL_RAN: Int = 3
+  val NUM_SEQ: Int = 0
+  val NUM_RAN: Int = 1
+  val SEQ:     Int = 2
+  val RAN:     Int = 3
 
   //motion
   val UP: Int = 1

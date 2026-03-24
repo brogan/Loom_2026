@@ -400,7 +400,7 @@ class RenderingIO:
         etree.SubElement(elem, "Cycle").text = change.cycle.to_xml_string()
         etree.SubElement(elem, "Scale").text = change.scale.to_xml_string()
 
-        if change.kind in (ChangeKind.PAL_SEQ, ChangeKind.PAL_RAN):
+        if change.kind in (ChangeKind.SEQ, ChangeKind.RAN):
             pal_elem = etree.SubElement(elem, "SizePalette")
             for v in change.size_palette:
                 etree.SubElement(pal_elem, "PaletteEntry").text = str(v)
@@ -424,7 +424,7 @@ class RenderingIO:
         etree.SubElement(elem, "Cycle").text = change.cycle.to_xml_string()
         etree.SubElement(elem, "Scale").text = change.scale.to_xml_string()
 
-        is_palette = change.kind in (ChangeKind.PAL_SEQ, ChangeKind.PAL_RAN)
+        is_palette = change.kind in (ChangeKind.SEQ, ChangeKind.RAN)
         if is_palette:
             pal_elem = etree.SubElement(elem, "Palette")
             for c in change.palette:

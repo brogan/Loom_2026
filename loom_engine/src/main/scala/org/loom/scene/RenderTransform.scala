@@ -124,7 +124,7 @@ private class RenderTransform(val renderer: Renderer, var changeType: Int) {
 
   // Set renderer value to start-of-cycle position (min for UP, max for DOWN, midpoint for PING_PONG)
   def setInitialValues(): Unit = {
-    if (kind == Renderer.PAL_SEQ || kind == Renderer.PAL_RAN) {
+    if (kind == Renderer.SEQ || kind == Renderer.RAN) {
       changeType match {
         case Renderer.STROKE_COLOR =>
           if (strokePalette.nonEmpty) {
@@ -246,16 +246,16 @@ private class RenderTransform(val renderer: Renderer, var changeType: Int) {
 
   def updateTransform(changeType: Int, scaley: Int): Unit = {
     if (scaley == scale) {//SPRITE, POLY or POINT
-      if (kind == Renderer.SEQ) { //sequence
+      if (kind == Renderer.NUM_SEQ) { //sequence
         changeType match {
           case Renderer.STROKE_WIDTH => updateStrokeWidth()
           case Renderer.STROKE_COLOR => updateStrokeColor()
           case Renderer.FILL_COLOR => updateFillColor()
           case Renderer.POINT_SIZE => updatePointSize()
           case Renderer.STENCIL_OPACITY => updateOpacity()
-          case _ => println("RendertTransform update SEQ, cycleEnded but no relevant changeType: " + changeType)
+          case _ => println("RendertTransform update NUM_SEQ, cycleEnded but no relevant changeType: " + changeType)
         }
-      } else if (kind == Renderer.RAN) { //random
+      } else if (kind == Renderer.NUM_RAN) { //random
         changeType match {
           case Renderer.STROKE_WIDTH => renderer.strokeWidth = Randomise.range(strokeWidthValues.min, strokeWidthValues.max).toFloat
           case Renderer.STROKE_COLOR => updateStrokeColor()
@@ -264,10 +264,10 @@ private class RenderTransform(val renderer: Renderer, var changeType: Int) {
           case Renderer.STENCIL_OPACITY =>
             if (renderer.stencilConfig != null)
               renderer.stencilConfig.currentOpacity = Randomise.range(opacityValues.min.toDouble, opacityValues.max.toDouble).toFloat
-          case _ => println("RendertTransform update RAN, cycleEnded but no relevant changeType: " + changeType)
+          case _ => println("RendertTransform update NUM_RAN, cycleEnded but no relevant changeType: " + changeType)
         }
         //
-      } else if (kind == Renderer.PAL_SEQ || kind == Renderer.PAL_RAN) {
+      } else if (kind == Renderer.SEQ || kind == Renderer.RAN) {
         changeType match {
           case Renderer.STROKE_COLOR => updateStrokeColorPalette()
           case Renderer.FILL_COLOR   => updateFillColorPalette()
@@ -335,7 +335,7 @@ private class RenderTransform(val renderer: Renderer, var changeType: Int) {
     for (i <- 0 until 4) {
       if (!paused) {
         val colVal: Int = currCol(i)
-        if (kind == Renderer.SEQ) {
+        if (kind == Renderer.NUM_SEQ) {
           if (motion == Renderer.UP) {
             if (colVal < strokeColorValues.max(i)) {
               newColor(i) = colVal + strokeColorValues.increments(i)
@@ -391,7 +391,7 @@ private class RenderTransform(val renderer: Renderer, var changeType: Int) {
               }
             }
           }
-        } else if (kind == Renderer.RAN) {
+        } else if (kind == Renderer.NUM_RAN) {
           if (ranCount < ranMax) {
             newColor = Colors.colorToArray(getRandomisedColor(strokeColorValues))
           } else {
@@ -422,7 +422,7 @@ private class RenderTransform(val renderer: Renderer, var changeType: Int) {
     for (i <- 0 until 4) {
       if (!paused) {
         val colVal: Int = currCol(i)
-        if(kind == Renderer.SEQ) {
+        if(kind == Renderer.NUM_SEQ) {
           if (motion == Renderer.UP) {
             if (colVal < fillColorValues.max(i)) {
               newColor(i) = colVal + fillColorValues.increments(i)
@@ -493,7 +493,7 @@ private class RenderTransform(val renderer: Renderer, var changeType: Int) {
               }
             }
           }
-        } else if (kind == Renderer.RAN) {
+        } else if (kind == Renderer.NUM_RAN) {
           if (ranCount < ranMax) {
             newColor = Colors.colorToArray(getRandomisedColor(fillColorValues))
           } else {
@@ -621,7 +621,7 @@ private class RenderTransform(val renderer: Renderer, var changeType: Int) {
 
   private def updateStrokeWidthPalette(): Unit = {
     if (strokeWidthPalette.isEmpty) return
-    if (kind == Renderer.PAL_RAN) {
+    if (kind == Renderer.RAN) {
       strokeWidthPaletteIndex = Randomise.range(0, strokeWidthPalette.length - 1)
     } else {
       if (motion == Renderer.UP) {
@@ -643,7 +643,7 @@ private class RenderTransform(val renderer: Renderer, var changeType: Int) {
 
   private def updatePointSizePalette(): Unit = {
     if (pointSizePalette.isEmpty) return
-    if (kind == Renderer.PAL_RAN) {
+    if (kind == Renderer.RAN) {
       pointSizePaletteIndex = Randomise.range(0, pointSizePalette.length - 1)
     } else {
       if (motion == Renderer.UP) {
@@ -665,9 +665,9 @@ private class RenderTransform(val renderer: Renderer, var changeType: Int) {
 
   private def updateStrokeColorPalette(): Unit = {
     if (strokePalette.isEmpty) return
-    if (kind == Renderer.PAL_RAN) {
+    if (kind == Renderer.RAN) {
       strokePaletteIndex = Randomise.range(0, strokePalette.length - 1)
-    } else { // PAL_SEQ
+    } else { // SEQ
       if (motion == Renderer.UP) {
         val next = strokePaletteIndex + 1
         if (next < strokePalette.length) strokePaletteIndex = next
@@ -691,9 +691,9 @@ private class RenderTransform(val renderer: Renderer, var changeType: Int) {
 
   private def updateFillColorPalette(): Unit = {
     if (fillPalette.isEmpty) return
-    if (kind == Renderer.PAL_RAN) {
+    if (kind == Renderer.RAN) {
       fillPaletteIndex = Randomise.range(0, fillPalette.length - 1)
-    } else { // PAL_SEQ
+    } else { // SEQ
       if (motion == Renderer.UP) {
         val next = fillPaletteIndex + 1
         if (next < fillPalette.length) fillPaletteIndex = next

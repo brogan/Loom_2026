@@ -11,7 +11,6 @@ from PyQt6.QtGui import QPainter, QColor, QPen, QBrush, QFont
 
 _BOX = 40          # preview box width & height (px)
 _GAP = 3           # gap between boxes
-_MAX_PREVIEW = 12.0  # max size rendered visually; larger values show as text
 _MAX_PALETTE = 12  # max palette entries
 
 
@@ -63,24 +62,35 @@ class _SizePaletteCanvas(QWidget):
             # Background box
             painter.fillRect(x, y, _BOX, _BOX, bg)
 
-            if val <= _MAX_PREVIEW:
-                painter.setPen(Qt.PenStyle.NoPen)
-                painter.setBrush(QBrush(shape_col))
-                if self._mode == 'point':
-                    r = max(1, val / 2)
+            if self._mode == 'point':
+                max_r = (_BOX - 2) / 2  # circle fits within box
+                r = min(max(1, val / 2), max_r)
+                if val / 2 <= max_r:
+                    painter.setPen(Qt.PenStyle.NoPen)
+                    painter.setBrush(QBrush(shape_col))
                     painter.drawEllipse(int(cx - r), int(cy - r), int(r * 2), int(r * 2))
-                else:  # stroke
-                    w = max(1, int(val))
+                else:
+                    painter.setPen(QPen(shape_col))
+                    font = QFont()
+                    font.setPointSize(7)
+                    painter.setFont(font)
+                    text = f"{val:.1f}" if val != int(val) else str(int(val))
+                    painter.drawText(x, y, _BOX, _BOX, Qt.AlignmentFlag.AlignCenter, text)
+            else:  # stroke
+                max_w = _BOX - 2  # line fits within box
+                w = int(val)
+                if w <= max_w:
+                    painter.setPen(Qt.PenStyle.NoPen)
+                    painter.setBrush(QBrush(shape_col))
                     h = _BOX - 12
                     painter.fillRect(cx - w // 2, cy - h // 2, max(1, w), h, shape_col)
-            else:
-                # Show numeric value as text
-                painter.setPen(QPen(shape_col))
-                font = QFont()
-                font.setPointSize(7)
-                painter.setFont(font)
-                text = f"{val:.1f}" if val != int(val) else str(int(val))
-                painter.drawText(x, y, _BOX, _BOX, Qt.AlignmentFlag.AlignCenter, text)
+                else:
+                    painter.setPen(QPen(shape_col))
+                    font = QFont()
+                    font.setPointSize(7)
+                    painter.setFont(font)
+                    text = f"{val:.1f}" if val != int(val) else str(int(val))
+                    painter.drawText(x, y, _BOX, _BOX, Qt.AlignmentFlag.AlignCenter, text)
 
             # Selection highlight
             if i == self._selected:

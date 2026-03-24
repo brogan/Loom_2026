@@ -99,7 +99,7 @@ class SizeChangeEditor(QGroupBox):
         layout.addLayout(row4)
 
     def _on_kind_changed(self, kind) -> None:
-        is_palette = kind in (ChangeKind.PAL_SEQ, ChangeKind.PAL_RAN)
+        is_palette = kind in (ChangeKind.SEQ, ChangeKind.RAN)
         self._min_max_widget.setVisible(not is_palette)
         if self._has_palette:
             self.size_palette_editor.setVisible(is_palette)
@@ -129,7 +129,7 @@ class SizeChangeEditor(QGroupBox):
             return SizeChange()
 
         kind = self.kind_dropdown.get_value()
-        is_pal = self._has_palette and kind in (ChangeKind.PAL_SEQ, ChangeKind.PAL_RAN)
+        is_pal = self._has_palette and kind in (ChangeKind.SEQ, ChangeKind.RAN)
         return SizeChange(
             enabled=self.isChecked(),
             kind=kind,
@@ -235,7 +235,7 @@ class ColorChangeEditor(QGroupBox):
         layout.addWidget(self._pause_channel_group)
 
     def _on_kind_changed(self, kind) -> None:
-        is_palette = kind in (ChangeKind.PAL_SEQ, ChangeKind.PAL_RAN)
+        is_palette = kind in (ChangeKind.SEQ, ChangeKind.RAN)
         for w in (self.min_color_picker, self.max_color_picker, self.inc_color_picker):
             w.setVisible(not is_palette)
         self.palette_editor.setVisible(is_palette)
@@ -267,7 +267,7 @@ class ColorChangeEditor(QGroupBox):
             return ColorChange()
 
         kind = self.kind_dropdown.get_value()
-        is_pal = kind in (ChangeKind.PAL_SEQ, ChangeKind.PAL_RAN)
+        is_pal = kind in (ChangeKind.SEQ, ChangeKind.RAN)
         return ColorChange(
             enabled=self.isChecked(),
             kind=kind,
@@ -380,7 +380,7 @@ class FillColorChangeEditor(QGroupBox):
         layout.addWidget(self._pause_channel_group)
 
     def _on_kind_changed(self, kind) -> None:
-        is_palette = kind in (ChangeKind.PAL_SEQ, ChangeKind.PAL_RAN)
+        is_palette = kind in (ChangeKind.SEQ, ChangeKind.RAN)
         for w in (self.min_color_picker, self.max_color_picker, self.inc_color_picker):
             w.setVisible(not is_palette)
         self.palette_editor.setVisible(is_palette)
@@ -412,7 +412,7 @@ class FillColorChangeEditor(QGroupBox):
             return FillColorChange()
 
         kind = self.kind_dropdown.get_value()
-        is_pal = kind in (ChangeKind.PAL_SEQ, ChangeKind.PAL_RAN)
+        is_pal = kind in (ChangeKind.SEQ, ChangeKind.RAN)
         return FillColorChange(
             enabled=self.isChecked(),
             kind=kind,
