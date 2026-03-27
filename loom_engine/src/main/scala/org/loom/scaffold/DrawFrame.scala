@@ -13,17 +13,15 @@ class DrawFrame () extends JFrame {
 
    val frame: JFrame = new JFrame(Config.name)
 
-   val toolkit: Toolkit  =  Toolkit.getDefaultToolkit()
-   val dim: Dimension  = toolkit.getScreenSize()
    val panel: DrawPanel = new DrawPanel()
 
    if (Config.fullscreen) {
+      // Centre the canvas at its configured pixel size on a borderColor background.
+      // Uses JFrame maximise rather than exclusive fullscreen, which is unreliable
+      // on modern macOS (AWT setFullScreenWindow fights the OS window manager).
       val holder: JPanel = new JPanel()
       holder.setLayout(new BoxLayout(holder, BoxLayout.LINE_AXIS))
-      holder.setSize(dim.width, dim.height)
-      holder.setMinimumSize(dim)
-
-      holder.setBackground(Config.borderColor)//SETS FRAME COLOR
+      holder.setBackground(Config.borderColor)
 
       val panelDim: Dimension = new Dimension(Config.width, Config.height)
       panel.setMinimumSize(panelDim)
@@ -33,23 +31,12 @@ class DrawFrame () extends JFrame {
       holder.add(panel)
       holder.add(Box.createHorizontalGlue())
 
+      frame.setUndecorated(true)
       frame.setDefaultCloseOperation(javax.swing.WindowConstants.EXIT_ON_CLOSE)
-      frame.setSize(dim.width,dim.height)
-      frame.getContentPane().add(holder)
-
-      val screen: SimpleScreenManager = new SimpleScreenManager()
-
-      var displayMode: DisplayMode  = Display.getDisplayMode(dim)
-      if (displayMode==null) {
-	 displayMode = new DisplayMode(5120, 2880, 32, DisplayMode.REFRESH_RATE_UNKNOWN)//default
-      }
-      try {
-         println("Play Frame set full screen")
-	 screen.setFullScreen(displayMode, frame)
-      } catch {
-         case _: Exception => println("Play Frame set full screen exception")
-         System.exit(0)
-      }
+      frame.getContentPane().add(holder, java.awt.BorderLayout.CENTER)
+      frame.setExtendedState(Frame.MAXIMIZED_BOTH)
+      frame.setVisible(true)
+      println("DrawFrame: fullscreen via MAXIMIZED_BOTH")
    } else {
          frame.setDefaultCloseOperation(javax.swing.WindowConstants.EXIT_ON_CLOSE)
          frame.setResizable(true)

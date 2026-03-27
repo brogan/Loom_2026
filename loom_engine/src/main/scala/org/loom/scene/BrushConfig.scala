@@ -34,7 +34,13 @@ class BrushConfig(
     perpendicularJitterMax = perpendicularJitterMax * factor
     blurRadius = (blurRadius * factor).round.toInt
     stampsPerFrame = math.max(1, (stampsPerFrame * factor).round.toInt)
-    meanderConfig.amplitude = meanderConfig.amplitude * factor
+    meanderConfig.amplitude               = meanderConfig.amplitude * factor
+    // Frequency is "control-points per px": edge lengths scale up by factor, so divide
+    // frequency to keep the same visual oscillation rate at every quality multiple.
+    meanderConfig.frequency               = meanderConfig.frequency / factor
+    meanderConfig.scaleAlongPathFrequency = meanderConfig.scaleAlongPathFrequency / factor
+    // More samples needed so the Catmull-Rom path stays smooth at higher resolution.
+    meanderConfig.samples                 = math.max(4, math.round(meanderConfig.samples * factor).toInt)
   }
 
   override def toString: String = {
