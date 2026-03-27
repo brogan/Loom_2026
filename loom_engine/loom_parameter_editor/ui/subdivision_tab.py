@@ -41,6 +41,7 @@ class SubdivisionTab(QWidget):
         self._checking = False
         self._project_dir: str = ""
         self._bake_process = None
+        self._transform_dialog: Optional['TransformSetDialog'] = None
 
         self._setup_ui()
         self._refresh_tree()
@@ -666,6 +667,11 @@ class SubdivisionTab(QWidget):
             self._current_set = data[2]
             self._load_params_to_ui(self._current_params)
             self._set_editor_enabled(True)
+            if (self._transform_dialog is not None
+                    and self._transform_dialog.isVisible()
+                    and self._current_params is not None):
+                self._transform_dialog.set_transform_set(self._current_params.transform_set)
+                self._transform_dialog.update_title(self._current_params.name)
 
         self._update_buttons()
 
@@ -1130,17 +1136,29 @@ class SubdivisionTab(QWidget):
             self.transform_status_label.setText("No transforms enabled")
 
     def _edit_transforms(self):
-        """Open the transform editing dialog."""
+        """Open the transform editing dialog (non-modal, reused)."""
         if self._current_params is None:
             return
+        if self._transform_dialog is None:
+            self._transform_dialog = TransformSetDialog(
+                self._current_params.transform_set, self
+            )
+            self._transform_dialog.liveChanged.connect(self._on_transforms_live_changed)
+        self._transform_dialog.set_transform_set(self._current_params.transform_set)
+        self._transform_dialog.update_title(self._current_params.name)
+        self._transform_dialog.show()
+        self._transform_dialog.raise_()
+        self._transform_dialog.activateWindow()
 
-        dialog = TransformSetDialog(self._current_params.transform_set, self)
-        if dialog.exec() == QDialog.DialogCode.Accepted:
-            self._current_params.transform_set = dialog.get_transform_set()
-            self._current_params.polys_transform_points = self._current_params.transform_set.has_any_enabled()
-            self._update_transform_status(self._current_params.transform_set)
-            self._refresh_tree()
-            self.modified.emit()
+    def _on_transforms_live_changed(self):
+        if self._current_params is None or self._transform_dialog is None:
+            return
+        self._current_params.transform_set = self._transform_dialog.get_transform_set()
+        self._current_params.polys_transform_points = \
+            self._current_params.transform_set.has_any_enabled()
+        self._update_transform_status(self._current_params.transform_set)
+        self._refresh_tree()
+        self.modified.emit()
 
     # --- Bake subdivision ---
 
@@ -1248,11 +1266,14 @@ class SubdivisionTab(QWidget):
 class TransformSetDialog(QDialog):
     """Dialog for editing the 5 transform types."""
 
+    liveChanged = pyqtSignal()
+
     def __init__(self, transform_set: TransformSetConfig, parent=None):
         super().__init__(parent)
         self.setWindowTitle("Edit Point Transforms")
         self.setMinimumSize(600, 500)
         self._ts = transform_set.copy()
+        self._updating = False
         self._setup_ui()
 
     def _setup_ui(self):
@@ -1322,13 +1343,15 @@ class TransformSetDialog(QDialog):
 
         layout.addWidget(tabs)
 
-        # Dialog buttons
-        buttons = QDialogButtonBox(
-            QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel
-        )
-        buttons.accepted.connect(self._save_and_accept)
-        buttons.rejected.connect(self.reject)
-        layout.addWidget(buttons)
+        self._connect_all_widgets()
+
+        # Close button
+        close_btn = QPushButton("Close")
+        close_btn.clicked.connect(self.close)
+        btn_row = QHBoxLayout()
+        btn_row.addStretch()
+        btn_row.addWidget(close_btn)
+        layout.addLayout(btn_row)
 
     def _make_double_spin(self, value: float, min_val: float = -100.0, max_val: float = 100.0,
                           decimals: int = 3, step: float = 0.1) -> QDoubleSpinBox:
@@ -1358,7 +1381,16 @@ class TransformSetDialog(QDialog):
 
         self.ea_enabled = QCheckBox()
         self.ea_enabled.setChecked(ea.enabled)
-        form.addRow("Enabled:", self.ea_enabled)
+        ea_header = QWidget()
+        ea_hl = QHBoxLayout(ea_header)
+        ea_hl.setContentsMargins(0, 0, 0, 0)
+        ea_hl.addWidget(self.ea_enabled)
+        ea_hl.addStretch()
+        ea_reset = QPushButton("Reset to defaults")
+        ea_reset.setFixedWidth(130)
+        ea_reset.clicked.connect(self._reset_exterior_anchors)
+        ea_hl.addWidget(ea_reset)
+        form.addRow("Enabled:", ea_header)
 
         self.ea_probability = self._make_double_spin(ea.probability, 0, 100, 1, 1)
         form.addRow("Probability %:", self.ea_probability)
@@ -1423,7 +1455,16 @@ class TransformSetDialog(QDialog):
 
         self.ca_enabled = QCheckBox()
         self.ca_enabled.setChecked(ca.enabled)
-        form.addRow("Enabled:", self.ca_enabled)
+        ca_header = QWidget()
+        ca_hl = QHBoxLayout(ca_header)
+        ca_hl.setContentsMargins(0, 0, 0, 0)
+        ca_hl.addWidget(self.ca_enabled)
+        ca_hl.addStretch()
+        ca_reset = QPushButton("Reset to defaults")
+        ca_reset.setFixedWidth(130)
+        ca_reset.clicked.connect(self._reset_central_anchors)
+        ca_hl.addWidget(ca_reset)
+        form.addRow("Enabled:", ca_header)
 
         self.ca_probability = self._make_double_spin(ca.probability, 0, 100, 1, 1)
         form.addRow("Probability %:", self.ca_probability)
@@ -1477,7 +1518,16 @@ class TransformSetDialog(QDialog):
 
         self.al_enabled = QCheckBox()
         self.al_enabled.setChecked(al.enabled)
-        form.addRow("Enabled:", self.al_enabled)
+        al_header = QWidget()
+        al_hl = QHBoxLayout(al_header)
+        al_hl.setContentsMargins(0, 0, 0, 0)
+        al_hl.addWidget(self.al_enabled)
+        al_hl.addStretch()
+        al_reset = QPushButton("Reset to defaults")
+        al_reset.setFixedWidth(130)
+        al_reset.clicked.connect(self._reset_anchors_linked)
+        al_hl.addWidget(al_reset)
+        form.addRow("Enabled:", al_header)
 
         self.al_probability = self._make_double_spin(al.probability, 0, 100, 1, 1)
         form.addRow("Probability %:", self.al_probability)
@@ -1517,7 +1567,16 @@ class TransformSetDialog(QDialog):
 
         self.ocp_enabled = QCheckBox()
         self.ocp_enabled.setChecked(ocp.enabled)
-        form.addRow("Enabled:", self.ocp_enabled)
+        ocp_header = QWidget()
+        ocp_hl = QHBoxLayout(ocp_header)
+        ocp_hl.setContentsMargins(0, 0, 0, 0)
+        ocp_hl.addWidget(self.ocp_enabled)
+        ocp_hl.addStretch()
+        ocp_reset = QPushButton("Reset to defaults")
+        ocp_reset.setFixedWidth(130)
+        ocp_reset.clicked.connect(self._reset_outer_control_points)
+        ocp_hl.addWidget(ocp_reset)
+        form.addRow("Enabled:", ocp_header)
 
         self.ocp_probability = self._make_double_spin(ocp.probability, 0, 100, 1, 1)
         form.addRow("Probability %:", self.ocp_probability)
@@ -1580,7 +1639,16 @@ class TransformSetDialog(QDialog):
 
         self.icp_enabled = QCheckBox()
         self.icp_enabled.setChecked(icp.enabled)
-        form.addRow("Enabled:", self.icp_enabled)
+        icp_header = QWidget()
+        icp_hl = QHBoxLayout(icp_header)
+        icp_hl.setContentsMargins(0, 0, 0, 0)
+        icp_hl.addWidget(self.icp_enabled)
+        icp_hl.addStretch()
+        icp_reset = QPushButton("Reset to defaults")
+        icp_reset.setFixedWidth(130)
+        icp_reset.clicked.connect(self._reset_inner_control_points)
+        icp_hl.addWidget(icp_reset)
+        form.addRow("Enabled:", icp_header)
 
         self.icp_probability = self._make_double_spin(icp.probability, 0, 100, 1, 1)
         form.addRow("Probability %:", self.icp_probability)
@@ -1622,8 +1690,8 @@ class TransformSetDialog(QDialog):
         self.icp_common_line.setCurrentText(icp.common_line)
         form.addRow("Common Line:", self.icp_common_line)
 
-    def _save_and_accept(self):
-        """Save UI values to transform set and accept."""
+    def _collect_ui(self):
+        """Read all widgets into self._ts."""
         # Exterior Anchors
         ea = self._ts.exterior_anchors
         ea.enabled = self.ea_enabled.isChecked()
@@ -1709,7 +1777,300 @@ class TransformSetDialog(QDialog):
         icp.random_outer_ratio = TRange(self.icp_ror_min.value(), self.icp_ror_max.value())
         icp.common_line = self.icp_common_line.currentText()
 
+    def _save_and_accept(self):   # kept but unused
+        self._collect_ui()
         self.accept()
+
+    def _on_any_change(self):
+        if self._updating:
+            return
+        self._collect_ui()
+        self.liveChanged.emit()
+
+    def _connect_all_widgets(self):
+        spinboxes = [
+            self.ea_probability, self.ea_spike_factor,
+            self.ea_rsf_min, self.ea_rsf_max,
+            self.ea_cps_follow_mult, self.ea_rcf_min, self.ea_rcf_max,
+            self.ea_cps_squeeze_factor, self.ea_rcs_min, self.ea_rcs_max,
+            self.ca_probability, self.ca_tear_factor,
+            self.ca_rtf_min, self.ca_rtf_max,
+            self.ca_cps_follow_mult, self.ca_rcf_min, self.ca_rcf_max,
+            self.al_probability, self.al_tear_factor,
+            self.al_rtf_min, self.al_rtf_max,
+            self.al_cps_follow_mult, self.al_rcf_min, self.al_rcf_max,
+            self.ocp_probability,
+            self.ocp_line_ratio_x, self.ocp_line_ratio_y,
+            self.ocp_rlri_min, self.ocp_rlri_max,
+            self.ocp_rlro_min, self.ocp_rlro_max,
+            self.ocp_curve_mult_min, self.ocp_curve_mult_max,
+            self.ocp_rcm_min, self.ocp_rcm_max,
+            self.ocp_cfc_ratio_x, self.ocp_cfc_ratio_y,
+            self.ocp_rfca_min, self.ocp_rfca_max,
+            self.ocp_rfcb_min, self.ocp_rfcb_max,
+            self.icp_probability,
+            self.icp_inner_mult_x, self.icp_inner_mult_y,
+            self.icp_outer_mult_x, self.icp_outer_mult_y,
+            self.icp_inner_ratio, self.icp_outer_ratio,
+            self.icp_rir_min, self.icp_rir_max,
+            self.icp_ror_min, self.icp_ror_max,
+        ]
+        checkboxes = [
+            self.ea_enabled, self.ea_random_spike,
+            self.ea_cps_follow, self.ea_random_cps_follow,
+            self.ea_cps_squeeze, self.ea_random_cps_squeeze,
+            self.ca_enabled, self.ca_random_tear,
+            self.ca_cps_follow, self.ca_random_cps_follow,
+            self.ca_all_points_follow, self.ca_inverted_follow,
+            self.al_enabled, self.al_random_tear,
+            self.al_cps_follow, self.al_random_cps_follow,
+            self.ocp_enabled, self.ocp_random_line_ratio,
+            self.ocp_random_multiplier, self.ocp_random_from_centre,
+            self.icp_enabled, self.icp_random_ratio,
+        ]
+        combos = [
+            self.ea_which_spike, self.ea_spike_type, self.ea_spike_axis,
+            self.ca_tear_axis, self.ca_tear_direction,
+            self.al_tear_type,
+            self.ocp_curve_mode, self.ocp_curve_type,
+            self.icp_refer_to_outer, self.icp_common_line,
+        ]
+        for w in spinboxes:  w.valueChanged.connect(self._on_any_change)
+        for w in checkboxes: w.stateChanged.connect(self._on_any_change)
+        for w in combos:     w.currentIndexChanged.connect(self._on_any_change)
+
+    def set_transform_set(self, ts: TransformSetConfig):
+        """Populate all widgets from ts without firing liveChanged."""
+        self._updating = True
+        try:
+            self._ts = ts.copy()
+            ea = self._ts.exterior_anchors
+            self.ea_enabled.setChecked(ea.enabled)
+            self.ea_probability.setValue(ea.probability)
+            self.ea_spike_factor.setValue(ea.spike_factor)
+            self.ea_which_spike.setCurrentText(ea.which_spike)
+            self.ea_spike_type.setCurrentText(ea.spike_type)
+            self.ea_spike_axis.setCurrentText(ea.spike_axis)
+            self.ea_random_spike.setChecked(ea.random_spike)
+            self.ea_rsf_min.setValue(ea.random_spike_factor.min)
+            self.ea_rsf_max.setValue(ea.random_spike_factor.max)
+            self.ea_cps_follow.setChecked(ea.cps_follow)
+            self.ea_cps_follow_mult.setValue(ea.cps_follow_multiplier)
+            self.ea_random_cps_follow.setChecked(ea.random_cps_follow)
+            self.ea_rcf_min.setValue(ea.random_cps_follow_range.min)
+            self.ea_rcf_max.setValue(ea.random_cps_follow_range.max)
+            self.ea_cps_squeeze.setChecked(ea.cps_squeeze)
+            self.ea_cps_squeeze_factor.setValue(ea.cps_squeeze_factor)
+            self.ea_random_cps_squeeze.setChecked(ea.random_cps_squeeze)
+            self.ea_rcs_min.setValue(ea.random_cps_squeeze_range.min)
+            self.ea_rcs_max.setValue(ea.random_cps_squeeze_range.max)
+
+            ca = self._ts.central_anchors
+            self.ca_enabled.setChecked(ca.enabled)
+            self.ca_probability.setValue(ca.probability)
+            self.ca_tear_factor.setValue(ca.tear_factor)
+            self.ca_tear_axis.setCurrentText(ca.tear_axis)
+            self.ca_tear_direction.setCurrentText(ca.tear_direction)
+            self.ca_random_tear.setChecked(ca.random_tear)
+            self.ca_rtf_min.setValue(ca.random_tear_factor.min)
+            self.ca_rtf_max.setValue(ca.random_tear_factor.max)
+            self.ca_cps_follow.setChecked(ca.cps_follow)
+            self.ca_cps_follow_mult.setValue(ca.cps_follow_multiplier)
+            self.ca_random_cps_follow.setChecked(ca.random_cps_follow)
+            self.ca_rcf_min.setValue(ca.random_cps_follow_range.min)
+            self.ca_rcf_max.setValue(ca.random_cps_follow_range.max)
+            self.ca_all_points_follow.setChecked(ca.all_points_follow)
+            self.ca_inverted_follow.setChecked(ca.inverted_follow)
+
+            al = self._ts.anchors_linked
+            self.al_enabled.setChecked(al.enabled)
+            self.al_probability.setValue(al.probability)
+            self.al_tear_factor.setValue(al.tear_factor)
+            self.al_tear_type.setCurrentText(al.tear_type)
+            self.al_random_tear.setChecked(al.random_tear)
+            self.al_rtf_min.setValue(al.random_tear_factor.min)
+            self.al_rtf_max.setValue(al.random_tear_factor.max)
+            self.al_cps_follow.setChecked(al.cps_follow)
+            self.al_cps_follow_mult.setValue(al.cps_follow_multiplier)
+            self.al_random_cps_follow.setChecked(al.random_cps_follow)
+            self.al_rcf_min.setValue(al.random_cps_follow_range.min)
+            self.al_rcf_max.setValue(al.random_cps_follow_range.max)
+
+            ocp = self._ts.outer_control_points
+            self.ocp_enabled.setChecked(ocp.enabled)
+            self.ocp_probability.setValue(ocp.probability)
+            self.ocp_line_ratio_x.setValue(ocp.line_ratio_x)
+            self.ocp_line_ratio_y.setValue(ocp.line_ratio_y)
+            self.ocp_random_line_ratio.setChecked(ocp.random_line_ratio)
+            self.ocp_rlri_min.setValue(ocp.random_line_ratio_inner.min)
+            self.ocp_rlri_max.setValue(ocp.random_line_ratio_inner.max)
+            self.ocp_rlro_min.setValue(ocp.random_line_ratio_outer.min)
+            self.ocp_rlro_max.setValue(ocp.random_line_ratio_outer.max)
+            self.ocp_curve_mode.setCurrentText(ocp.curve_mode)
+            self.ocp_curve_type.setCurrentText(ocp.curve_type)
+            self.ocp_curve_mult_min.setValue(ocp.curve_multiplier_min)
+            self.ocp_curve_mult_max.setValue(ocp.curve_multiplier_max)
+            self.ocp_random_multiplier.setChecked(ocp.random_multiplier)
+            self.ocp_rcm_min.setValue(ocp.random_curve_multiplier.min)
+            self.ocp_rcm_max.setValue(ocp.random_curve_multiplier.max)
+            self.ocp_cfc_ratio_x.setValue(ocp.curve_from_centre_ratio_x)
+            self.ocp_cfc_ratio_y.setValue(ocp.curve_from_centre_ratio_y)
+            self.ocp_random_from_centre.setChecked(ocp.random_from_centre)
+            self.ocp_rfca_min.setValue(ocp.random_from_centre_a.min)
+            self.ocp_rfca_max.setValue(ocp.random_from_centre_a.max)
+            self.ocp_rfcb_min.setValue(ocp.random_from_centre_b.min)
+            self.ocp_rfcb_max.setValue(ocp.random_from_centre_b.max)
+
+            icp = self._ts.inner_control_points
+            self.icp_enabled.setChecked(icp.enabled)
+            self.icp_probability.setValue(icp.probability)
+            self.icp_refer_to_outer.setCurrentText(icp.refer_to_outer)
+            self.icp_inner_mult_x.setValue(icp.inner_multiplier_x)
+            self.icp_inner_mult_y.setValue(icp.inner_multiplier_y)
+            self.icp_outer_mult_x.setValue(icp.outer_multiplier_x)
+            self.icp_outer_mult_y.setValue(icp.outer_multiplier_y)
+            self.icp_inner_ratio.setValue(icp.inner_ratio)
+            self.icp_outer_ratio.setValue(icp.outer_ratio)
+            self.icp_random_ratio.setChecked(icp.random_ratio)
+            self.icp_rir_min.setValue(icp.random_inner_ratio.min)
+            self.icp_rir_max.setValue(icp.random_inner_ratio.max)
+            self.icp_ror_min.setValue(icp.random_outer_ratio.min)
+            self.icp_ror_max.setValue(icp.random_outer_ratio.max)
+            self.icp_common_line.setCurrentText(icp.common_line)
+        finally:
+            self._updating = False
+
+    def update_title(self, params_name: str):
+        self.setWindowTitle(f"Edit Point Transforms — {params_name}")
+
+    def _reset_exterior_anchors(self):
+        self._updating = True
+        try:
+            ea = ExteriorAnchorsConfig()
+            self.ea_enabled.setChecked(ea.enabled)
+            self.ea_probability.setValue(ea.probability)
+            self.ea_spike_factor.setValue(ea.spike_factor)
+            self.ea_which_spike.setCurrentText(ea.which_spike)
+            self.ea_spike_type.setCurrentText(ea.spike_type)
+            self.ea_spike_axis.setCurrentText(ea.spike_axis)
+            self.ea_random_spike.setChecked(ea.random_spike)
+            self.ea_rsf_min.setValue(ea.random_spike_factor.min)
+            self.ea_rsf_max.setValue(ea.random_spike_factor.max)
+            self.ea_cps_follow.setChecked(ea.cps_follow)
+            self.ea_cps_follow_mult.setValue(ea.cps_follow_multiplier)
+            self.ea_random_cps_follow.setChecked(ea.random_cps_follow)
+            self.ea_rcf_min.setValue(ea.random_cps_follow_range.min)
+            self.ea_rcf_max.setValue(ea.random_cps_follow_range.max)
+            self.ea_cps_squeeze.setChecked(ea.cps_squeeze)
+            self.ea_cps_squeeze_factor.setValue(ea.cps_squeeze_factor)
+            self.ea_random_cps_squeeze.setChecked(ea.random_cps_squeeze)
+            self.ea_rcs_min.setValue(ea.random_cps_squeeze_range.min)
+            self.ea_rcs_max.setValue(ea.random_cps_squeeze_range.max)
+        finally:
+            self._updating = False
+        self._collect_ui()
+        self.liveChanged.emit()
+
+    def _reset_central_anchors(self):
+        self._updating = True
+        try:
+            ca = CentralAnchorsConfig()
+            self.ca_enabled.setChecked(ca.enabled)
+            self.ca_probability.setValue(ca.probability)
+            self.ca_tear_factor.setValue(ca.tear_factor)
+            self.ca_tear_axis.setCurrentText(ca.tear_axis)
+            self.ca_tear_direction.setCurrentText(ca.tear_direction)
+            self.ca_random_tear.setChecked(ca.random_tear)
+            self.ca_rtf_min.setValue(ca.random_tear_factor.min)
+            self.ca_rtf_max.setValue(ca.random_tear_factor.max)
+            self.ca_cps_follow.setChecked(ca.cps_follow)
+            self.ca_cps_follow_mult.setValue(ca.cps_follow_multiplier)
+            self.ca_random_cps_follow.setChecked(ca.random_cps_follow)
+            self.ca_rcf_min.setValue(ca.random_cps_follow_range.min)
+            self.ca_rcf_max.setValue(ca.random_cps_follow_range.max)
+            self.ca_all_points_follow.setChecked(ca.all_points_follow)
+            self.ca_inverted_follow.setChecked(ca.inverted_follow)
+        finally:
+            self._updating = False
+        self._collect_ui()
+        self.liveChanged.emit()
+
+    def _reset_anchors_linked(self):
+        self._updating = True
+        try:
+            al = AnchorsLinkedToCentreConfig()
+            self.al_enabled.setChecked(al.enabled)
+            self.al_probability.setValue(al.probability)
+            self.al_tear_factor.setValue(al.tear_factor)
+            self.al_tear_type.setCurrentText(al.tear_type)
+            self.al_random_tear.setChecked(al.random_tear)
+            self.al_rtf_min.setValue(al.random_tear_factor.min)
+            self.al_rtf_max.setValue(al.random_tear_factor.max)
+            self.al_cps_follow.setChecked(al.cps_follow)
+            self.al_cps_follow_mult.setValue(al.cps_follow_multiplier)
+            self.al_random_cps_follow.setChecked(al.random_cps_follow)
+            self.al_rcf_min.setValue(al.random_cps_follow_range.min)
+            self.al_rcf_max.setValue(al.random_cps_follow_range.max)
+        finally:
+            self._updating = False
+        self._collect_ui()
+        self.liveChanged.emit()
+
+    def _reset_outer_control_points(self):
+        self._updating = True
+        try:
+            ocp = OuterControlPointsConfig()
+            self.ocp_enabled.setChecked(ocp.enabled)
+            self.ocp_probability.setValue(ocp.probability)
+            self.ocp_line_ratio_x.setValue(ocp.line_ratio_x)
+            self.ocp_line_ratio_y.setValue(ocp.line_ratio_y)
+            self.ocp_random_line_ratio.setChecked(ocp.random_line_ratio)
+            self.ocp_rlri_min.setValue(ocp.random_line_ratio_inner.min)
+            self.ocp_rlri_max.setValue(ocp.random_line_ratio_inner.max)
+            self.ocp_rlro_min.setValue(ocp.random_line_ratio_outer.min)
+            self.ocp_rlro_max.setValue(ocp.random_line_ratio_outer.max)
+            self.ocp_curve_mode.setCurrentText(ocp.curve_mode)
+            self.ocp_curve_type.setCurrentText(ocp.curve_type)
+            self.ocp_curve_mult_min.setValue(ocp.curve_multiplier_min)
+            self.ocp_curve_mult_max.setValue(ocp.curve_multiplier_max)
+            self.ocp_random_multiplier.setChecked(ocp.random_multiplier)
+            self.ocp_rcm_min.setValue(ocp.random_curve_multiplier.min)
+            self.ocp_rcm_max.setValue(ocp.random_curve_multiplier.max)
+            self.ocp_cfc_ratio_x.setValue(ocp.curve_from_centre_ratio_x)
+            self.ocp_cfc_ratio_y.setValue(ocp.curve_from_centre_ratio_y)
+            self.ocp_random_from_centre.setChecked(ocp.random_from_centre)
+            self.ocp_rfca_min.setValue(ocp.random_from_centre_a.min)
+            self.ocp_rfca_max.setValue(ocp.random_from_centre_a.max)
+            self.ocp_rfcb_min.setValue(ocp.random_from_centre_b.min)
+            self.ocp_rfcb_max.setValue(ocp.random_from_centre_b.max)
+        finally:
+            self._updating = False
+        self._collect_ui()
+        self.liveChanged.emit()
+
+    def _reset_inner_control_points(self):
+        self._updating = True
+        try:
+            icp = InnerControlPointsConfig()
+            self.icp_enabled.setChecked(icp.enabled)
+            self.icp_probability.setValue(icp.probability)
+            self.icp_refer_to_outer.setCurrentText(icp.refer_to_outer)
+            self.icp_inner_mult_x.setValue(icp.inner_multiplier_x)
+            self.icp_inner_mult_y.setValue(icp.inner_multiplier_y)
+            self.icp_outer_mult_x.setValue(icp.outer_multiplier_x)
+            self.icp_outer_mult_y.setValue(icp.outer_multiplier_y)
+            self.icp_inner_ratio.setValue(icp.inner_ratio)
+            self.icp_outer_ratio.setValue(icp.outer_ratio)
+            self.icp_random_ratio.setChecked(icp.random_ratio)
+            self.icp_rir_min.setValue(icp.random_inner_ratio.min)
+            self.icp_rir_max.setValue(icp.random_inner_ratio.max)
+            self.icp_ror_min.setValue(icp.random_outer_ratio.min)
+            self.icp_ror_max.setValue(icp.random_outer_ratio.max)
+            self.icp_common_line.setCurrentText(icp.common_line)
+        finally:
+            self._updating = False
+        self._collect_ui()
+        self.liveChanged.emit()
 
     def get_transform_set(self) -> TransformSetConfig:
         """Return the edited transform set."""
