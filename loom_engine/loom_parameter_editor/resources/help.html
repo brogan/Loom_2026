@@ -137,6 +137,7 @@
         <li><a href="../../../docs/index.html" style="font-weight:600; color:#2c3e50;">← Help Index</a></li>
         <li><a href="#overview">Overview</a></li>
         <li><a href="#getting-started">Getting Started</a></li>
+        <li><a href="#bezier-draw">Bezier Draw</a></li>
         <li><a href="#concepts">Key Concepts</a></li>
         <li><a href="#coordinate-system">Coordinate System</a></li>
         <li><a href="#global-config">Global Config</a></li>
@@ -151,6 +152,7 @@
         <li><a href="#morph">Morph Animation (multi-target)</a></li>
         <li><a href="#rendering">Rendering</a></li>
         <li><a href="#brushed">Brush Renderer</a></li>
+        <li><a href="#meander">↳ Meander Path</a></li>
         <li><a href="#run-tab">Run Tab</a></li>
         <li><a href="#file-management">File Management</a></li>
     </ul>
@@ -170,7 +172,7 @@
     <li>High-resolution stills suitable for large-format printing (via the quality multiplier)</li>
     <li>Animations where shapes rotate, scale, morph, and shift over time</li>
     <li>Layered compositions with multiple sprites at different positions and rendering styles</li>
-    <li>Brush-stroke textures that stamp along polygon edges</li>
+    <li>Brush-stroke textures that stamp along polygon edges, optionally following a meandering organic path rather than the exact Bézier geometry</li>
     <li>Morph animations that smoothly blend between different polygon shapes</li>
     <li>Open-curve geometry (non-closed splines) rendered as stroked paths <span class="tag tag-new">New</span></li>
     <li>Discrete point sets (scatter patterns and point-stamp effects) <span class="tag tag-new">New</span></li>
@@ -275,6 +277,238 @@ YourProject/
     <li>Choose <strong>Draw Background Once</strong> behaviour: enabled = trail/layering effect; disabled = clean each frame.</li>
     <li>Click <strong>Save Animation</strong> to start recording frames to <code>renders/animations/</code>.</li>
 </ol>
+
+<a href="#" class="back-to-top">Back to top</a>
+</section>
+
+<!-- ============================================================ BEZIER DRAW -->
+<section id="bezier-draw">
+<h2>Bezier Draw Application</h2>
+<p><strong>Bezier Draw</strong> is a companion Java application for creating the polygon sets, open curve sets, and point sets that Loom uses as base geometry. You do not draw shapes by entering numbers — you draw them visually on an interactive canvas, then save them to the project's geometry directories for Loom to load.</p>
+
+<h3>Launching Bezier Draw</h3>
+<p>Bezier Draw is always launched from within the Loom Parameter Editor — never opened directly. Three paths lead to it:</p>
+<table>
+    <tr><th>Where</th><th>Button</th><th>What opens</th></tr>
+    <tr><td>Geometry → Polygons sub-tab</td><td><em>Create in Bezier</em></td><td>Bezier Draw in Create Polygons mode, ready to draw a new closed polygon set. On close, the new file is automatically detected and selected.</td></tr>
+    <tr><td>Geometry → Polygons sub-tab</td><td><em>Edit Polygon Set</em></td><td>Bezier Draw with the currently selected polygon XML loaded, ready to edit. Headers are stripped before opening and restored on save.</td></tr>
+    <tr><td>Geometry → Curves sub-tab</td><td><em>Create in Bezier</em> / <em>Edit in Bezier</em></td><td>Bezier Draw for creating or editing open curve sets.</td></tr>
+    <tr><td>Geometry → Points sub-tab</td><td><em>Create in Bezier</em> / <em>Edit in Bezier</em></td><td>Bezier Draw for creating or editing point sets.</td></tr>
+</table>
+<div class="info">When Bezier Draw closes after a create or edit session, the Loom Parameter Editor automatically detects new or changed XML files and updates the relevant dropdown or file list. You do not need to click Refresh manually after editing.</div>
+
+<h3>Interface Layout</h3>
+<p>The window is divided into fixed panels around a central drawing canvas:</p>
+<div class="cols2">
+<div>
+<strong>Left panel — Layers (280 px)</strong>
+<p>A table listing all layers with Vis/Number/Name columns, plus management buttons (New, Rename, Duplicate, Delete, ↑, ↓). The active layer's name is shown in bold.</p>
+</div>
+<div>
+<strong>Top — Toolbar</strong>
+<p>Buttons for drawing modes, curve completion, transforms, weld, snap, zoom, and view toggles. Described in detail below.</p>
+</div>
+</div>
+<div class="cols2">
+<div>
+<strong>Below canvas left — Name/Save panel</strong>
+<p>A Name text field (used as the export filename) and a Save button. Also contains a Load button and SVG Import button.</p>
+</div>
+<div>
+<strong>Below canvas right — Transform controls</strong>
+<p>Scale and Rotation sliders with axis radio buttons (XY/X/Y for scale; Local/Common/Absolute for rotation). Also Edit Mode checkboxes (Anchor/Control point selectability).</p>
+</div>
+</div>
+
+<h3>The Drawing Canvas</h3>
+<p>The canvas has a 1000×1000 pixel drawing area with a 20px edge offset on all sides (so the physical canvas is 1040×1040 internally, then scaled to fill the window). Polygon coordinates are saved in a normalised form (centred on 0, typically in the range −0.5 to +0.5) — the pixel positions are converted automatically on save. You draw at canvas-pixel resolution; Loom works with normalised coordinates.</p>
+<p>A grid of lines is overlaid on the canvas. Toggle its visibility with the <strong>Toggle Grid</strong> toolbar button.</p>
+
+<h3>Drawing Modes</h3>
+<p>The toolbar contains two mutually exclusive groups of modes. One mode is always active. New geometry is always placed on the currently active layer.</p>
+
+<h4>Creation Modes</h4>
+<table>
+    <tr><th>Mode</th><th>Tooltip</th><th>How to use</th></tr>
+    <tr>
+        <td><strong>Create Polygons</strong></td>
+        <td>"Create Polygons Mode"</td>
+        <td>Each click on the canvas adds an anchor point and extends the current curve. The first click starts a new polygon; the second click creates the first bezier segment; subsequent clicks extend the chain. When you have placed all points, click <strong>Close Polygon</strong> to add the closing segment and finish a closed polygon, or <strong>Finish Open Curve</strong> to end without closing. Bezier control points (handles) are generated automatically; you can adjust them afterwards in Point Selection mode.</td>
+    </tr>
+    <tr>
+        <td><strong>Create Points</strong></td>
+        <td>"Create Points Mode"</td>
+        <td>Each click places a discrete point (shown as a magenta dot). Used to create point sets for scatter or image-placement effects in Loom. There are no connecting curves — just a collection of positions.</td>
+    </tr>
+</table>
+
+<h4>Selection Modes</h4>
+<p>Three selection modes let you select and move geometry at different levels of granularity. All three support two <strong>sub-modes</strong>:</p>
+<ul>
+    <li><strong>Relational</strong> (default): movements propagate through weld links — welded neighbours move together to maintain continuity.</li>
+    <li><strong>Discrete</strong>: only the directly selected item moves; welded neighbours stay put.</li>
+</ul>
+<p>Press <kbd>Shift</kbd> while a selection mode is active to toggle between Relational and Discrete. Cmd+click on the toolbar button when switching to a mode also activates Discrete directly.</p>
+
+<table>
+    <tr><th>Mode</th><th>Click</th><th>Drag</th><th>Shift+drag</th></tr>
+    <tr>
+        <td><strong>Point Selection</strong></td>
+        <td>Select individual anchor or control points. Click inside a polygon first to "scope" it before clicking its points. Cmd+click adds to selection.</td>
+        <td>Move selected points. Anchor points carry their adjacent control points along.</td>
+        <td>Rubber-band selection — drag a rectangle to select all points within it.</td>
+    </tr>
+    <tr>
+        <td><strong>Edge Selection</strong></td>
+        <td>Select a bezier curve segment. Click near an edge (within ~15 px). Click again to deselect. Multiple edges can be selected.</td>
+        <td>Move the selected edge(s) and their control points.</td>
+        <td><em>Extrude</em> — creates a copy of the selected edge(s) that you drag to a new position; connector edges and weld links are created automatically on release. Chain-extruding edges is the fastest way to build a grid or net of polygons.</td>
+    </tr>
+    <tr>
+        <td><strong>Polygon Selection</strong></td>
+        <td>Select entire polygons by clicking inside them. Clicking another polygon adds it to the selection (or click empty space to deselect all).</td>
+        <td>Move selected polygons as units. Auto-weld detects nearby edges during drag and snaps them on release.</td>
+        <td>Rubber-band selection.</td>
+    </tr>
+</table>
+
+<div class="tip">The most efficient workflow for editing is: use <strong>Edge Selection</strong> + <strong>Shift+drag</strong> (extrude) to quickly build repeating polygon grids. Then switch to <strong>Point Selection</strong> to fine-tune individual control point handles for curvature.</div>
+
+<h3>Completing Geometry — Close Polygon vs Finish Open Curve</h3>
+<p>While in Create Polygons mode, the two completion buttons finalise the in-progress curve in different ways:</p>
+<table>
+    <tr><th>Button</th><th>Effect</th><th>Use for</th></tr>
+    <tr>
+        <td><strong>Close Polygon</strong></td>
+        <td>Adds a final segment connecting the last anchor back to the first anchor, creating a closed loop. Switches to Polygon Selection mode automatically.</td>
+        <td>Polygon sets used for subdivision in Loom. All Loom subdivision algorithms require closed polygons. Most of your drawing will end with this button.</td>
+    </tr>
+    <tr>
+        <td><strong>Finish Open Curve</strong></td>
+        <td>Ends the curve at the current last anchor — no closing segment is added. The path has a distinct start and end. Switches to Polygon Selection mode automatically.</td>
+        <td>Open curve sets — non-closed splines rendered as stroked paths or brush stamps. Use this when the geometry represents a line, arc, or stroke rather than a shape.</td>
+    </tr>
+</table>
+<div class="warning">A canvas can contain a mix of closed polygons and open curves simultaneously. However, the Loom engine treats them differently: closed polygons from a single file are loaded as a Polygon Set; open curves are loaded as an Open Curve Set. If you mix both on the canvas and click Save, Bezier Draw will save them as separate files (<code>polygonSets/name.xml</code> and <code>curveSets/name.xml</code>). Keep closed and open geometry in separate files for clarity.</div>
+
+<h3>Toolbar Reference</h3>
+
+<h4>Mesh Operations</h4>
+<table>
+    <tr><th>Button</th><th>Description</th></tr>
+    <tr><td><strong>Intersect</strong></td><td>Requires exactly 2 polygons selected in Polygon Selection mode. Builds an annular quad mesh filling the space between two concentric polygons — one ring of quads connecting all corresponding edge midpoints. Hold <kbd>Shift</kbd> when clicking to keep the inner polygon; without Shift it is removed. Useful for creating ring-shaped or frame-shaped geometry quickly.</td></tr>
+    <tr><td><strong>Knife Tool</strong></td><td>Toggle mode. Drag across one or more polygons to draw a cut line (shown in red). On release, all intersected polygons are split at the crossing points. Useful for creating asymmetric divisions or breaking apart existing geometry.</td></tr>
+    <tr><td><strong>Duplicate Selected</strong></td><td>Context-aware: duplicates the currently selected polygons (Polygon Selection mode) or edges (Edge Selection mode) and offsets the copies by 20px. The original deselects; the duplicate becomes the new selection for immediate repositioning.</td></tr>
+</table>
+
+<h4>Flip &amp; Mirror</h4>
+<table>
+    <tr><th>Button</th><th>Description</th></tr>
+    <tr><td><strong>Flip Horizontal</strong></td><td>Mirrors selected polygons left/right around their collective centroid. If nothing is selected, flips all polygons.</td></tr>
+    <tr><td><strong>Flip Vertical</strong></td><td>Mirrors selected polygons up/down around their collective centroid. If nothing is selected, flips all polygons.</td></tr>
+</table>
+
+<h4>Weld Tools</h4>
+<p>Welding links the anchor points of two touching edges so they move together as a unit. Proper welding is essential for subdivision in Loom — unwelded adjacent polygons will tear apart when point-level transforms are applied.</p>
+<table>
+    <tr><th>Button</th><th>Description</th></tr>
+    <tr><td><strong>Weld toggle</strong></td><td>Default: ON. When auto-weld is on, dragging a polygon near another causes touching edges to be automatically snapped and welded on mouse release. When two edges are selected in Edge Selection mode, clicking this button performs an explicit manual weld — snaps the selected edges together and registers the link.</td></tr>
+    <tr><td><strong>Weld All Adjacent</strong></td><td>Finds all pairs of edges across different polygons whose endpoints are within 5px of each other and welds them in one operation. Useful after placing or importing multiple polygons that should share boundaries.</td></tr>
+</table>
+
+<h4>Snap &amp; Centre</h4>
+<table>
+    <tr><th>Button</th><th>Description</th></tr>
+    <tr><td><strong>Snap Anchors to Grid</strong></td><td>Moves all anchor points to their nearest grid intersection. Weld-linked anchors snap to the same coordinate. Creates clean, perfectly aligned polygon meshes.</td></tr>
+    <tr><td><strong>Snap Anchors &amp; Control Points to Grid</strong></td><td>Same as above but also resets bezier control points to their default tangent positions. Use after snapping if the handles have drifted into unusual positions.</td></tr>
+    <tr><td><strong>Centre Selected</strong></td><td>Moves selected polygons as a group to the canvas centre. If nothing is selected, centres all geometry.</td></tr>
+</table>
+
+<h4>Zoom</h4>
+<table>
+    <tr><th>Button</th><th>Description</th></tr>
+    <tr><td><strong>Zoom In</strong></td><td>Scales all geometry by ×1.25 toward the pivot. Pivot = centroid of current selection if anything is selected; otherwise the canvas centre. Note: this scales the coordinate data, not the view — geometry gets larger on the canvas.</td></tr>
+    <tr><td><strong>Zoom Out</strong></td><td>Scales all geometry by ×0.8 away from the pivot.</td></tr>
+</table>
+<div class="warning">Zoom In/Out in Bezier Draw changes the actual saved coordinates, not just the display zoom. Use the Size Factor in the Loom Sprites tab to control how large polygons appear on the rendered canvas — keep Bezier Draw coordinates in the normalised range (approximately −0.5 to +0.5) for best compatibility with Loom's sprite positioning system.</div>
+
+<h4>View Toggles</h4>
+<table>
+    <tr><th>Button</th><th>Description</th></tr>
+    <tr><td><strong>Toggle Grid</strong></td><td>Shows/hides the background grid lines.</td></tr>
+    <tr><td><strong>Toggle Control Points</strong></td><td>Shows/hides bezier handle lines on all polygons. Hiding them gives a cleaner view of the polygon outlines when handles are not needed.</td></tr>
+    <tr><td><strong>Toggle Reference Image</strong></td><td>Shows/hides the reference image overlay (loaded via the Import Images panel). Use a reference image as a tracing guide when drawing custom shapes.</td></tr>
+</table>
+
+<h3>Scale and Rotation Controls</h3>
+<p>Two sliders below the canvas apply scale and rotation transforms interactively. They operate on the current selection (or all geometry if nothing is selected). On slider release, the transform is committed to the point data and the slider resets to centre.</p>
+<table>
+    <tr><th>Control</th><th>Description</th></tr>
+    <tr><td><strong>Scale Axis: XY / X / Y</strong></td><td>XY scales proportionally. X scales only horizontally. Y scales only vertically — useful for stretching or compressing geometry along one axis.</td></tr>
+    <tr><td><strong>Rotation Axis: Local / Common / Absolute</strong></td><td>Local rotates each polygon around its own centroid (independent spinning). Common rotates all selected polygons around their shared centre (orbital rotation). Absolute rotates around the absolute centre of the drawing grid.</td></tr>
+</table>
+<div class="tip">To build a radially symmetric polygon arrangement: draw one polygon, position it away from the canvas centre, select it, switch to Absolute rotation, then use the rotation slider to create copies at equal angular intervals. Combine with Duplicate Selected for fast radial geometry.</div>
+
+<h3>Layer System</h3>
+<p>Bezier Draw supports multiple named layers. Each polygon is assigned to a specific layer. The layer system has two main uses: organisational separation while drawing, and multi-layer export for use as a Polygon Set Bundle in Loom.</p>
+
+<h4>Layer behaviour while drawing</h4>
+<ul>
+    <li>The <strong>active layer</strong> (bold name in the Layers table) receives all new geometry. Every click in Create Polygons or Create Points mode adds to the active layer.</li>
+    <li>The active layer is drawn at <strong>full opacity</strong>. Other visible layers are drawn at <strong>20% opacity</strong> (ghosted) so you can trace or reference them without confusion. Hidden layers (Vis unchecked) are not drawn at all.</li>
+    <li>Selection and hit-testing only operates within the active layer — you cannot accidentally select or move polygons on other layers.</li>
+</ul>
+
+<h4>Layer management buttons</h4>
+<table>
+    <tr><th>Button</th><th>Behaviour</th></tr>
+    <tr><td><strong>New</strong></td><td>Creates a new named layer and sets it as the active layer immediately.</td></tr>
+    <tr><td><strong>Rename</strong></td><td>Renames the selected layer.</td></tr>
+    <tr><td><strong>Duplicate</strong></td><td>Copies all polygons from the selected layer into a new layer above it. The copy becomes the active layer.</td></tr>
+    <tr><td><strong>Delete</strong></td><td>Deletes the selected layer and all its polygons. Disabled when only one layer exists. Shows a confirmation warning when the layer contains polygons. This action cannot be undone.</td></tr>
+    <tr><td><strong>↑ / ↓</strong></td><td>Moves the layer up or down in the draw order (higher layers draw in front of lower layers).</td></tr>
+</table>
+
+<h4>Multi-layer export</h4>
+<p>When multiple layers contain polygons, clicking <strong>Save</strong> produces a separate XML file per layer (named <code>{overallName}_{layerName}.xml</code>) plus a <code>{overallName}.layers.xml</code> manifest file. The Loom Parameter Editor detects the manifest and offers to import the whole bundle as a layered polygon set reference.</p>
+<div class="tip">Use layers to separate logically distinct parts of a complex polygon arrangement — for example, inner shapes on one layer and outer border shapes on another. Each layer can then be assigned different rendering styles in Loom.</div>
+
+<h3>Keyboard Shortcuts</h3>
+<table>
+    <tr><th>Shortcut</th><th>Action</th></tr>
+    <tr><td><kbd>Cmd+Z</kbd></td><td>Undo — restores the previous state from the undo stack. Clears the current selection.</td></tr>
+    <tr><td><kbd>Cmd+C</kbd></td><td>Copy selected polygons to the internal clipboard.</td></tr>
+    <tr><td><kbd>Cmd+V</kbd></td><td>Paste polygons from the clipboard as new closed polygons.</td></tr>
+    <tr><td><kbd>Shift</kbd> (mode active)</td><td>Toggle between Relational and Discrete sub-mode within the current selection mode.</td></tr>
+    <tr><td><kbd>Shift+drag</kbd></td><td>Rubber-band selection (Point and Polygon modes) or Edge Extrusion (Edge Selection mode).</td></tr>
+</table>
+
+<h3>Saving — File Types</h3>
+<p>Clicking <strong>Save</strong> always uses the text in the <strong>Name</strong> field as the base filename (spaces become underscores, non-alphanumeric characters are stripped, lowercased). Depending on what is on the canvas, multiple files may be written:</p>
+<table>
+    <tr><th>Canvas content</th><th>Files written</th><th>Destination</th></tr>
+    <tr><td>Closed polygons, single layer</td><td><code>{name}.xml</code> (polygonSet format) + <code>{name}.svg</code></td><td><code>polygonSets/</code> and <code>svgs/</code></td></tr>
+    <tr><td>Closed polygons, multiple layers</td><td><code>{name}_{layerName}.xml</code> per layer, plus <code>{name}.layers.xml</code> manifest, plus SVGs</td><td><code>polygonSets/</code> and <code>svgs/</code></td></tr>
+    <tr><td>Open (non-closed) curves</td><td><code>{name}.xml</code> (openCurveSet format)</td><td><code>curveSets/</code></td></tr>
+    <tr><td>Discrete points (from Create Points mode)</td><td><code>{name}_points.xml</code> (pointSet format)</td><td><code>pointSets/</code></td></tr>
+</table>
+<p>Open curves and point sets are written automatically alongside the polygon save if they are present. The Loom editor's Curves and Points sub-tabs will detect the new files the next time the dropdown is refreshed.</p>
+
+<h3>Loading Files</h3>
+<p>The <strong>Load</strong> button opens a file browser. Bezier Draw examines the root element of the selected XML file and dispatches appropriately:</p>
+<table>
+    <tr><th>Root element / filename pattern</th><th>What is loaded</th><th>Toolbar mode after load</th></tr>
+    <tr><td><code>&lt;polygonSet&gt;</code></td><td>Closed polygon set</td><td>Polygon Selection mode</td></tr>
+    <tr><td><code>&lt;openCurveSet&gt;</code></td><td>Open curve set</td><td>Polygon Selection mode</td></tr>
+    <tr><td><code>&lt;pointSet&gt;</code></td><td>Point set (discrete points)</td><td>Create Points mode</td></tr>
+    <tr><td>Filename ends in <code>.layers.xml</code></td><td>Multi-layer polygon set bundle</td><td>Polygon Selection mode, all layers loaded</td></tr>
+</table>
+
+<h3>SVG Import</h3>
+<p>The <strong>Import SVG</strong> button (in the name/save panel) opens a file browser pointing at the project's <code>svgs/</code> directory. The imported SVG's path data is converted into polygon geometry and added to the current canvas. Use this to import shapes from vector graphics software (Illustrator, Inkscape, etc.) as a starting point for Bezier editing.</p>
+
+<h3>Help Menu</h3>
+<p>Bezier Draw has a single menu: <strong>Help → Bezier Help…</strong>. This opens a non-modal help window with five tabbed HTML pages covering: Overview &amp; Interface, Selection Modes, Operations, View &amp; Files, and Quick Reference. This is separate from the Loom Parameter Editor's help.</p>
 
 <a href="#" class="back-to-top">Back to top</a>
 </section>
@@ -824,6 +1058,44 @@ Params Set Collection
 
 <div class="tip">Point-level transforms compound across recursive stages. A Spike Factor of −0.1 (10% outward) at every stage over 5 recursion levels produces dramatically spiked results at the finest level. Start with very small values and add stages incrementally to see how the effect builds.</div>
 
+<h3>Edit Point Transforms Dialog</h3>
+<p>Click <strong>Edit Point Transforms</strong> (in the Params panel) to open a dedicated dialog for configuring all five point-level transform types in detail. The dialog is <strong>non-modal</strong> — it stays open while you continue working in the editor.</p>
+<h4>Key behaviours</h4>
+<ul>
+    <li><strong>Live updates</strong> — Changing any value immediately marks the project as modified (title bar *). There is no OK/Apply step; every edit is reflected in the project data instantly.</li>
+    <li><strong>Syncs with tree selection</strong> — When you select a different Params node in the Subdivision tree, the dialog automatically updates to show that node's transforms. The title bar shows the active params name (e.g. <em>Edit Point Transforms — stage2</em>).</li>
+    <li><strong>Reset to defaults</strong> — Each of the five tabs (Exterior Anchors, Central Anchors, Anchors Linked, Outer CPs, Inner CPs) has a <em>Reset to defaults</em> button in its header row. Click it to restore all fields on that tab in one step.</li>
+    <li><strong>Close</strong> — Click Close or the window X to dismiss. All edits are already in the project data; press <kbd>Cmd+S</kbd> then <kbd>Cmd+R</kbd> to see the result in Loom.</li>
+</ul>
+
+<h3>Recommended Workflow: Previewing Subdivision Transforms</h3>
+<p>Point-level transforms interact in complex ways across recursion stages. The most productive approach is a tight edit-reload loop against a live Loom window:</p>
+<ol class="step-list">
+    <li><strong>Set up a full rendering chain first.</strong> Create a polygon set, a params set (2–3 stages), a shape referencing both, a renderer (STROKED or FILLED), and a sprite. Press <kbd>Cmd+L</kbd> to launch Loom and confirm it renders correctly before tuning transforms.</li>
+    <li><strong>Open Edit Point Transforms</strong> by clicking the button in the Subdivision tab. Leave the dialog open — it is non-modal and will not block the rest of the editor.</li>
+    <li><strong>Enable a transform</strong>, for example check <em>Enabled</em> on the Exterior Anchors tab and set a small Spike Factor such as −0.1.</li>
+    <li><strong>Press <kbd>Cmd+R</kbd></strong> to reload Loom. This shortcut fires application-wide — you do not need to click back to the main editor window first. Loom reloads within a second and shows the updated result in its window.</li>
+    <li><strong>Iterate</strong> — adjust the value, press <kbd>Cmd+R</kbd>, observe the change. Because the dialog is always-open and Reload is one keystroke away regardless of which window has focus, this loop is fast and low-friction.</li>
+    <li>Press <kbd>Cmd+S</kbd> to save when satisfied (Auto-save before reload is on by default, so your changes are already saved each time you press <kbd>Cmd+R</kbd>).</li>
+</ol>
+<div class="tip"><strong>Cmd+R works from any window.</strong> The Reload shortcut is application-wide — it fires whether the Edit Point Transforms dialog, the Brush Editor, or any other floating panel has keyboard focus. You never need to click the main editor window before reloading.</div>
+
+<h3>Bake Subdivision <span class="tag tag-new">New</span></h3>
+<p>The <strong>Bake…</strong> button in the Subdivision tab runs the subdivision algorithm immediately and saves the result as a new static polygon XML file in <code>polygonSets/</code>. Use it to:</p>
+<ul>
+    <li>Feed a pre-subdivided mesh back into the pipeline as input for further subdivision (multi-level hierarchies beyond what a single params set can produce)</li>
+    <li>Freeze an intermediate subdivision result for inspection or sharing</li>
+    <li>Examine precisely what polygon shapes a given params set produces</li>
+</ul>
+<ol class="step-list">
+    <li>In the Subdivision tab, select the Params Set you want to bake.</li>
+    <li>Click <strong>Bake…</strong>. A dialog appears: choose the source polygon set, number of passes to apply, and output filename.</li>
+    <li>Read the polygon count estimate. QUAD subdivision produces 4ᴺ polygons per input polygon — 5 passes on a four-sided polygon yields 1024 sub-polygons. 3 passes (64 polygons) is a typical safe limit before file sizes become unwieldy.</li>
+    <li>Click <strong>Bake</strong>. The editor spawns an SBT process to execute the Scala baker. The button greys to <em>Baking…</em> for 10–15 seconds (mostly SBT startup time).</li>
+    <li>On completion, the output file appears in the Polygons sub-tab file list automatically. Import it as a new Polygon Set entry and use it as a shape source for further subdivision or rendering.</li>
+</ol>
+<div class="warning">Files whose names end in <code>_SD</code> are excluded from the source selector to prevent double-baking. Always use original polygon files as bake inputs. Polygon counts grow exponentially — always check the count estimate before committing to a large bake.</div>
+
 <a href="#" class="back-to-top">Back to top</a>
 </section>
 
@@ -1261,6 +1533,167 @@ Renderer Set Library
 <a href="#" class="back-to-top">Back to top</a>
 </section>
 
+<!-- ============================================================ MEANDER PATH -->
+<section id="meander">
+<h2>Meander Path <span class="tag tag-new">New</span></h2>
+<p>The <strong>Meander Path</strong> feature causes brush stamps to follow a gently wandering path between each pair of anchor points, rather than exactly tracing the underlying polygon or curve geometry. The effect ranges from subtly hand-drawn (small amplitude) to urgently scribbled (large amplitude) to organically breathing over time (animated mode).</p>
+
+<h3>Accessing Meander Settings</h3>
+<p>Meander is available on any renderer in BRUSHED mode. In the renderer editor, open the <strong>Brushes</strong> tab. At the bottom of the brush settings is a collapsible <strong>Meander Path</strong> section:</p>
+<ul>
+    <li>Click <strong>▶ Meander Path</strong> to expand or collapse the settings panel. The panel collapses fully when not needed, giving the brush preview its maximum space.</li>
+    <li>The <strong>Enabled</strong> checkbox sits beside the toggle button and activates the feature independently of whether the panel is open or closed. You can collapse the settings and leave Enabled checked — the feature stays active.</li>
+</ul>
+
+<h3>How It Works</h3>
+<p>The algorithm operates per edge (each segment from one anchor point to the next):</p>
+<ol>
+    <li>A smooth noise function is sampled at evenly spaced positions along the edge to produce perpendicular displacement values.</li>
+    <li>A <em>sin(πt) taper envelope</em> multiplies the displacement at each position — it is zero at both endpoints (t=0 and t=1) and peaks at the midpoint (t=0.5). This forces the wandering path to return cleanly to the original anchor points at both ends, ensuring seamless joins between consecutive edges.</li>
+    <li>The displaced sample points are joined with a smooth Catmull-Rom spline to form the perturbed path.</li>
+    <li>Brush stamps are placed at the configured stamp spacing along this perturbed path. If <em>Follow Tangent</em> is enabled, stamp rotation tracks the meander tangent rather than the original edge direction.</li>
+    <li>Each edge gets a distinct meander shape derived from its index in the polygon — adjacent edges wander differently without configuration, producing natural variety across the whole shape.</li>
+</ol>
+
+<h3>Meander Parameters</h3>
+<table>
+    <tr><th>Parameter</th><th>Unit</th><th>Description</th></tr>
+    <tr>
+        <td><code>Amplitude</code></td><td>Pixels</td>
+        <td>Maximum perpendicular displacement from the original edge line.
+            <ul>
+                <li><em>2–5 px</em>: subtly hand-drawn, barely distinguishable from straight unless looked at closely</li>
+                <li><em>10–20 px</em>: clearly organic, sketchy, ink-on-paper quality</li>
+                <li><em>30–60 px</em>: dramatically scribbled, expressive mark-making</li>
+                <li><em>80+ px</em>: wildly loose; strokes detach significantly from the underlying geometry</li>
+            </ul>
+            When <strong>Scale Image</strong> is enabled (Run tab), amplitude is multiplied by the Quality Multiple so marks remain proportionally consistent at high resolution.
+        </td>
+    </tr>
+    <tr>
+        <td><code>Frequency</code></td><td>0.001–0.5</td>
+        <td>Controls how tightly the meander oscillates along the edge — roughly, the number of noise cycles per unit length.
+            <ul>
+                <li><em>0.01–0.03</em>: wide, lazy curves — the path swings gently across the edge</li>
+                <li><em>0.05–0.10</em>: moderate back-and-forth within each edge</li>
+                <li><em>0.15–0.30</em>: rapid oscillation, producing a trembling or hatching-like quality</li>
+            </ul>
+            High frequency combined with high amplitude creates a coiled, frantic look; low frequency with high amplitude creates broad sweeping detours.
+        </td>
+    </tr>
+    <tr>
+        <td><code>Samples</code></td><td>Integer (4–200)</td>
+        <td>Number of sample points placed along each edge to define the perturbed path. More samples = smoother result, particularly on long or highly curved edges.
+            <ul>
+                <li><em>12–24</em>: good for most uses</li>
+                <li><em>32–48</em>: smoother on very long edges or at high quality multiples</li>
+                <li><em>4–8</em>: minimal but fast — angular, faceted meander quality</li>
+            </ul>
+        </td>
+    </tr>
+    <tr>
+        <td><code>Seed (0=auto)</code></td><td>Integer</td>
+        <td>Controls the random character of the noise pattern.
+            <ul>
+                <li><em>0 (auto)</em>: a unique seed is derived automatically from each edge's index in the polygon. Adjacent edges get different seeds — natural variety with no configuration needed. The pattern is consistent across reloads with the same geometry.</li>
+                <li><em>Non-zero</em>: sets a specific base seed. Use this to lock in a particular meander character and reproduce it exactly. Different non-zero values give distinctly different noise patterns.</li>
+            </ul>
+        </td>
+    </tr>
+</table>
+
+<h3>Animated Meander (Full Path Draw Mode)</h3>
+<p>When enabled, the noise pattern shifts gradually each frame, causing the meandering path to drift and writhe continuously. This creates a living, breathing quality to the strokes — as if drawn by a slowly trembling hand or as ink diffusing in water.</p>
+
+<div class="warning"><strong>Full Path mode only.</strong> Animated meander has no effect in <strong>Progressive</strong> draw mode. In Progressive mode, the meander path is computed once at the start of the reveal with a fixed seed, and the path does not change during the progressive draw. To use animated meander, set Draw Mode to <strong>Full Path</strong>, which redraws the entire path every frame.</div>
+
+<table>
+    <tr><th>Parameter</th><th>Description</th></tr>
+    <tr>
+        <td><code>Animated (Full Path only)</code></td>
+        <td>Activates the per-frame phase shift. When checked (and Draw Mode = Full Path), the meander noise advances each frame, making the path drift over time.</td>
+    </tr>
+    <tr>
+        <td><code>Speed</code></td>
+        <td>How far the noise pattern shifts per frame.
+            <ul>
+                <li><em>0.001–0.003</em>: slow, meditative drift — the path barely moves between frames</li>
+                <li><em>0.005–0.015</em>: gentle, noticeable flow — a good starting point</li>
+                <li><em>0.03–0.06</em>: lively, energetic movement</li>
+                <li><em>0.1+</em>: fast, restless; can feel noisy rather than fluid at very high values</li>
+            </ul>
+        </td>
+    </tr>
+</table>
+
+<div class="tip">For a stroke that feels alive but not distracting, try Amplitude=10, Frequency=0.03, Animated=on, Speed=0.005 with Full Path draw mode. The path will drift so slowly that it is almost subliminal — visible over several seconds of animation but not jarring frame to frame.</div>
+
+<h3>Scale Along Path</h3>
+<p>An independent noise envelope can vary stamp scale continuously along the meandering path, creating additional organic mark-size variation. This is separate from and complementary to the random Scale min/max range in the brush settings — Scale Along Path replaces the per-stamp random scale when enabled, replacing it with a spatially coherent pattern.</p>
+
+<table>
+    <tr><th>Parameter</th><th>Description</th></tr>
+    <tr>
+        <td><code>Scale Along Path</code></td>
+        <td>Enable scale variation along the path. When checked, each stamp's scale is driven by the scale envelope rather than being drawn randomly from the Scale min/max range.</td>
+    </tr>
+    <tr>
+        <td><code>Freq</code></td>
+        <td>How many scale oscillations occur per unit length along the edge. Controls how rapidly the mark size swells and contracts.
+            <ul>
+                <li><em>0.01–0.03</em>: broad, smooth swells — marks grow and shrink slowly along the stroke</li>
+                <li><em>0.05–0.10</em>: moderate variation</li>
+                <li><em>0.2+</em>: rapid alternation, creating a beaded or dotted-line quality</li>
+            </ul>
+        </td>
+    </tr>
+    <tr>
+        <td><code>Range</code></td>
+        <td>0.0–1.0. How far the scale deviates from the midpoint between the renderer's Scale Min and Scale Max.
+            <ul>
+                <li><em>0.0</em>: no variation — all stamps at the midpoint scale</li>
+                <li><em>0.5</em>: moderate swells, reaching 50% of the way toward min/max</li>
+                <li><em>1.0</em>: full range — stamps vary from Scale Min to Scale Max over the path length</li>
+            </ul>
+        </td>
+    </tr>
+</table>
+
+<div class="tip">Scale Along Path combined with meander amplitude gives a very convincing hand-drawn brush stroke: the path wanders and the mark pressure varies together. Set Scale min=0.6, max=1.4, Scale Along Path enabled, Range=0.8, Freq=0.04 alongside Amplitude=12 for an ink-brush quality.</div>
+
+<h3>Draw Mode Interaction Summary</h3>
+<table>
+    <tr><th>Draw Mode</th><th>Meander behaviour</th><th>Animated flag</th><th>Notes</th></tr>
+    <tr>
+        <td><strong>Full Path</strong></td>
+        <td>Perturbed paths recomputed every frame</td>
+        <td>Effective — phase advances per frame, path drifts</td>
+        <td>Best for animated strokes. Slightly more CPU-intensive than static since paths rebuild each frame.</td>
+    </tr>
+    <tr>
+        <td><strong>Progressive</strong></td>
+        <td>Perturbed paths computed once at reveal start, then fixed</td>
+        <td>No effect — path is static throughout the progressive reveal</td>
+        <td>The meander gives the final stroke an organic character but does not move during drawing. Use LOOP or PING_PONG post-completion mode to see the stroke repeatedly drawn along the same wandering path.</td>
+    </tr>
+</table>
+
+<h3>Step-by-step: setting up an organic ink-stroke effect</h3>
+<ol class="step-list">
+    <li>Create or import a polygon set or open curve set in the Geometry tab. Open curves work particularly well for ink-stroke aesthetics.</li>
+    <li>In the Rendering tab, create a renderer set with a single renderer. Set its mode to <strong>BRUSHED</strong>.</li>
+    <li>In the Brushes tab, import or create a brush. A thin oval or calligraphy-shaped brush gives the best ink results. Set Stamp Spacing to 4–8, Follow Tangent on, Scale 0.8–1.2, Opacity 0.5–0.9.</li>
+    <li>Set <strong>Draw Mode</strong> to <strong>Full Path</strong>.</li>
+    <li>Click <strong>▶ Meander Path</strong> to expand the settings. Check <strong>Enabled</strong>.</li>
+    <li>Set Amplitude=10, Frequency=0.03, Samples=24, Seed=0.</li>
+    <li>Optionally check <strong>Animated</strong> and set Speed=0.005 for a slowly shifting stroke.</li>
+    <li>Create a shape and sprite using this renderer. Press <kbd>Cmd+L</kbd> to launch Loom. The strokes follow a gently wandering organic path rather than the exact Bézier curves.</li>
+    <li>Press <kbd>Cmd+R</kbd> after any parameter change to reload without restarting Loom.</li>
+</ol>
+
+<a href="#" class="back-to-top">Back to top</a>
+</section>
+
 <!-- ============================================================ RUN TAB -->
 <section id="run-tab">
 <h2>Run Tab</h2>
@@ -1284,7 +1717,7 @@ Renderer Set Library
     <tr><td><strong>Stop</strong> (<code>Cmd+H</code>)</td><td>Terminates the running Loom process.</td></tr>
 </table>
 
-<div class="tip">The <em>Reload</em> command (<code>Cmd+R</code>) is your primary iteration tool. Edit any parameter, press Cmd+R, and the Loom window updates within a second. You can also press F5 in the Loom window itself to trigger a reload.</div>
+<div class="tip">The <em>Reload</em> command (<code>Cmd+R</code>) is your primary iteration tool. Edit any parameter, press Cmd+R, and the Loom window updates within a second. The shortcut is <strong>application-wide</strong> — it fires from any window, including the Edit Point Transforms dialog, the Brush Editor, or any other floating panel. You never need to click back to the main editor window first. You can also press F5 in the Loom window itself to trigger a reload.</div>
 
 <h3>Capture Controls</h3>
 <table>
@@ -1358,7 +1791,7 @@ Renderer Set Library
     <tr><td><code>Cmd+S</code></td><td>Save All</td></tr>
     <tr><td><code>Cmd+Shift+S</code></td><td>Save Project As</td></tr>
     <tr><td><code>Cmd+L</code></td><td>Run Loom</td></tr>
-    <tr><td><code>Cmd+R</code></td><td>Reload Loom</td></tr>
+    <tr><td><code>Cmd+R</code></td><td>Reload Loom — application-wide shortcut. Fires even when the Edit Point Transforms dialog, Brush Editor, or any other floating panel has keyboard focus.</td></tr>
     <tr><td><code>Cmd+H</code></td><td>Stop Loom</td></tr>
     <tr><td><code>Cmd+Q</code></td><td>Quit</td></tr>
     <tr><td><code>F1</code></td><td>Open this User Guide</td></tr>

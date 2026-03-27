@@ -22,11 +22,14 @@
   .chip.yellow { background: #fdf8e0; color: #807000; }
   .chip.blue   { background: #e0f0ff; color: #0050a0; }
   .chip.red    { background: #ffe8e8; color: #a00020; }
+  .chip.magenta { background: #ffe8ff; color: #800080; }
   .color-swatch { display: inline-block; width: 12px; height: 12px; border-radius: 2px; border: 1px solid rgba(0,0,0,0.2); vertical-align: middle; margin-right: 4px; }
 </style>
 </head><body>
 
 <h1>Selection Modes</h1>
+
+<div class="note"><b>Active layer only.</b> All selection and hit-testing operates exclusively within the currently active layer (shown in bold in the Layers panel). Geometry on other layers cannot be selected or moved, even if visible.</div>
 
 <h2>Point Selection Mode</h2>
 <p>Click the <b>Point Selection</b> toolbar button. Individual anchor and control points can be selected, moved, scaled, and rotated.</p>
@@ -39,7 +42,15 @@
 <p>If you click directly on a point in any polygon, that polygon is automatically scoped and the point selected in one step.</p>
 
 <h3>Additive Selection</h3>
-<p>Hold <kbd>&#8984; Cmd</kbd> while clicking to add points to the current selection without clearing previous ones.</p>
+<p>Hold <kbd>&#8984; Cmd</kbd> while clicking a point to add it to the current selection without clearing previous ones.</p>
+
+<h3>Edit Mode Checkboxes</h3>
+<p>The <b>Edit Mode</b> panel (below the canvas) has two checkboxes:</p>
+<ul>
+  <li><b>Anchor</b> (default: on) &mdash; anchor points are selectable and moveable.</li>
+  <li><b>Control</b> (default: on) &mdash; bezier control point handles are selectable and moveable.</li>
+</ul>
+<p>Uncheck <i>Control</i> to ignore control points when clicking or rubber-banding, making it easier to select anchors in dense geometry.</p>
 
 <h3>Point Highlight Colours</h3>
 <table>
@@ -48,6 +59,7 @@
   <tr><td><span class="color-swatch" style="background:#fff;border:1px solid #888"></span> White</td><td>Control point selected &mdash; Discrete sub-mode</td></tr>
   <tr><td><span class="color-swatch" style="background:#dc3220"></span><span class="chip red">Red</span></td><td>Anchor point selected &mdash; Relational sub-mode</td></tr>
   <tr><td><span class="color-swatch" style="background:#ffdc00"></span><span class="chip yellow">Yellow</span></td><td>Control point selected &mdash; Relational sub-mode</td></tr>
+  <tr><td><span class="color-swatch" style="background:#ff00ff"></span><span class="chip magenta">Magenta</span></td><td>Discrete point (point-set element)</td></tr>
 </table>
 
 <h2>Edge Selection Mode</h2>
@@ -58,68 +70,73 @@
   <li><b>First click inside a polygon</b> &mdash; scopes it (<span class="chip yellow">yellow dashed outline</span>).</li>
   <li><b>Click within 15 px of a curve</b> inside the scoped polygon &mdash; selects that edge.</li>
 </ol>
-<p>Clicking directly on a curve in any polygon selects it and auto-scopes that polygon.</p>
+<p>Clicking directly on a curve in any polygon selects it and auto-scopes that polygon in one step.</p>
+
+<h3>Multiple Edge Selection</h3>
+<p>Click further edges to add them to the selection (toggle behaviour &mdash; clicking a selected edge deselects it). You can select edges from different polygons. When exactly two edges from different polygons meet the weld proximity criteria (&le;80 px midpoint distance, directions within ~45&deg;), they turn <span class="chip purple">purple</span> indicating they are weldable.</p>
 
 <h3>Edge Highlight Colours</h3>
 <table>
   <tr><th>Colour</th><th>Meaning</th></tr>
   <tr><td><span class="color-swatch" style="background:#0064ff"></span><span class="chip blue">Blue (4 px)</span></td><td>Edge selected &mdash; Discrete sub-mode</td></tr>
   <tr><td><span class="color-swatch" style="background:#ff8c00"></span><span class="chip orange">Orange (4 px)</span></td><td>Edge selected &mdash; Relational sub-mode</td></tr>
-  <tr><td><span class="color-swatch" style="background:#dc00ff"></span><span class="chip purple">Purple (5 px)</span></td><td>Edge is weldable or live during extrude drag</td></tr>
+  <tr><td><span class="color-swatch" style="background:#dc00ff"></span><span class="chip purple">Purple (5 px)</span></td><td>Edge is weldable, or live duplicate during extrude drag</td></tr>
 </table>
 
 <h3>Operations in Edge Mode</h3>
 <ul>
-  <li><b>Duplicate</b> &mdash; offset copy of the selected edge (20 px).</li>
-  <li><b>Delete</b> &mdash; removes the selected curve from its parent polygon.</li>
-  <li><b>Weld</b> &mdash; merges exactly two selected edges (see Operations tab).</li>
-  <li><b>Extrude</b> &mdash; <kbd>&#8679; Shift</kbd> + drag (see Operations tab).</li>
+  <li><b>Drag</b> &mdash; moves the selected edge(s) and their adjacent control points.</li>
+  <li><b>Duplicate</b> &mdash; creates an offset copy of the selected edge as a standalone single-edge polygon.</li>
+  <li><b>Delete</b> &mdash; removes the selected curve segment from its parent polygon.</li>
+  <li><b>Weld</b> (two edges selected, purple) &mdash; snaps both edges to their midpoint and registers weld links.</li>
+  <li><b>Extrude</b> &mdash; <kbd>&#8679; Shift</kbd>&nbsp;+&nbsp;drag (see Operations tab).</li>
 </ul>
 
 <h2>Polygon Selection Mode</h2>
-<p>Click the <b>Polygon Selection</b> toolbar button. Entire polygons are selected and can be dragged, scaled, rotated, flipped, welded, duplicated, or deleted as units.</p>
+<p>Click the <b>Polygon Selection</b> toolbar button. Entire polygons are selected and moved as units. This mode also works for discrete points created in Create Points mode &mdash; click near a point to select it.</p>
 
 <h3>Selecting Polygons</h3>
 <ul>
-  <li>Click <b>inside</b> a polygon to select it. Its outline is drawn in <span class="chip blue">blue</span> (Discrete) or <span class="chip orange">orange</span> (Relational).</li>
+  <li>Click <b>inside</b> a polygon to select it. Its outline turns <span class="chip blue">blue</span> (Discrete) or <span class="chip orange">orange</span> (Relational).</li>
   <li>Clicking a selected polygon again <b>deselects</b> it.</li>
   <li>Click <b>empty canvas</b> to clear all selections.</li>
+  <li><kbd>&#8984; Cmd</kbd>&nbsp;+&nbsp;click adds polygons to the selection without deselecting others.</li>
 </ul>
 
 <h3>Drag-to-Weld</h3>
-<p>While dragging in Polygon Selection Mode the editor checks for nearby weldable edges on unselected polygons. When edges meet the proximity and alignment thresholds, they highlight in <span class="chip purple">purple</span>. Release the mouse to snap and weld them.</p>
+<p>While dragging a polygon in Polygon Selection Mode, the editor checks for nearby edges on unselected polygons. When edges meet the proximity and alignment thresholds, they highlight in <span class="chip purple">purple</span>. Release the mouse to snap and weld them automatically.</p>
 
 <h2>Discrete &amp; Relational Sub-modes</h2>
 <table>
-  <tr><th>Sub-mode</th><th>What gets selected</th><th>What moves</th></tr>
-  <tr><td><b>Discrete</b></td><td>Only the directly clicked element</td><td>Only that element &mdash; welded partners stay put</td></tr>
-  <tr><td><b>Relational</b></td><td>Clicked element + all weld-linked elements (transitively)</td><td>All linked elements together &mdash; seams intact</td></tr>
+  <tr><th>Sub-mode</th><th>What gets selected</th><th>What moves on drag</th></tr>
+  <tr><td><b>Discrete</b></td><td>Only the directly clicked element</td><td>Only that element &mdash; welded partners stay put. Useful for fine-tuning individual points without disturbing connected geometry.</td></tr>
+  <tr><td><b>Relational</b> (default)</td><td>Clicked element + all weld-linked elements (transitively)</td><td>All linked elements together &mdash; shared seams remain intact. Essential when editing welded polygon meshes.</td></tr>
 </table>
 
 <h3>Switching Sub-mode</h3>
 <ul>
-  <li>Hold <kbd>&#8679; Shift</kbd> when clicking a toolbar selection button &rarr; activates in Discrete mode (default is Relational).</li>
-  <li>While a mode is active: tap <kbd>&#8679; Shift</kbd> to toggle between Discrete and Relational. Highlight colours update instantly.</li>
+  <li>Tap <kbd>&#8679; Shift</kbd> while a selection mode is active &rarr; toggles between Discrete and Relational. Highlight colours update immediately.</li>
+  <li><kbd>&#8679; Shift</kbd>&nbsp;+&nbsp;click the toolbar selection button when switching modes &rarr; activates directly in Discrete (default is Relational).</li>
 </ul>
-<div class="note">In Point Relational mode, clicking an anchor also selects its adjacent control points, keeping the curve shape intact during moves.</div>
+<div class="note">In Point Relational mode, clicking an anchor also selects its adjacent control points, keeping curve shape intact during moves. In Point Discrete mode, only the single clicked anchor or control point is selected.</div>
 
 <h2>Scoping</h2>
-<p>In Point and Edge Selection modes, a <i>scope</i> isolates one polygon so you can click precisely on its points or edges without hitting overlapping polygons.</p>
-<p>The scoped polygon is outlined with a <span class="chip yellow">yellow dashed border (2 px)</span> using an 8/4 dash pattern.</p>
+<p>In Point and Edge Selection modes, a <i>scope</i> isolates one polygon so you can click precisely on its points or edges without hitting overlapping polygons from the same layer.</p>
+<p>The scoped polygon is outlined with a <span class="chip yellow">yellow dashed border (2 px)</span>.</p>
 <ol>
   <li>Click inside a polygon &rarr; it becomes scoped.</li>
   <li>Click on a point or edge within the scoped polygon &rarr; it is selected.</li>
-  <li>Click inside a <i>different</i> polygon &rarr; scope moves; prior selection is cleared (unless <kbd>&#8984; Cmd</kbd> held).</li>
+  <li>Click inside a <i>different</i> polygon &rarr; scope moves to it; prior selection is cleared (unless <kbd>&#8984; Cmd</kbd> held).</li>
   <li>Click empty canvas &rarr; scope and selection both cleared.</li>
 </ol>
 
 <h2>Marquee (Rubber-Band) Selection</h2>
-<p>Hold <kbd>&#8679; Shift</kbd> and drag on the canvas to draw a selection rectangle.</p>
+<p>Hold <kbd>&#8679; Shift</kbd> and drag on the canvas to draw a selection rectangle (shown in translucent blue).</p>
 <ul>
   <li><b>Point mode</b> &mdash; selects all visible points whose position falls inside the rectangle.</li>
   <li><b>Edge mode</b> &mdash; selects all edges whose anchor-midpoint falls inside the rectangle.</li>
   <li><b>Polygon mode</b> &mdash; selects all polygons whose centroid falls inside the rectangle.</li>
 </ul>
-<div class="note">When edges are already selected in Edge Selection Mode, <kbd>&#8679; Shift</kbd> + drag triggers Extrude instead of the marquee.</div>
+<div class="note">When edges are already selected in Edge Selection Mode, <kbd>&#8679; Shift</kbd>&nbsp;+&nbsp;drag triggers <b>Extrude</b> instead of the marquee. Deselect all edges first (click empty canvas) if you want to marquee-select in edge mode.</div>
 
 </body></html>

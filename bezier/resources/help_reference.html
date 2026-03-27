@@ -22,6 +22,7 @@
   .chip.yellow { background: #fdf8e0; color: #807000; }
   .chip.blue   { background: #e0f0ff; color: #0050a0; }
   .chip.red    { background: #ffe8e8; color: #a00020; }
+  .chip.magenta { background: #ffe8ff; color: #800080; }
   .color-swatch { display: inline-block; width: 12px; height: 12px; border-radius: 2px; border: 1px solid rgba(0,0,0,0.2); vertical-align: middle; margin-right: 4px; }
 </style>
 </head><body>
@@ -31,11 +32,43 @@
 <h2>Keyboard Shortcuts</h2>
 <table>
   <tr><th>Shortcut</th><th>Action</th></tr>
-  <tr><td><kbd>&#8984; Cmd</kbd> + <kbd>Z</kbd></td><td>Undo</td></tr>
-  <tr><td><kbd>&#8679; Shift</kbd> (tap, any selection mode)</td><td>Toggle current mode's sub-mode: Relational &harr; Discrete</td></tr>
-  <tr><td><kbd>&#8679; Shift</kbd> + click toolbar selection button</td><td>Activate mode in Discrete sub-mode (default is Relational)</td></tr>
-  <tr><td><kbd>&#8679; Shift</kbd> + drag (edge mode, edges selected)</td><td>Extrude selected edges</td></tr>
-  <tr><td><kbd>&#8679; Shift</kbd> + drag (any selection mode, no edges selected)</td><td>Rubber-band marquee selection</td></tr>
+  <tr><td><kbd>&#8984; Cmd</kbd>&nbsp;+&nbsp;<kbd>Z</kbd></td><td>Undo (up to 20 levels)</td></tr>
+  <tr><td><kbd>&#8984; Cmd</kbd>&nbsp;+&nbsp;<kbd>C</kbd></td><td>Copy selected polygons to clipboard</td></tr>
+  <tr><td><kbd>&#8984; Cmd</kbd>&nbsp;+&nbsp;<kbd>V</kbd></td><td>Paste polygons from clipboard (offset 20 px, on active layer)</td></tr>
+  <tr><td><kbd>&#8679; Shift</kbd> (tap, any selection mode active)</td><td>Toggle current mode's sub-mode: Relational &harr; Discrete</td></tr>
+  <tr><td><kbd>&#8679; Shift</kbd>&nbsp;+&nbsp;click toolbar selection button</td><td>Activate mode directly in Discrete sub-mode</td></tr>
+  <tr><td><kbd>&#8984; Cmd</kbd>&nbsp;+&nbsp;click point or edge</td><td>Add to selection without deselecting others</td></tr>
+  <tr><td><kbd>&#8679; Shift</kbd>&nbsp;+&nbsp;drag (Edge mode, edges selected)</td><td>Extrude selected edges</td></tr>
+  <tr><td><kbd>&#8679; Shift</kbd>&nbsp;+&nbsp;drag (any mode, no edges selected)</td><td>Rubber-band marquee selection</td></tr>
+</table>
+
+<h2>Toolbar Button Summary</h2>
+<table>
+  <tr><th>Button</th><th>Function</th></tr>
+  <tr><td><b>Point Selection</b></td><td>Select/move individual anchor and control points</td></tr>
+  <tr><td><b>Edge Selection</b></td><td>Select/move bezier curve segments</td></tr>
+  <tr><td><b>Polygon Selection</b></td><td>Select/move whole polygons</td></tr>
+  <tr><td><b>Create Points</b></td><td>Place discrete points for point sets</td></tr>
+  <tr><td><b>Create Polygons</b></td><td>Draw new bezier polygon chains</td></tr>
+  <tr><td><b>Close Polygon</b></td><td>Finish current chain as a <i>closed</i> polygon</td></tr>
+  <tr><td><b>Finish Open Curve</b></td><td>Finish current chain as a non-closed open curve</td></tr>
+  <tr><td><b>Intersect</b></td><td>Build quad mesh between 2 selected concentric polygons (Shift = keep inner)</td></tr>
+  <tr><td><b>Knife Tool</b></td><td>Toggle knife cut mode — drag to cut polygons</td></tr>
+  <tr><td><b>Duplicate</b></td><td>Duplicate selected polygons or edges (offset 20 px)</td></tr>
+  <tr><td><b>Flip Horizontal</b></td><td>Mirror selected (or all) polygons left/right</td></tr>
+  <tr><td><b>Flip Vertical</b></td><td>Mirror selected (or all) polygons top/bottom</td></tr>
+  <tr><td><b>Weld / Auto-Weld</b></td><td>Toggle auto-weld on drag; or weld two selected edges manually</td></tr>
+  <tr><td><b>Weld All Adjacent</b></td><td>Snap and weld all edge pairs within 5 px</td></tr>
+  <tr><td><b>Snap Anchors</b></td><td>Move all anchors to nearest grid intersection</td></tr>
+  <tr><td><b>Snap Anchors &amp; Controls</b></td><td>Snap anchors and reset control points to smooth tangents</td></tr>
+  <tr><td><b>Centre</b></td><td>Move selected (or all) polygons to canvas centre</td></tr>
+  <tr><td><b>Zoom In</b></td><td>Scale geometry &times;1.25 (toward selection or canvas centre)</td></tr>
+  <tr><td><b>Zoom Out</b></td><td>Scale geometry &times;0.8</td></tr>
+  <tr><td><b>Toggle Grid</b></td><td>Show/hide background grid</td></tr>
+  <tr><td><b>Toggle Control Points</b></td><td>Show/hide bezier handles</td></tr>
+  <tr><td><b>Toggle Reference Image</b></td><td>Show/hide reference image overlay</td></tr>
+  <tr><td><b>Clear All Geometry</b></td><td>Delete all polygons on active layer</td></tr>
+  <tr><td><b>Delete Selected</b></td><td>Delete selected polygons or edges</td></tr>
 </table>
 
 <h2>Mouse &amp; Modifier Summary</h2>
@@ -43,30 +76,43 @@
   <tr><th>Action</th><th>Modifier</th><th>Mode</th><th>Result</th></tr>
   <tr><td>Click inside polygon</td><td>&mdash;</td><td>Point / Edge</td><td>Scope that polygon</td></tr>
   <tr><td>Click inside polygon</td><td>&mdash;</td><td>Polygon</td><td>Select / deselect polygon</td></tr>
-  <tr><td>Click point</td><td>&mdash;</td><td>Point</td><td>Select point (clears prior selection)</td></tr>
-  <tr><td>Click point</td><td><kbd>&#8984; Cmd</kbd></td><td>Point</td><td>Add point to selection</td></tr>
-  <tr><td>Click edge</td><td>&mdash;</td><td>Edge</td><td>Select edge (clears prior selection)</td></tr>
-  <tr><td>Click edge</td><td><kbd>&#8984; Cmd</kbd></td><td>Edge</td><td>Add edge to selection</td></tr>
+  <tr><td>Click point</td><td>&mdash;</td><td>Point</td><td>Select point (replaces prior selection)</td></tr>
+  <tr><td>Click point or edge</td><td><kbd>&#8984; Cmd</kbd></td><td>Point / Edge</td><td>Add to selection</td></tr>
+  <tr><td>Click edge</td><td>&mdash;</td><td>Edge</td><td>Select / deselect edge</td></tr>
   <tr><td>Drag selected item</td><td>&mdash;</td><td>Any</td><td>Translate selection</td></tr>
-  <tr><td>Shift + drag</td><td><kbd>&#8679; Shift</kbd></td><td>Edge (edges selected)</td><td>Extrude</td></tr>
-  <tr><td>Shift + drag</td><td><kbd>&#8679; Shift</kbd></td><td>Any other</td><td>Rubber-band marquee</td></tr>
+  <tr><td>Drag on canvas (in knife mode)</td><td>&mdash;</td><td>Knife</td><td>Draw cut line; release to cut</td></tr>
+  <tr><td>Shift + drag</td><td><kbd>&#8679; Shift</kbd></td><td>Edge (edges selected)</td><td>Extrude selected edges</td></tr>
+  <tr><td>Shift + drag</td><td><kbd>&#8679; Shift</kbd></td><td>Any other</td><td>Rubber-band marquee selection</td></tr>
   <tr><td>Drag polygon near another</td><td>&mdash;</td><td>Polygon</td><td>Drag-to-weld detection (purple highlights)</td></tr>
   <tr><td>Release after polygon drag</td><td>&mdash;</td><td>Polygon</td><td>Execute pending drag-to-weld</td></tr>
   <tr><td>Click empty canvas</td><td>&mdash;</td><td>Any</td><td>Clear scope and selection</td></tr>
+  <tr><td>Click Intersect button</td><td><kbd>&#8679; Shift</kbd></td><td>Polygon (2 selected)</td><td>Build quad mesh, keep inner polygon</td></tr>
 </table>
 
 <h2>Highlight Colour Reference</h2>
 <table>
   <tr><th>Colour</th><th>Meaning</th></tr>
-  <tr><td><span class="color-swatch" style="background:#6496ff"></span> Blue outline (4 px)</td><td>Polygon selected &mdash; Discrete mode</td></tr>
-  <tr><td><span class="color-swatch" style="background:#ff8c00"></span> Orange outline (4 px)</td><td>Polygon or edge selected &mdash; Relational mode</td></tr>
-  <tr><td><span class="color-swatch" style="background:#dc00ff"></span> Purple edge (5 px)</td><td>Edge is weldable, or live edge during extrude drag</td></tr>
-  <tr><td><span class="color-swatch" style="background:#ffff64"></span> Yellow dashed (2 px)</td><td>Polygon is scoped</td></tr>
-  <tr><td><span class="color-swatch" style="background:#6496ff;opacity:0.6"></span> Light blue fill</td><td>Rubber-band marquee selection rectangle</td></tr>
-  <tr><td><span class="color-swatch" style="background:#6496ff"></span> Blue dot</td><td>Anchor point selected &mdash; Discrete</td></tr>
-  <tr><td><span class="color-swatch" style="background:#fff;border:1px solid #888"></span> White dot</td><td>Control point selected &mdash; Discrete</td></tr>
-  <tr><td><span class="color-swatch" style="background:#dc3220"></span> Red dot</td><td>Anchor point selected &mdash; Relational</td></tr>
-  <tr><td><span class="color-swatch" style="background:#ffdc00"></span> Yellow dot</td><td>Control point selected &mdash; Relational</td></tr>
+  <tr><td><span class="color-swatch" style="background:#6496ff"></span><span class="chip blue">Blue outline (4 px)</span></td><td>Polygon or edge selected &mdash; Discrete mode</td></tr>
+  <tr><td><span class="color-swatch" style="background:#ff8c00"></span><span class="chip orange">Orange outline (4 px)</span></td><td>Polygon or edge selected &mdash; Relational mode</td></tr>
+  <tr><td><span class="color-swatch" style="background:#dc00ff"></span><span class="chip purple">Purple edge (5 px)</span></td><td>Edge is weldable (two edges meeting proximity criteria), or live duplicate during extrude drag</td></tr>
+  <tr><td><span class="color-swatch" style="background:#ffff64"></span><span class="chip yellow">Yellow dashed (2 px)</span></td><td>Polygon is scoped (Point / Edge selection mode)</td></tr>
+  <tr><td><span class="color-swatch" style="background:#6496ff;opacity:0.5"></span> Translucent blue rectangle</td><td>Rubber-band marquee selection in progress</td></tr>
+  <tr><td><span class="color-swatch" style="background:#ff0000"></span><span class="chip red">Red dashed line</span></td><td>Knife cut line in progress</td></tr>
+  <tr><td><span class="color-swatch" style="background:#6496ff"></span> Blue dot</td><td>Anchor point selected &mdash; Discrete mode</td></tr>
+  <tr><td><span class="color-swatch" style="background:#fff;border:1px solid #888"></span> White dot</td><td>Control point (bezier handle) selected &mdash; Discrete mode</td></tr>
+  <tr><td><span class="color-swatch" style="background:#dc3220"></span><span class="chip red">Red dot</span></td><td>Anchor point selected &mdash; Relational mode</td></tr>
+  <tr><td><span class="color-swatch" style="background:#ffdc00"></span><span class="chip yellow">Yellow dot</span></td><td>Control point selected &mdash; Relational mode</td></tr>
+  <tr><td><span class="color-swatch" style="background:#ff00ff"></span><span class="chip magenta">Magenta dot</span></td><td>Discrete point (from Create Points mode)</td></tr>
+</table>
+
+<h2>Output File Summary</h2>
+<table>
+  <tr><th>Content saved</th><th>File(s)</th><th>Format / Loom use</th></tr>
+  <tr><td>Closed polygons (1 layer)</td><td><code>polygonSets/{name}.xml</code></td><td><code>&lt;polygonSet&gt;</code> &mdash; polygon set for subdivision</td></tr>
+  <tr><td>Closed polygons (multiple layers)</td><td><code>polygonSets/{name}_{layer}.xml</code> &times;N<br><code>polygonSets/{name}.layers.xml</code></td><td>Layer bundle &mdash; importable as a multi-layer polygon set</td></tr>
+  <tr><td>Open (non-closed) curves</td><td><code>curveSets/{name}.xml</code></td><td><code>&lt;openCurveSet&gt;</code> &mdash; stroked paths or brush stamps</td></tr>
+  <tr><td>Discrete points</td><td><code>pointSets/{name}_points.xml</code></td><td><code>&lt;pointSet&gt;</code> &mdash; dot or brush-stamp scatter</td></tr>
+  <tr><td>Any of the above</td><td><code>svgs/{name}.svg</code></td><td>SVG preview (all geometry types)</td></tr>
 </table>
 
 </body></html>

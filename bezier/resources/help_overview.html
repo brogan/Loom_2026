@@ -22,23 +22,34 @@
   .chip.yellow { background: #fdf8e0; color: #807000; }
   .chip.blue   { background: #e0f0ff; color: #0050a0; }
   .chip.red    { background: #ffe8e8; color: #a00020; }
+  .chip.magenta { background: #ffe8ff; color: #800080; }
   .color-swatch { display: inline-block; width: 12px; height: 12px; border-radius: 2px; border: 1px solid rgba(0,0,0,0.2); vertical-align: middle; margin-right: 4px; }
 </style>
 </head><body>
 
-<h1>Bezier Editor</h1>
-<p>The Bezier Editor is a tool for creating and editing collections of closed cubic B&eacute;zier-curve polygons. Each polygon is built from one or more connected cubic B&eacute;zier segments. Finished polygon sets are saved as XML files that can be loaded directly into the Loom drawing engine.</p>
-<p>Polygons can be freely transformed, welded together at shared edges, and extruded to build up complex multi-polygon shapes. The Weld Registry keeps track of which anchor points are linked across polygons so that Relational operations move welded neighbours together automatically.</p>
+<h1>Bezier Draw</h1>
+<p>Bezier Draw is a tool for creating the base geometry used by the Loom drawing engine. It produces three types of output:</p>
+<ul>
+  <li><b>Closed polygon sets</b> &mdash; collections of closed cubic B&eacute;zier-curve polygons. These are the primary input for Loom's subdivision and rendering pipeline.</li>
+  <li><b>Open curve sets</b> &mdash; non-closed splines with a distinct start and end. Used in Loom as stroked paths or brush-stamp paths; not subdivided.</li>
+  <li><b>Point sets</b> &mdash; collections of discrete anchor positions. Used in Loom for scatter effects and brush-stamp placement; not subdivided.</li>
+</ul>
+<p>Bezier Draw is normally launched from within the Loom Parameter Editor (via the Create / Edit buttons in the Geometry tab). When you close Bezier Draw, the editor automatically detects any new or changed files.</p>
 
 <h2>Interface Layout</h2>
+
+<h3>Layers Panel (left, 280 px)</h3>
+<p>A table listing all layers with <b>Vis</b> / <b>#</b> / <b>Name</b> columns, plus management buttons: <b>New</b>, <b>Rename</b>, <b>Duplicate</b>, <b>Delete</b>, <b>&uarr;</b>, <b>&darr;</b>. The active layer's name is shown in <b>bold</b>. New geometry always goes to the active layer. See the <i>Layers</i> section below for full details.</p>
 
 <h3>Toolbar (top)</h3>
 <table>
   <tr><th>Group</th><th>Buttons</th></tr>
   <tr><td>Selection modes</td><td>Point Selection &middot; Edge Selection &middot; Polygon Selection</td></tr>
-  <tr><td>Creation</td><td>Create Polygon &middot; Close Polygon</td></tr>
-  <tr><td>Editing</td><td>Duplicate &middot; Flip Horizontal &middot; Flip Vertical &middot; Weld</td></tr>
-  <tr><td>Snapping</td><td>Snap Anchors &middot; Snap Anchors &amp; Controls &middot; Centre</td></tr>
+  <tr><td>Creation</td><td>Create Points &middot; Create Polygons &middot; Close Polygon &middot; Finish Open Curve</td></tr>
+  <tr><td>Mesh</td><td>Intersect (Quad Mesh) &middot; Knife Tool</td></tr>
+  <tr><td>Transform</td><td>Duplicate &middot; Flip Horizontal &middot; Flip Vertical</td></tr>
+  <tr><td>Weld</td><td>Weld / Auto-Weld Toggle &middot; Weld All Adjacent</td></tr>
+  <tr><td>Snap</td><td>Snap Anchors &middot; Snap Anchors &amp; Controls &middot; Centre</td></tr>
   <tr><td>Zoom</td><td>Zoom In &middot; Zoom Out</td></tr>
   <tr><td>View</td><td>Toggle Grid &middot; Toggle Control Points &middot; Toggle Reference Image</td></tr>
   <tr><td>Destructive</td><td>Clear All Geometry &middot; Delete Selected</td></tr>
@@ -46,38 +57,80 @@
 
 <h3>Top Panel (below toolbar)</h3>
 <ul>
-  <li><b>Load File / Save Polygons</b> &mdash; browse for an existing XML polygon set or type a name and click <i>Save</i> to write one.</li>
-  <li><b>SVG</b> &mdash; Import SVG button (see SVG tab).</li>
-  <li><b>Reference Image</b> &mdash; browse for a background image to trace over.</li>
+  <li><b>Name</b> field &mdash; the base filename used when saving. Spaces become underscores; non-alphanumeric characters are stripped.</li>
+  <li><b>Save</b> button &mdash; writes all current geometry to the appropriate directories. Behaviour depends on content type (see View &amp; Files tab).</li>
+  <li><b>Load</b> button &mdash; opens a file browser. The file's root element determines what type is loaded (polygon set, open curve set, point set, or layer bundle).</li>
+  <li><b>SVG</b> panel &mdash; Import SVG button for loading vector paths as polygon geometry.</li>
+  <li><b>Reference Image</b> panel &mdash; browse for a background image to trace over.</li>
 </ul>
 
 <h3>Canvas (centre)</h3>
-<p>The drawing grid is 1000&times;1000 user units displayed on a 1040&times;1040 pixel panel (20 px border on each side). The grid has 10&times;10 major divisions. Click and drag directly in the canvas to create and edit polygons.</p>
+<p>The drawing grid is 1000&times;1000 user units displayed on a 1040&times;1040 pixel panel (20 px border on each side). The grid has 10&times;10 major divisions. Coordinates are saved in a normalised form centred on 0 (typically &minus;0.5 to +0.5) &mdash; the pixel-to-normalised conversion happens automatically on save.</p>
 
 <h3>Edit &amp; Transform Panels (below canvas)</h3>
 <ul>
-  <li><b>Scale Axis</b> &mdash; choose whether the Scale slider affects XY, X-only, or Y-only.</li>
-  <li><b>Rotation Axis</b> &mdash; choose the pivot for the Rotate slider: Local (each polygon's own centre), Common (shared centroid of selection), or Absolute (canvas centre).</li>
-  <li><b>Scale slider</b> &mdash; drag to scale; release to commit and reset to zero.</li>
-  <li><b>Rotation slider</b> &mdash; drag to rotate (maps &plusmn;100 &rarr; &plusmn;180&deg;); release to commit and reset.</li>
+  <li><b>Edit Mode</b> &mdash; <i>Anchor</i> and <i>Control</i> checkboxes control which point types are selectable/moveable in Point Selection mode.</li>
+  <li><b>Scale Axis</b> &mdash; XY (proportional), X-only, or Y-only.</li>
+  <li><b>Rotation Axis</b> &mdash; Local (each polygon's own centre), Common (shared centroid of selection), or Absolute (canvas centre).</li>
+  <li><b>Scale slider</b> &mdash; drag to scale; release to commit and reset to zero. Operates on selection or all geometry if nothing is selected.</li>
+  <li><b>Rotation slider</b> &mdash; drag to rotate (&plusmn;100 &rarr; &plusmn;180&deg;); release to commit and reset.</li>
 </ul>
 
-<h2>Drawing Polygons</h2>
+<h2>Creating Closed Polygons</h2>
 
-<h3>Entering Create Mode</h3>
-<p>Click the <b>Create Polygon</b> toolbar button (toggle). The cursor enters drawing mode for a new polygon.</p>
+<h3>Entering Create Polygons Mode</h3>
+<p>Click the <b>Create Polygons</b> toolbar button. The cursor enters drawing mode for a new polygon.</p>
 
 <h3>Placing Points</h3>
-<p>Each click on the canvas places an <i>anchor point</i>. After the first two anchors the editor automatically creates smooth cubic B&eacute;zier control points between them. Continue clicking to add more segments to the current polygon.</p>
+<p>Each click on the canvas places an <i>anchor point</i>. After the first two anchors, smooth cubic B&eacute;zier control points are generated automatically between them. Continue clicking to add more segments.</p>
 
-<h3>Closing a Polygon</h3>
-<p>Click the <b>Close Polygon</b> button. The editor:</p>
+<h3>Closing the Polygon</h3>
+<p>Click <b>Close Polygon</b>. The editor adds a final segment connecting the last anchor back to the first, records the polygon as finished, and switches to Polygon Selection Mode. A new empty polygon is ready for the next shape.</p>
+<div class="note">Closed polygons are required for Loom's subdivision pipeline. Use <i>Close Polygon</i> whenever you are creating shapes for subdivision rendering.</div>
+
+<h2>Creating Open Curves</h2>
+<p>Open curves are non-closed splines &mdash; paths with a distinct start and end. In Loom they are rendered directly as stroked paths or brush stamps (not subdivided).</p>
 <ol>
-  <li>Connects the last anchor back to the first, forming a closed loop.</li>
-  <li>Records the polygon's centroid.</li>
-  <li>Starts a fresh empty polygon manager for the next shape.</li>
-  <li>Automatically switches to Polygon Selection Mode.</li>
+  <li>Click <b>Create Polygons</b> to enter drawing mode.</li>
+  <li>Place anchor points as normal.</li>
+  <li>When finished, click <b>Finish Open Curve</b> instead of Close Polygon. No closing segment is added &mdash; the path ends at the last anchor.</li>
 </ol>
-<div class="note">Every polygon in the Bezier Editor is a <b>closed</b> cubic B&eacute;zier path. Open paths are used internally for single-edge elements (connectors from extrude) but are not standalone shapes.</div>
+<div class="warn">A canvas can contain a mix of closed polygons and open curves, but they are saved as separate files on disk. Keep them in separate files for clarity &mdash; close all shapes with <i>Close Polygon</i> first, then save; or use a dedicated session for open curves.</div>
+
+<h2>Creating Point Sets</h2>
+<p>Point sets are collections of discrete positions. In Loom they are rendered as dot stamps or brush stamps (not connected, not subdivided).</p>
+<ol>
+  <li>Click <b>Create Points</b> to enter point-placement mode.</li>
+  <li>Each click on the canvas places a <span class="chip magenta">magenta dot</span> at that position.</li>
+  <li>When finished, click <b>Save</b>. The points are written to <code>pointSets/{name}_points.xml</code>.</li>
+</ol>
+<div class="note">Points do not have bezier control points or edges. They are simply anchor positions. Selection modes still work &mdash; you can select, move, and delete points using Point Selection or Polygon Selection mode.</div>
+
+<h2>Layer System</h2>
+<p>All geometry is organised into named layers. Every polygon, open curve, and point belongs to exactly one layer.</p>
+
+<h3>Active Layer</h3>
+<p>The <b>active layer</b> (shown in bold in the Layers panel) receives all new geometry. Selection and hit-testing only operate on the active layer &mdash; you cannot accidentally select polygons on other layers. Click a row in the Layers panel to change the active layer.</p>
+
+<h3>Layer Visibility</h3>
+<ul>
+  <li><b>Active layer</b> &mdash; drawn at full opacity.</li>
+  <li><b>Other visible layers</b> &mdash; drawn at 20% opacity (ghosted) as a reference.</li>
+  <li><b>Hidden layers</b> (Vis unchecked) &mdash; not drawn at all.</li>
+</ul>
+
+<h3>Layer Buttons</h3>
+<table>
+  <tr><th>Button</th><th>Behaviour</th></tr>
+  <tr><td><b>New</b></td><td>Creates a new layer and immediately sets it as the active layer.</td></tr>
+  <tr><td><b>Rename</b></td><td>Renames the selected layer.</td></tr>
+  <tr><td><b>Duplicate</b></td><td>Copies all polygons from the selected layer into a new layer. The copy becomes active.</td></tr>
+  <tr><td><b>Delete</b></td><td>Deletes the layer and all its polygons. Disabled when only one layer exists. Shows a confirmation warning if the layer has content. <b>This cannot be undone.</b></td></tr>
+  <tr><td><b>&uarr; / &darr;</b></td><td>Moves the layer up or down in the draw order (higher layers draw in front).</td></tr>
+</table>
+
+<h3>Multi-layer Export</h3>
+<p>When multiple layers contain polygons, clicking <b>Save</b> writes a separate XML file per layer (<code>{name}_{layerName}.xml</code>) plus a <code>{name}.layers.xml</code> manifest. The Loom Parameter Editor can import the whole bundle as a layered polygon set. See the <i>View &amp; Files</i> tab for full details.</p>
+<div class="note">Use layers to organise a complex polygon arrangement &mdash; for example, inner shapes on one layer and outer border shapes on another. Each layer can be given a different renderer in Loom.</div>
 
 </body></html>

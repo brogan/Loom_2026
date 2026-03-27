@@ -31,12 +31,12 @@
 <h2>Scale &amp; Rotate</h2>
 
 <h3>Scale Slider</h3>
-<p>Drag the <b>Scale</b> slider below the canvas. Range &minus;100 to +100 maps to a scale factor of 0.0&ndash;2.0.</p>
+<p>Drag the <b>Scale</b> slider below the canvas. Range &minus;100 to +100 maps to a scale factor of 0.0&ndash;2.0. Releasing the mouse commits the transformation, resets the slider to zero, and marks an undo point.</p>
 <h4>Scale Axis</h4>
 <ul>
   <li><b>XY</b> (default) &mdash; proportional scale in both axes.</li>
-  <li><b>X only</b> &mdash; squeeze/stretch horizontally.</li>
-  <li><b>Y only</b> &mdash; squeeze/stretch vertically.</li>
+  <li><b>X only</b> &mdash; squeeze/stretch horizontally only.</li>
+  <li><b>Y only</b> &mdash; squeeze/stretch vertically only.</li>
 </ul>
 <h4>Scale Pivot</h4>
 <ul>
@@ -48,32 +48,29 @@
 </ul>
 
 <h3>Rotate Slider</h3>
-<p>Drag the <b>Rotation</b> slider. Range &minus;100 to +100 maps to &minus;180&deg; to +180&deg;.</p>
-<h4>Rotation Axis (radio buttons)</h4>
+<p>Drag the <b>Rotation</b> slider. Range &minus;100 to +100 maps to &minus;180&deg; to +180&deg;. Release to commit and reset.</p>
+<h4>Rotation Axis</h4>
 <ul>
   <li><b>Local</b> (default) &mdash; each polygon rotates about its own centroid.</li>
-  <li><b>Common</b> &mdash; all selected polygons orbit their shared centroid.</li>
+  <li><b>Common</b> &mdash; all selected polygons orbit their shared centroid (good for circular arrangements).</li>
   <li><b>Absolute</b> &mdash; all polygons orbit the canvas centre (500, 500).</li>
 </ul>
-
-<h4>Slider Commit</h4>
-<p>Releasing the mouse commits the transformation, resets the slider to zero, and marks a new undo point.</p>
 
 <h2>Translate (Drag)</h2>
 <ul>
   <li><b>Point mode</b> &mdash; drag any selected point to move all selected points.</li>
-  <li><b>Edge mode</b> &mdash; drag near a selected edge to move all selected edges.</li>
+  <li><b>Edge mode</b> &mdash; drag near a selected edge to move all selected edges and their control points.</li>
   <li><b>Polygon mode</b> &mdash; drag inside a selected polygon to move all selected polygons.</li>
 </ul>
 <p>An undo snapshot is taken at the start of the first drag movement.</p>
 
 <h2>Flip &amp; Centre</h2>
-<p><b>Flip Horizontal</b> &mdash; mirrors selected polygons left/right around their collective centroid. If nothing is selected, all polygons are flipped.</p>
+<p><b>Flip Horizontal</b> &mdash; mirrors selected polygons left/right around their collective centroid. If nothing is selected, flips all polygons on the active layer.</p>
 <p><b>Flip Vertical</b> &mdash; mirrors selected polygons top/bottom around their collective centroid.</p>
 <p><b>Centre</b> &mdash; moves selected (or all) polygons so their collective centroid coincides with the canvas centre (500, 500).</p>
 
 <h2>Zoom In / Zoom Out</h2>
-<p>The Zoom toolbar buttons scale all polygon geometry around a pivot:</p>
+<p>The Zoom toolbar buttons scale all polygon geometry on the active layer around a pivot point:</p>
 <table>
   <tr><th></th><th>In</th><th>Out</th></tr>
   <tr><td>Factor</td><td>&times;1.25</td><td>&times;0.8</td></tr>
@@ -85,60 +82,91 @@
   <li>Centroid of selected polygon centres.</li>
   <li>Canvas centre (default when nothing is selected).</li>
 </ol>
-<div class="note">Zoom operates on coordinate values &mdash; it does not change the canvas view. Use it to scale the entire polygon set up or down.</div>
+<div class="warn">Zoom operates on <b>coordinate values</b> &mdash; it does not change the canvas view. It makes the geometry physically larger or smaller on the canvas. Keep polygon coordinates in the approximate &minus;0.5 to +0.5 normalised range for best compatibility with Loom's sprite sizing system.</div>
 
 <h2>Snap to Grid</h2>
-<p>Grid has 100&times;100 intersections over the 1000&times;1000 canvas (10 units per cell).</p>
+<p>The grid has 100&times;100 intersections over the 1000&times;1000 canvas (10 units per cell).</p>
 <p><b>Snap Anchors</b> &mdash; moves every anchor point to the nearest grid intersection. Control points are left unchanged.</p>
-<p><b>Snap Anchors &amp; Controls</b> &mdash; also recalculates control points after snapping anchors, maintaining smooth tangents at the new grid positions.</p>
+<p><b>Snap Anchors &amp; Controls</b> &mdash; also recalculates control points after snapping anchors, restoring smooth tangents at the new grid positions. Use this to clean up handles that have drifted into unusual positions.</p>
+
+<h2>Copy &amp; Paste</h2>
+<p><kbd>&#8984; Cmd</kbd>&nbsp;+&nbsp;<kbd>C</kbd> &mdash; copies all currently selected polygons (in Polygon Selection mode) to an internal clipboard.</p>
+<p><kbd>&#8984; Cmd</kbd>&nbsp;+&nbsp;<kbd>V</kbd> &mdash; pastes the clipboard content as new closed polygons on the active layer, offset 20 px from the originals. An undo snapshot is taken.</p>
+<div class="note">Copy/Paste only copies the closed polygon geometry, not open curves or discrete points. Paste always targets the active layer.</div>
 
 <h2>Welding</h2>
-<p>Welding links anchor points from two different polygons so they share a position and move together in Relational mode.</p>
+<p>Welding links anchor points from two different polygons so they share a position and move together in Relational mode. Proper welding is essential when building polygon meshes for Loom &mdash; unwelded adjacent polygons will tear apart when point-level transforms are applied.</p>
 
 <h3>Explicit Weld (Edge Mode)</h3>
 <ol>
-  <li>Enter <b>Edge Selection Mode</b> and select <b>exactly two edges</b> (one from each polygon).</li>
+  <li>Enter <b>Edge Selection Mode</b> and select <b>exactly two edges</b> &mdash; one from each of two different polygons.</li>
   <li>Both conditions must be met: midpoint distance &le; <b>80 px</b> and directions within ~<b>45&deg;</b> of parallel (|cos&theta;| &gt; 0.7).</li>
-  <li>When conditions are met, edges turn <span class="chip purple">purple</span> automatically.</li>
+  <li>When conditions are met, both edges turn <span class="chip purple">purple</span> automatically.</li>
   <li>Click the <b>Weld</b> toolbar button.</li>
 </ol>
-<p>Both anchor pairs snap to their midpoints, control-point pairs snap to their midpoints, and all four pairs are registered in the Weld Registry.</p>
+<p>Both anchor pairs snap to their midpoints, control-point pairs snap to their midpoints, and all four point pairs are registered in the Weld Registry.</p>
 
 <h3>Drag-to-Weld (Polygon Mode)</h3>
-<p>While dragging in Polygon Selection Mode, edges meeting the 80 px / 45&deg; criteria turn <span class="chip purple">purple</span>. Release the mouse to weld them automatically.</p>
+<p>While dragging a polygon in Polygon Selection Mode, edges meeting the 80 px / 45&deg; criteria turn <span class="chip purple">purple</span>. Release the mouse to weld them automatically. Auto-weld can be toggled on/off via the Weld toolbar button.</p>
+
+<h3>Weld All Adjacent</h3>
+<p>Click <b>Weld All Adjacent</b> to find all pairs of edges across different polygons on the active layer whose anchor endpoints are within 5 px of each other, and weld them all in one step. Useful after placing or importing several polygons that should share boundaries.</p>
 
 <h3>Weld Registry &amp; Relational Mode</h3>
-<p>The Weld Registry is a bidirectional map of linked anchor pairs. In Relational sub-mode, moving one point moves all transitively linked points.</p>
+<p>The Weld Registry is a bidirectional map of linked anchor pairs. In Relational sub-mode, moving one point moves all transitively linked points &mdash; so a whole mesh moves cleanly when you drag any part of it.</p>
 
 <h2>Extrude</h2>
-<p>Extrude creates a new edge from a selected edge by Shift-dragging, bridged by straight connector edges.</p>
+<p>Extrude creates a new edge from a selected edge by Shift-dragging, bridged by straight connector edges. This is the fastest way to build a repeating grid or net of polygons.</p>
 <h3>Procedure</h3>
 <ol>
   <li>Enter <b>Edge Selection Mode</b> and select one or more edges.</li>
   <li>Hold <kbd>&#8679; Shift</kbd> and begin dragging on the canvas.</li>
   <li>A <span class="chip purple">purple duplicate</span> of the selected edge(s) follows the mouse.</li>
-  <li>Release the mouse.</li>
+  <li>Release the mouse at the desired position.</li>
 </ol>
 <h3>Result</h3>
 <ul>
-  <li><b>New edge</b> &mdash; the dragged duplicate at the release position.</li>
+  <li><b>New edge</b> &mdash; the dragged duplicate placed at the release position.</li>
   <li><b>Left connector</b> &mdash; straight edge from original.anchor0 to new.anchor0.</li>
   <li><b>Right connector</b> &mdash; straight edge from original.anchor1 to new.anchor1.</li>
-  <li><b>4 weld links</b> &mdash; each connector endpoint welded to the corresponding anchor.</li>
+  <li><b>4 weld links</b> &mdash; each connector endpoint welded to the corresponding anchor on the original and new edges.</li>
 </ul>
-<p>After release, the <b>new edge becomes the selected edge</b> &mdash; you can immediately Shift+drag again to chain extrusions.</p>
+<p>After release, the <b>new edge becomes the selected edge</b> &mdash; you can immediately <kbd>&#8679; Shift</kbd>&nbsp;+&nbsp;drag again to chain further extrusions.</p>
+
+<h2>Intersect (Quad Mesh)</h2>
+<p>Builds an annular quad-mesh filling the space between two concentric polygons.</p>
+<h3>Procedure</h3>
+<ol>
+  <li>Enter <b>Polygon Selection Mode</b> and select <b>exactly 2 polygons</b> (one inside the other).</li>
+  <li>Click the <b>Intersect</b> toolbar button.</li>
+  <li>To retain the inner polygon after the operation, hold <kbd>&#8679; Shift</kbd> when clicking Intersect. Without Shift, the inner polygon is removed.</li>
+</ol>
+<h3>Result</h3>
+<p>A ring of quad polygons is created between the two selected polygons, connecting corresponding edge midpoints around both boundaries. The number of quads equals the number of sides of the outer polygon. All new quads are welded to their neighbours.</p>
+<div class="note">Intersect works best when both polygons have the same number of sides and are roughly concentric. The result is a topologically clean quad ring suitable for subdivision in Loom.</div>
+
+<h2>Knife Tool</h2>
+<p>The Knife Tool cuts through one or more polygons along a drag line.</p>
+<h3>Procedure</h3>
+<ol>
+  <li>Click the <b>Knife</b> toolbar button to enter Knife mode (toggle). The previous selection mode is remembered and restored when you deactivate the Knife.</li>
+  <li>Drag across the canvas. A dashed red line shows the cut direction, extending infinitely in both directions.</li>
+  <li>Release the mouse. Every polygon on the active layer intersected by the line is split at the crossing points.</li>
+  <li>Click the Knife button again (or click any selection mode button) to exit Knife mode.</li>
+</ol>
+<div class="note">The knife cut is undoable. The two new polygons that result from cutting a polygon are not automatically welded at the cut edge &mdash; use Weld All Adjacent afterwards if you want the cut seam to be linked.</div>
 
 <h2>Duplicate &amp; Delete</h2>
 <h3>Duplicate</h3>
 <ul>
-  <li><b>Polygon mode</b> &mdash; copies of all selected polygons, offset 20 px right and down.</li>
-  <li><b>Edge mode</b> &mdash; single-edge polygon copy of the selected edge, offset 20 px.</li>
+  <li><b>Polygon mode</b> &mdash; copies of all selected polygons, offset 20 px right and down. Originals are deselected; duplicates become the new selection.</li>
+  <li><b>Edge mode</b> &mdash; a single-edge polygon copy of each selected edge, offset 20 px. Useful for quickly creating a parallel edge to extrude or weld.</li>
 </ul>
 <h3>Delete Selected</h3>
 <ul>
-  <li><b>Polygon mode</b> &mdash; removes selected polygon managers and unregisters their weld links.</li>
-  <li><b>Edge mode</b> &mdash; removes selected curves from their parent polygon.</li>
+  <li><b>Polygon mode</b> &mdash; removes selected polygon managers and unregisters their weld links from the Weld Registry.</li>
+  <li><b>Edge mode</b> &mdash; removes selected curve segments from their parent polygons.</li>
 </ul>
-<p><b>Clear All</b> &mdash; removes every polygon and resets the weld registry. Undoable.</p>
+<p><b>Clear All Geometry</b> &mdash; removes every polygon on the active layer and resets the weld registry. Undoable.</p>
 
 </body></html>

@@ -31,45 +31,64 @@
 <h2>View Toggles</h2>
 <table>
   <tr><th>Button</th><th>Effect</th></tr>
-  <tr><td>Toggle Grid</td><td>Show or hide the background grid lines and axis lines.</td></tr>
-  <tr><td>Toggle Control Points</td><td>Show or hide the cubic B&eacute;zier control-point handles. Anchors remain visible.</td></tr>
-  <tr><td>Toggle Reference Image</td><td>Show or hide the loaded reference image.</td></tr>
+  <tr><td><b>Toggle Grid</b></td><td>Show or hide the background grid lines and axis lines simultaneously.</td></tr>
+  <tr><td><b>Toggle Control Points</b></td><td>Show or hide the cubic B&eacute;zier control-point handles. Anchor points remain visible.</td></tr>
+  <tr><td><b>Toggle Reference Image</b></td><td>Show or hide the loaded reference image.</td></tr>
 </table>
 
 <h2>Reference Image</h2>
 <ol>
   <li>Click <b>Browse</b> in the Reference Image panel at the top.</li>
-  <li>Select a PNG, JPEG, or GIF file.</li>
-  <li>The image is displayed behind the polygon geometry.</li>
-  <li>Toggle its visibility with the <b>Toggle Reference Image</b> toolbar button.</li>
+  <li>Select a PNG, JPEG, or GIF file. The image is displayed behind the polygon geometry.</li>
+  <li>Toggle visibility with the <b>Toggle Reference Image</b> toolbar button.</li>
 </ol>
-<div class="note">The reference image is not saved with the polygon set &mdash; it is a session-only drawing aid.</div>
+<div class="note">The reference image is a session-only drawing aid and is not saved with the polygon set.</div>
 
-<h2>Save &amp; Load Polygon Sets</h2>
-<h3>Saving</h3>
-<ol>
-  <li>Type a name in the <b>Name</b> field in the top panel.</li>
-  <li>Click <b>Save</b>.</li>
-</ol>
-<p>The polygon set is written as <code>&lt;name&gt;.xml</code> into the project's <code>polygonSets/</code> directory. An SVG copy is also written automatically to an adjacent <code>svgs/</code> directory.</p>
+<h2>Saving</h2>
 
-<h3>Loading</h3>
-<ol>
-  <li>Click <b>Load</b> to open a file browser, or type the path in the File field.</li>
-  <li>Select an XML polygon set file.</li>
-  <li>The geometry is loaded onto the canvas, replacing the current content. The Name field is populated automatically.</li>
-</ol>
-<div class="warn">Loading a polygon set <b>replaces</b> all current geometry. Use Undo if you load by mistake.</div>
+<h3>Name Field</h3>
+<p>Type a name in the <b>Name</b> field before saving. Spaces become underscores; non-alphanumeric characters are stripped; the result is lowercased. This becomes the base filename for all exported files.</p>
+
+<h3>What the Save Button Writes</h3>
+<p>Clicking <b>Save</b> writes one or more files depending on what is on the canvas:</p>
+<table>
+  <tr><th>Canvas content</th><th>Files written</th><th>Directory</th></tr>
+  <tr><td>Closed polygons &mdash; single layer</td><td><code>{name}.xml</code> (polygonSet format)<br><code>{name}.svg</code></td><td><code>polygonSets/</code><br><code>svgs/</code></td></tr>
+  <tr><td>Closed polygons &mdash; multiple layers with polygons</td><td><code>{name}_{layerName}.xml</code> per layer<br><code>{name}.layers.xml</code> (manifest)<br>SVG per layer</td><td><code>polygonSets/</code><br><code>svgs/</code></td></tr>
+  <tr><td>Open (non-closed) curves</td><td><code>{name}.xml</code> (openCurveSet format)<br><code>{name}.svg</code></td><td><code>curveSets/</code><br><code>svgs/</code></td></tr>
+  <tr><td>Discrete points (from Create Points mode)</td><td><code>{name}_points.xml</code> (pointSet format)</td><td><code>pointSets/</code></td></tr>
+</table>
+<p>Open curves and point sets are written <b>automatically alongside</b> the polygon save if they are present on the canvas. You do not need separate save steps.</p>
+<div class="warn">If both closed polygons and open curves exist on the same canvas, they are saved to <b>separate files</b> in different directories. The Loom Parameter Editor expects them to be registered separately in the Polygons and Curves sub-tabs respectively. For clarity, keep closed polygon sessions and open curve sessions separate.</div>
+
+<h3>Layer Bundles</h3>
+<p>When the canvas has polygons on two or more layers, Save writes:</p>
+<ul>
+  <li>One <code>{name}_{layerName}.xml</code> per layer containing polygons.</li>
+  <li>A <code>{name}.layers.xml</code> manifest file listing the layer names and their corresponding filenames.</li>
+</ul>
+<p>The Loom Parameter Editor detects the <code>.layers.xml</code> manifest and imports the whole bundle as a layered polygon set. Each layer can then be given a different renderer in Loom.</p>
+
+<h2>Loading</h2>
+<p>Click <b>Load</b> to open a file browser. Bezier Draw examines the root XML element of the selected file and loads accordingly:</p>
+<table>
+  <tr><th>Root element / filename</th><th>Loaded as</th><th>Toolbar mode after load</th></tr>
+  <tr><td><code>&lt;polygonSet&gt;</code></td><td>Closed polygon set</td><td>Polygon Selection mode</td></tr>
+  <tr><td><code>&lt;openCurveSet&gt;</code></td><td>Open curve set</td><td>Polygon Selection mode</td></tr>
+  <tr><td><code>&lt;pointSet&gt;</code></td><td>Discrete point set</td><td>Create Points mode</td></tr>
+  <tr><td>Filename ends in <code>.layers.xml</code></td><td>Multi-layer polygon bundle &mdash; all layers loaded into the Layers panel</td><td>Polygon Selection mode</td></tr>
+</table>
+<div class="warn">Loading a file <b>replaces</b> all current geometry. Use Undo (<kbd>&#8984; Cmd</kbd>&nbsp;+&nbsp;<kbd>Z</kbd>) immediately if you load by mistake.</div>
 
 <h2>SVG Export &amp; Import</h2>
 <h3>Automatic SVG Export</h3>
-<p>Every time you click <b>Save</b>, an SVG copy is saved alongside the XML in the <code>svgs/</code> directory. Each closed polygon becomes a <code>&lt;path&gt;</code> element using M and C commands in a <code>viewBox="0 0 1000 1000"</code> SVG.</p>
+<p>Every time you click <b>Save</b>, an SVG copy is written alongside the XML in the <code>svgs/</code> directory. Each closed polygon becomes a <code>&lt;path&gt;</code> element using M and C commands in a <code>viewBox="0 0 1000 1000"</code> SVG. Open curves are exported without a closing Z command.</p>
 
 <h3>SVG Import</h3>
 <ol>
-  <li>Click <b>Import SVG</b> in the SVG panel.</li>
+  <li>Click <b>Import SVG</b> in the SVG panel (top area).</li>
   <li>Select any SVG file. The browser opens in the <code>svgs/</code> directory by default.</li>
-  <li>Each <code>&lt;path&gt;</code> in the SVG is added to the canvas as a new polygon. Existing geometry is preserved.</li>
+  <li>Each <code>&lt;path&gt;</code> in the SVG is added to the canvas as new polygon geometry. Existing geometry is preserved.</li>
 </ol>
 <h4>Supported SVG Path Commands</h4>
 <table>
@@ -81,25 +100,32 @@
   <tr><td><code>Z / z</code></td><td>Close path.</td></tr>
   <tr><td>H, V, S, T, A, &hellip;</td><td>Silently skipped.</td></tr>
 </table>
-<p>Coordinates are mapped from the SVG <code>viewBox</code> into Bezier canvas space automatically. Importing is undoable.</p>
+<p>Coordinates are mapped from the SVG <code>viewBox</code> into Bezier canvas space automatically. SVG Import is undoable.</p>
 
 <h2>Undo</h2>
-<p>Press <kbd>&#8984; Cmd</kbd> + <kbd>Z</kbd> to undo the last operation. Up to <b>20 undo levels</b> are kept.</p>
-<p>Undo restores the complete polygon geometry and all weld links. Selection is cleared after an undo.</p>
+<p>Press <kbd>&#8984; Cmd</kbd>&nbsp;+&nbsp;<kbd>Z</kbd> to undo the last operation. Up to <b>20 undo levels</b> are kept. Undo restores complete polygon geometry, all weld links, and layer assignments. The current selection is cleared after an undo.</p>
+<div class="note">There is no Redo. If you undo too far, you will need to redo the work manually.</div>
+
 <h4>Operations that create undo points</h4>
 <ul>
   <li>Any drag start (point, edge, or polygon)</li>
   <li>First movement of a Scale or Rotate slider gesture</li>
   <li>Close Polygon</li>
+  <li>Finish Open Curve</li>
+  <li>Place discrete point (Create Points mode &mdash; one snapshot per click)</li>
   <li>Clear All Geometry</li>
   <li>Zoom In / Zoom Out (each click)</li>
-  <li>Snap Anchors / Snap All</li>
-  <li>Flip, Centre</li>
+  <li>Snap Anchors / Snap Anchors &amp; Controls</li>
+  <li>Flip Horizontal / Flip Vertical / Centre</li>
   <li>Weld (explicit and drag-to-weld)</li>
+  <li>Weld All Adjacent</li>
   <li>Extrude (start of drag)</li>
-  <li>Duplicate, Delete</li>
+  <li>Knife cut (on release)</li>
+  <li>Intersect (quad mesh)</li>
+  <li>Duplicate</li>
+  <li>Delete Selected</li>
   <li>SVG Import</li>
+  <li>Paste (<kbd>&#8984; Cmd</kbd>&nbsp;+&nbsp;<kbd>V</kbd>)</li>
 </ul>
-<div class="note">There is no Redo. If you undo too far, you will need to redo the work manually.</div>
 
 </body></html>
