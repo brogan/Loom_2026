@@ -22,7 +22,7 @@ from .widgets.change_editor import (
     SizeChangeEditor, ColorChangeEditor, FillColorChangeEditor
 )
 from models.rendering import (
-    RendererSetLibrary, RendererSet, Renderer, Color, BrushConfig, StencilConfig
+    RendererSetLibrary, RendererSet, Renderer, Color, BrushConfig, MeanderConfig, StencilConfig
 )
 from models.constants import RenderMode, PlaybackMode, BrushDrawMode, PostCompletionMode
 
@@ -438,6 +438,100 @@ class RendererEditor(QWidget):
         blur_row.addWidget(self.blur_radius_spin)
         blur_row.addStretch()
         bs_layout.addLayout(blur_row)
+
+        # ------------------------------------------------------------------
+        # Meander Path — collapsible section with separate Enabled checkbox
+        # ------------------------------------------------------------------
+        meander_header = QWidget()
+        meander_header_layout = QHBoxLayout(meander_header)
+        meander_header_layout.setContentsMargins(0, 4, 0, 0)
+
+        self.meander_toggle_btn = QPushButton("▶ Meander Path")
+        self.meander_toggle_btn.setCheckable(True)
+        self.meander_toggle_btn.setChecked(False)
+        self.meander_toggle_btn.setFlat(True)
+        self.meander_toggle_btn.setStyleSheet("text-align: left; font-weight: bold;")
+        self.meander_toggle_btn.toggled.connect(self._on_meander_panel_toggled)
+        meander_header_layout.addWidget(self.meander_toggle_btn)
+
+        self.meander_enabled_check = QCheckBox("Enabled")
+        self.meander_enabled_check.stateChanged.connect(self._on_brush_changed)
+        meander_header_layout.addWidget(self.meander_enabled_check)
+        meander_header_layout.addStretch()
+
+        bs_layout.addWidget(meander_header)
+
+        # Collapsible panel (hidden until toggle is pressed)
+        self.meander_panel = QWidget()
+        self.meander_panel.setVisible(False)
+        meander_layout = QVBoxLayout(self.meander_panel)
+        meander_layout.setContentsMargins(8, 0, 0, 4)
+
+        def _dspin(lo, hi, dec, step, val):
+            s = QDoubleSpinBox()
+            s.setRange(lo, hi)
+            s.setDecimals(dec)
+            s.setSingleStep(step)
+            s.setValue(val)
+            s.valueChanged.connect(self._on_brush_changed)
+            return s
+
+        def _ispin(lo, hi, val):
+            s = QSpinBox()
+            s.setRange(lo, hi)
+            s.setValue(val)
+            s.valueChanged.connect(self._on_brush_changed)
+            return s
+
+        # Amplitude + Frequency
+        amp_row = QHBoxLayout()
+        amp_row.addWidget(QLabel("Amplitude:"))
+        self.meander_amplitude_spin = _dspin(0.1, 500.0, 1, 1.0, 8.0)
+        amp_row.addWidget(self.meander_amplitude_spin)
+        amp_row.addWidget(QLabel("Frequency:"))
+        self.meander_frequency_spin = _dspin(0.001, 0.5, 3, 0.005, 0.03)
+        amp_row.addWidget(self.meander_frequency_spin)
+        meander_layout.addLayout(amp_row)
+
+        # Samples + Seed
+        samp_row = QHBoxLayout()
+        samp_row.addWidget(QLabel("Samples:"))
+        self.meander_samples_spin = _ispin(4, 200, 24)
+        samp_row.addWidget(self.meander_samples_spin)
+        samp_row.addWidget(QLabel("Seed (0=auto):"))
+        self.meander_seed_spin = _ispin(0, 99999, 0)
+        samp_row.addWidget(self.meander_seed_spin)
+        meander_layout.addLayout(samp_row)
+
+        # Animated + speed — note: animated drift only works in Full Path draw mode
+        anim_row = QHBoxLayout()
+        self.meander_animated_check = QCheckBox("Animated (Full Path only)")
+        self.meander_animated_check.setToolTip(
+            "Shifts the meander noise pattern each frame.\n"
+            "Has no effect in Progressive draw mode — use Full Path for animated drift."
+        )
+        self.meander_animated_check.stateChanged.connect(self._on_meander_animated_toggled)
+        anim_row.addWidget(self.meander_animated_check)
+        anim_row.addWidget(QLabel("Speed:"))
+        self.meander_anim_speed_spin = _dspin(0.001, 1.0, 3, 0.005, 0.01)
+        anim_row.addWidget(self.meander_anim_speed_spin)
+        anim_row.addStretch()
+        meander_layout.addLayout(anim_row)
+
+        # Scale along path
+        sap_row = QHBoxLayout()
+        self.meander_scale_along_path_check = QCheckBox("Scale Along Path")
+        self.meander_scale_along_path_check.stateChanged.connect(self._on_brush_changed)
+        sap_row.addWidget(self.meander_scale_along_path_check)
+        sap_row.addWidget(QLabel("Freq:"))
+        self.meander_sap_freq_spin = _dspin(0.001, 0.5, 3, 0.005, 0.05)
+        sap_row.addWidget(self.meander_sap_freq_spin)
+        sap_row.addWidget(QLabel("Range:"))
+        self.meander_sap_range_spin = _dspin(0.0, 1.0, 2, 0.05, 0.4)
+        sap_row.addWidget(self.meander_sap_range_spin)
+        meander_layout.addLayout(sap_row)
+
+        bs_layout.addWidget(self.meander_panel)
 
         brush_content_layout.addWidget(self.brush_settings_group)
 
@@ -914,6 +1008,21 @@ class RendererEditor(QWidget):
 
         self.blur_radius_spin.setValue(config.blur_radius)
 
+        mc = config.meander_config
+        self.meander_enabled_check.setChecked(mc.enabled)
+        if mc.enabled and not self.meander_toggle_btn.isChecked():
+            self.meander_toggle_btn.setChecked(True)
+        self.meander_amplitude_spin.setValue(mc.amplitude)
+        self.meander_frequency_spin.setValue(mc.frequency)
+        self.meander_samples_spin.setValue(mc.samples)
+        self.meander_seed_spin.setValue(mc.seed)
+        self.meander_animated_check.setChecked(mc.animated)
+        self.meander_anim_speed_spin.setValue(mc.anim_speed)
+        self.meander_anim_speed_spin.setEnabled(mc.animated)
+        self.meander_scale_along_path_check.setChecked(mc.scale_along_path)
+        self.meander_sap_freq_spin.setValue(mc.scale_along_path_frequency)
+        self.meander_sap_range_spin.setValue(mc.scale_along_path_range)
+
     def _get_brush_config(self) -> BrushConfig:
         names, enabled = [], []
         for i in range(self.brush_table.rowCount()):
@@ -938,7 +1047,19 @@ class RendererEditor(QWidget):
             stamps_per_frame=self.stamps_per_frame_spin.value(),
             agent_count=self.agent_count_spin.value(),
             post_completion_mode=self.post_completion_combo.currentData() or PostCompletionMode.HOLD,
-            blur_radius=self.blur_radius_spin.value()
+            blur_radius=self.blur_radius_spin.value(),
+            meander_config=MeanderConfig(
+                enabled=self.meander_enabled_check.isChecked(),
+                amplitude=self.meander_amplitude_spin.value(),
+                frequency=self.meander_frequency_spin.value(),
+                samples=self.meander_samples_spin.value(),
+                seed=self.meander_seed_spin.value(),
+                animated=self.meander_animated_check.isChecked(),
+                anim_speed=self.meander_anim_speed_spin.value(),
+                scale_along_path=self.meander_scale_along_path_check.isChecked(),
+                scale_along_path_frequency=self.meander_sap_freq_spin.value(),
+                scale_along_path_range=self.meander_sap_range_spin.value(),
+            )
         )
 
     # ------------------------------------------------------------------
@@ -1058,6 +1179,14 @@ class RendererEditor(QWidget):
             self.brush_table.removeRow(row)
             self._update_brush_preview()
             self._on_brush_changed()
+
+    def _on_meander_panel_toggled(self, checked: bool) -> None:
+        self.meander_panel.setVisible(checked)
+        self.meander_toggle_btn.setText("▼ Meander Path" if checked else "▶ Meander Path")
+
+    def _on_meander_animated_toggled(self, state) -> None:
+        self.meander_anim_speed_spin.setEnabled(bool(state))
+        self._on_brush_changed()
 
     def _on_brush_changed(self, *args) -> None:
         if self._updating:

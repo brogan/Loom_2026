@@ -27,6 +27,8 @@ class Sprite2D(val shape: Shape2D, val spriteParams: Sprite2DParams, var animato
 
   // Brush rendering state (lazy-initialized when BRUSHED mode is used)
   var brushState: BrushState = null
+  // Frame counter for animated meander (incremented each FULL_PATH draw call)
+  private var meanderFrame: Int = 0
   // Stencil rendering state (lazy-initialized when STENCILED mode is used)
   var stencilState: BrushState = null
 
@@ -433,9 +435,11 @@ class Sprite2D(val shape: Shape2D, val spriteParams: Sprite2DParams, var animato
     if (config.drawMode == BrushConfig.FULL_PATH) {
       val state = new BrushState()
       state.initializeFromPolys(edgePolys)
+      state.initializePerturbedPaths(config, meanderFrame)
+      meanderFrame += 1
 
-      for (edge <- state.edges) {
-        BrushStampEngine.drawFullEdge(g2D, edge, config, brushes, ren.strokeColor)
+      for (i <- state.edges.indices) {
+        BrushStampEngine.drawFullEdge(g2D, state.edges(i), state.perturbedPaths(i), config, brushes, ren.strokeColor)
       }
     } else {
       // PROGRESSIVE mode: lazy-init state, advance agents each frame
@@ -443,12 +447,14 @@ class Sprite2D(val shape: Shape2D, val spriteParams: Sprite2DParams, var animato
         brushState = new BrushState()
         brushState.initializeFromPolys(edgePolys)
         brushState.createAgents(config.agentCount)
+        // Perturbed paths computed once at init (consistent for progressive reveal)
+        brushState.initializePerturbedPaths(config, frame = 0)
       }
 
       for (agent <- brushState.agents) {
         if (!agent.completed) {
           BrushStampEngine.drawProgressiveStamps(
-            g2D, brushState.edges, agent, config, brushes,
+            g2D, brushState.edges, brushState.perturbedPaths, agent, config, brushes,
             ren.strokeColor, config.stampsPerFrame
           )
         }

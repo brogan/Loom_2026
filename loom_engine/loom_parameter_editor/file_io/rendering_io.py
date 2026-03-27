@@ -5,7 +5,7 @@ from lxml import etree
 from typing import Optional
 from models.rendering import (
     Color, SizeChange, ColorChange, FillColorChange,
-    BrushConfig, StencilConfig, Renderer, RendererSet, RendererSetLibrary
+    BrushConfig, MeanderConfig, StencilConfig, Renderer, RendererSet, RendererSetLibrary
 )
 from models.constants import (
     RenderMode, ChangeKind, Motion, Cycle, Scale, ColorChannel, PlaybackMode,
@@ -557,7 +557,37 @@ class RenderingIO:
         if blur_elem is not None and blur_elem.text:
             config.blur_radius = int(blur_elem.text.strip())
 
+        mc_elem = elem.find("MeanderConfig")
+        if mc_elem is not None:
+            config.meander_config = cls._parse_meander_config(mc_elem)
+
         return config
+
+    @classmethod
+    def _parse_meander_config(cls, elem: etree._Element) -> MeanderConfig:
+        mc = MeanderConfig()
+        def _bool(tag, default):
+            e = elem.find(tag)
+            return e.text.strip().lower() == "true" if (e is not None and e.text) else default
+        def _float(tag, default):
+            e = elem.find(tag)
+            try: return float(e.text.strip()) if (e is not None and e.text) else default
+            except ValueError: return default
+        def _int(tag, default):
+            e = elem.find(tag)
+            try: return int(e.text.strip()) if (e is not None and e.text) else default
+            except ValueError: return default
+        mc.enabled                   = _bool("Enabled", mc.enabled)
+        mc.amplitude                 = _float("Amplitude", mc.amplitude)
+        mc.frequency                 = _float("Frequency", mc.frequency)
+        mc.samples                   = _int("Samples", mc.samples)
+        mc.seed                      = _int("Seed", mc.seed)
+        mc.animated                  = _bool("Animated", mc.animated)
+        mc.anim_speed                = _float("AnimSpeed", mc.anim_speed)
+        mc.scale_along_path          = _bool("ScaleAlongPath", mc.scale_along_path)
+        mc.scale_along_path_frequency = _float("ScaleAlongPathFrequency", mc.scale_along_path_frequency)
+        mc.scale_along_path_range    = _float("ScaleAlongPathRange", mc.scale_along_path_range)
+        return mc
 
     @classmethod
     def _parse_stencil_config(cls, elem: etree._Element) -> StencilConfig:
@@ -694,5 +724,18 @@ class RenderingIO:
         etree.SubElement(elem, "AgentCount").text = str(config.agent_count)
         etree.SubElement(elem, "PostCompletionMode").text = config.post_completion_mode.to_xml_string()
         etree.SubElement(elem, "BlurRadius").text = str(config.blur_radius)
+
+        mc = config.meander_config
+        mc_elem = etree.SubElement(elem, "MeanderConfig")
+        etree.SubElement(mc_elem, "Enabled").text = str(mc.enabled).lower()
+        etree.SubElement(mc_elem, "Amplitude").text = str(mc.amplitude)
+        etree.SubElement(mc_elem, "Frequency").text = str(mc.frequency)
+        etree.SubElement(mc_elem, "Samples").text = str(mc.samples)
+        etree.SubElement(mc_elem, "Seed").text = str(mc.seed)
+        etree.SubElement(mc_elem, "Animated").text = str(mc.animated).lower()
+        etree.SubElement(mc_elem, "AnimSpeed").text = str(mc.anim_speed)
+        etree.SubElement(mc_elem, "ScaleAlongPath").text = str(mc.scale_along_path).lower()
+        etree.SubElement(mc_elem, "ScaleAlongPathFrequency").text = str(mc.scale_along_path_frequency)
+        etree.SubElement(mc_elem, "ScaleAlongPathRange").text = str(mc.scale_along_path_range)
 
         return elem

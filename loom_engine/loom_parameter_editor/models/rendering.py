@@ -121,6 +121,35 @@ class FillColorChange(ColorChange):
 
 
 @dataclass
+class MeanderConfig:
+    """Configuration for meandering-path perturbation of brush strokes."""
+    enabled: bool = False
+    amplitude: float = 8.0
+    frequency: float = 0.03
+    samples: int = 24
+    seed: int = 0
+    animated: bool = False
+    anim_speed: float = 0.01
+    scale_along_path: bool = False
+    scale_along_path_frequency: float = 0.05
+    scale_along_path_range: float = 0.4
+
+    def copy(self) -> 'MeanderConfig':
+        return MeanderConfig(
+            enabled=self.enabled,
+            amplitude=self.amplitude,
+            frequency=self.frequency,
+            samples=self.samples,
+            seed=self.seed,
+            animated=self.animated,
+            anim_speed=self.anim_speed,
+            scale_along_path=self.scale_along_path,
+            scale_along_path_frequency=self.scale_along_path_frequency,
+            scale_along_path_range=self.scale_along_path_range,
+        )
+
+
+@dataclass
 class BrushConfig:
     """Configuration for brush-based rendering (BRUSHED mode)."""
     brush_names: List[str] = field(default_factory=list)
@@ -139,6 +168,7 @@ class BrushConfig:
     agent_count: int = 1
     post_completion_mode: PostCompletionMode = PostCompletionMode.HOLD
     blur_radius: int = 0
+    meander_config: MeanderConfig = field(default_factory=MeanderConfig)
 
     def copy(self) -> 'BrushConfig':
         return BrushConfig(
@@ -157,7 +187,8 @@ class BrushConfig:
             stamps_per_frame=self.stamps_per_frame,
             agent_count=self.agent_count,
             post_completion_mode=self.post_completion_mode,
-            blur_radius=self.blur_radius
+            blur_radius=self.blur_radius,
+            meander_config=self.meander_config.copy(),
         )
 
 

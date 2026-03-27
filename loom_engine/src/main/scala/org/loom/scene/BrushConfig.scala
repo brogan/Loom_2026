@@ -19,7 +19,8 @@ class BrushConfig(
   var stampsPerFrame: Int,
   var agentCount: Int,
   var postCompletionMode: Int,
-  var blurRadius: Int
+  var blurRadius: Int,
+  var meanderConfig: MeanderConfig
 ) {
 
   /**
@@ -33,6 +34,7 @@ class BrushConfig(
     perpendicularJitterMax = perpendicularJitterMax * factor
     blurRadius = (blurRadius * factor).round.toInt
     stampsPerFrame = math.max(1, (stampsPerFrame * factor).round.toInt)
+    meanderConfig.amplitude = meanderConfig.amplitude * factor
   }
 
   override def toString: String = {
@@ -66,7 +68,8 @@ object BrushConfig {
       stampsPerFrame = 10,
       agentCount = 1,
       postCompletionMode = HOLD,
-      blurRadius = 0
+      blurRadius = 0,
+      meanderConfig = MeanderConfig.default()
     )
   }
 
@@ -85,13 +88,14 @@ object BrushConfig {
     stampsPerFrame: Int,
     agentCount: Int,
     postCompletionMode: Int,
-    blurRadius: Int
+    blurRadius: Int,
+    meanderConfig: MeanderConfig = MeanderConfig.default()
   ): BrushConfig = {
     new BrushConfig(
       brushNames, drawMode, stampSpacing, spacingEasing, followTangent,
       perpendicularJitterMin, perpendicularJitterMax,
       scaleMin, scaleMax, opacityMin, opacityMax,
-      stampsPerFrame, agentCount, postCompletionMode, blurRadius
+      stampsPerFrame, agentCount, postCompletionMode, blurRadius, meanderConfig
     )
   }
 }

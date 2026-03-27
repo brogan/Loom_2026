@@ -35,6 +35,7 @@ class BrushAgent(
 class BrushState {
 
   var edges: Array[BrushEdge] = Array.empty
+  var perturbedPaths: Array[Option[PerturbedPath]] = Array.empty
   var agents: Array[BrushAgent] = Array.empty
   var initialized: Boolean = false
   var totalLength: Double = 0.0
@@ -95,6 +96,22 @@ class BrushState {
     edges = edgeList.toArray
     totalLength = edges.map(_.length).sum
     initialized = true
+  }
+
+  /**
+   * Compute perturbed paths for all edges using the given config.
+   * For consistent meander, frame should be 0 (or constant).
+   * For animated meander, pass the current draw-frame counter.
+   */
+  def initializePerturbedPaths(config: BrushConfig, frame: Int): Unit = {
+    val mc = config.meanderConfig
+    perturbedPaths = if (!mc.enabled) {
+      Array.fill(edges.length)(None)
+    } else {
+      edges.zipWithIndex.map { case (edge, idx) =>
+        Some(PathPerturbation.perturbEdge(edge, mc, idx, frame, config.scaleMin, config.scaleMax))
+      }
+    }
   }
 
   /**

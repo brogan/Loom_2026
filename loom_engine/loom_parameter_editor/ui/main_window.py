@@ -512,6 +512,7 @@ class MainWindow(QMainWindow):
 
         reload_action = QAction("Reload", self)
         reload_action.setShortcut(QKeySequence("Ctrl+R"))
+        reload_action.setShortcutContext(Qt.ShortcutContext.ApplicationShortcut)
         reload_action.triggered.connect(self.run_tab._on_reload)
         run_menu.addAction(reload_action)
 

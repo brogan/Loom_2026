@@ -15,37 +15,44 @@ object BrushStampEngine {
 
   /**
    * Draw an entire edge with brush stamps (FULL_PATH mode).
-   * Each call produces a complete edge with per-stamp jitter variation.
+   * When perturbedPath is Some, stamps follow the perturbed path geometry.
    */
   def drawFullEdge(
     g2D: Graphics2D,
     edge: BrushEdge,
+    perturbedPath: Option[PerturbedPath],
     config: BrushConfig,
     brushes: Array[BufferedImage],
     strokeColor: Color
   ): Unit = {
-    if (brushes.isEmpty || edge.length <= 0) return
+    val effectiveLength = perturbedPath.map(_.length).getOrElse(edge.length)
+    if (brushes.isEmpty || effectiveLength <= 0) return
 
     // Values are pre-scaled by Renderer.scalePixelValues during setup — use directly
     val spacing = math.max(1.0, config.stampSpacing)
-    val numStamps = math.max(1, (edge.length / spacing).toInt)
+    val numStamps = math.max(1, (effectiveLength / spacing).toInt)
     val perpMin = config.perpendicularJitterMin
     val perpMax = config.perpendicularJitterMax
 
     for (i <- 0 to numStamps) {
-      // Use easing to distribute stamps along the edge
       val t = if (numStamps == 0) 0.5
               else Easing.ease(i.toDouble, 0.0, 1.0, numStamps.toDouble, config.spacingEasing)
 
       val tClamped = math.max(0.0, math.min(1.0, t))
 
-      // Get position and tangent at parameter t
-      val (position, tangentAngle) = getPositionAndTangent(edge, tClamped)
+      val (position, tangentAngle, pathScale) = perturbedPath match {
+        case Some(pp) =>
+          val (pos, angle, sc) = pp.evaluate(tClamped)
+          (pos, angle, sc)
+        case None =>
+          val (pos, angle) = getPositionAndTangent(edge, tClamped)
+          (pos, angle, -1.0)
+      }
 
-      // Randomise per-stamp parameters
       val brush = brushes(Randomise.range(0, brushes.length - 1))
       val tintedBrush = BrushLibrary.getTintedBrush(brush, strokeColor)
-      val stampScale = Randomise.range(config.scaleMin, config.scaleMax)
+      val stampScale = if (pathScale >= 0 && config.meanderConfig.scaleAlongPath) pathScale
+                       else Randomise.range(config.scaleMin, config.scaleMax)
       val opacity = Randomise.range(config.opacityMin, config.opacityMax).toFloat
       val perpJitter = Randomise.range(perpMin, perpMax)
 
@@ -55,11 +62,13 @@ object BrushStampEngine {
 
   /**
    * Draw progressive stamps for a single agent advancing along its assigned edges.
+   * When perturbedPaths(edgeIdx) is Some, stamps follow the perturbed path geometry.
    * Returns the number of stamps actually drawn.
    */
   def drawProgressiveStamps(
     g2D: Graphics2D,
     edges: Array[BrushEdge],
+    perturbedPaths: Array[Option[PerturbedPath]],
     agent: BrushAgent,
     config: BrushConfig,
     brushes: Array[BufferedImage],
@@ -82,17 +91,27 @@ object BrushStampEngine {
       }
 
       val edge = edges(edgeIdx)
-      val numStampsOnEdge = math.max(1, (edge.length / spacing).toInt)
+      val pp   = if (edgeIdx < perturbedPaths.length) perturbedPaths(edgeIdx) else None
+      val effectiveLength = pp.map(_.length).getOrElse(edge.length)
+      val numStampsOnEdge = math.max(1, (effectiveLength / spacing).toInt)
       val tStep = 1.0 / numStampsOnEdge
 
       val t = agent.currentStampT
       val tClamped = math.max(0.0, math.min(1.0, t))
 
-      val (position, tangentAngle) = getPositionAndTangent(edge, tClamped)
+      val (position, tangentAngle, pathScale) = pp match {
+        case Some(p) =>
+          val (pos, angle, sc) = p.evaluate(tClamped)
+          (pos, angle, sc)
+        case None =>
+          val (pos, angle) = getPositionAndTangent(edge, tClamped)
+          (pos, angle, -1.0)
+      }
 
       val brush = brushes(Randomise.range(0, brushes.length - 1))
       val tintedBrush = BrushLibrary.getTintedBrush(brush, strokeColor)
-      val stampScale = Randomise.range(config.scaleMin, config.scaleMax)
+      val stampScale = if (pathScale >= 0 && config.meanderConfig.scaleAlongPath) pathScale
+                       else Randomise.range(config.scaleMin, config.scaleMax)
       val opacity = Randomise.range(config.opacityMin, config.opacityMax).toFloat
       val perpJitter = Randomise.range(perpMin, perpMax)
 

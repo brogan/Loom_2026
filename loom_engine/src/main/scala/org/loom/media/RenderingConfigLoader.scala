@@ -3,7 +3,7 @@ package org.loom.media
 import scala.xml.*
 import java.io.File
 import java.awt.Color
-import org.loom.scene.{BrushConfig, StencilConfig, Renderer, RendererSet, RendererSetLibrary}
+import org.loom.scene.{BrushConfig, MeanderConfig, StencilConfig, Renderer, RendererSet, RendererSetLibrary}
 
 /**
  * Loads RendererSetLibrary from rendering.xml configuration files.
@@ -182,6 +182,10 @@ object RenderingConfigLoader {
     }
     val blurRadius = getIntOrDefault(node, "BlurRadius", 0)
 
+    val meanderConfig = (node \ "MeanderConfig").headOption
+      .map(parseMeanderConfig)
+      .getOrElse(MeanderConfig.default())
+
     BrushConfig(
       brushNames = brushNames,
       drawMode = drawMode,
@@ -197,8 +201,24 @@ object RenderingConfigLoader {
       stampsPerFrame = stampsPerFrame,
       agentCount = agentCount,
       postCompletionMode = postCompletionMode,
-      blurRadius = blurRadius
+      blurRadius = blurRadius,
+      meanderConfig = meanderConfig
     )
+  }
+
+  private def parseMeanderConfig(node: Node): MeanderConfig = {
+    val mc = MeanderConfig.default()
+    mc.enabled                 = (node \ "Enabled").headOption.exists(_.text.trim.toLowerCase == "true")
+    mc.amplitude               = getDoubleOrDefault(node, "Amplitude", mc.amplitude)
+    mc.frequency               = getDoubleOrDefault(node, "Frequency", mc.frequency)
+    mc.samples                 = getIntOrDefault(node, "Samples", mc.samples)
+    mc.seed                    = getIntOrDefault(node, "Seed", mc.seed)
+    mc.animated                = (node \ "Animated").headOption.exists(_.text.trim.toLowerCase == "true")
+    mc.animSpeed               = getDoubleOrDefault(node, "AnimSpeed", mc.animSpeed)
+    mc.scaleAlongPath          = (node \ "ScaleAlongPath").headOption.exists(_.text.trim.toLowerCase == "true")
+    mc.scaleAlongPathFrequency = getDoubleOrDefault(node, "ScaleAlongPathFrequency", mc.scaleAlongPathFrequency)
+    mc.scaleAlongPathRange     = getDoubleOrDefault(node, "ScaleAlongPathRange", mc.scaleAlongPathRange)
+    mc
   }
 
   private def parseStencilConfig(node: Node): StencilConfig = {
