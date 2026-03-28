@@ -146,6 +146,7 @@ object ProjectConfigManager {
   /** Configuration file names */
   val CurvesConfigFile = "curves.xml"
   val PointsConfigFile = "points.xml"
+  val OvalsConfigFile = "ovals.xml"
 
   /**
    * Get the full path to a named configuration file for the current project.
@@ -156,6 +157,7 @@ object ProjectConfigManager {
     val fileName = domain match {
       case "curves" => CurvesConfigFile
       case "points" => PointsConfigFile
+      case "ovals"  => OvalsConfigFile
       case other    => other + ".xml"
     }
     val path = ProjectPaths.getConfigFilePath(_currentProject, fileName)
@@ -172,6 +174,12 @@ object ProjectConfigManager {
   def getPointSetsPath: String = {
     if (!_projectLoaded) return ""
     ProjectPaths.getPointSetsPath(_currentProject)
+  }
+
+  /** Full path to the ovalSets/ directory for the current project. */
+  def getOvalSetsPath: String = {
+    if (!_projectLoaded) return ""
+    ProjectPaths.getOvalSetsPath(_currentProject)
   }
 
   def projectsDirectory: String = ProjectPaths.projectsDirectory

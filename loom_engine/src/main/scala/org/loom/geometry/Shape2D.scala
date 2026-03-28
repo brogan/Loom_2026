@@ -137,8 +137,8 @@ class Shape2D(val polys: List[Polygon2D], val subdivisionParamsSet: SubdivisionP
     */
    def recursiveSubdivide(subs: List[SubdivisionParams]): Shape2D  = {
      // Separate bypass polygons (open curves, discrete points) from closed polygons.
-     val bypassPolys = polys.filter(p => p.polyType == PolygonType.OPEN_SPLINE_POLYGON || p.polyType == PolygonType.POINT_POLYGON)
-     val closedPolys = polys.filter(p => p.polyType != PolygonType.OPEN_SPLINE_POLYGON && p.polyType != PolygonType.POINT_POLYGON)
+     val bypassPolys = polys.filter(p => p.polyType == PolygonType.OPEN_SPLINE_POLYGON || p.polyType == PolygonType.POINT_POLYGON || p.polyType == PolygonType.OVAL_POLYGON)
+     val closedPolys = polys.filter(p => p.polyType != PolygonType.OPEN_SPLINE_POLYGON && p.polyType != PolygonType.POINT_POLYGON && p.polyType != PolygonType.OVAL_POLYGON)
 
      println(s"[Loom] Subdivision: ${subs.length} pass(es), input: ${closedPolys.length} closed + ${bypassPolys.length} bypass polygon(s)")
 

@@ -47,15 +47,30 @@ public class GeometrySnapshot {
         }
     }
 
+    /** Snapshot of one oval's parameters. */
+    public static class OvalSnap {
+        public final double cx, cy, rx, ry;
+        public final int layerId;
+        public OvalSnap(double cx, double cy, double rx, double ry, int layerId) {
+            this.cx = cx; this.cy = cy;
+            this.rx = rx; this.ry = ry;
+            this.layerId = layerId;
+        }
+    }
+
     public final ManagerSnap[]  managers;
     public final WeldLinkSnap[] weldLinks;
     /** Snapshot of the discrete point list (copied, never null). */
     public final java.awt.geom.Point2D.Double[] points;
+    /** Snapshot of the oval list (copied, never null). */
+    public final OvalSnap[] ovals;
 
     public GeometrySnapshot(ManagerSnap[] managers, WeldLinkSnap[] weldLinks,
-                             java.awt.geom.Point2D.Double[] points) {
+                             java.awt.geom.Point2D.Double[] points,
+                             OvalSnap[] ovals) {
         this.managers  = managers;
         this.weldLinks = weldLinks;
         this.points    = points;
+        this.ovals     = ovals;
     }
 }

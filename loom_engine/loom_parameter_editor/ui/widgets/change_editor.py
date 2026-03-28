@@ -143,6 +143,10 @@ class SizeChangeEditor(QGroupBox):
             size_palette=self.size_palette_editor.get_palette() if is_pal else []
         )
 
+    def set_palettes_dir(self, path: str) -> None:
+        if self._has_palette:
+            self.size_palette_editor.set_palettes_dir(path)
+
     def _on_enabled_changed(self, enabled: bool) -> None:
         if not self._updating and self._change:
             self._change.enabled = enabled
@@ -283,6 +287,9 @@ class ColorChangeEditor(QGroupBox):
             pause_color_min=self.pause_color_min_picker.get_color(),
             pause_color_max=self.pause_color_max_picker.get_color()
         )
+
+    def set_palettes_dir(self, path: str) -> None:
+        self.palette_editor.set_palettes_dir(path)
 
     def _on_enabled_changed(self, enabled: bool) -> None:
         if not self._updating and self._change:
@@ -428,6 +435,9 @@ class FillColorChangeEditor(QGroupBox):
             pause_color_min=self.pause_color_min_picker.get_color(),
             pause_color_max=self.pause_color_max_picker.get_color()
         )
+
+    def set_palettes_dir(self, path: str) -> None:
+        self.palette_editor.set_palettes_dir(path)
 
     def _on_enabled_changed(self, enabled: bool) -> None:
         if not self._updating and self._change:

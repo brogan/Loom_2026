@@ -91,6 +91,10 @@ object ProjectPaths {
     getProjectPath(projectName) + File.separator + "pointSets"
   }
 
+  def getOvalSetsPath(projectName: String): String = {
+    getProjectPath(projectName) + File.separator + "ovalSets"
+  }
+
   def getMorphTargetsPath(projectName: String): String = {
     getProjectPath(projectName) + File.separator + "morphTargets"
   }

@@ -170,6 +170,7 @@ class RendererEditor(QWidget):
         self._updating = False
         self._brushes_dir: str = ""
         self._stencils_dir: str = ""
+        self._palettes_dir: str = ""
         self._editor_window = None
         self._stencil_editor_window = None
 
@@ -821,6 +822,14 @@ class RendererEditor(QWidget):
 
     def set_stencils_dir(self, path: str) -> None:
         self._stencils_dir = path
+
+    def set_palettes_dir(self, path: str) -> None:
+        self._palettes_dir = path
+        self.stroke_width_change_editor.set_palettes_dir(path)
+        self.stroke_color_change_editor.set_palettes_dir(path)
+        self.point_size_change_editor.set_palettes_dir(path)
+        self.fill_color_change_editor.set_palettes_dir(path)
+        self.stencil_opacity_change_editor.set_palettes_dir(path)
 
     # ------------------------------------------------------------------
     # Brush helpers
@@ -1650,6 +1659,10 @@ class RenderingTab(QWidget):
         stencils_dir = os.path.join(project_dir, "stamps")
         os.makedirs(stencils_dir, exist_ok=True)
         self.renderer_editor.set_stencils_dir(stencils_dir)
+
+        palettes_dir = os.path.join(project_dir, "palettes")
+        os.makedirs(palettes_dir, exist_ok=True)
+        self.renderer_editor.set_palettes_dir(palettes_dir)
 
     def get_library(self) -> Optional[RendererSetLibrary]:
         return self._library

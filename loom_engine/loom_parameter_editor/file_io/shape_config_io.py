@@ -89,6 +89,8 @@ class ShapeConfigIO:
                 shape.open_curve_set_name = source_elem.get("openCurveSet", "")
             elif shape.source_type == ShapeSourceType.POINT_SET:
                 shape.point_set_name = source_elem.get("pointSet", "")
+            elif shape.source_type == ShapeSourceType.OVAL_SET:
+                shape.oval_set_name = source_elem.get("ovalSet", "")
 
         # Parse subdivision reference
         subdiv_elem = elem.find("SubdivisionParamsSet")
@@ -144,6 +146,8 @@ class ShapeConfigIO:
             "OPEN_CURVE_SET": ShapeSourceType.OPEN_CURVE_SET,
             "POINTSET": ShapeSourceType.POINT_SET,
             "POINT_SET": ShapeSourceType.POINT_SET,
+            "OVALSET": ShapeSourceType.OVAL_SET,
+            "OVAL_SET": ShapeSourceType.OVAL_SET,
         }
         return mapping.get(type_str, ShapeSourceType.POLYGON_SET)
 
@@ -187,6 +191,9 @@ class ShapeConfigIO:
         elif shape.source_type == ShapeSourceType.POINT_SET:
             source_elem = etree.SubElement(shape_elem, "Source", type="pointSet")
             source_elem.set("pointSet", shape.point_set_name)
+        elif shape.source_type == ShapeSourceType.OVAL_SET:
+            source_elem = etree.SubElement(shape_elem, "Source", type="ovalSet")
+            source_elem.set("ovalSet", shape.oval_set_name)
         else:
             source_elem = etree.SubElement(shape_elem, "Source",
                                            type=shape.source_type.name)

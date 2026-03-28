@@ -103,6 +103,8 @@ public class CubicCurveFrame extends JFrame implements WindowListener{
 					} else if ("pointSet".equals(rootName)) {
 						curvePanel.loadPointSet(loadFile);
 						loadedPointSet = true;
+					} else if ("ovalSet".equals(rootName)) {
+						curvePanel.loadOvalSet(loadFile);
 					} else {
 						curvePanel.loadPolygonSet(loadFile);
 					}

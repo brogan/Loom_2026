@@ -33,6 +33,7 @@ class ShapeTab(QWidget):
         self._polygon_library = None  # Reference to polygon library for dropdown
         self._open_curve_library = None  # Reference to open curve library for dropdown
         self._point_set_library = None  # Reference to point set library for dropdown
+        self._oval_set_library = None   # Reference to oval set library for dropdown
 
         self._setup_ui()
         self._refresh_tree()
@@ -122,8 +123,8 @@ class ShapeTab(QWidget):
         source_layout = QFormLayout(source_group)
 
         self.source_type_combo = QComboBox()
-        # Items map: index 0 → POLYGON_SET, index 1 → OPEN_CURVE_SET, index 2 → POINT_SET
-        self.source_type_combo.addItems(["Polygon Set Reference", "Open Curve Set", "Point Set"])
+        # Items map: index 0 → POLYGON_SET, index 1 → OPEN_CURVE_SET, index 2 → POINT_SET, index 3 → OVAL_SET
+        self.source_type_combo.addItems(["Polygon Set Reference", "Open Curve Set", "Point Set", "Oval Set"])
         self.source_type_combo.currentIndexChanged.connect(self._on_source_type_changed)
         source_layout.addRow("Source Type:", self.source_type_combo)
 
@@ -182,6 +183,23 @@ class ShapeTab(QWidget):
         ps_refresh_layout.addWidget(self.refresh_point_set_btn)
         point_set_layout.addRow("", ps_refresh_layout)
         self.source_stack.addWidget(point_set_widget)
+
+        # Oval set reference — stack index 3
+        oval_set_widget = QWidget()
+        oval_set_layout = QFormLayout(oval_set_widget)
+        self.oval_set_combo = QComboBox()
+        self.oval_set_combo.setEditable(True)
+        self.oval_set_combo.setPlaceholderText("Name of OvalSet from ovals.xml")
+        self.oval_set_combo.currentTextChanged.connect(self._on_modified)
+        oval_set_layout.addRow("Oval Set:", self.oval_set_combo)
+
+        os_refresh_layout = QHBoxLayout()
+        self.refresh_oval_set_btn = QPushButton("Refresh List")
+        self.refresh_oval_set_btn.clicked.connect(self._refresh_oval_set_dropdown)
+        os_refresh_layout.addStretch()
+        os_refresh_layout.addWidget(self.refresh_oval_set_btn)
+        oval_set_layout.addRow("", os_refresh_layout)
+        self.source_stack.addWidget(oval_set_widget)
 
         source_layout.addRow(self.source_stack)
         right_layout.addWidget(source_group)
@@ -303,6 +321,7 @@ class ShapeTab(QWidget):
         "INLINE_POINTS": "IPT",
         "OPEN_CURVE_SET": "OCS",
         "POINT_SET": "PTS",
+        "OVAL_SET": "OVL",
     }
 
     def _refresh_tree(self):
@@ -389,7 +408,8 @@ class ShapeTab(QWidget):
 
             # Source type — map enum to combo index
             # POLYGON_SET (0) → combo 0, REGULAR_POLYGON (1) → combo 0,
-            # INLINE_POINTS (legacy) → combo 0, OPEN_CURVE_SET (3) → combo 1, POINT_SET (4) → combo 2
+            # INLINE_POINTS (legacy) → combo 0, OPEN_CURVE_SET (3) → combo 1,
+            # POINT_SET (4) → combo 2, OVAL_SET (5) → combo 3
             if shape.source_type == ShapeSourceType.OPEN_CURVE_SET:
                 self.source_type_combo.setCurrentIndex(1)
                 self.source_stack.setCurrentIndex(1)
@@ -398,6 +418,10 @@ class ShapeTab(QWidget):
                 self.source_type_combo.setCurrentIndex(2)
                 self.source_stack.setCurrentIndex(2)
                 self.point_set_combo.setCurrentText(shape.point_set_name)
+            elif shape.source_type == ShapeSourceType.OVAL_SET:
+                self.source_type_combo.setCurrentIndex(3)
+                self.source_stack.setCurrentIndex(3)
+                self.oval_set_combo.setCurrentText(shape.oval_set_name)
             else:
                 # POLYGON_SET, REGULAR_POLYGON, and legacy INLINE_POINTS all show as polygon set reference
                 self.source_type_combo.setCurrentIndex(0)
@@ -431,7 +455,7 @@ class ShapeTab(QWidget):
 
         self._current_shape.name = self.name_edit.text()
 
-        # Source type — combo index 0=POLYGON_SET, 1=OPEN_CURVE_SET, 2=POINT_SET
+        # Source type — combo index 0=POLYGON_SET, 1=OPEN_CURVE_SET, 2=POINT_SET, 3=OVAL_SET
         combo_idx = self.source_type_combo.currentIndex()
         if combo_idx == 1:
             self._current_shape.source_type = ShapeSourceType.OPEN_CURVE_SET
@@ -439,6 +463,9 @@ class ShapeTab(QWidget):
         elif combo_idx == 2:
             self._current_shape.source_type = ShapeSourceType.POINT_SET
             self._current_shape.point_set_name = self.point_set_combo.currentText()
+        elif combo_idx == 3:
+            self._current_shape.source_type = ShapeSourceType.OVAL_SET
+            self._current_shape.oval_set_name = self.oval_set_combo.currentText()
         else:
             self._current_shape.source_type = ShapeSourceType.POLYGON_SET
             self._current_shape.polygon_set_name = self.polygon_set_combo.currentText()
@@ -879,6 +906,33 @@ class ShapeTab(QWidget):
                     self.point_set_combo.setCurrentIndex(index)
                 else:
                     self.point_set_combo.setCurrentText(current_text)
+        finally:
+            self._updating = False
+
+    def set_oval_set_library(self, library) -> None:
+        """Set the oval set library for populating the oval set dropdown."""
+        self._oval_set_library = library
+        self._refresh_oval_set_dropdown()
+
+    def _refresh_oval_set_dropdown(self) -> None:
+        """Refresh the oval set dropdown from the oval set library."""
+        self._updating = True
+        try:
+            current_text = self.oval_set_combo.currentText()
+            self.oval_set_combo.clear()
+            if self._oval_set_library is not None:
+                try:
+                    if hasattr(self._oval_set_library, 'oval_sets'):
+                        names = sorted(od.name for od in self._oval_set_library.oval_sets)
+                        self.oval_set_combo.addItems(names)
+                except Exception:
+                    pass
+            if current_text:
+                index = self.oval_set_combo.findText(current_text)
+                if index >= 0:
+                    self.oval_set_combo.setCurrentIndex(index)
+                else:
+                    self.oval_set_combo.setCurrentText(current_text)
         finally:
             self._updating = False
 

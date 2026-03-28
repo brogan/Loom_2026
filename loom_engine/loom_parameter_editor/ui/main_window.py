@@ -30,6 +30,7 @@ from models.shape_config import ShapeLibrary
 from models.sprite_config import SpriteLibrary
 from models.open_curve_config import OpenCurveSetLibrary
 from models.point_config import PointSetLibrary
+from models.oval_config import OvalSetLibrary
 from file_io.project_io import ProjectIO
 from file_io.rendering_io import RenderingIO
 from file_io.global_config_io import GlobalConfigIO
@@ -39,6 +40,7 @@ from file_io.shape_config_io import ShapeConfigIO
 from file_io.sprite_config_io import SpriteConfigIO
 from file_io.open_curve_config_io import OpenCurveConfigIO
 from file_io.point_config_io import PointConfigIO
+from file_io.oval_config_io import OvalConfigIO
 from app_settings import AppSettings
 
 
@@ -323,6 +325,7 @@ class MainWindow(QMainWindow):
         self.polygon_tab    = self.geometry_tab.polygon_tab
         self.open_curve_tab = self.geometry_tab.open_curve_tab
         self.point_tab      = self.geometry_tab.point_tab
+        self.oval_tab       = self.geometry_tab.oval_tab
 
         self.subdivision_tab = SubdivisionTab()
         self.subdivision_tab.modified.connect(self._on_modified)
@@ -584,6 +587,10 @@ class MainWindow(QMainWindow):
         animations_dir = os.path.join(renders_dir, "animations")
         os.makedirs(animations_dir, exist_ok=True)
 
+        # Palettes directory
+        palettes_dir = os.path.join(project_dir, "palettes")
+        os.makedirs(palettes_dir, exist_ok=True)
+
     def _create_empty_project(self) -> None:
         """Create an empty project without dialog (for startup)."""
         self._project = ProjectIO.create_new("New Project")
@@ -625,6 +632,9 @@ class MainWindow(QMainWindow):
         point_library = self.point_tab.create_default_library()
         self.point_tab.set_library(point_library)
 
+        oval_library = self.oval_tab.create_default_library()
+        self.oval_tab.set_library(oval_library)
+
         self._update_title()
         self.project_label.setText("New Project (unsaved)")
 
@@ -658,6 +668,7 @@ class MainWindow(QMainWindow):
             self._project.add_file("sprites", "configuration/sprites.xml")
             self._project.add_file("curves", "configuration/curves.xml")
             self._project.add_file("points", "configuration/points.xml")
+            self._project.add_file("ovals", "configuration/ovals.xml")
 
             self._modified = False
 
@@ -694,6 +705,9 @@ class MainWindow(QMainWindow):
 
             point_library = self.point_tab.create_default_library()
             self.point_tab.set_library(point_library)
+
+            oval_library = self.oval_tab.create_default_library()
+            self.oval_tab.set_library(oval_library)
 
             # Notify tabs of project directory for polygon file lookups
             self._notify_tabs_of_project_dir()
@@ -768,11 +782,20 @@ class MainWindow(QMainWindow):
             if hasattr(self, 'point_tab') and hasattr(self.shape_tab, 'set_point_set_library'):
                 self.shape_tab.set_point_set_library(self.point_tab.get_library())
 
-            # Notify polygon tab of shape/sprite libraries for usage counts
-            if hasattr(self.polygon_tab, 'set_shape_library'):
-                self.polygon_tab.set_shape_library(self.shape_tab.get_library())
-            if hasattr(self.polygon_tab, 'set_sprite_library'):
-                self.polygon_tab.set_sprite_library(self.sprite_tab.get_library())
+            # Notify oval tab of ovalSets directory
+            oval_sets_dir = os.path.join(self._project_dir, "ovalSets")
+            if hasattr(self, 'oval_tab') and hasattr(self.oval_tab, 'set_oval_sets_directory'):
+                self.oval_tab.set_oval_sets_directory(oval_sets_dir)
+
+            # Notify shape tab of oval set library for oval set dropdown
+            if hasattr(self, 'oval_tab') and hasattr(self.shape_tab, 'set_oval_set_library'):
+                self.shape_tab.set_oval_set_library(self.oval_tab.get_library())
+
+            # Notify all geometry sub-tabs of shape/sprite libraries (for usage counts + Quick Setup)
+            if hasattr(self.geometry_tab, 'set_shape_library'):
+                self.geometry_tab.set_shape_library(self.shape_tab.get_library())
+            if hasattr(self.geometry_tab, 'set_sprite_library'):
+                self.geometry_tab.set_sprite_library(self.sprite_tab.get_library())
 
             # Notify sprite tab of shape and rendering configs for dropdowns
             if hasattr(self.sprite_tab, 'set_shape_library'):
@@ -979,6 +1002,20 @@ class MainWindow(QMainWindow):
                 point_library = self.point_tab.create_default_library()
                 self.point_tab.set_library(point_library)
 
+            # Load oval set configuration
+            ovals_file = self._project.get_file("ovals")
+            if ovals_file:
+                ovals_path = os.path.join(project_dir, ovals_file.path)
+                if os.path.exists(ovals_path):
+                    oval_library = OvalConfigIO.load(ovals_path)
+                    self.oval_tab.set_library(oval_library)
+                else:
+                    oval_library = self.oval_tab.create_default_library()
+                    self.oval_tab.set_library(oval_library)
+            else:
+                oval_library = self.oval_tab.create_default_library()
+                self.oval_tab.set_library(oval_library)
+
             # Notify tabs of project directory
             self._notify_tabs_of_project_dir()
 
@@ -1074,6 +1111,7 @@ class MainWindow(QMainWindow):
                 self._project.add_file("sprites", "configuration/sprites.xml")
                 self._project.add_file("curves", "configuration/curves.xml")
                 self._project.add_file("points", "configuration/points.xml")
+                self._project.add_file("ovals", "configuration/ovals.xml")
 
             # Update global config name
             global_config = self._get_full_global_config()
@@ -1195,6 +1233,16 @@ class MainWindow(QMainWindow):
                         PointConfigIO.save(point_library, points_path)
                         self.status_bar.showMessage(f"Saved {points_path}", 3000)
 
+            elif tab_name == "ovals":
+                ovals_file = self._project.get_file("ovals")
+                if ovals_file:
+                    ovals_path = os.path.join(project_dir, ovals_file.path)
+                    os.makedirs(os.path.dirname(ovals_path), exist_ok=True)
+                    oval_library = self.oval_tab.get_library()
+                    if oval_library:
+                        OvalConfigIO.save(oval_library, ovals_path)
+                        self.status_bar.showMessage(f"Saved {ovals_path}", 3000)
+
             return True
 
         except Exception as e:
@@ -1227,6 +1275,8 @@ class MainWindow(QMainWindow):
                     self._project.add_file("curves", "configuration/curves.xml")
                 if not self._project.get_file("points"):
                     self._project.add_file("points", "configuration/points.xml")
+                if not self._project.get_file("ovals"):
+                    self._project.add_file("ovals", "configuration/ovals.xml")
 
                 # Update project name from global config
                 global_config = self._get_full_global_config()
@@ -1244,6 +1294,7 @@ class MainWindow(QMainWindow):
                 self._save_single_tab("sprites")
                 self._save_single_tab("curves")
                 self._save_single_tab("points")
+                self._save_single_tab("ovals")
 
             self._project_path = project_file
             self._project_dir = project_dir
@@ -1434,11 +1485,17 @@ class MainWindow(QMainWindow):
         if hasattr(self, 'shape_tab') and hasattr(self.shape_tab, 'set_point_set_library'):
             self.shape_tab.set_point_set_library(self.point_tab.get_library())
 
+    def _on_oval_set_library_changed(self) -> None:
+        """Propagate oval set library changes to the shape tab."""
+        if hasattr(self, 'shape_tab') and hasattr(self.shape_tab, 'set_oval_set_library'):
+            self.shape_tab.set_oval_set_library(self.oval_tab.get_library())
+
     def _on_geometry_modified(self) -> None:
         """Dispatch geometry sub-tab change notifications."""
         self._on_polygon_library_changed()
         self._on_open_curve_library_changed()
         self._on_point_set_library_changed()
+        self._on_oval_set_library_changed()
 
     def _on_geometry_shape_library_changed(self) -> None:
         if hasattr(self, 'shape_tab'):
@@ -1473,14 +1530,14 @@ class MainWindow(QMainWindow):
         self._save_single_tab("points")
 
     def _on_shape_library_for_polygon_counts(self) -> None:
-        """Refresh polygon tab usage counts when the shape library changes."""
-        if hasattr(self, 'polygon_tab'):
-            self.polygon_tab.set_shape_library(self.shape_tab.get_library())
+        """Refresh geometry sub-tab usage counts when the shape library changes."""
+        if hasattr(self, 'geometry_tab'):
+            self.geometry_tab.set_shape_library(self.shape_tab.get_library())
 
     def _on_sprite_library_for_polygon_counts(self) -> None:
-        """Refresh polygon tab usage counts when the sprite library changes."""
-        if hasattr(self, 'polygon_tab'):
-            self.polygon_tab.set_sprite_library(self.sprite_tab.get_library())
+        """Refresh geometry sub-tab usage counts when the sprite library changes."""
+        if hasattr(self, 'geometry_tab'):
+            self.geometry_tab.set_sprite_library(self.sprite_tab.get_library())
 
     def _update_title(self) -> None:
         """Update window title based on project state."""

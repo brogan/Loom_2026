@@ -24,6 +24,7 @@ public class BezierToolBarPanel extends JPanel {
 	private ImageIcon polyRelationalIcon,  polyDiscreteIcon;
 
 	// Action buttons — momentary, no persistent highlight
+	private JButton createOvalButton;
 	private JButton closeCurves, finishOpenCurve, intersect, duplicatePolygon, flipHorizontal, flipVertical;
 	private JButton snapAnchors, snapAll, centre;
 	private JButton zoomIn, zoomOut;
@@ -155,6 +156,29 @@ public class BezierToolBarPanel extends JPanel {
 			}
 		});
 		toolBar.add(pointModeToggle);
+
+		createOvalButton = new JButton();
+		initButton(createOvalButton, "Create Oval", "oval");
+		createOvalButton.addActionListener(new ActionListener() {
+			public void actionPerformed(ActionEvent e) {
+				// Turn off all other modes
+				int idx = polygonManager.getPolygonCount();
+				polygonManager.getManager(idx).setAddPoints(false);
+				selectionMode.setSelected(false);
+				edgeSelectionMode.setSelected(false);
+				polygonSelectionMode.setSelected(true);
+				pointModeToggle.setSelected(false);
+				polygonMode.setSelected(false);
+				knifeTool.setSelected(false);
+				bezier.setKnifeMode(false);
+				bezier.setPointMode(false);
+				bezier.setEdgeSelectionMode(false);
+				bezier.setPointSelectionMode(false);
+				bezier.setPolygonSelectionMode(true);
+				bezier.createOval();
+			}
+		});
+		toolBar.add(createOvalButton);
 
 		polygonMode = new JToggleButton();
 		initToggle(polygonMode, "Create Polygons Mode", "createPolygon");
@@ -399,6 +423,8 @@ public class BezierToolBarPanel extends JPanel {
 			public void actionPerformed(ActionEvent e) {
 				bezier.takeUndoSnapshot();
 				polygonManager.clearManagers();
+				bezier.clearOvals();
+				bezier.clearPoints();
 			}
 		});
 		toolBar.add(clearGrid);

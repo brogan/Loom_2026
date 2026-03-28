@@ -1476,6 +1476,8 @@ class SpriteTab(QWidget):
             os.path.join(project_dir, "polygonSets"),
             os.path.join(project_dir, "curveSets"),
             os.path.join(project_dir, "pointSets"),
+            os.path.join(project_dir, "ovalSets"),
+            os.path.join(project_dir, "regularPolygons"),
         )
 
     def _on_preview_transform_changed(self, loc_x: float, loc_y: float,

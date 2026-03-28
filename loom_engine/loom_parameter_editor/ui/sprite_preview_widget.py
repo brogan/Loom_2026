@@ -68,6 +68,24 @@ def _parse_flat_spline(all_pts) -> tuple[list, list]:
 def _parse_geo_from_root(root) -> ParsedGeo:
     """Parse XML root element into ParsedGeo."""
     geo = ParsedGeo()
+    if root.tag == 'ovalSet':
+        for oval_el in root.findall('oval'):
+            try:
+                cx = float(oval_el.get('cx', '0'))
+                cy = float(oval_el.get('cy', '0'))
+                rx = float(oval_el.get('rx', '0.1'))
+                ry = float(oval_el.get('ry', '0.1'))
+                steps = 60
+                pts = [(cx + rx * math.cos(math.radians(i * 360.0 / steps)),
+                        cy + ry * math.sin(math.radians(i * 360.0 / steps)))
+                       for i in range(steps)]
+                geo.anchor_polys.append(pts)
+                geo.ctrl_polys.append([])
+                geo.closed_flags.append(True)
+            except (ValueError, TypeError):
+                pass
+        return geo
+
     if root.tag == 'pointSet':
         for pt in root.findall('point'):
             p = _xy(pt)
@@ -132,6 +150,89 @@ def _make_ngon(n: int) -> ParsedGeo:
     return geo
 
 
+def _parse_regular_polygon_xml(filepath: str) -> Optional[ParsedGeo]:
+    """Parse a regularPolygon XML parameter file and generate star polygon geometry.
+
+    Replicates Scala's createRegularPolygonSet → makePolygon2DStar pipeline:
+      1. makePolygon2DStar(totalPoints*2, outerDiameter=1.0, proportion=internalRadius*2,
+                           positiveSynch, synchMultiplier)
+      2. Optional offset rotation
+      3. Optional non-uniform scale
+      4. Optional rotationAngle rotation
+      5. Translation by (transX-0.5, transY-0.5)
+    """
+    try:
+        tree = ET.parse(filepath, parser=ET.XMLParser(encoding='utf-8'))
+        root = tree.getroot()
+
+        def gf(tag, default=0.0):
+            el = root.find(tag)
+            return float(el.text.strip()) if (el is not None and el.text) else default
+
+        def gb(tag, default=True):
+            el = root.find(tag)
+            return el.text.strip().lower() == 'true' if (el is not None and el.text) else default
+
+        total_points    = int(gf('totalPoints', 3))
+        internal_radius = gf('internalRadius', 0.5)
+        offset          = gf('offset', 0.0)
+        scale_x         = gf('scaleX', 1.0)
+        scale_y         = gf('scaleY', 1.0)
+        rotation_angle  = gf('rotationAngle', 0.0)
+        trans_x         = gf('transX', 0.5)
+        trans_y         = gf('transY', 0.5)
+        positive_synch  = gb('positiveSynch', True)
+        synch_mult      = gf('synchMultiplier', 1.0)
+
+        n_sides    = total_points * 2
+        proportion = max(internal_radius * 2.0, 1e-9)
+        prop       = 1.0 / proportion
+        ang_inc    = 360.0 / n_sides   # degrees
+
+        def rot2d(x, y, deg):
+            rad = math.radians(deg)
+            c, s = math.cos(rad), math.sin(rad)
+            return x * c - y * s, x * s + y * c
+
+        pts = [None] * n_sides
+
+        # Outer points (even indices), start at (0, -0.5)
+        r_outer = 0.5
+        pts[0] = (0.0, -r_outer)
+        for i in range(1, n_sides):
+            if i % 2 == 0:
+                pts[i] = rot2d(pts[i - 2][0], pts[i - 2][1], 2 * ang_inc)
+
+        # Inner points (odd indices)
+        r_inner = r_outer / prop   # = internalRadius
+        pts[1] = (0.0, -r_inner)
+        if positive_synch:
+            pts[1] = rot2d(pts[1][0], pts[1][1],  ang_inc * synch_mult)
+        else:
+            pts[1] = rot2d(pts[1][0], pts[1][1], -ang_inc * synch_mult)
+        for i in range(2, n_sides):
+            if i % 2 != 0:
+                pts[i] = rot2d(pts[i - 2][0], pts[i - 2][1], 2 * ang_inc)
+
+        if offset:
+            pts = [rot2d(x, y, offset) for x, y in pts]
+        if scale_x != 1.0 or scale_y != 1.0:
+            pts = [(x * scale_x, y * scale_y) for x, y in pts]
+        if rotation_angle:
+            pts = [rot2d(x, y, rotation_angle) for x, y in pts]
+        tx, ty = trans_x - 0.5, trans_y - 0.5
+        if tx or ty:
+            pts = [(x + tx, y + ty) for x, y in pts]
+
+        geo = ParsedGeo()
+        geo.anchor_polys.append(pts)
+        geo.ctrl_polys.append([])
+        geo.closed_flags.append(True)
+        return geo
+    except Exception:
+        return None
+
+
 # Handle → drag mode mapping
 _HANDLE_MODES = {
     'TL': 'scale_xy',
@@ -171,6 +272,8 @@ class SpritePreviewCanvas(QWidget):
         self._polygon_sets_dir: str = ""
         self._curve_sets_dir: str = ""
         self._point_sets_dir: str = ""
+        self._oval_sets_dir: str = ""
+        self._regular_polygons_dir: str = ""
         self._geo_cache: dict[str, Optional[ParsedGeo]] = {}
         self._grid_size_pct: float = 10.0
         self._snap: bool = False
@@ -206,10 +309,13 @@ class SpritePreviewCanvas(QWidget):
         self._geo_cache.clear()
         self.update()
 
-    def set_directories(self, poly_dir: str, curve_dir: str, point_dir: str):
+    def set_directories(self, poly_dir: str, curve_dir: str, point_dir: str,
+                        oval_dir: str = "", regular_dir: str = ""):
         self._polygon_sets_dir = poly_dir
         self._curve_sets_dir = curve_dir
         self._point_sets_dir = point_dir
+        self._oval_sets_dir = oval_dir
+        self._regular_polygons_dir = regular_dir
         self._geo_cache.clear()
         self.update()
 
@@ -316,6 +422,9 @@ class SpritePreviewCanvas(QWidget):
             elif stype == ShapeSourceType.POINT_SET:
                 name = shape_def.point_set_name
                 base_dir = self._point_sets_dir
+            elif stype == ShapeSourceType.OVAL_SET:
+                name = shape_def.oval_set_name
+                base_dir = self._oval_sets_dir
             else:
                 return None
 
@@ -327,6 +436,14 @@ class SpritePreviewCanvas(QWidget):
                 return self._geo_cache[filepath]
 
             if not os.path.isfile(filepath):
+                # For POLYGON_SET, fall back to regularPolygons/ parameter file
+                if stype == ShapeSourceType.POLYGON_SET and self._regular_polygons_dir:
+                    reg_path = os.path.join(self._regular_polygons_dir, name + ".xml")
+                    if reg_path in self._geo_cache:
+                        return self._geo_cache[reg_path]
+                    geo = _parse_regular_polygon_xml(reg_path)
+                    self._geo_cache[reg_path] = geo
+                    return geo
                 self._geo_cache[filepath] = None
                 return None
 
@@ -1007,5 +1124,6 @@ class SpritePreviewWidget(QWidget):
         self._apply_kf_selection()
         self._refresh_transform_label()
 
-    def set_directories(self, poly_dir: str, curve_dir: str, point_dir: str):
-        self._canvas.set_directories(poly_dir, curve_dir, point_dir)
+    def set_directories(self, poly_dir: str, curve_dir: str, point_dir: str,
+                        oval_dir: str = "", regular_dir: str = ""):
+        self._canvas.set_directories(poly_dir, curve_dir, point_dir, oval_dir, regular_dir)

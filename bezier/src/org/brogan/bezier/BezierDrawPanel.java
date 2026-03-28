@@ -144,6 +144,10 @@ public class BezierDrawPanel extends JPanel implements Runnable, MouseListener, 
 	private java.util.List<Point2D.Double> pointList = new ArrayList<>();
 	private boolean pointMode = false;
 
+	// ── Oval mode ─────────────────────────────────────────────────────────────
+	private java.util.List<OvalManager> ovalList = new ArrayList<>();
+	private java.util.List<OvalManager> selectedOvals = new ArrayList<>();
+
 	public BezierDrawPanel(CubicCurvePanel p, CubicCurveFrame  cF, Color strokeCol){
 		cubicCurvePanel = p;
 		curveFrame = cF;
@@ -326,6 +330,26 @@ public class BezierDrawPanel extends JPanel implements Runnable, MouseListener, 
 				}
 			}
 
+			// Draw ovals
+			if (!ovalList.isEmpty()) {
+				Graphics2D og = (Graphics2D) dBufferGraphics;
+				boolean relational = (polySubMode == SelectionSubMode.RELATIONAL);
+				for (OvalManager oval : ovalList) {
+					if (oval.getLayerId() == layerManager.getActiveLayerId()) {
+						oval.draw(og, strokeColor, !relational, relational);
+					} else {
+						Layer ol = layerManager.getLayerById(oval.getLayerId());
+						if (ol != null && ol.isVisible()) {
+							java.awt.Composite prev = og.getComposite();
+							og.setComposite(java.awt.AlphaComposite.getInstance(
+								java.awt.AlphaComposite.SRC_OVER, 0.2f));
+							oval.draw(og, strokeColor, true, false);
+							og.setComposite(prev);
+						}
+					}
+				}
+			}
+
 			if (knifeMode && knifeStart != null && knifeEnd != null) {
 				double dx = knifeEnd.x - knifeStart.x, dy = knifeEnd.y - knifeStart.y;
 				double len = Math.sqrt(dx*dx + dy*dy);
@@ -414,7 +438,7 @@ public class BezierDrawPanel extends JPanel implements Runnable, MouseListener, 
 			return;
 		}
 
-		if (polygonSelectionModeEnabled && !selectedPolygons.isEmpty()) {
+		if (polygonSelectionModeEnabled && (!selectedPolygons.isEmpty() || !selectedOvals.isEmpty())) {
 			if (!dragSnapshotTaken) {
 				takeUndoSnapshot();
 				dragSnapshotTaken = true;
@@ -423,12 +447,17 @@ public class BezierDrawPanel extends JPanel implements Runnable, MouseListener, 
 			Point2D.Double sp = scaleMouse(mE);
 			double dx = sp.x - currentMousePos.x;
 			double dy = sp.y - currentMousePos.y;
-			// One shared HashSet so welded points (same Java object in multiple managers) move only once
-			HashSet<CubicPoint> moved = new HashSet<CubicPoint>();
-			for (CubicCurveManager m : selectedPolygons) {
-				translatePolygonBy(m, dx, dy, moved);
+			if (!selectedPolygons.isEmpty()) {
+				// One shared HashSet so welded points (same Java object in multiple managers) move only once
+				HashSet<CubicPoint> moved = new HashSet<CubicPoint>();
+				for (CubicCurveManager m : selectedPolygons) {
+					translatePolygonBy(m, dx, dy, moved);
+				}
+				if (autoWeldEnabled) checkDragWeld(); else clearPendingWeld();
 			}
-			if (autoWeldEnabled) checkDragWeld(); else clearPendingWeld();
+			for (OvalManager oval : selectedOvals) {
+				oval.translate(dx, dy);
+			}
 			currentMousePos.x = sp.x;
 			currentMousePos.y = sp.y;
 			return;
@@ -833,7 +862,14 @@ public class BezierDrawPanel extends JPanel implements Runnable, MouseListener, 
 		}
 	}
 	public void scaleXY(double scale) {
-		if (scaleRotateSnapshotPending) { takeUndoSnapshot(); scaleRotateSnapshotPending = false; }
+		if (scaleRotateSnapshotPending) {
+			takeUndoSnapshot();
+			scaleRotateSnapshotPending = false;
+			// Freeze oval orig values so the slider gesture scales from a fixed baseline
+			// (mirrors the CubicPoint.origPos pattern used for polygon scaling)
+			java.util.List<OvalManager> freezeOvals = selectedOvals.isEmpty() ? ovalList : selectedOvals;
+			for (OvalManager o : freezeOvals) o.freezeOrig();
+		}
 		// In point/edge mode the slider is a no-op when nothing is selected
 		if (pointSelectionModeEnabled) {
 			if (!selectedPoints.isEmpty()) scaleSelectedPoints(scale);
@@ -858,6 +894,22 @@ public class BezierDrawPanel extends JPanel implements Runnable, MouseListener, 
 			targets = new ArrayList<CubicCurveManager>();
 			for (int i = 0; i < totPolys; i++) { // exclude the active drawing manager (last slot)
 				targets.add(polygonManager.getManager(i));
+			}
+		}
+
+		// Scale selected ovals (or all if none selected)
+		// Pivot is derived from frozen orig positions so it stays fixed for the gesture duration.
+		java.util.List<OvalManager> ovalTargets = selectedOvals.isEmpty() ? ovalList : selectedOvals;
+		if (!ovalTargets.isEmpty()) {
+			double ocx = 0, ocy = 0; int cnt = 0;
+			for (OvalManager o : ovalTargets) { ocx += o.getOrigCx(); ocy += o.getOrigCy(); cnt++; }
+			if (cnt > 0) {
+				ocx /= cnt; ocy /= cnt;
+				for (OvalManager o : ovalTargets) {
+					if (doX && doY) o.scaleXYFromOrig(factor, ocx, ocy);
+					else if (doX)  o.scaleXFromOrig(factor, ocx);
+					else           o.scaleYFromOrig(factor, ocy);
+				}
 			}
 		}
 
@@ -1008,6 +1060,20 @@ public class BezierDrawPanel extends JPanel implements Runnable, MouseListener, 
 				rotateManagerAroundCenter(m, rot, m.getAverageXYFromOrig(), editAnchors, editControls);
 			}
 		}
+		// Rotate selected ovals (or all if none selected)
+		java.util.List<OvalManager> ovalTargets = selectedOvals.isEmpty() ? ovalList : selectedOvals;
+		if (!ovalTargets.isEmpty()) {
+			Point2D.Double pivot;
+			if (axisMode == CubicCurvePanel.ROTATE_ABSOLUTE) {
+				pivot = new Point2D.Double(edgeOffset + GRIDWIDTH / 2.0, edgeOffset + GRIDHEIGHT / 2.0);
+			} else {
+				double cx = 0, cy = 0; int cnt = 0;
+				for (OvalManager o : ovalTargets) { cx += o.getCx(); cy += o.getCy(); cnt++; }
+				pivot = (cnt > 0) ? new Point2D.Double(cx / cnt, cy / cnt)
+				                  : new Point2D.Double(edgeOffset + GRIDWIDTH / 2.0, edgeOffset + GRIDHEIGHT / 2.0);
+			}
+			for (OvalManager o : ovalTargets) o.rotate(rot, pivot.x, pivot.y);
+		}
 	}
 
 	/** Rotate all points of curveManager around the given centre by rot degrees.
@@ -1067,6 +1133,8 @@ public class BezierDrawPanel extends JPanel implements Runnable, MouseListener, 
 		if (!enabled) {
 			for (CubicCurveManager m : selectedPolygons) m.clearAllHighlights();
 			selectedPolygons.clear();
+			for (OvalManager o : selectedOvals) o.setSelected(false);
+			selectedOvals.clear();
 			clearPendingWeld();
 		}
 	}
@@ -1075,6 +1143,19 @@ public class BezierDrawPanel extends JPanel implements Runnable, MouseListener, 
 		int polygonCount = polygonManager.getPolygonCount();
 		polygonClickCandidate = null;
 		polygonMouseMoved = false;
+
+		// Check ovals on the active layer first (drawn on top).
+		int activeLayer = layerManager.getActiveLayerId();
+		for (int i = ovalList.size() - 1; i >= 0; i--) {
+			OvalManager oval = ovalList.get(i);
+			if (oval.getLayerId() != activeLayer) continue;
+			if (!oval.contains(mousePos.x, mousePos.y)) continue;
+			if (!oval.isSelected()) {
+				oval.setSelected(true);
+				selectedOvals.add(oval);
+			}
+			return;
+		}
 
 		// Iterate in reverse (newest / innermost polygon takes priority).
 		// Find the highest-priority polygon under the click, then the next one underneath.
@@ -1093,6 +1174,8 @@ public class BezierDrawPanel extends JPanel implements Runnable, MouseListener, 
 			// Click on empty space — deselect all
 			for (CubicCurveManager m : selectedPolygons) m.clearAllHighlights();
 			selectedPolygons.clear();
+			for (OvalManager o : selectedOvals) o.setSelected(false);
+			selectedOvals.clear();
 			return;
 		}
 
@@ -1435,6 +1518,7 @@ public class BezierDrawPanel extends JPanel implements Runnable, MouseListener, 
 				}
 			}
 		}
+		for (OvalManager oval : ovalList) oval.scaleXY(factor, center.x, center.y);
 	}
 
 	/**
@@ -1480,8 +1564,12 @@ public class BezierDrawPanel extends JPanel implements Runnable, MouseListener, 
 	public void performCentre() {
 		takeUndoSnapshot();
 		Point2D.Double screenCentre = new Point2D.Double(edgeOffset + GRIDWIDTH / 2.0, edgeOffset + GRIDHEIGHT / 2.0);
-		if (selectedPolygons.isEmpty()) {
+		if (selectedPolygons.isEmpty() && selectedOvals.isEmpty()) {
 			polygonManager.centerPolygonSet(screenCentre);
+			for (OvalManager o : ovalList) {
+				o.setCx(screenCentre.x);
+				o.setCy(screenCentre.y);
+			}
 			return;
 		}
 		double cx = 0, cy = 0; int cnt = 0;
@@ -1491,6 +1579,7 @@ public class BezierDrawPanel extends JPanel implements Runnable, MouseListener, 
 				cx += c.x; cy += c.y; cnt++;
 			}
 		}
+		for (OvalManager o : selectedOvals) { cx += o.getCx(); cy += o.getCy(); cnt++; }
 		if (cnt == 0) return;
 		double dx = screenCentre.x - cx / cnt;
 		double dy = screenCentre.y - cy / cnt;
@@ -1498,6 +1587,7 @@ public class BezierDrawPanel extends JPanel implements Runnable, MouseListener, 
 		for (CubicCurveManager m : selectedPolygons) {
 			m.setCenterPosition(new Point2D.Double(dx, dy), moved);
 		}
+		for (OvalManager o : selectedOvals) o.translate(dx, dy);
 	}
 
 	/**
@@ -1510,7 +1600,7 @@ public class BezierDrawPanel extends JPanel implements Runnable, MouseListener, 
 		takeUndoSnapshot();
 		java.util.List<CubicCurveManager> targets = selectedPolygons.isEmpty()
 			? getAllManagers() : selectedPolygons;
-		if (targets.isEmpty()) return;
+		java.util.List<OvalManager> ovalTargets = selectedOvals.isEmpty() ? ovalList : selectedOvals;
 		double cx = 0, cy = 0; int cnt = 0;
 		for (CubicCurveManager m : targets) {
 			if (m.getCurves().getCubicCurveTotal() > 0) {
@@ -1518,6 +1608,7 @@ public class BezierDrawPanel extends JPanel implements Runnable, MouseListener, 
 				cx += c.x; cy += c.y; cnt++;
 			}
 		}
+		for (OvalManager o : ovalTargets) { cx += o.getCx(); cy += o.getCy(); cnt++; }
 		if (cnt == 0) return;
 		cx /= cnt; cy /= cnt;
 		java.util.HashSet<CubicPoint> processed = new java.util.HashSet<>();
@@ -1532,6 +1623,10 @@ public class BezierDrawPanel extends JPanel implements Runnable, MouseListener, 
 					pt.setOrigPosToPos();
 				}
 			}
+		}
+		for (OvalManager o : ovalTargets) {
+			if (horizontal) o.flipH(cx);
+			else            o.flipV(cy);
 		}
 	}
 
@@ -1597,9 +1692,15 @@ public class BezierDrawPanel extends JPanel implements Runnable, MouseListener, 
 		}
 		// Snapshot the discrete point list
 		Point2D.Double[] pointsSnap = pointList.toArray(new Point2D.Double[0]);
+		// Snapshot ovals
+		GeometrySnapshot.OvalSnap[] ovalsSnap = new GeometrySnapshot.OvalSnap[ovalList.size()];
+		for (int i = 0; i < ovalList.size(); i++) {
+			OvalManager o = ovalList.get(i);
+			ovalsSnap[i] = new GeometrySnapshot.OvalSnap(o.getCx(), o.getCy(), o.getRx(), o.getRy(), o.getLayerId());
+		}
 		return new GeometrySnapshot(managers,
 			weldLinks.toArray(new GeometrySnapshot.WeldLinkSnap[0]),
-			pointsSnap);
+			pointsSnap, ovalsSnap);
 	}
 
 	/** Push the current geometry state onto the undo stack. */
@@ -1625,6 +1726,14 @@ public class BezierDrawPanel extends JPanel implements Runnable, MouseListener, 
 		pointList.clear();
 		for (Point2D.Double pt : snap.points) {
 			pointList.add(new Point2D.Double(pt.x, pt.y));
+		}
+		// Restore ovals
+		ovalList.clear();
+		selectedOvals.clear();
+		for (GeometrySnapshot.OvalSnap os : snap.ovals) {
+			OvalManager om = new OvalManager(os.cx, os.cy, os.rx, os.ry);
+			om.setLayerId(os.layerId);
+			ovalList.add(om);
 		}
 	}
 	/**
@@ -1853,6 +1962,66 @@ public class BezierDrawPanel extends JPanel implements Runnable, MouseListener, 
 			double pixelX = valX * GRIDWIDTH  + GRIDWIDTH  / 2.0;
 			double pixelY = valY * GRIDHEIGHT + GRIDHEIGHT / 2.0;
 			pointList.add(new Point2D.Double(pixelX, pixelY));
+		}
+	}
+
+	// ── Oval mode ────────────────────────────────────────────────────────────
+
+	/** Create a new oval centred on the canvas, 1/3 of the grid size; select it. */
+	public void createOval() {
+		takeUndoSnapshot();
+		double cx = edgeOffset + GRIDWIDTH / 2.0;
+		double cy = edgeOffset + GRIDHEIGHT / 2.0;
+		double rx = GRIDWIDTH / 6.0;
+		double ry = GRIDHEIGHT / 6.0;
+		OvalManager oval = new OvalManager(cx, cy, rx, ry);
+		oval.setLayerId(layerManager.getActiveLayerId());
+		ovalList.add(oval);
+		// Select the new oval; enable polygon selection mode
+		for (CubicCurveManager m : selectedPolygons) m.clearAllHighlights();
+		selectedPolygons.clear();
+		for (OvalManager o : selectedOvals) o.setSelected(false);
+		selectedOvals.clear();
+		oval.setSelected(true);
+		selectedOvals.add(oval);
+		polygonSelectionModeEnabled = true;
+	}
+
+	/** Clear all ovals (called when loading a fresh file). */
+	public void clearOvals() {
+		ovalList.clear();
+		selectedOvals.clear();
+	}
+
+	/** Return a snapshot copy of the oval list for saving. */
+	public java.util.List<OvalManager> getOvals() {
+		return new ArrayList<>(ovalList);
+	}
+
+	/** True if ovals are selected — used to grey out Edit Mode in the UI. */
+	public boolean hasSelectedOvals() {
+		return !selectedOvals.isEmpty();
+	}
+
+	/**
+	 * Load ovals from an ovalSet XML root element (denormalises from -0.5..+0.5 to pixel space).
+	 */
+	public void appendOvalSet(Element root) {
+		Elements ovals = root.getChildElements("oval");
+		for (int i = 0; i < ovals.size(); i++) {
+			Element el = ovals.get(i);
+			double normCx = Double.parseDouble(el.getAttributeValue("cx"));
+			double normCy = Double.parseDouble(el.getAttributeValue("cy"));
+			double normRx = Double.parseDouble(el.getAttributeValue("rx"));
+			double normRy = Double.parseDouble(el.getAttributeValue("ry"));
+			// Inverse of toNorm: px = (normCoord + 0.5) * GRIDWIDTH + edgeOffset
+			double cx = (normCx + 0.5) * GRIDWIDTH + edgeOffset;
+			double cy = (normCy + 0.5) * GRIDHEIGHT + edgeOffset;
+			double rx = normRx * GRIDWIDTH;
+			double ry = normRy * GRIDHEIGHT;
+			OvalManager oval = new OvalManager(cx, cy, rx, ry);
+			oval.setLayerId(layerManager.getActiveLayerId());
+			ovalList.add(oval);
 		}
 	}
 
@@ -2441,13 +2610,17 @@ public class BezierDrawPanel extends JPanel implements Runnable, MouseListener, 
 		}
 	}
 
-	/** Delete in edge mode → delete selected edges; otherwise delete selected polygons. */
+	/** Delete in edge mode → delete selected edges; otherwise delete selected polygons and ovals. */
 	public void performDelete() {
 		takeUndoSnapshot();
 		if (edgeSelectionModeEnabled && !selectedEdges.isEmpty()) {
 			deleteSelectedEdges();
-		} else if (!selectedPolygons.isEmpty()) {
-			deleteSelectedPolygons();
+		} else {
+			if (!selectedPolygons.isEmpty()) deleteSelectedPolygons();
+			if (!selectedOvals.isEmpty()) {
+				ovalList.removeAll(selectedOvals);
+				selectedOvals.clear();
+			}
 		}
 	}
 
@@ -2722,7 +2895,7 @@ public class BezierDrawPanel extends JPanel implements Runnable, MouseListener, 
 		}
 	}
 
-	/** Select all closed polygons whose centroid falls inside rect. */
+	/** Select all closed polygons and ovals whose centroid falls inside rect. */
 	private void selectPolygonsInRect(Rectangle2D rect) {
 		int tot = polygonManager.getPolygonCount();
 		for (int i = 0; i < tot; i++) {
@@ -2732,6 +2905,12 @@ public class BezierDrawPanel extends JPanel implements Runnable, MouseListener, 
 				m.setSelected(true);
 				m.setSelectedRelational(polySubMode == SelectionSubMode.RELATIONAL);
 				selectedPolygons.add(m);
+			}
+		}
+		for (OvalManager oval : ovalList) {
+			if (rect.contains(oval.getCx(), oval.getCy()) && !oval.isSelected()) {
+				oval.setSelected(true);
+				selectedOvals.add(oval);
 			}
 		}
 	}

@@ -267,6 +267,41 @@ class Sprite2D(val shape: Shape2D, val spriteParams: Sprite2DParams, var animato
   }
 
 
+  /** Convert a coordinate-corrected OVAL_POLYGON to a closed polyline for brush/stencil stamping.
+   *  Uses the encoded (cx,cy) + (cx+rx, cy+ry) points to recover radii, then samples the
+   *  ellipse perimeter into a LINE_POLYGON that the stamp engine can walk along. */
+  private def ovalToPolyline(oval: Polygon2D, steps: Int = 60): Polygon2D = {
+    if (oval.points.length < 2) return oval
+    val cx = oval.points(0).x
+    val cy = oval.points(0).y
+    val rx = math.abs(oval.points(1).x - cx)
+    val ry = math.abs(oval.points(1).y - cy)
+    val pts = (0 until steps).map { i =>
+      val angle = 2 * math.Pi * i / steps
+      new Vector2D(cx + rx * math.cos(angle), cy + ry * math.sin(angle))
+    }.toList
+    new Polygon2D(pts :+ pts.head, PolygonType.LINE_POLYGON)  // close the loop
+  }
+
+  /** Render an OVAL_POLYGON as an axis-aligned ellipse.
+   *  Points are encoded as (cx,cy) and (cx+rx, cy+ry); radii are recovered by subtraction. */
+  def drawOval(g2D: Graphics2D, pol: Polygon2D, view: View): Unit = {
+    if (pol.points.length < 2) return
+    val polyCorrected: Polygon2D = coordinateCorrect(pol, view)
+    val center = polyCorrected.points(0)
+    val edgePt  = polyCorrected.points(1)
+    val rx = math.abs(edgePt.x - center.x)
+    val ry = math.abs(edgePt.y - center.y)
+    val ren = rendererSet.getRenderer(rendererSet.selectedIndex)
+    val sx = location.x.toInt
+    val sy = location.y.toInt
+    val cx = center.x.toInt + sx
+    val cy = center.y.toInt + sy
+    g2D.setColor(ren.strokeColor)
+    g2D.setStroke(new java.awt.BasicStroke(ren.strokeWidth.toFloat))
+    g2D.draw(new java.awt.geom.Ellipse2D.Double(cx - rx, cy - ry, rx * 2, ry * 2))
+  }
+
   /** Render a POINT_POLYGON as a small filled ellipse at the point's transformed position. */
   def drawPoint(g2D: Graphics2D, pol: Polygon2D, view: View): Unit = {
     if (pol.points.isEmpty) return
@@ -281,6 +316,7 @@ class Sprite2D(val shape: Shape2D, val spriteParams: Sprite2DParams, var animato
 
   def drawLines(g2D: Graphics2D, pol: Polygon2D, view: View): Unit = {
     if (pol.polyType == PolygonType.POINT_POLYGON) { drawPoint(g2D, pol, view); return }
+    if (pol.polyType == PolygonType.OVAL_POLYGON)  { drawOval(g2D, pol, view);  return }
 
     val polyCorrected: Polygon2D = coordinateCorrect(pol, view)
     //val polyCorrected: Polygon2D = pol
@@ -326,6 +362,8 @@ class Sprite2D(val shape: Shape2D, val spriteParams: Sprite2DParams, var animato
     if (pol.polyType == PolygonType.POINT_POLYGON) { drawPoint(g2D, pol, view); return }
     // Open curves cannot be filled — render as stroked line instead.
     if (pol.polyType == PolygonType.OPEN_SPLINE_POLYGON) { drawLines(g2D, pol, view); return }
+    // Ovals render as stroked ellipse regardless of fill mode.
+    if (pol.polyType == PolygonType.OVAL_POLYGON) { drawOval(g2D, pol, view); return }
     //println("drawFilled at sprite level")
     val polyCorrected: Polygon2D = coordinateCorrect(pol, view)
 
@@ -367,6 +405,8 @@ class Sprite2D(val shape: Shape2D, val spriteParams: Sprite2DParams, var animato
     if (pol.polyType == PolygonType.POINT_POLYGON) { drawPoint(g2D, pol, view); return }
     // Open curves cannot be filled — render as stroked line instead.
     if (pol.polyType == PolygonType.OPEN_SPLINE_POLYGON) { drawLines(g2D, pol, view); return }
+    // Ovals render as stroked ellipse regardless of fill mode.
+    if (pol.polyType == PolygonType.OVAL_POLYGON) { drawOval(g2D, pol, view); return }
 
     val polyCorrected: Polygon2D = coordinateCorrect(pol, view)
 
@@ -428,7 +468,11 @@ class Sprite2D(val shape: Shape2D, val spriteParams: Sprite2DParams, var animato
         BrushStampEngine.stampAtPoint(g2D, poly.points.head, config, brushes, ren.strokeColor)
     }
 
-    val edgePolys = correctedPolys.filter(_.polyType != PolygonType.POINT_POLYGON)
+    val edgePolys = correctedPolys.flatMap { p =>
+      if (p.polyType == PolygonType.POINT_POLYGON) None
+      else if (p.polyType == PolygonType.OVAL_POLYGON) Some(ovalToPolyline(p))
+      else Some(p)
+    }
     if (edgePolys.isEmpty) return
 
     // For FULL_PATH mode, re-extract edges each frame (shape may be animated)
@@ -497,7 +541,11 @@ class Sprite2D(val shape: Shape2D, val spriteParams: Sprite2DParams, var animato
         StencilStampEngine.stampAtPoint(g2D, poly.points.head, config, stencils, opacity)
     }
 
-    val edgePolys = correctedPolys.filter(_.polyType != org.loom.geometry.PolygonType.POINT_POLYGON)
+    val edgePolys = correctedPolys.flatMap { p =>
+      if (p.polyType == org.loom.geometry.PolygonType.POINT_POLYGON) None
+      else if (p.polyType == org.loom.geometry.PolygonType.OVAL_POLYGON) Some(ovalToPolyline(p))
+      else Some(p)
+    }
     if (edgePolys.isEmpty) return
 
     if (config.drawMode == StencilConfig.FULL_PATH) {

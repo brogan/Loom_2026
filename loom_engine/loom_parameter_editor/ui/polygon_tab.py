@@ -59,6 +59,7 @@ class PolygonPreviewWidget(QWidget):
         self._closed_flags: list[bool] = []
         self._has_bezier = False
         self._dot_positions: list[tuple[float, float]] = []
+        self._oval_defs: list[tuple[float, float, float, float]] = []  # (cx, cy, rx, ry)
         self.setMinimumHeight(200)
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
         self.setToolTip("Polygon set shape preview")
@@ -69,6 +70,30 @@ class PolygonPreviewWidget(QWidget):
         self._closed_flags = []
         self._has_bezier = False
         self._dot_positions = []
+        self._oval_defs = []
+        self.update()
+
+    def load_regular_polygon(self, params) -> None:
+        """Generate a preview from RegularPolygonParams."""
+        import math
+        self._anchor_polys = []
+        self._ctrl_polys = []
+        self._closed_flags = []
+        self._has_bezier = False
+        self._dot_positions = []
+        self._oval_defs = []
+        n = max(params.total_points, 3)
+        r = params.internal_radius
+        pts = []
+        for i in range(n):
+            angle = math.radians(params.offset + i * 360.0 / n)
+            x = r * math.cos(angle) * params.scale_x + params.trans_x
+            y = r * math.sin(angle) * params.scale_y + params.trans_y
+            pts.append((x, y))
+        if pts:
+            self._anchor_polys = [pts]
+            self._ctrl_polys = [[]]
+            self._closed_flags = [True]
         self.update()
 
     def load_polygon_set(self, filepath: str, filter_open: bool = False) -> None:
@@ -77,6 +102,7 @@ class PolygonPreviewWidget(QWidget):
         self._closed_flags = []
         self._has_bezier = False
         self._dot_positions = []
+        self._oval_defs = []
         if not filepath or not os.path.isfile(filepath):
             self.update()
             return
@@ -111,6 +137,19 @@ class PolygonPreviewWidget(QWidget):
         3. All x/y pairs  (LINE_POLYGON or fallback)
         Also handles <pointSet> root with direct <point x y/> children.
         """
+        # Handle ovalSet: collect <oval cx cy rx ry/> elements
+        if root.tag == 'ovalSet':
+            for oval_el in root.findall('oval'):
+                try:
+                    cx = float(oval_el.get('cx', '0'))
+                    cy = float(oval_el.get('cy', '0'))
+                    rx = float(oval_el.get('rx', '0.1'))
+                    ry = float(oval_el.get('ry', '0.1'))
+                    self._oval_defs.append((cx, cy, rx, ry))
+                except (ValueError, TypeError):
+                    pass
+            return
+
         # Handle pointSet: collect top-level <point> elements as dots
         if root.tag == 'pointSet':
             for pt in root.findall('point'):
@@ -230,6 +269,31 @@ class PolygonPreviewWidget(QWidget):
                 cx = int(px * scale + ox)
                 cy = int(py * scale + oy)
                 painter.drawEllipse(cx - r, cy - r, r * 2, r * 2)
+            return
+
+        # Render oval set
+        if self._oval_defs:
+            all_x = [cx - rx for cx, cy, rx, ry in self._oval_defs] + \
+                    [cx + rx for cx, cy, rx, ry in self._oval_defs]
+            all_y = [cy - ry for cx, cy, rx, ry in self._oval_defs] + \
+                    [cy + ry for cx, cy, rx, ry in self._oval_defs]
+            min_x, max_x = min(all_x), max(all_x)
+            min_y, max_y = min(all_y), max(all_y)
+            dx = max_x - min_x or 1.0
+            dy = max_y - min_y or 1.0
+            margin = 16
+            sc = min((w - 2 * margin) / dx, (h - 2 * margin) / dy)
+            ox = margin + ((w - 2 * margin) - dx * sc) / 2 - min_x * sc
+            oy = margin + ((h - 2 * margin) - dy * sc) / 2 - min_y * sc
+            painter.setPen(QPen(QColor(80, 200, 120), 1.5))
+            painter.setBrush(Qt.BrushStyle.NoBrush)
+            for (cx, cy, rx, ry) in self._oval_defs:
+                scx = cx * sc + ox
+                scy = cy * sc + oy
+                srx = rx * sc
+                sry = ry * sc
+                painter.drawEllipse(int(scx - srx), int(scy - sry),
+                                    int(srx * 2), int(sry * 2))
             return
 
         if not self._anchor_polys:
@@ -424,7 +488,26 @@ class PolygonTab(QWidget):
         self.source_stack.addWidget(self.regular_editor)
 
         right_layout.addWidget(self.source_stack)
+
+        # Preview — shared by both File and Regular Polygon source types
+        preview_group = QGroupBox("Preview")
+        preview_layout = QVBoxLayout(preview_group)
+        preview_layout.setContentsMargins(4, 4, 4, 4)
+        self.preview_widget = PolygonPreviewWidget()
+        preview_layout.addWidget(self.preview_widget)
+        right_layout.addWidget(preview_group)
+
+        # Quick Setup — shared by both source types
+        qs_label = QLabel("Quick Setup")
+        qs_label.setStyleSheet("font-weight: bold; margin-top: 4px;")
+        right_layout.addWidget(qs_label)
+        right_layout.addWidget(self._create_convenience_panel())
+
         right_layout.addStretch()
+
+        # For regular polygons the root name comes from name_edit, so update
+        # convenience borders whenever the name changes
+        self.name_edit.textChanged.connect(self._update_convenience_borders)
 
         splitter.addWidget(right_panel)
         splitter.setSizes([250, 550])
@@ -473,21 +556,6 @@ class PolygonTab(QWidget):
         form.addRow("", self._include_open_curves_check)
 
         layout.addWidget(group)
-
-        # Preview panel
-        preview_group = QGroupBox("Preview")
-        preview_layout = QVBoxLayout(preview_group)
-        preview_layout.setContentsMargins(4, 4, 4, 4)
-        self.preview_widget = PolygonPreviewWidget()
-        preview_layout.addWidget(self.preview_widget)
-        layout.addWidget(preview_group)
-
-        # ── Convenience panel ──────────────────────────────────────────────
-        qs_label = QLabel("Quick Setup")
-        qs_label.setStyleSheet("font-weight: bold; margin-top: 4px;")
-        layout.addWidget(qs_label)
-        layout.addWidget(self._create_convenience_panel())
-
         layout.addStretch()
         return widget
 
@@ -901,6 +969,7 @@ class PolygonTab(QWidget):
         if self._updating:
             return
         self._save_ui_to_set()
+        self._update_preview()
         self.modified.emit()
 
     def _on_include_open_changed(self):
@@ -1058,9 +1127,17 @@ class PolygonTab(QWidget):
         return PolygonSetLibrary.default()
 
     def _update_preview(self) -> None:
-        """Refresh the polygon preview from the currently-selected filename."""
+        """Refresh the polygon preview for whichever source type is active."""
         if not hasattr(self, 'preview_widget'):
             return
+        if (self._current_set is not None
+                and self._current_set.source_type == PolygonSourceType.REGULAR):
+            if self._current_set.regular_params:
+                self.preview_widget.load_regular_polygon(self._current_set.regular_params)
+            else:
+                self.preview_widget.clear()
+            return
+        # FILE source
         fname = self.filename_combo.currentText() if hasattr(self, 'filename_combo') else ""
         if fname and self._polygon_sets_dir:
             fpath = os.path.join(self._polygon_sets_dir, fname)
@@ -1294,8 +1371,11 @@ class PolygonTab(QWidget):
     # ── Convenience panel helpers ──────────────────────────────────────────
 
     def _convenience_root(self) -> str:
-        """Root name from selected filename, stripping extension and _layer_N."""
-        f = self.filename_combo.currentText()
+        """Root name for Quick Setup: set name for Regular Polygon, filename stem for File source."""
+        if (self._current_set is not None
+                and self._current_set.source_type == PolygonSourceType.REGULAR):
+            return self.name_edit.text().strip()
+        f = self.filename_combo.currentText() if hasattr(self, 'filename_combo') else ""
         if not f:
             return ""
         stem = f
@@ -1386,28 +1466,38 @@ class PolygonTab(QWidget):
         if any(s.name == name for s in shape_set.shapes):
             QMessageBox.warning(self, "Duplicate", f"Shape '{name}' already exists in '{set_name}'.")
             return
-        # Use the currently-selected polygon set name from the library list
-        poly_set_name = ""
-        if self._current_set:
-            poly_set_name = self._current_set.name
-        elif self._library.polygon_sets:
-            fname = self.filename_combo.currentText()
-            for ps in self._library.polygon_sets:
-                if ps.file_source and ps.file_source.filename == fname:
-                    poly_set_name = ps.name
-                    break
-        # Auto-link to a subdivision set if one was created for this file
-        sub_set_name = ""
-        if self._subdivision_collection:
-            candidate = f"{root}_Subdivide"
-            if self._subdivision_collection.get_params_set(candidate):
-                sub_set_name = candidate
-        shape_set.add(ShapeDef(
-            name=name,
-            source_type=ShapeSourceType.POLYGON_SET,
-            polygon_set_name=poly_set_name,
-            subdivision_params_set_name=sub_set_name,
-        ))
+        # Regular polygon: create a REGULAR_POLYGON shape (parameterised, no file)
+        if self._current_set and self._current_set.source_type == PolygonSourceType.REGULAR:
+            sides = (self._current_set.regular_params.total_points
+                     if self._current_set.regular_params else 4)
+            shape_set.add(ShapeDef(
+                name=name,
+                source_type=ShapeSourceType.REGULAR_POLYGON,
+                regular_polygon_sides=sides,
+            ))
+        else:
+            # File-backed polygon set
+            poly_set_name = ""
+            if self._current_set:
+                poly_set_name = self._current_set.name
+            elif self._library.polygon_sets:
+                fname = self.filename_combo.currentText()
+                for ps in self._library.polygon_sets:
+                    if ps.file_source and ps.file_source.filename == fname:
+                        poly_set_name = ps.name
+                        break
+            # Auto-link to a subdivision set if one was created for this file
+            sub_set_name = ""
+            if self._subdivision_collection:
+                candidate = f"{root}_Subdivide"
+                if self._subdivision_collection.get_params_set(candidate):
+                    sub_set_name = candidate
+            shape_set.add(ShapeDef(
+                name=name,
+                source_type=ShapeSourceType.POLYGON_SET,
+                polygon_set_name=poly_set_name,
+                subdivision_params_set_name=sub_set_name,
+            ))
         self.newShapeCreated.emit(set_name, name)
         self.shapeLibraryChanged.emit()
         self.modified.emit()

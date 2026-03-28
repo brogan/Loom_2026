@@ -73,6 +73,9 @@ class MySketch(width: Int, height: Int) extends Sketch(width, height) {
   //Load discrete point sets from points.xml
   val pointSetCollection: org.loom.geometry.PointSetCollection = loadPointCollection()
 
+  //Load oval sets from ovals.xml
+  val ovalSetCollection: org.loom.geometry.OvalSetCollection = loadOvalCollection()
+
   //Create a list of subdivision parameters
   val initialSubdivisionType: Int = Subdivision.QUAD //a default
   val subdivisionParamsSetCollection: SubdivisionParamsSetCollection = createSubdivisionParamsSetCollection()
@@ -258,6 +261,20 @@ class MySketch(width: Int, height: Int) extends Sketch(width, height) {
   }
 
   /**
+   * Load oval sets from ovals.xml if present in the project.
+   */
+  def loadOvalCollection(): org.loom.geometry.OvalSetCollection = {
+    if (useProjectConfig) {
+      val ovalsConfigPath = ProjectConfigManager.getConfigPath("ovals")
+      if (ovalsConfigPath.nonEmpty) {
+        val ovalSetsPath = ProjectConfigManager.getOvalSetsPath
+        return org.loom.media.OvalSetLoader.load(ovalsConfigPath, ovalSetsPath)
+      }
+    }
+    new org.loom.geometry.OvalSetCollection()
+  }
+
+  /**
    * CREATESUBDIVISIONPARAMETERS
    */
   def createSubdivisionParamsSetCollection(): SubdivisionParamsSetCollection = {
@@ -379,6 +396,13 @@ class MySketch(width: Int, height: Int) extends Sketch(width, height) {
         if (ps != null) ps.points.map(_.clone())
         else {
           println(s"  Warning: Point set '${shapeDef.pointSetName}' not found")
+          return null
+        }
+      case ShapeConfigLoader.SOURCE_OVAL_SET =>
+        val os = ovalSetCollection.getSet(shapeDef.ovalSetName)
+        if (os != null) os.ovals.map(_.clone())
+        else {
+          println(s"  Warning: Oval set '${shapeDef.ovalSetName}' not found")
           return null
         }
       case _ =>

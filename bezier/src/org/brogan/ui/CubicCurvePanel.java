@@ -413,6 +413,18 @@ public class CubicCurvePanel extends JPanel implements MouseListener, ChangeList
 			pointsXml.createNewXml(pointsFn, points, this, sX, sY, rotA, 0.5, 0.5);
 			System.out.println("CubicCurvePanel: saved point set to " + pointsXmlPath);
 		}
+		// Save ovals (if any) to the ovalSets directory
+		java.util.List<OvalManager> ovals = bezier.getOvals();
+		if (!ovals.isEmpty()) {
+			File ovalSetsDir = new File(new File(polygonSetFilePath).getParent(), "ovalSets");
+			ovalSetsDir.mkdirs();
+			String ovalsFn = overallFn + "_ovals";
+			String ovalsXmlPath = ovalSetsDir.getAbsolutePath() + File.separator + ovalsFn + ".xml";
+			org.brogan.data.OvalSetXml ovalsXml = new org.brogan.data.OvalSetXml();
+			ovalsXml.setXmlFilePath(ovalsXmlPath);
+			ovalsXml.createNewXml(ovalsFn, ovals);
+			System.out.println("CubicCurvePanel: saved oval set to " + ovalsXmlPath);
+		}
 	}
 
 	/**
@@ -560,6 +572,60 @@ public class CubicCurvePanel extends JPanel implements MouseListener, ChangeList
 			name.setText(nameEl.getValue().trim());
 		}
 		System.out.println("CubicCurvePanel: loaded open curve set from " + f.getName());
+	}
+
+	/**
+	 * Save all ovals as an ovalSet XML to the ovalSets directory.
+	 */
+	public void saveAsOvalSet() {
+		java.util.List<OvalManager> ovals = bezier.getOvals();
+		if (ovals.isEmpty()) {
+			javax.swing.JOptionPane.showMessageDialog(this, "No ovals to save.",
+				"No Ovals", javax.swing.JOptionPane.INFORMATION_MESSAGE);
+			return;
+		}
+		if (!valuesEntered) {
+			enterValues();
+		}
+		String overall = Swing.getFieldStringValue(name);
+
+		ProjectManager projectManager = curveFrame.getProjectManager();
+		String polygonSetFilePath = projectManager.getPolygonSetFilePath();
+		File polygonSetDir = new File(polygonSetFilePath);
+		File ovalSetsDir = new File(polygonSetDir.getParent(), "ovalSets");
+		ovalSetsDir.mkdirs();
+
+		String overallFn = toFilename(overall);
+		String xmlPath = ovalSetsDir.getAbsolutePath() + File.separator + overallFn + ".xml";
+
+		org.brogan.data.OvalSetXml xml = new org.brogan.data.OvalSetXml();
+		xml.setXmlFilePath(xmlPath);
+		xml.createNewXml(overallFn, ovals);
+		System.out.println("CubicCurvePanel: saved oval set to " + xmlPath);
+	}
+
+	/**
+	 * Load an ovalSet XML file, replacing current ovals.
+	 */
+	public void loadOvalSet(File f) {
+		bezier.clearOvals();
+		Document doc;
+		try {
+			org.xml.sax.XMLReader xr = org.xml.sax.helpers.XMLReaderFactory.createXMLReader();
+			try { xr.setFeature("http://apache.org/xml/features/nonvalidating/load-external-dtd", false); } catch (Exception ignore) {}
+			Builder parser = new Builder(xr);
+			doc = parser.build(f);
+		} catch (Exception ex) {
+			System.out.println("CubicCurvePanel: failed to parse ovalSet: " + ex.getMessage());
+			return;
+		}
+		Element root = doc.getRootElement();
+		bezier.appendOvalSet(root);
+		Element nameEl = root.getFirstChildElement("name");
+		if (nameEl != null && !nameEl.getValue().trim().isEmpty()) {
+			name.setText(nameEl.getValue().trim());
+		}
+		System.out.println("CubicCurvePanel: loaded oval set from " + f.getName());
 	}
 
 	/**

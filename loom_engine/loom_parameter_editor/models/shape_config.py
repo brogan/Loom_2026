@@ -21,6 +21,7 @@ class ShapeSourceType(Enum):
     INLINE_POINTS = 2    # Define points directly in the shape config
     OPEN_CURVE_SET = 3   # Reference an OpenCurveSet by name
     POINT_SET = 4        # Reference a PointSet by name
+    OVAL_SET = 5         # Reference an OvalSet by name
 
 
 class Shape3DType(Enum):
@@ -56,6 +57,7 @@ class ShapeDef:
     inline_points: List[Vector2D] = field(default_factory=list)  # For INLINE_POINTS type
     open_curve_set_name: str = ""        # For OPEN_CURVE_SET type
     point_set_name: str = ""             # For POINT_SET type
+    oval_set_name: str = ""              # For OVAL_SET type
 
     # Subdivision parameters reference
     subdivision_params_set_name: str = ""  # Name of SubdivisionParamsSet to use

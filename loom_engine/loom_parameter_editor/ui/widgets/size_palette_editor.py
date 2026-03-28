@@ -1,6 +1,7 @@
 """
 Size palette editor for PAL_SEQ / PAL_RAN size-change kinds (stroke width, point size).
 """
+import os
 from PyQt6.QtWidgets import (
     QWidget, QHBoxLayout, QVBoxLayout, QLabel, QPushButton,
     QScrollArea, QSizePolicy, QInputDialog
@@ -127,6 +128,7 @@ class SizePaletteEditorWidget(QWidget):
         super().__init__(parent)
         self._values: list[float] = []
         self._mode = preview_mode
+        self._palettes_dir: str = ""
 
         outer = QVBoxLayout(self)
         outer.setContentsMargins(0, 0, 0, 0)
@@ -169,6 +171,18 @@ class SizePaletteEditorWidget(QWidget):
         self._del_btn.clicked.connect(self._on_remove)
         row.addWidget(self._del_btn)
 
+        self._save_btn = QPushButton("Save…")
+        self._save_btn.setFixedWidth(44)
+        self._save_btn.setToolTip("Save palette to file")
+        self._save_btn.clicked.connect(self._on_save)
+        row.addWidget(self._save_btn)
+
+        self._import_btn = QPushButton("Import…")
+        self._import_btn.setFixedWidth(56)
+        self._import_btn.setToolTip("Import palette from file")
+        self._import_btn.clicked.connect(self._on_import)
+        row.addWidget(self._import_btn)
+
         outer.addLayout(row)
 
         # Scroll area for canvas
@@ -187,6 +201,10 @@ class SizePaletteEditorWidget(QWidget):
         self._refresh()
 
     # ── public API ────────────────────────────────────────────────────────────
+
+    def set_palettes_dir(self, path: str) -> None:
+        self._palettes_dir = path
+        self._refresh()
 
     def set_palette(self, values: list[float]) -> None:
         self._values = list(values)
@@ -241,6 +259,38 @@ class SizePaletteEditorWidget(QWidget):
             self._refresh()
             self.paletteChanged.emit()
 
+    def _on_save(self) -> None:
+        if not self._palettes_dir:
+            return
+        from PyQt6.QtWidgets import QMessageBox
+        name, ok = QInputDialog.getText(self, "Save Palette", "Palette name:")
+        if not ok or not name.strip():
+            return
+        name = name.strip()
+        path = os.path.join(self._palettes_dir, name + "_sizes.xml")
+        try:
+            from file_io.palette_io import SizePaletteIO
+            SizePaletteIO.save(self.get_palette(), path)
+        except Exception as e:
+            QMessageBox.warning(self, "Save Failed", str(e))
+
+    def _on_import(self) -> None:
+        if not self._palettes_dir:
+            return
+        from PyQt6.QtWidgets import QFileDialog, QMessageBox
+        path, _ = QFileDialog.getOpenFileName(
+            self, "Import Palette", self._palettes_dir, "Size palettes (*_sizes.xml)"
+        )
+        if not path:
+            return
+        try:
+            from file_io.palette_io import SizePaletteIO
+            values = SizePaletteIO.load(path)
+            self.set_palette(values)
+            self.paletteChanged.emit()
+        except Exception as e:
+            QMessageBox.warning(self, "Import Failed", str(e))
+
     def _on_selection_changed(self, idx: int) -> None:
         self._refresh()
 
@@ -253,3 +303,6 @@ class SizePaletteEditorWidget(QWidget):
         self._add_btn.setEnabled(n < _MAX_PALETTE)
         self._dup_btn.setEnabled(sel >= 0 and n < _MAX_PALETTE)
         self._del_btn.setEnabled(sel >= 0)
+        has_dir = bool(self._palettes_dir)
+        self._save_btn.setEnabled(has_dir and n > 0)
+        self._import_btn.setEnabled(has_dir)

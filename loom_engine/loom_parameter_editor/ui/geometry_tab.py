@@ -6,6 +6,7 @@ from PyQt6.QtCore import pyqtSignal
 from .polygon_tab import PolygonTab
 from .open_curve_tab import OpenCurveTab
 from .point_tab import PointTab
+from .oval_tab import OvalTab
 
 
 class GeometryTab(QWidget):
@@ -24,10 +25,12 @@ class GeometryTab(QWidget):
         self.polygon_tab    = PolygonTab()
         self.open_curve_tab = OpenCurveTab()
         self.point_tab      = PointTab()
+        self.oval_tab       = OvalTab()
 
         self.sub_tabs.addTab(self.polygon_tab,    "Polygons")
         self.sub_tabs.addTab(self.open_curve_tab, "Curves")
         self.sub_tabs.addTab(self.point_tab,      "Points")
+        self.sub_tabs.addTab(self.oval_tab,       "Ovals")
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
@@ -36,8 +39,9 @@ class GeometryTab(QWidget):
         self.polygon_tab.modified.connect(self.modified)
         self.open_curve_tab.modified.connect(self.modified)
         self.point_tab.modified.connect(self.modified)
+        self.oval_tab.modified.connect(self.modified)
 
-        for tab in (self.polygon_tab, self.open_curve_tab, self.point_tab):
+        for tab in (self.polygon_tab, self.open_curve_tab, self.point_tab, self.oval_tab):
             tab.shapeLibraryChanged.connect(self.shapeLibraryChanged)
             tab.subdivisionChanged.connect(self.subdivisionChanged)
             tab.spriteLibraryChanged.connect(self.spriteLibraryChanged)
@@ -58,6 +62,9 @@ class GeometryTab(QWidget):
 
     def set_point_sets_directory(self, d):
         self.point_tab.set_point_sets_directory(d)
+
+    def set_oval_sets_directory(self, d):
+        self.oval_tab.set_oval_sets_directory(d)
 
     # ── Library access — Polygons ─────────────────────────────────────────────
 
@@ -92,24 +99,35 @@ class GeometryTab(QWidget):
     def create_default_point_library(self):
         return self.point_tab.create_default_library()
 
+    # ── Library access — Ovals ────────────────────────────────────────────────
+
+    def get_oval_library(self):
+        return self.oval_tab.get_library()
+
+    def set_oval_library(self, lib):
+        self.oval_tab.set_library(lib)
+
+    def create_default_oval_library(self):
+        return self.oval_tab.create_default_library()
+
     # ── Shape / Sprite cross-refs ─────────────────────────────────────────────
 
     def set_shape_library(self, lib):
-        for tab in (self.polygon_tab, self.open_curve_tab, self.point_tab):
+        for tab in (self.polygon_tab, self.open_curve_tab, self.point_tab, self.oval_tab):
             if hasattr(tab, 'set_shape_library'):
                 tab.set_shape_library(lib)
 
     def set_sprite_library(self, lib):
-        for tab in (self.polygon_tab, self.open_curve_tab, self.point_tab):
+        for tab in (self.polygon_tab, self.open_curve_tab, self.point_tab, self.oval_tab):
             if hasattr(tab, 'set_sprite_library'):
                 tab.set_sprite_library(lib)
 
     def set_subdivision_collection(self, coll):
-        for tab in (self.polygon_tab, self.open_curve_tab, self.point_tab):
+        for tab in (self.polygon_tab, self.open_curve_tab, self.point_tab, self.oval_tab):
             if hasattr(tab, 'set_subdivision_collection'):
                 tab.set_subdivision_collection(coll)
 
     def set_renderer_library(self, lib):
-        for tab in (self.polygon_tab, self.open_curve_tab, self.point_tab):
+        for tab in (self.polygon_tab, self.open_curve_tab, self.point_tab, self.oval_tab):
             if hasattr(tab, 'set_renderer_library'):
                 tab.set_renderer_library(lib)
