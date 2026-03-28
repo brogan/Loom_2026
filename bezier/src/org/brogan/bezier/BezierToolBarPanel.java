@@ -218,7 +218,7 @@ public class BezierToolBarPanel extends JPanel {
 		drawCurveMode = new JToggleButton();
 		initToggle(drawCurveMode,
 			"Freehand Draw Curve — drag to draw; approach start point to close as polygon",
-			"drawing");
+			"draw");
 		drawCurveMode.addActionListener(new ActionListener() {
 			public void actionPerformed(ActionEvent e) {
 				int idx = polygonManager.getPolygonCount();
