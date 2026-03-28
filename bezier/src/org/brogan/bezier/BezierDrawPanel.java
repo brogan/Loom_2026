@@ -92,6 +92,7 @@ public class BezierDrawPanel extends JPanel implements Runnable, MouseListener, 
 	private SelectionSubMode polySubMode  = SelectionSubMode.RELATIONAL;
 
 	private boolean pointSelectionModeEnabled = false;
+	private boolean openCurveSelectionModeEnabled = false;
 	private CubicCurveManager scopedManager = null;
 
 	// Rubber-band (marquee) selection — active while Shift+drag in any selection mode
@@ -154,7 +155,7 @@ public class BezierDrawPanel extends JPanel implements Runnable, MouseListener, 
 	private boolean freehandActive = false;
 	private Point2D.Double freehandFirstPos = null;
 	private Point2D.Double freehandCurrentPos = null;
-	private double freehandErrorThreshold = 5.0;
+	private double freehandErrorThreshold = 41.0; // matches toolbar default slider=10 → 51-10
 	private static final double FREEHAND_MIN_STEP = 3.0;
 	private static final double FREEHAND_SNAP_RADIUS = 20.0;
 
@@ -496,7 +497,7 @@ public class BezierDrawPanel extends JPanel implements Runnable, MouseListener, 
 			return;
 		}
 
-		if (polygonSelectionModeEnabled && (!selectedPolygons.isEmpty() || !selectedOvals.isEmpty())) {
+		if ((polygonSelectionModeEnabled || openCurveSelectionModeEnabled) && (!selectedPolygons.isEmpty() || !selectedOvals.isEmpty())) {
 			if (!dragSnapshotTaken) {
 				takeUndoSnapshot();
 				dragSnapshotTaken = true;
@@ -511,7 +512,7 @@ public class BezierDrawPanel extends JPanel implements Runnable, MouseListener, 
 				for (CubicCurveManager m : selectedPolygons) {
 					translatePolygonBy(m, dx, dy, moved);
 				}
-				if (autoWeldEnabled) checkDragWeld(); else clearPendingWeld();
+				if (autoWeldEnabled && polygonSelectionModeEnabled) checkDragWeld(); else clearPendingWeld();
 			}
 			for (OvalManager oval : selectedOvals) {
 				oval.translate(dx, dy);
@@ -722,6 +723,13 @@ public class BezierDrawPanel extends JPanel implements Runnable, MouseListener, 
 			rubberBandEnd   = new Point2D.Double(x, y);
 			currentMousePos.x = x;
 			currentMousePos.y = y;
+			return;
+		}
+
+		if (openCurveSelectionModeEnabled) {
+			handleOpenCurveSelectionClick(mousePos);
+			currentMousePos.x = mousePos.x;
+			currentMousePos.y = mousePos.y;
 			return;
 		}
 
@@ -1232,6 +1240,58 @@ public class BezierDrawPanel extends JPanel implements Runnable, MouseListener, 
 			selectedOvals.clear();
 			clearPendingWeld();
 		}
+	}
+
+	public void setOpenCurveSelectionMode(boolean enabled) {
+		openCurveSelectionModeEnabled = enabled;
+		if (!enabled) {
+			for (CubicCurveManager m : selectedPolygons) m.clearAllHighlights();
+			selectedPolygons.clear();
+		}
+	}
+	public boolean isOpenCurveSelectionModeEnabled() { return openCurveSelectionModeEnabled; }
+
+	private void handleOpenCurveSelectionClick(Point2D.Double mousePos) {
+		int polygonCount = polygonManager.getPolygonCount();
+		CubicCurveManager hit = null;
+		for (int i = polygonCount - 1; i >= 0; i--) {
+			CubicCurveManager m = polygonManager.getManager(i);
+			if (m.getIsClosed()) continue;
+			if (m.getLayerId() != layerManager.getActiveLayerId()) continue;
+			if (nearOpenCurve(m, mousePos, 8.0)) { hit = m; break; }
+		}
+		if (hit == null) {
+			for (CubicCurveManager m : selectedPolygons) m.clearAllHighlights();
+			selectedPolygons.clear();
+			return;
+		}
+		if (!hit.isSelected()) {
+			for (CubicCurveManager m : selectedPolygons) m.clearAllHighlights();
+			selectedPolygons.clear();
+			hit.setSelected(true);
+			hit.setSelectedRelational(false);
+			selectedPolygons.add(hit);
+		}
+	}
+
+	/** Returns true if mousePos is within hitDist pixels of any point on the curve's path. */
+	private boolean nearOpenCurve(CubicCurveManager m, Point2D.Double pos, double hitDist) {
+		CubicCurve[] cArray = m.getCurves().getArrayofCubicCurves();
+		if (cArray.length == 0) return false;
+		java.awt.geom.Path2D.Double path = new java.awt.geom.Path2D.Double();
+		CubicPoint[] first = cArray[0].getPoints();
+		if (first[0] == null) return false;
+		path.moveTo(first[0].getPos().x, first[0].getPos().y);
+		for (CubicCurve cv : cArray) {
+			CubicPoint[] p = cv.getPoints();
+			if (p[0] == null || p[1] == null || p[2] == null || p[3] == null) continue;
+			path.curveTo(p[1].getPos().x, p[1].getPos().y,
+			             p[2].getPos().x, p[2].getPos().y,
+			             p[3].getPos().x, p[3].getPos().y);
+		}
+		java.awt.Shape stroked = new BasicStroke((float)(hitDist * 2),
+			BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND).createStrokedShape(path);
+		return stroked.contains(pos.x, pos.y);
 	}
 
 	private void handlePolygonSelectionClick(Point2D.Double mousePos) {
@@ -2739,6 +2799,22 @@ public class BezierDrawPanel extends JPanel implements Runnable, MouseListener, 
 		if (!enabled) { selectedPoints.clear(); clearScopeHighlight(); updatePointHighlights(); }
 	}
 
+	/**
+	 * If there is an in-progress polygon being drawn (polygon draw mode has
+	 * accumulated at least one curve segment), commit it as an open curve.
+	 * Called by the toolbar whenever the user switches away from polygon draw mode
+	 * so they don't have to click "Finish Open Curve" explicitly.
+	 */
+	public void autoFinishOpenCurveIfNeeded() {
+		int polygonCount = polygonManager.getPolygonCount();
+		CubicCurveManager m = polygonManager.getManager(polygonCount);
+		if (m.getCurveCount() > 0) {
+			m.finishOpen();
+			m.setCurrentBezierPosition(m.getAverageXY());
+			polygonManager.addManager();
+		}
+	}
+
 	public void setFreehandMode(boolean b) {
 		freehandMode = b;
 		if (!b) { freehandActive = false; freehandRaw.clear(); }
@@ -2753,6 +2829,7 @@ public class BezierDrawPanel extends JPanel implements Runnable, MouseListener, 
 			                      polygonSelectionModeEnabled ? PrevMode.POLYGON : PrevMode.NONE;
 			preKnifeSelection = new java.util.HashSet<>(selectedPolygons);
 			setPolygonSelectionMode(false);
+			setOpenCurveSelectionMode(false);
 			setEdgeSelectionMode(false);
 			setPointSelectionMode(false);
 			knifeMode = true;
