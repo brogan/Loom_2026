@@ -35,16 +35,19 @@ public class CubicCurvePolygonManager {
 		g2D.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
 
 		int totPolys = polys.getPolygonTotal();
+		// Guard against transient mismatch: polys and cubicCurveManagers are updated
+		// in two separate steps, so the run-loop thread can briefly see totPolys > managersSize-1.
+		int drawUntil = Math.min(totPolys, cubicCurveManagers.size() - 1);
 		if (layerManager == null) {
 			// No layer system — draw everything as before
-			for (int i = 0; i <= totPolys; i++) {
+			for (int i = 0; i <= drawUntil; i++) {
 				cubicCurveManagers.get(i).draw(g2D);
 			}
 			return;
 		}
 
 		int activeId = layerManager.getActiveLayerId();
-		for (int i = 0; i <= totPolys; i++) {
+		for (int i = 0; i <= drawUntil; i++) {
 			CubicCurveManager m = cubicCurveManagers.get(i);
 			if (i == totPolys) {
 				// Active drawing manager — always show
