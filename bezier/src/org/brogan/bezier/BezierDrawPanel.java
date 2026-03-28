@@ -139,7 +139,12 @@ public class BezierDrawPanel extends JPanel implements Runnable, MouseListener, 
 
 	private CubicCurvePolygonManager polygonManager;
 	private LayerManager layerManager = new LayerManager();
-	private java.util.List<Point2D.Double[]> clipboard = new ArrayList<>();
+	private static class ClipboardEntry {
+		final Point2D.Double[] pts;
+		final boolean isClosed;
+		ClipboardEntry(Point2D.Double[] pts, boolean isClosed) { this.pts = pts; this.isClosed = isClosed; }
+	}
+	private java.util.List<ClipboardEntry> clipboard = new ArrayList<>();
 
 	// ── Point mode ────────────────────────────────────────────────────────────
 	private java.util.List<Point2D.Double> pointList = new ArrayList<>();
@@ -1588,15 +1593,16 @@ public class BezierDrawPanel extends JPanel implements Runnable, MouseListener, 
 				CubicPoint[] p = cv.getPoints();
 				for (int i = 0; i < 4; i++) pts[k++] = new Point2D.Double(p[i].getPos().x, p[i].getPos().y);
 			}
-			clipboard.add(pts);
+			clipboard.add(new ClipboardEntry(pts, m.getIsClosed()));
 		}
 	}
 
 	public void pasteFromClipboard() {
 		if (clipboard.isEmpty()) return;
 		takeUndoSnapshot();
-		for (Point2D.Double[] pts : clipboard) {
-			polygonManager.addClosedFromPoints(pts, strokeColor);
+		for (ClipboardEntry entry : clipboard) {
+			if (entry.isClosed) polygonManager.addClosedFromPoints(entry.pts, strokeColor);
+			else                 polygonManager.addOpenCurveFromPoints(entry.pts, strokeColor);
 		}
 	}
 	//NOT WORKING YET

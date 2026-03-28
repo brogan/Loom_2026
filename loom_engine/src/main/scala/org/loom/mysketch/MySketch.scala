@@ -417,6 +417,11 @@ class MySketch(width: Int, height: Int) extends Sketch(width, height) {
       null
     }
 
+    if (polygons.isEmpty) {
+      println(s"  Warning: Shape '${shapeDef.name}' loaded 0 polygons, skipping")
+      return null
+    }
+
     // Create the shape
     Shape2D(polygons, subdivParams)
   }

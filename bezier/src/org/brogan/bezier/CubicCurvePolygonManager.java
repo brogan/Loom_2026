@@ -202,10 +202,6 @@ public class CubicCurvePolygonManager {
 		CubicCurve[] cArray = source.getCurves().getArrayofCubicCurves();
 		int N = cArray.length;
 
-		// Build 4*N offset positions — one per point slot per curve.
-		// setAllPoints() uses master-sharing for anchor indices 0 and 3 of curves i>0,
-		// so the position values at those slots are ignored (the shared master's position
-		// is used). Providing offset values there is harmless and keeps the array simple.
 		Point2D.Double[] pts = new Point2D.Double[N * 4];
 		int idx = 0;
 		for (CubicCurve cv : cArray) {
@@ -218,7 +214,14 @@ public class CubicCurvePolygonManager {
 
 		CubicCurveManager newManager = new CubicCurveManager(strokeColor, this);
 		if (layerManager != null) newManager.setLayerId(layerManager.getActiveLayerId());
-		newManager.setAllPoints(pts, strokeColor);
+		if (source.getIsClosed()) {
+			// Closed polygon: link last anchor back to first (circular topology)
+			newManager.setAllPoints(pts, strokeColor);
+			newManager.setIsClosed(true);
+		} else {
+			// Open curve or single edge: do NOT link last anchor back to first
+			newManager.setOpenPoints(pts, strokeColor);
+		}
 		newManager.setCurrentBezierPosition(newManager.getAverageXY());
 
 		// Register in polys and insert before the last (active drawing) manager

@@ -10,7 +10,7 @@ import scala.collection.mutable.ListBuffer
 class Shape2D(val polys: List[Polygon2D], val subdivisionParamsSet: SubdivisionParamsSet) extends AbstractShape {
 
    val polysTotal: Int = polys.length
-   override def toString(): String = "Shape2D polysTotal: " + polysTotal + "   polys(0): " + polys(0)
+   override def toString(): String = "Shape2D polysTotal: " + polysTotal + (if (polys.nonEmpty) "   polys(0): " + polys(0) else " (empty)")
    def print(): Unit = { println("\n" + this.toString()); for (poly <- polys) println(poly) }
 
    /**
