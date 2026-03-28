@@ -827,7 +827,11 @@ public class BezierDrawPanel extends JPanel implements Runnable, MouseListener, 
 					synchronized (polygonManager) {
 						if (doClose) polygonManager.addClosedFromPoints(fitted, strokeColor);
 						else         polygonManager.addOpenCurveFromPoints(fitted, strokeColor);
-						polygonManager.addManager();
+						// Do NOT call addManager() here. addClosedFromPoints/addOpenCurveFromPoints
+						// insert the new manager at size-1 (before the existing blank), so the
+						// blank active manager is still at the end. addManager() would add a second
+						// blank, breaking the invariant and causing curves 3+ to fall outside the
+						// range that draw() iterates, making them invisible and unsaved.
 					}
 				}
 			}
