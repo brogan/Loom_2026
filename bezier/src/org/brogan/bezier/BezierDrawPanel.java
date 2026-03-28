@@ -148,6 +148,16 @@ public class BezierDrawPanel extends JPanel implements Runnable, MouseListener, 
 	private java.util.List<OvalManager> ovalList = new ArrayList<>();
 	private java.util.List<OvalManager> selectedOvals = new ArrayList<>();
 
+	// ── Freehand draw mode ────────────────────────────────────────────────────
+	private boolean freehandMode = false;
+	private final java.util.List<Point2D.Double> freehandRaw = new ArrayList<>();
+	private boolean freehandActive = false;
+	private Point2D.Double freehandFirstPos = null;
+	private Point2D.Double freehandCurrentPos = null;
+	private double freehandErrorThreshold = 5.0;
+	private static final double FREEHAND_MIN_STEP = 3.0;
+	private static final double FREEHAND_SNAP_RADIUS = 20.0;
+
 	public BezierDrawPanel(CubicCurvePanel p, CubicCurveFrame  cF, Color strokeCol){
 		cubicCurvePanel = p;
 		curveFrame = cF;
@@ -243,6 +253,18 @@ public class BezierDrawPanel extends JPanel implements Runnable, MouseListener, 
 			g2D.drawImage(dBuffer, 0, 0, getWidth(), getHeight(), null);
 		} else {
 			System.out.println("unable to create double buffer");
+		}
+	}
+
+	@Override
+	protected void paintComponent(Graphics g) {
+		// When Swing triggers a repaint (resize, expose, or explicit repaint() call)
+		// blit the last completed frame rather than filling white.  This prevents
+		// the grid and curves from flashing away during mouse interaction.
+		if (dBuffer != null) {
+			g.drawImage(dBuffer, 0, 0, getWidth(), getHeight(), null);
+		} else {
+			super.paintComponent(g);
 		}
 	}
 
@@ -350,6 +372,29 @@ public class BezierDrawPanel extends JPanel implements Runnable, MouseListener, 
 				}
 			}
 
+			// Draw freehand stroke preview
+			if (freehandActive) {
+				Point2D.Double[] fhSnap;
+				synchronized (freehandRaw) {
+					fhSnap = freehandRaw.toArray(new Point2D.Double[0]);
+				}
+				if (fhSnap.length >= 2) {
+					Graphics2D fg = (Graphics2D) dBufferGraphics;
+					fg.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+					fg.setColor(new Color(80, 80, 80, 160));
+					fg.setStroke(new BasicStroke(1.5f));
+					for (int i = 1; i < fhSnap.length; i++) {
+						Point2D.Double fa = fhSnap[i - 1], fb = fhSnap[i];
+						fg.draw(new java.awt.geom.Line2D.Double(fa.x, fa.y, fb.x, fb.y));
+					}
+					if (freehandCurrentPos != null && fhSnap.length > 5 &&
+							Formulas.hypotenuse(freehandCurrentPos, freehandFirstPos) < FREEHAND_SNAP_RADIUS) {
+						fg.setColor(new Color(0, 180, 0, 200));
+						fg.fillOval((int)freehandFirstPos.x - 8, (int)freehandFirstPos.y - 8, 16, 16);
+					}
+				}
+			}
+
 			if (knifeMode && knifeStart != null && knifeEnd != null) {
 				double dx = knifeEnd.x - knifeStart.x, dy = knifeEnd.y - knifeStart.y;
 				double len = Math.sqrt(dx*dx + dy*dy);
@@ -384,6 +429,19 @@ public class BezierDrawPanel extends JPanel implements Runnable, MouseListener, 
 	 * @see java.awt.event.MouseMotionListener#mouseDragged(java.awt.event.MouseEvent)
 	 */
 	public void mouseDragged(MouseEvent mE) {
+		if (freehandMode && freehandActive) {
+			Point2D.Double fhPos = scaleMouse(mE);
+			synchronized (freehandRaw) {
+				if (Formulas.hypotenuse(freehandRaw.get(freehandRaw.size() - 1), fhPos) >= FREEHAND_MIN_STEP) {
+					freehandRaw.add(fhPos);
+				}
+			}
+			freehandCurrentPos = fhPos;
+			// No repaint() — the 50fps run loop redraws continuously.
+			// Calling repaint() here would trigger paintComponent before the run
+			// loop can write to dBuffer, causing a white flash and grid dropout.
+			return;
+		}
 		if (knifeMode && knifeStart != null) {
 			knifeEnd = scaleMouse(mE);
 			return;
@@ -627,6 +685,16 @@ public class BezierDrawPanel extends JPanel implements Runnable, MouseListener, 
 		Point2D.Double mousePos = new Point2D.Double(x,y);
 		System.out.println("BezierDrawPanel, mousePressed, mouse x: " + mousePos.x + "   mouse y: " + mousePos.y);
 
+		if (freehandMode) {
+			takeUndoSnapshot();
+			freehandRaw.clear();
+			Point2D.Double fhPos = scaleMouse(mE);
+			freehandRaw.add(fhPos);
+			freehandFirstPos = fhPos;
+			freehandActive = true;
+			return;
+		}
+
 		if (pointMode) {
 			addPointAtMouse(mE);
 			return;
@@ -742,6 +810,29 @@ public class BezierDrawPanel extends JPanel implements Runnable, MouseListener, 
 	 * @see java.awt.event.MouseListener#mouseReleased(java.awt.event.MouseEvent)
 	 */
 	public void mouseReleased(MouseEvent e) {
+		if (freehandMode && freehandActive) {
+			freehandActive = false;
+			java.util.List<Point2D.Double> snapshot;
+			synchronized (freehandRaw) {
+				snapshot = new java.util.ArrayList<>(freehandRaw);
+				freehandRaw.clear();
+			}
+			if (snapshot.size() >= 2) {
+				boolean doClose = snapshot.size() > 5 &&
+					Formulas.hypotenuse(snapshot.get(snapshot.size() - 1), freehandFirstPos) < FREEHAND_SNAP_RADIUS;
+				if (doClose)
+					snapshot.add(new Point2D.Double(freehandFirstPos.x, freehandFirstPos.y));
+				Point2D.Double[] fitted = CurveFitter.fit(snapshot, freehandErrorThreshold);
+				if (fitted != null && fitted.length >= 4) {
+					synchronized (polygonManager) {
+						if (doClose) polygonManager.addClosedFromPoints(fitted, strokeColor);
+						else         polygonManager.addOpenCurveFromPoints(fitted, strokeColor);
+						polygonManager.addManager();
+					}
+				}
+			}
+			return;
+		}
 		if (knifeMode && knifeStart != null && knifeEnd != null) {
 			double dx = knifeEnd.x - knifeStart.x, dy = knifeEnd.y - knifeStart.y;
 			if (Math.sqrt(dx*dx + dy*dy) > 5) {
@@ -2643,6 +2734,13 @@ public class BezierDrawPanel extends JPanel implements Runnable, MouseListener, 
 		pointSelectionModeEnabled = enabled;
 		if (!enabled) { selectedPoints.clear(); clearScopeHighlight(); updatePointHighlights(); }
 	}
+
+	public void setFreehandMode(boolean b) {
+		freehandMode = b;
+		if (!b) { freehandActive = false; freehandRaw.clear(); }
+	}
+	public boolean isFreehandMode() { return freehandMode; }
+	public void setFreehandErrorThreshold(double t) { freehandErrorThreshold = t; }
 
 	public void setKnifeMode(boolean enabled) {
 		if (enabled) {

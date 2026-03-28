@@ -6,6 +6,7 @@ import java.awt.event.ActionListener;
 import java.awt.Color;
 
 import javax.swing.*;
+import javax.swing.event.ChangeListener;
 
 public class BezierToolBarPanel extends JPanel {
 
@@ -17,6 +18,8 @@ public class BezierToolBarPanel extends JPanel {
 	private JToggleButton polygonMode, pointModeToggle;
 	private JToggleButton hideGrid, hideControls, hideReferenceImage;
 	private JToggleButton knifeTool;
+	private JToggleButton drawCurveMode;
+	private JSlider detailSlider;
 
 	// Paired selected-state icons for the three selection modes (relational vs discrete)
 	private ImageIcon pointRelationalIcon, pointDiscreteIcon;
@@ -62,7 +65,9 @@ public class BezierToolBarPanel extends JPanel {
 				edgeSelectionMode.setSelected(false);
 				polygonSelectionMode.setSelected(false);
 				knifeTool.setSelected(false);
+				drawCurveMode.setSelected(false);
 				bezier.setKnifeMode(false);
+				bezier.setFreehandMode(false);
 				bezier.setPointMode(false);
 				bezier.setEdgeSelectionMode(false);
 				bezier.setPolygonSelectionMode(false);
@@ -90,7 +95,9 @@ public class BezierToolBarPanel extends JPanel {
 				selectionMode.setSelected(false);
 				polygonSelectionMode.setSelected(false);
 				knifeTool.setSelected(false);
+				drawCurveMode.setSelected(false);
 				bezier.setKnifeMode(false);
+				bezier.setFreehandMode(false);
 				bezier.setPointMode(false);
 				bezier.setPolygonSelectionMode(false);
 				bezier.setPointSelectionMode(false);
@@ -118,7 +125,9 @@ public class BezierToolBarPanel extends JPanel {
 				selectionMode.setSelected(false);
 				edgeSelectionMode.setSelected(false);
 				knifeTool.setSelected(false);
+				drawCurveMode.setSelected(false);
 				bezier.setKnifeMode(false);
+				bezier.setFreehandMode(false);
 				bezier.setPointMode(false);
 				bezier.setEdgeSelectionMode(false);
 				bezier.setPointSelectionMode(false);
@@ -148,7 +157,9 @@ public class BezierToolBarPanel extends JPanel {
 				polygonSelectionMode.setSelected(false);
 				polygonMode.setSelected(false);
 				knifeTool.setSelected(false);
+				drawCurveMode.setSelected(false);
 				bezier.setKnifeMode(false);
+				bezier.setFreehandMode(false);
 				bezier.setEdgeSelectionMode(false);
 				bezier.setPolygonSelectionMode(false);
 				bezier.setPointSelectionMode(false);
@@ -170,7 +181,9 @@ public class BezierToolBarPanel extends JPanel {
 				pointModeToggle.setSelected(false);
 				polygonMode.setSelected(false);
 				knifeTool.setSelected(false);
+				drawCurveMode.setSelected(false);
 				bezier.setKnifeMode(false);
+				bezier.setFreehandMode(false);
 				bezier.setPointMode(false);
 				bezier.setEdgeSelectionMode(false);
 				bezier.setPointSelectionMode(false);
@@ -190,6 +203,8 @@ public class BezierToolBarPanel extends JPanel {
 				pointModeToggle.setSelected(false);
 				edgeSelectionMode.setSelected(false);
 				polygonSelectionMode.setSelected(false);
+				drawCurveMode.setSelected(false);
+				bezier.setFreehandMode(false);
 				bezier.setPointMode(false);
 				bezier.setEdgeSelectionMode(false);
 				bezier.setPolygonSelectionMode(false);
@@ -197,6 +212,44 @@ public class BezierToolBarPanel extends JPanel {
 			}
 		});
 		toolBar.add(polygonMode);
+
+		toolBar.addSeparator();
+
+		drawCurveMode = new JToggleButton();
+		initToggle(drawCurveMode,
+			"Freehand Draw Curve — drag to draw; approach start point to close as polygon",
+			"drawing");
+		drawCurveMode.addActionListener(new ActionListener() {
+			public void actionPerformed(ActionEvent e) {
+				int idx = polygonManager.getPolygonCount();
+				polygonManager.getManager(idx).setAddPoints(false);
+				selectionMode.setSelected(false);
+				edgeSelectionMode.setSelected(false);
+				polygonSelectionMode.setSelected(false);
+				polygonMode.setSelected(false);
+				pointModeToggle.setSelected(false);
+				knifeTool.setSelected(false);
+				bezier.setKnifeMode(false);
+				bezier.setPointMode(false);
+				bezier.setEdgeSelectionMode(false);
+				bezier.setPolygonSelectionMode(false);
+				bezier.setPointSelectionMode(false);
+				bezier.setFreehandMode(drawCurveMode.isSelected());
+			}
+		});
+		toolBar.add(drawCurveMode);
+
+		JLabel detailLabel = new JLabel("Detail:");
+		detailLabel.setFont(detailLabel.getFont().deriveFont(10f));
+		toolBar.add(detailLabel);
+		detailSlider = new JSlider(1, 50, 5);
+		detailSlider.setPreferredSize(new Dimension(80, 24));
+		detailSlider.setMaximumSize(new Dimension(80, 24));
+		detailSlider.setToolTipText("Freehand detail: low = more segments, high = fewer/simpler");
+		detailSlider.addChangeListener(e -> bezier.setFreehandErrorThreshold(detailSlider.getValue()));
+		toolBar.add(detailSlider);
+
+		toolBar.addSeparator();
 
 		closeCurves = new JButton();
 		initButton(closeCurves, "Close Polygon", "closePolygon");
@@ -251,7 +304,9 @@ public class BezierToolBarPanel extends JPanel {
 					selectionMode.setSelected(false);
 					edgeSelectionMode.setSelected(false);
 					polygonSelectionMode.setSelected(false);
+					drawCurveMode.setSelected(false);
 					bezier.setPointMode(false);
+					bezier.setFreehandMode(false);
 					bezier.setKnifeMode(true);
 				} else {
 					bezier.setKnifeMode(false);
@@ -564,6 +619,28 @@ public class BezierToolBarPanel extends JPanel {
 		bezier.setPointSelectionMode(false);
 		pointModeToggle.setSelected(true);
 		bezier.setPointMode(true);
+	}
+
+	/**
+	 * Activate Freehand Draw Mode programmatically.
+	 */
+	public void activateFreehandMode() {
+		CubicCurvePolygonManager polygonManager = bezier.getPolygonManager();
+		int idx = polygonManager.getPolygonCount();
+		polygonManager.getManager(idx).setAddPoints(false);
+		selectionMode.setSelected(false);
+		edgeSelectionMode.setSelected(false);
+		polygonSelectionMode.setSelected(false);
+		polygonMode.setSelected(false);
+		pointModeToggle.setSelected(false);
+		knifeTool.setSelected(false);
+		bezier.setKnifeMode(false);
+		bezier.setPointMode(false);
+		bezier.setEdgeSelectionMode(false);
+		bezier.setPolygonSelectionMode(false);
+		bezier.setPointSelectionMode(false);
+		drawCurveMode.setSelected(true);
+		bezier.setFreehandMode(true);
 	}
 
 	/**
