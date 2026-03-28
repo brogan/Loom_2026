@@ -847,6 +847,11 @@ class MySketch(width: Int, height: Int) extends Sketch(width, height) {
   var spriteTotal: Int = scene.getSize()
   var spriteIndex: Int = 0
 
+  if (scene.getSize() == 0) {
+    throw new IllegalStateException(
+      "No sprites were loaded — check shape/curve/polygon configuration warnings above.")
+  }
+
   var polyTotal: Int = 0
   if (threeD) {
     polyTotal = scene.getSprite(spriteIndex).getShape().asInstanceOf[Shape3D].getSize()

@@ -89,16 +89,24 @@ object OpenCurveSetLoader {
     }
   }
 
-  /** Parse an openCurveSet XML file and return the list of open Polygon2D curves. */
+  /** Parse an openCurveSet XML file and return the list of open Polygon2D curves.
+   *  Handles both the Phase 3 <openCurveSet>/<openCurve> format and the Phase 2
+   *  <polygonSet>/<polygon isClosed="false"> format so older Bezier exports work too. */
   def loadOpenCurvesFromFile(filePath: String): List[Polygon2D] = {
     val polys = ListBuffer[Polygon2D]()
     val doc = loadXMLLenient(filePath)
 
-    // Each <openCurve> element represents one open curve
-    val openCurves: NodeSeq = (doc \ "openCurve")
+    // Detect format by root element label
+    val curveNodes: NodeSeq = doc.label match {
+      case "openCurveSet" => doc \ "openCurve"
+      case "polygonSet"   => (doc \ "polygon").filter(n => (n \ "@isClosed").text != "true")
+      case other =>
+        println(s"Warning: Unexpected root element '$other' in curve file, trying <openCurve>")
+        doc \ "openCurve"
+    }
 
-    for (openCurve <- openCurves) {
-      val curves: NodeSeq = (openCurve \ "curve")
+    for (curveNode <- curveNodes) {
+      val curves: NodeSeq = (curveNode \ "curve")
       val pts = ListBuffer[Vector2D]()
 
       for (curve <- curves) {
@@ -110,7 +118,7 @@ object OpenCurveSetLoader {
         }
       }
 
-      polys += Polygon2D(pts.toList, PolygonType.OPEN_SPLINE_POLYGON)
+      if (pts.nonEmpty) polys += Polygon2D(pts.toList, PolygonType.OPEN_SPLINE_POLYGON)
     }
 
     polys.toList
