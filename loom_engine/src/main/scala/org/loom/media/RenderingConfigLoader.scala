@@ -69,11 +69,11 @@ object RenderingConfigLoader {
     playbackNode.foreach { pb =>
       val mode = (pb \ "Mode").text
       val preferredName = (pb \ "PreferredRenderer").text
+      val prob = getDoubleOrDefault(pb, "PreferredProbability", 50.0)
       mode match {
-        case "SEQUENTIAL" => rendererSet.sequenceRendererSet(0, 50)
-        case "RANDOM" =>
-          val prob = getDoubleOrDefault(pb, "PreferredProbability", 50.0)
-          rendererSet.randomRendererSet(preferredName, prob)
+        case "SEQUENTIAL" => rendererSet.sequenceRendererSet(0, prob)
+        case "RANDOM"     => rendererSet.randomRendererSet(preferredName, prob)
+        case "ALL"        => rendererSet.allRenderersMode()
         case _ => // STATIC - do nothing special
       }
 

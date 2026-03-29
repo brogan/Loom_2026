@@ -130,6 +130,7 @@ class PlaybackMode(Enum):
     STATIC = 0      # No renderer switching
     SEQUENTIAL = 1  # Cycle through renderers in order
     RANDOM = 2      # Randomly select renderers
+    ALL = 3         # Draw with every renderer each cycle (layered)
 
     @classmethod
     def from_string(cls, s: str) -> 'PlaybackMode':

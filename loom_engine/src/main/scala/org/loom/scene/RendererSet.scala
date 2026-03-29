@@ -24,6 +24,7 @@ class RendererSet(val name: String) {
 	//mutually exclusive
 	var sequenceIndexChange: Boolean = false//accesses renderers in sequence from first to last and repeat - can then have subsequent modified parameters
 	var randomIndexChange: Boolean = false//selects a random renderer - can then have subsequent modified parameters
+	var allRenderersActive: Boolean = false//draws the shape once with every renderer in the set each draw cycle
 
 
 
@@ -45,6 +46,14 @@ class RendererSet(val name: String) {
 		preferredRendererIndex = preferred
 		preferredProbability = prob
 		sequenceIndexChange = true
+		randomIndexChange = false
+	}
+
+	//convenience method for running all renderers every draw cycle
+	def allRenderersMode(): Unit = {
+		staticRendering = false
+		allRenderersActive = true
+		sequenceIndexChange = false
 		randomIndexChange = false
 	}
 

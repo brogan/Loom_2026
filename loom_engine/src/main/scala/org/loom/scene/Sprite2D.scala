@@ -156,11 +156,39 @@ class Sprite2D(val shape: Shape2D, val spriteParams: Sprite2DParams, var animato
      println("")
      println("drawing at sprite level")
      */
-    //val ren: Renderer = rendererSet.getRenderer()
-    var holdRendererCount: Int = 0
-    val changeRenMax: Int = rendererSet.getRenderer(rendererSet.selectedIndex).holdLength
+    // ALL mode: draw the shape once with every renderer in the set
+    if (rendererSet.allRenderersActive) {
+      for (renderer <- rendererSet.rendererSet) {
+        rendererSet.setCurrentRenderer(renderer.name)
+        renderer.mode match {
+          case Renderer.BRUSHED =>
+            drawBrushed(g2D, Camera.view)
+            rendererSet.updateRenderer(Renderer.POLY)
+            rendererSet.updateRenderer(Renderer.SPRITE)
+          case Renderer.STENCILED =>
+            drawStenciled(g2D, Camera.view)
+            rendererSet.updateRenderer(Renderer.POLY)
+            rendererSet.updateRenderer(Renderer.SPRITE)
+          case _ =>
+            for (poly <- shape.polys) {
+              if (poly.visible) renderer.mode match {
+                case Renderer.POINTS        => drawPoints(g2D, poly, Camera.view)
+                case Renderer.STROKED       => drawLines(g2D, poly, Camera.view)
+                case Renderer.FILLED        => drawFilled(g2D, poly, Camera.view)
+                case Renderer.FILLED_STROKED => drawFilledStroked(g2D, poly, Camera.view)
+                case _ =>
+              }
+              rendererSet.updateRenderer(Renderer.POLY)
+            }
+            rendererSet.updateRenderer(Renderer.SPRITE)
+        }
+      }
+      return
+    }
 
-    var ren: Renderer = rendererSet.getRenderer(rendererSet.selectedIndex)
+    var holdRendererCount: Int = 0
+    var ren: Renderer = rendererSet.getRenderer()  // applies STATIC / SEQUENTIAL / RANDOM logic
+    val changeRenMax: Int = ren.holdLength
 
     for (poly <- shape.polys) {
 
