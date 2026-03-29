@@ -1302,6 +1302,8 @@ class MainWindow(QMainWindow):
             self._update_title()
             self.project_label.setText(self._project.name if self._project else "")
             self.status_bar.showMessage(f"Saved to {project_file}", 3000)
+            self._app_settings.add_recent_project(project_dir)
+            self._rebuild_recent_menu()
             return True
 
         except Exception as e:
