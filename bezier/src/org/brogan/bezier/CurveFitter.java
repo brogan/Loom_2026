@@ -92,17 +92,21 @@ public class CurveFitter {
         double maxDist = me[0];
         int splitIdx   = (int) me[1];
 
-        if (maxDist < err2) {
+        // Accept only if within error AND not looping.
+        // wouldLoop() detects when control arms together overshoot the chord,
+        // which produces self-intersecting cubics on highly curved arcs.
+        if (maxDist < err2 && !wouldLoop(bezier)) {
             result.add(bezier);
             return;
         }
 
-        // Attempt Newton-Raphson reparameterisation if not too far off
-        if (maxDist < err2 * 4.0) {
+        // Attempt Newton-Raphson reparameterisation only when the initial fit is
+        // not looping (a looping bezier reparameterises to another looping bezier).
+        if (!wouldLoop(bezier) && maxDist < err2 * 4.0) {
             double[] uPrime   = reparameterize(d, first, last, u, bezier);
             Point2D.Double[] bezier2 = generateBezier(d, first, last, uPrime, tHat1, tHat2);
             double[] me2      = maxError(d, first, last, bezier2, uPrime);
-            if (me2[0] < err2) {
+            if (me2[0] < err2 && !wouldLoop(bezier2)) {
                 result.add(bezier2);
                 return;
             }
@@ -325,6 +329,18 @@ public class CurveFitter {
     private static double distance(Point2D.Double a, Point2D.Double b) {
         double dx = b.x - a.x, dy = b.y - a.y;
         return Math.sqrt(dx * dx + dy * dy);
+    }
+
+    /**
+     * Returns true if the cubic bezier would self-intersect (loop).
+     * When the sum of the two control-arm lengths exceeds the chord, the curve
+     * bends back on itself for arcs > ~142°. We force a split in that case.
+     */
+    private static boolean wouldLoop(Point2D.Double[] bezier) {
+        double arm1  = distance(bezier[0], bezier[1]);
+        double arm2  = distance(bezier[3], bezier[2]);
+        double chord = distance(bezier[0], bezier[3]);
+        return chord > 1.0 && (arm1 + arm2) > chord;
     }
 
     private static Point2D.Double sub(Point2D.Double a, Point2D.Double b) {
