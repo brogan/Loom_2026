@@ -25,12 +25,12 @@ import java.awt.image.BufferedImage
 
 class Sprite2D(val shape: Shape2D, val spriteParams: Sprite2DParams, var animator: SpriteAnimator, var rendererSet: RendererSet) extends Drawable {
 
-  // Brush rendering state (lazy-initialized when BRUSHED mode is used)
-  var brushState: BrushState = null
+  // Brush rendering state — one BrushState per renderer name (supports multiple BRUSHED renderers)
+  private val brushStates: scala.collection.mutable.Map[String, BrushState] = scala.collection.mutable.Map()
   // Frame counter for animated meander (incremented each FULL_PATH draw call)
   private var meanderFrame: Int = 0
-  // Stencil rendering state (lazy-initialized when STENCILED mode is used)
-  var stencilState: BrushState = null
+  // Stencil rendering state — one BrushState per renderer name
+  private val stencilStates: scala.collection.mutable.Map[String, BrushState] = scala.collection.mutable.Map()
 
   // Per-sprite draw limit (0 = infinite). Set by MySketch after construction.
   var spriteTotalDraws: Int = 0
@@ -514,25 +514,28 @@ class Sprite2D(val shape: Shape2D, val spriteParams: Sprite2DParams, var animato
         BrushStampEngine.drawFullEdge(g2D, state.edges(i), state.perturbedPaths(i), config, brushes, ren.strokeColor)
       }
     } else {
-      // PROGRESSIVE mode: lazy-init state, advance agents each frame
-      if (brushState == null || !brushState.initialized) {
-        brushState = new BrushState()
-        brushState.initializeFromPolys(edgePolys)
-        brushState.createAgents(config.agentCount)
+      // PROGRESSIVE mode: lazy-init state per renderer, advance agents each frame
+      val rendererKey = ren.name
+      if (!brushStates.contains(rendererKey) || !brushStates(rendererKey).initialized) {
+        val newState = new BrushState()
+        newState.initializeFromPolys(edgePolys)
+        newState.createAgents(config.agentCount)
         // Perturbed paths computed once at init (consistent for progressive reveal)
-        brushState.initializePerturbedPaths(config, frame = 0)
+        newState.initializePerturbedPaths(config, frame = 0)
+        brushStates(rendererKey) = newState
       }
+      val currentBrushState = brushStates(rendererKey)
 
-      for (agent <- brushState.agents) {
+      for (agent <- currentBrushState.agents) {
         if (!agent.completed) {
           BrushStampEngine.drawProgressiveStamps(
-            g2D, brushState.edges, brushState.perturbedPaths, agent, config, brushes,
+            g2D, currentBrushState.edges, currentBrushState.perturbedPaths, agent, config, brushes,
             ren.strokeColor, config.stampsPerFrame
           )
         }
       }
 
-      brushState.checkCompletion(config.postCompletionMode)
+      currentBrushState.checkCompletion(config.postCompletionMode)
     }
   }
 
@@ -583,21 +586,24 @@ class Sprite2D(val shape: Shape2D, val spriteParams: Sprite2DParams, var animato
         StencilStampEngine.drawFullEdge(g2D, edge, config, stencils, opacity)
       }
     } else {
-      // PROGRESSIVE mode: lazy-init state, advance agents each frame
-      if (stencilState == null || !stencilState.initialized) {
-        stencilState = new BrushState()
-        stencilState.initializeFromPolys(edgePolys)
-        stencilState.createAgents(config.agentCount)
+      // PROGRESSIVE mode: lazy-init state per renderer, advance agents each frame
+      val rendererKey = ren.name
+      if (!stencilStates.contains(rendererKey) || !stencilStates(rendererKey).initialized) {
+        val newState = new BrushState()
+        newState.initializeFromPolys(edgePolys)
+        newState.createAgents(config.agentCount)
+        stencilStates(rendererKey) = newState
       }
-      for (agent <- stencilState.agents) {
+      val currentStencilState = stencilStates(rendererKey)
+      for (agent <- currentStencilState.agents) {
         if (!agent.completed) {
           StencilStampEngine.drawProgressiveStamps(
-            g2D, stencilState.edges, agent, config, stencils,
+            g2D, currentStencilState.edges, agent, config, stencils,
             opacity, config.stampsPerFrame
           )
         }
       }
-      stencilState.checkCompletion(config.postCompletionMode)
+      currentStencilState.checkCompletion(config.postCompletionMode)
     }
   }
 
