@@ -35,6 +35,13 @@ public class CurveFitter {
         List<Point2D.Double> d = removeDuplicates(pts);
         if (d.size() < 2) return null;
 
+        // Pre-simplify with Douglas-Peucker: remove near-collinear intermediate points
+        // that lie within errorThreshold of the simplified polyline.  This prevents the
+        // Schneider fitter from recursing down to degenerate 2-point base cases on
+        // nearly-straight tails (e.g. the user slowing down near the end of a stroke).
+        d = douglasPeucker(d, Math.max(errorThreshold, 2.0));
+        if (d.size() < 2) return null;
+
         // error is stored as squared distance throughout
         double err2 = errorThreshold * errorThreshold;
 
@@ -319,6 +326,47 @@ public class CurveFitter {
     private static double B3(double t) { return t * t * t; }
 
     // ── Utility ───────────────────────────────────────────────────────────────
+
+    /**
+     * Douglas-Peucker polyline simplification.
+     * Removes intermediate points that deviate less than {@code epsilon} pixels
+     * from the straight line between their neighbours, recursively.
+     */
+    private static List<Point2D.Double> douglasPeucker(List<Point2D.Double> pts, double epsilon) {
+        if (pts.size() <= 2) return new ArrayList<>(pts);
+        Point2D.Double start = pts.get(0);
+        Point2D.Double end   = pts.get(pts.size() - 1);
+        double maxDist = 0;
+        int    maxIdx  = 1;
+        for (int i = 1; i < pts.size() - 1; i++) {
+            double d = pointToLineDistance(pts.get(i), start, end);
+            if (d > maxDist) { maxDist = d; maxIdx = i; }
+        }
+        if (maxDist > epsilon) {
+            List<Point2D.Double> left  = douglasPeucker(pts.subList(0, maxIdx + 1), epsilon);
+            List<Point2D.Double> right = douglasPeucker(pts.subList(maxIdx, pts.size()), epsilon);
+            List<Point2D.Double> result = new ArrayList<>(left);
+            result.addAll(right.subList(1, right.size())); // avoid duplicating split point
+            return result;
+        } else {
+            List<Point2D.Double> result = new ArrayList<>();
+            result.add(start);
+            result.add(end);
+            return result;
+        }
+    }
+
+    /** Perpendicular distance from point {@code p} to the infinite line through {@code a} and {@code b}. */
+    private static double pointToLineDistance(Point2D.Double p,
+                                              Point2D.Double a, Point2D.Double b) {
+        double dx = b.x - a.x, dy = b.y - a.y;
+        double len2 = dx * dx + dy * dy;
+        if (len2 < 1e-12) return distance(p, a);
+        double t = ((p.x - a.x) * dx + (p.y - a.y) * dy) / len2;
+        double cx = a.x + t * dx, cy = a.y + t * dy;
+        double ex = p.x - cx,     ey = p.y - cy;
+        return Math.sqrt(ex * ex + ey * ey);
+    }
 
     private static List<Point2D.Double> removeDuplicates(List<Point2D.Double> pts) {
         List<Point2D.Double> result = new ArrayList<>();
