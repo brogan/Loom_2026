@@ -305,6 +305,21 @@ public class BezierToolBarPanel extends JPanel {
 				bezier.takeUndoSnapshot();
 				int polygonCount = polygonManager.getPolygonCount();
 				CubicCurveManager curveManager = polygonManager.getManager(polygonCount);
+
+				// If the active drawing manager has no points, check whether the most
+				// recently committed shape is an open curve and close that instead.
+				// This supports: draw freehand open curve → click Close Polygon.
+				if (curveManager.getCurves().getCubicCurveTotal() == 0 && polygonCount > 0) {
+					CubicCurveManager prev = polygonManager.getManager(polygonCount - 1);
+					if (!prev.getIsClosed() && prev.getCurves().getCubicCurveTotal() > 0) {
+						prev.closeOpenCurve(bezier.getStrokeColor());
+						prev.setCurrentBezierPosition(prev.getAverageXY());
+						activatePolygonSelectionMode();
+						bezier.repaint();
+						return;
+					}
+				}
+
 				curveManager.closeCurve(bezier.getStrokeColor());
 				curveManager.setCurrentBezierPosition(curveManager.getAverageXY());
 				polygonManager.addManager();

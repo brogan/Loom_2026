@@ -197,9 +197,6 @@ public class CubicCurveManager {
 	 */
 	public void closeCurve(Color strokeColor) {
 		currentCurve = new CubicCurve(strokeColor);
-		
-		System.out.println("");
-		System.out.println("CubicCurveManager, closeCurve, curves - size: " + curves.getCubicCurveTotal());
 
 		CubicPoint lastAnchor = curves.getCurve(curveCount-1).getPoint(3);
 		Point2D.Double lastAnchorPoint = lastAnchor.getPos();
@@ -219,6 +216,33 @@ public class CubicCurveManager {
 
 		polyManager.addPolygon(curves);
 
+	}
+
+	/**
+	 * Close an already-committed open curve (e.g. from freehand drawing).
+	 * Unlike closeCurve(), this does NOT call addPolygon() since the curves are
+	 * already registered in the polygon set.  Uses actual curve count rather than
+	 * the interactive curveCount field (which is 0 for programmatically-built curves).
+	 */
+	public void closeOpenCurve(Color strokeColor) {
+		int totalCurves = curves.getCubicCurveTotal();
+		if (totalCurves == 0 || isClosed) return;
+		currentCurve = new CubicCurve(strokeColor);
+
+		CubicPoint lastAnchor   = curves.getCurve(totalCurves - 1).getPoint(3);
+		Point2D.Double lastPos  = lastAnchor.getPos();
+		currentCurve.setAnchorPoint(new Point2D.Double(lastPos.x, lastPos.y), CubicCurve.ANCHOR_FIRST, lastAnchor);
+
+		CubicPoint originAnchor  = curves.getCurve(0).getPoint(0);
+		Point2D.Double originPos = originAnchor.getPos();
+		currentCurve.setAnchorPoint(new Point2D.Double(originPos.x, originPos.y), CubicCurve.ANCHOR_LAST, originAnchor);
+
+		currentCurve.setControlPoints();
+		curves.addCurve(currentCurve);
+
+		addPoints = false;
+		isClosed  = true;
+		// Do NOT call addPolygon — curves are already in the polygon set.
 	}
 
 	/**
