@@ -275,7 +275,10 @@ public class CurveFitter {
     }
 
     private static Point2D.Double centerTangent(List<Point2D.Double> d, int center) {
-        return normalize(sub(d.get(center + 1), d.get(center - 1)));
+        // Must point BACKWARD (toward center-1) to match the "right tangent" convention:
+        // tHat2 for the left sub-curve and negated to tHat1 for the right sub-curve,
+        // so that c2/c1 are placed on the interior side of the split point.
+        return normalize(sub(d.get(center - 1), d.get(center + 1)));
     }
 
     // ── Bézier evaluation ─────────────────────────────────────────────────────
