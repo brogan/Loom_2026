@@ -54,6 +54,7 @@ class OvalTab(QWidget):
 
         self._fs_watcher = QFileSystemWatcher()
         self._fs_watcher.directoryChanged.connect(self._on_dir_changed)
+        self._fs_watcher.fileChanged.connect(self._on_file_changed)
 
         self._setup_ui()
         self._refresh_list()
@@ -168,6 +169,8 @@ class OvalTab(QWidget):
         self._oval_sets_dir = directory
         if self._fs_watcher.directories():
             self._fs_watcher.removePaths(self._fs_watcher.directories())
+        if self._fs_watcher.files():
+            self._fs_watcher.removePaths(self._fs_watcher.files())
         if directory and os.path.isdir(directory):
             self._fs_watcher.addPath(directory)
         self._refresh_file_list()
@@ -261,6 +264,7 @@ class OvalTab(QWidget):
         try:
             current = self.filename_combo.currentText()
             self.filename_combo.clear()
+            files = []
             if self._oval_sets_dir and os.path.isdir(self._oval_sets_dir):
                 files = sorted(
                     f for f in os.listdir(self._oval_sets_dir)
@@ -270,6 +274,10 @@ class OvalTab(QWidget):
                     self.filename_combo.addItem(f)
                     self.filename_combo.setItemData(
                         i, QBrush(self._file_color(f)), Qt.ItemDataRole.ForegroundRole)
+                if self._fs_watcher.files():
+                    self._fs_watcher.removePaths(self._fs_watcher.files())
+                for f in files:
+                    self._fs_watcher.addPath(os.path.join(self._oval_sets_dir, f))
             if current:
                 idx = self.filename_combo.findText(current)
                 if idx >= 0:
@@ -441,6 +449,12 @@ class OvalTab(QWidget):
     # ── Auto-refresh (QFileSystemWatcher) ─────────────────────────────────
 
     def _on_dir_changed(self, path: str) -> None:
+        self._refresh_file_list()
+        self._refresh_list()
+
+    def _on_file_changed(self, path: str) -> None:
+        if os.path.exists(path):
+            self._fs_watcher.addPath(path)
         self._refresh_file_list()
         self._refresh_list()
 

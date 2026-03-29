@@ -369,6 +369,7 @@ class PolygonTab(QWidget):
 
         self._fs_watcher = QFileSystemWatcher()
         self._fs_watcher.directoryChanged.connect(self._on_dir_changed)
+        self._fs_watcher.fileChanged.connect(self._on_file_changed)
 
         self._setup_ui()
         self._refresh_list()
@@ -1354,6 +1355,14 @@ class PolygonTab(QWidget):
         self._refresh_file_list()
         self._refresh_list()
 
+    def _on_file_changed(self, path: str) -> None:
+        # Qt removes the path from the watcher after fileChanged fires on some
+        # platforms; re-add it so the next overwrite-save is also detected.
+        if os.path.exists(path):
+            self._fs_watcher.addPath(path)
+        self._refresh_file_list()
+        self._refresh_list()
+
     # ── File colour helper ─────────────────────────────────────────────────
 
     def _file_color(self, filename: str) -> QColor:
@@ -1672,6 +1681,8 @@ class PolygonTab(QWidget):
         self._polygon_sets_dir = directory
         if self._fs_watcher.directories():
             self._fs_watcher.removePaths(self._fs_watcher.directories())
+        if self._fs_watcher.files():
+            self._fs_watcher.removePaths(self._fs_watcher.files())
         if directory and os.path.isdir(directory):
             self._fs_watcher.addPath(directory)
         self._refresh_file_list()
@@ -1775,6 +1786,11 @@ class PolygonTab(QWidget):
                             i, QBrush(self._file_color(f)), Qt.ItemDataRole.ForegroundRole)
                 except OSError:
                     pass  # Directory not accessible
+                # Watch each file individually so overwrite-saves are detected
+                if self._fs_watcher.files():
+                    self._fs_watcher.removePaths(self._fs_watcher.files())
+                for f in files:
+                    self._fs_watcher.addPath(os.path.join(self._polygon_sets_dir, f))
 
             # Restore previous selection if it exists
             if current_text:
