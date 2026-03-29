@@ -803,17 +803,7 @@ class ShapeTab(QWidget):
         self._refresh_tree()
 
     def create_default_library(self) -> ShapeLibrary:
-        """Create a default library with one set and one shape."""
-        library = ShapeLibrary(name="MainLibrary")
-        default_set = ShapeSet(name="default")
-        default_shape = ShapeDef(
-            name="DefaultShape",
-            source_type=ShapeSourceType.POLYGON_SET,
-            polygon_set_name=""
-        )
-        default_set.add(default_shape)
-        library.add(default_set)
-        return library
+        return ShapeLibrary(name="MainLibrary")
 
     def set_subdivision_collection(self, collection) -> None:
         """Set the subdivision collection for populating the params set dropdown."""

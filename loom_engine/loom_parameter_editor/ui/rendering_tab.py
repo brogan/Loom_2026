@@ -1693,18 +1693,4 @@ class RenderingTab(QWidget):
         self.modified.emit()
 
     def create_default_library(self) -> RendererSetLibrary:
-        library = RendererSetLibrary(name="MainLibrary")
-        default_set = RendererSet(name="DefaultSet")
-        default_renderer = Renderer(
-            name="Default",
-            mode=RenderMode.FILLED_STROKED,
-            stroke_width=1.0,
-            stroke_color=Color(0, 0, 0, 128),
-            fill_color=Color(100, 150, 200, 200),
-            point_size=3.0,
-            hold_length=1
-        )
-        default_set.add_renderer(default_renderer)
-        default_set.preferred_renderer = "Default"
-        library.add_renderer_set(default_set)
-        return library
+        return RendererSetLibrary(name="MainLibrary")

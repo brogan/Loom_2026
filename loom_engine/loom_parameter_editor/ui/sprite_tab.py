@@ -1128,17 +1128,7 @@ class SpriteTab(QWidget):
         self._refresh_tree()
 
     def create_default_library(self) -> SpriteLibrary:
-        """Create a default library with one set and one sprite."""
-        library = SpriteLibrary(name="MainLibrary")
-        default_set = SpriteSet(name="default")
-        default_sprite = SpriteDef(
-            name="DefaultSprite",
-            enabled=True,
-            params=SpriteParams(size_x=0.7, size_y=0.7)
-        )
-        default_set.add(default_sprite)
-        library.add(default_set)
-        return library
+        return SpriteLibrary(name="MainLibrary")
 
     def set_shape_library(self, library) -> None:
         """Set the shape library for populating shape set and shape name dropdowns."""

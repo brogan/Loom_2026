@@ -1114,8 +1114,7 @@ class SubdivisionTab(QWidget):
         self._refresh_tree()
 
     def create_default_collection(self) -> SubdivisionParamsSetCollection:
-        """Create a default collection."""
-        return SubdivisionParamsSetCollection.default()
+        return SubdivisionParamsSetCollection()
 
     def _update_transform_status(self, ts: TransformSetConfig):
         """Update the transform status label."""
