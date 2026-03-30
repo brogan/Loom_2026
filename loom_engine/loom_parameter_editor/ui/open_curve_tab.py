@@ -4,6 +4,7 @@ Provides UI for editing curves.xml settings.
 """
 import os
 import re
+import shutil
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QFormLayout, QGroupBox,
     QLineEdit, QComboBox, QTreeWidget, QTreeWidgetItem, QPushButton,
@@ -400,6 +401,51 @@ class OpenCurveTab(QWidget):
         with open(filepath, 'w', encoding='utf-8') as f:
             f.writelines(cleaned)
 
+    # Root elements that belong in polygonSets/, not curveSets/
+    _POLYGON_ROOTS = frozenset({'polygonSet', 'layerSet'})
+
+    def _peek_root_element(self, filepath: str) -> str:
+        """Return the XML root element name (first real tag), or '' on error."""
+        try:
+            with open(filepath, 'r', encoding='latin-1') as f:
+                content = f.read(512)
+            m = re.search(r'<([A-Za-z][A-Za-z0-9_]*)', content)
+            return m.group(1) if m else ''
+        except Exception:
+            return ''
+
+    def _migrate_polygon_files(self, filenames: set) -> set:
+        """
+        Inspect each XML filename in curveSets/.  Any file whose root element
+        indicates polygon data (polygonSet, layerSet) is moved to polygonSets/.
+        Returns the set of filenames that were migrated so callers can exclude
+        them from curve-set lists.
+        """
+        migrated = set()
+        if not self._curve_sets_dir:
+            return migrated
+        polygon_sets_dir = os.path.join(os.path.dirname(self._curve_sets_dir), "polygonSets")
+        os.makedirs(polygon_sets_dir, exist_ok=True)
+        for fname in sorted(filenames):
+            if not fname.lower().endswith('.xml'):
+                continue
+            src = os.path.join(self._curve_sets_dir, fname)
+            if not os.path.isfile(src):
+                continue
+            if self._peek_root_element(src) in self._POLYGON_ROOTS:
+                dst = os.path.join(polygon_sets_dir, fname)
+                shutil.move(src, dst)
+                migrated.add(fname)
+        if migrated:
+            names = '\n'.join(f'  • {f}' for f in sorted(migrated))
+            QMessageBox.information(
+                self, "Files Moved to polygonSets/",
+                "The following files contain closed polygons and have been\n"
+                "automatically moved from curveSets/ to polygonSets/:\n\n"
+                + names
+            )
+        return migrated
+
     def _snapshot_files(self) -> set:
         """Return the set of filenames currently in the curve sets directory."""
         if not self._curve_sets_dir or not os.path.isdir(self._curve_sets_dir):
@@ -439,7 +485,10 @@ class OpenCurveTab(QWidget):
             if os.path.isfile(fpath):
                 self._strip_xml_headers(fpath)
 
-        xml_files = sorted(f for f in new_files if f.endswith('.xml'))
+        # Auto-migrate any files that turned out to be closed polygons
+        migrated = self._migrate_polygon_files(new_files)
+        remaining = new_files - migrated
+        xml_files = sorted(f for f in remaining if f.endswith('.xml'))
 
         self._refresh_file_list()
 
@@ -486,6 +535,15 @@ class OpenCurveTab(QWidget):
         ])
 
     def _on_edit_bezier_finished(self, exit_code, exit_status):
+        # Auto-migrate if the user closed all open curves into polygons during editing.
+        # Check the edited file plus any bundle companions (foo_layer_*.xml, foo.layers.xml).
+        if self._edit_file_path and self._curve_sets_dir:
+            edit_fname = os.path.basename(self._edit_file_path)
+            stem = re.sub(r'(_layer_\d+)?\.layers\.xml$|\.xml$', '', edit_fname)
+            related = {f for f in self._snapshot_files()
+                       if f.startswith(stem) and f.lower().endswith('.xml')}
+            self._migrate_polygon_files(related)
+
         self._refresh_file_list()
         self._update_preview()
 
