@@ -92,8 +92,18 @@
   <li><b>Extrude</b> &mdash; <kbd>&#8679; Shift</kbd>&nbsp;+&nbsp;drag (see Operations tab).</li>
 </ul>
 
+<h2>Open Curve Selection Mode</h2>
+<p>Click the <b>Open Curve Selection</b> toolbar button (or press <kbd>d</kbd>). Entire open (non-closed) curves are selected and moved as units. Closed polygons are not selectable in this mode.</p>
+<ul>
+  <li>Click <b>inside or near</b> an open curve to select it. Its outline turns <span class="chip blue">blue</span> (Discrete) or <span class="chip orange">orange</span> (Relational).</li>
+  <li>Clicking a selected curve again <b>deselects</b> it.</li>
+  <li><kbd>&#8679; Shift</kbd>&nbsp;+&nbsp;drag draws a rubber-band marquee &mdash; open curves whose centroid falls inside the rectangle are selected.</li>
+  <li><kbd>&#8984;</kbd>&nbsp;+&nbsp;<kbd>A</kbd> selects all open curves on the active layer.</li>
+</ul>
+<div class="note">Scale, rotate, flip, centre, and duplicate all work in Open Curve Selection Mode and operate exclusively on the selected (or, if nothing is selected, all active-layer) open curves. Closed polygons and ovals are not affected.</div>
+
 <h2>Polygon Selection Mode</h2>
-<p>Click the <b>Polygon Selection</b> toolbar button. Entire polygons are selected and moved as units. This mode also works for discrete points created in Create Points mode &mdash; click near a point to select it.</p>
+<p>Click the <b>Polygon Selection</b> toolbar button (or press <kbd>f</kbd>). Entire closed polygons and ovals are selected and moved as units.</p>
 
 <h3>Selecting Polygons</h3>
 <ul>
@@ -130,13 +140,24 @@
   <li>Click empty canvas &rarr; scope and selection both cleared.</li>
 </ol>
 
+<h2>Select All / Deselect All</h2>
+<p><kbd>&#8984;</kbd>&nbsp;+&nbsp;<kbd>A</kbd> selects all geometry on the active layer appropriate to the current mode:</p>
+<ul>
+  <li><b>Point Selection</b> &mdash; selects all anchor and control points.</li>
+  <li><b>Edge Selection</b> &mdash; selects all curve segments.</li>
+  <li><b>Open Curve Selection</b> &mdash; selects all open curves.</li>
+  <li><b>Polygon Selection</b> &mdash; selects all closed polygons and ovals.</li>
+</ul>
+<p><kbd>&#8984;</kbd>&nbsp;+&nbsp;<kbd>D</kbd> clears all selections in every mode simultaneously.</p>
+
 <h2>Marquee (Rubber-Band) Selection</h2>
-<p>Hold <kbd>&#8679; Shift</kbd> and drag on the canvas to draw a selection rectangle (shown in translucent blue).</p>
+<p>Hold <kbd>&#8679; Shift</kbd> and drag on the canvas to draw a selection rectangle (shown in translucent blue). Only geometry on the active layer is considered.</p>
 <ul>
   <li><b>Point mode</b> &mdash; selects all visible points whose position falls inside the rectangle.</li>
   <li><b>Edge mode</b> &mdash; selects all edges whose anchor-midpoint falls inside the rectangle.</li>
-  <li><b>Polygon mode</b> &mdash; selects all polygons whose centroid falls inside the rectangle.</li>
+  <li><b>Open Curve mode</b> &mdash; selects all open curves whose centroid falls inside the rectangle.</li>
+  <li><b>Polygon mode</b> &mdash; selects all closed polygons whose centroid falls inside the rectangle (open curves are excluded).</li>
 </ul>
-<div class="note">When edges are already selected in Edge Selection Mode, <kbd>&#8679; Shift</kbd>&nbsp;+&nbsp;drag triggers <b>Extrude</b> instead of the marquee. Deselect all edges first (click empty canvas) if you want to marquee-select in edge mode.</div>
+<div class="note">When edges are already selected in Edge Selection Mode, <kbd>&#8679; Shift</kbd>&nbsp;+&nbsp;drag triggers <b>Extrude</b> instead of the marquee. Deselect all edges first (<kbd>&#8984;</kbd>&nbsp;+&nbsp;<kbd>D</kbd> or click empty canvas) if you want to marquee-select in edge mode.</div>
 
 </body></html>

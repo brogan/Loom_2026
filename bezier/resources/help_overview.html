@@ -44,16 +44,17 @@
 <h3>Toolbar (top)</h3>
 <table>
   <tr><th>Group</th><th>Buttons</th></tr>
-  <tr><td>Selection modes</td><td>Point Selection &middot; Edge Selection &middot; Polygon Selection</td></tr>
-  <tr><td>Creation</td><td>Create Points &middot; Create Polygons &middot; Close Polygon &middot; Finish Open Curve</td></tr>
+  <tr><td>Selection modes</td><td>Point Selection (<kbd>a</kbd>) &middot; Edge Selection (<kbd>s</kbd>) &middot; Open Curve Selection (<kbd>d</kbd>) &middot; Polygon Selection (<kbd>f</kbd>)</td></tr>
+  <tr><td>Creation</td><td>Create Points (<kbd>h</kbd>) &middot; Create Oval (<kbd>j</kbd>) &middot; Create Polygons (<kbd>k</kbd>) &middot; Freehand Draw (<kbd>l</kbd>) &middot; Close Polygon &middot; Finish Open Curve</td></tr>
   <tr><td>Mesh</td><td>Intersect (Quad Mesh) &middot; Knife Tool</td></tr>
   <tr><td>Transform</td><td>Duplicate &middot; Flip Horizontal &middot; Flip Vertical</td></tr>
   <tr><td>Weld</td><td>Weld / Auto-Weld Toggle &middot; Weld All Adjacent</td></tr>
   <tr><td>Snap</td><td>Snap Anchors &middot; Snap Anchors &amp; Controls &middot; Centre</td></tr>
   <tr><td>Zoom</td><td>Zoom In &middot; Zoom Out</td></tr>
   <tr><td>View</td><td>Toggle Grid &middot; Toggle Control Points &middot; Toggle Reference Image</td></tr>
-  <tr><td>Destructive</td><td>Clear All Geometry &middot; Delete Selected</td></tr>
+  <tr><td>Destructive</td><td>Clear All Geometry &middot; Erase Selected Geometry</td></tr>
 </table>
+<div class="note">Each mode can also be activated with a single letter key (shown in parentheses) when no modifier key is held. The Edit menu (&#8984;Z / A / D / C / V / X) provides undo, selection, and clipboard operations.</div>
 
 <h3>Top Panel (below toolbar)</h3>
 <ul>
@@ -104,7 +105,7 @@
   <li>Each click on the canvas places a <span class="chip magenta">magenta dot</span> at that position.</li>
   <li>When finished, click <b>Save</b>. The points are written to <code>pointSets/{name}_points.xml</code>.</li>
 </ol>
-<div class="note">Points do not have bezier control points or edges. They are simply anchor positions. Selection modes still work &mdash; you can select, move, and delete points using Point Selection or Polygon Selection mode.</div>
+<div class="note">Points do not have bezier control points or edges. They are simply anchor positions. In Point Selection Mode or Point Creation Mode, click near a point (within 15 px) to select it &mdash; it appears as a <span class="chip magenta">magenta dot</span> with a yellow ring when selected. Drag to move. Use <kbd>&#8984;</kbd>&nbsp;+&nbsp;<kbd>X</kbd> or the <b>Erase Selected Geometry</b> button to delete.</div>
 
 <h2>Layer System</h2>
 <p>All geometry is organised into named layers. Every polygon, open curve, and point belongs to exactly one layer.</p>
@@ -124,8 +125,8 @@
   <tr><th>Button</th><th>Behaviour</th></tr>
   <tr><td><b>New</b></td><td>Creates a new layer and immediately sets it as the active layer.</td></tr>
   <tr><td><b>Rename</b></td><td>Renames the selected layer.</td></tr>
-  <tr><td><b>Duplicate</b></td><td>Copies all polygons from the selected layer into a new layer. The copy becomes active.</td></tr>
-  <tr><td><b>Delete</b></td><td>Deletes the layer and all its polygons. Disabled when only one layer exists. Shows a confirmation warning if the layer has content. <b>This cannot be undone.</b></td></tr>
+  <tr><td><b>Delete</b></td><td>Deletes the layer and all its geometry. Disabled when only one layer exists. Shows a confirmation warning if the layer has content. <b>This cannot be undone.</b></td></tr>
+  <tr><td><b>Duplicate</b></td><td>Copies all geometry from the selected layer into a new layer. The copy becomes active.</td></tr>
   <tr><td><b>&uarr; / &darr;</b></td><td>Moves the layer up or down in the draw order (higher layers draw in front).</td></tr>
 </table>
 

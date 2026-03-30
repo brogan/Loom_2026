@@ -65,9 +65,9 @@
 <p>An undo snapshot is taken at the start of the first drag movement.</p>
 
 <h2>Flip &amp; Centre</h2>
-<p><b>Flip Horizontal</b> &mdash; mirrors selected polygons left/right around their collective centroid. If nothing is selected, flips all polygons on the active layer.</p>
-<p><b>Flip Vertical</b> &mdash; mirrors selected polygons top/bottom around their collective centroid.</p>
-<p><b>Centre</b> &mdash; moves selected (or all) polygons so their collective centroid coincides with the canvas centre (500, 500).</p>
+<p><b>Flip Horizontal</b> &mdash; mirrors selected geometry left/right around the collective centroid of the selection. If nothing is selected, flips all geometry on the <b>active layer</b> (closed polygons, open curves, and ovals).</p>
+<p><b>Flip Vertical</b> &mdash; mirrors selected geometry top/bottom around the collective centroid.</p>
+<p><b>Centre</b> &mdash; moves the selection (or, if nothing is selected, all geometry on the active layer) so the group&rsquo;s collective centroid coincides with the canvas centre (500, 500). The entire group translates together as a unit &mdash; relative positions are preserved.</p>
 
 <h2>Zoom In / Zoom Out</h2>
 <p>The Zoom toolbar buttons scale all polygon geometry on the active layer around a pivot point:</p>
@@ -85,14 +85,21 @@
 <div class="warn">Zoom operates on <b>coordinate values</b> &mdash; it does not change the canvas view. It makes the geometry physically larger or smaller on the canvas. Keep polygon coordinates in the approximate &minus;0.5 to +0.5 normalised range for best compatibility with Loom's sprite sizing system.</div>
 
 <h2>Snap to Grid</h2>
-<p>The grid has 100&times;100 intersections over the 1000&times;1000 canvas (10 units per cell).</p>
-<p><b>Snap Anchors</b> &mdash; moves every anchor point to the nearest grid intersection. Control points are left unchanged.</p>
+<p>The grid has 100&times;100 intersections over the 1000&times;1000 canvas (10 units per cell). Both snap operations act only on the <b>active layer</b>.</p>
+<p><b>Snap Anchors</b> &mdash; moves every anchor point on the active layer to the nearest grid intersection. Control points are left unchanged.</p>
 <p><b>Snap Anchors &amp; Controls</b> &mdash; also recalculates control points after snapping anchors, restoring smooth tangents at the new grid positions. Use this to clean up handles that have drifted into unusual positions.</p>
 
-<h2>Copy &amp; Paste</h2>
-<p><kbd>&#8984; Cmd</kbd>&nbsp;+&nbsp;<kbd>C</kbd> &mdash; copies all currently selected polygons (in Polygon Selection mode) to an internal clipboard.</p>
-<p><kbd>&#8984; Cmd</kbd>&nbsp;+&nbsp;<kbd>V</kbd> &mdash; pastes the clipboard content as new closed polygons on the active layer, offset 20 px from the originals. An undo snapshot is taken.</p>
-<div class="note">Copy/Paste only copies the closed polygon geometry, not open curves or discrete points. Paste always targets the active layer.</div>
+<h2>Copy, Paste &amp; Cut</h2>
+<p><kbd>&#8984;</kbd>&nbsp;+&nbsp;<kbd>C</kbd> &mdash; copies the current selection to an internal clipboard:</p>
+<ul>
+  <li><b>Polygon Selection mode</b> &mdash; copies selected closed polygons and ovals.</li>
+  <li><b>Open Curve Selection mode</b> &mdash; copies selected open curves.</li>
+  <li><b>Edge Selection mode</b> &mdash; copies each selected edge as a standalone single-edge open curve.</li>
+  <li><b>Point Selection mode</b> &mdash; no-op (individual control points have no paste target).</li>
+</ul>
+<p><kbd>&#8984;</kbd>&nbsp;+&nbsp;<kbd>V</kbd> &mdash; pastes the clipboard as new geometry on the active layer. The pasted shapes are centred on the <b>current mouse cursor position</b> &mdash; hover the mouse where you want the paste to land before pressing Cmd+V. An undo snapshot is taken.</p>
+<p><kbd>&#8984;</kbd>&nbsp;+&nbsp;<kbd>X</kbd> &mdash; Cut: copies the selection to the clipboard (same as Cmd+C) then immediately deletes it.</p>
+<div class="note">Paste always targets the active layer regardless of which layer the original geometry was on.</div>
 
 <h2>Welding</h2>
 <p>Welding links anchor points from two different polygons so they share a position and move together in Relational mode. Proper welding is essential when building polygon meshes for Loom &mdash; unwelded adjacent polygons will tear apart when point-level transforms are applied.</p>
@@ -146,27 +153,30 @@
 <div class="note">Intersect works best when both polygons have the same number of sides and are roughly concentric. The result is a topologically clean quad ring suitable for subdivision in Loom.</div>
 
 <h2>Knife Tool</h2>
-<p>The Knife Tool cuts through one or more polygons along a drag line.</p>
+<p>The Knife Tool cuts through one or more polygons along a drawn segment.</p>
 <h3>Procedure</h3>
 <ol>
   <li>Click the <b>Knife</b> toolbar button to enter Knife mode (toggle). The previous selection mode is remembered and restored when you deactivate the Knife.</li>
-  <li>Drag across the canvas. A dashed red line shows the cut direction, extending infinitely in both directions.</li>
-  <li>Release the mouse. Every polygon on the active layer intersected by the line is split at the crossing points.</li>
+  <li>Drag across the canvas. A dashed red line with a perpendicular tick at the start shows the cut segment.</li>
+  <li>Release the mouse. Every polygon on the active layer that the drag segment physically crosses is split at the intersection points.</li>
   <li>Click the Knife button again (or click any selection mode button) to exit Knife mode.</li>
 </ol>
-<div class="note">The knife cut is undoable. The two new polygons that result from cutting a polygon are not automatically welded at the cut edge &mdash; use Weld All Adjacent afterwards if you want the cut seam to be linked.</div>
+<div class="note">Only polygons that lie between the start and end of the drag are cut &mdash; geometry beyond the endpoints is unaffected. This makes it safe to cut one side of a donut or mesh without splitting the opposite side. The cut is undoable. New polygons at the cut seam are not automatically welded &mdash; use Weld All Adjacent afterwards if you want the seam linked.</div>
 
 <h2>Duplicate &amp; Delete</h2>
 <h3>Duplicate</h3>
 <ul>
   <li><b>Polygon mode</b> &mdash; copies of all selected polygons, offset 20 px right and down. Originals are deselected; duplicates become the new selection.</li>
-  <li><b>Edge mode</b> &mdash; a single-edge polygon copy of each selected edge, offset 20 px. Useful for quickly creating a parallel edge to extrude or weld.</li>
+  <li><b>Edge mode</b> &mdash; a single-edge open curve copy of each selected edge, offset 20 px. Useful for quickly creating a parallel edge to extrude or weld.</li>
 </ul>
-<h3>Delete Selected</h3>
+<h3>Erase Selected Geometry (<kbd>&#8984;</kbd>&nbsp;+&nbsp;<kbd>X</kbd> or toolbar button)</h3>
+<p>Removes whatever is currently selected, regardless of type:</p>
 <ul>
-  <li><b>Polygon mode</b> &mdash; removes selected polygon managers and unregisters their weld links from the Weld Registry.</li>
+  <li><b>Polygon mode</b> &mdash; removes selected closed polygons and ovals; unregisters their weld links.</li>
+  <li><b>Open Curve mode</b> &mdash; removes selected open curves.</li>
   <li><b>Edge mode</b> &mdash; removes selected curve segments from their parent polygons.</li>
+  <li><b>Point mode / Point Selection mode</b> &mdash; removes selected free-standing discrete points.</li>
 </ul>
-<p><b>Clear All Geometry</b> &mdash; removes every polygon on the active layer and resets the weld registry. Undoable.</p>
+<p><b>Clear All Geometry</b> &mdash; removes all geometry on the canvas and resets the weld registry. Undoable.</p>
 
 </body></html>
