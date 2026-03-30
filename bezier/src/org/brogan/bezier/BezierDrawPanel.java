@@ -78,6 +78,13 @@ public class BezierDrawPanel extends JPanel implements Runnable, MouseListener, 
 	private SubModeChangeListener subModeChangeListener;
 	public void setSubModeChangeListener(SubModeChangeListener l) { subModeChangeListener = l; }
 
+	/** Notified when a plain (unmodified) mode-shortcut key is typed. */
+	public interface ModeKeyListener {
+		void onModeKey(char key);
+	}
+	private ModeKeyListener modeKeyListener;
+	public void setModeKeyListener(ModeKeyListener l) { modeKeyListener = l; }
+
 	/** Identifies a single spline edge: which polygon manager + which curve index within it. */
 	static class SelectedEdge {
 		final CubicCurveManager manager;
@@ -1545,9 +1552,11 @@ public class BezierDrawPanel extends JPanel implements Runnable, MouseListener, 
 		takeUndoSnapshot();
 		WeldRegistry wr = polygonManager.getWeldRegistry();
 		HashSet<CubicPoint> processed = new HashSet<>();
+		int al = layerManager.getActiveLayerId();
 		int polygonCount = polygonManager.getPolygonCount();
 		for (int i = 0; i < polygonCount; i++) {
 			CubicCurveManager curveM = polygonManager.getManager(i);
+			if (curveM.getLayerId() != al) continue;
 			CubicCurvePolygon curves = curveM.getCurves();
 			int totCurves = curveM.getCurveCount();
 			for (int j = 0; j < totCurves + 1; j++) {
@@ -1856,30 +1865,27 @@ public class BezierDrawPanel extends JPanel implements Runnable, MouseListener, 
 	public void performCentre() {
 		takeUndoSnapshot();
 		Point2D.Double screenCentre = new Point2D.Double(edgeOffset + GRIDWIDTH / 2.0, edgeOffset + GRIDHEIGHT / 2.0);
-		if (selectedPolygons.isEmpty() && selectedOvals.isEmpty()) {
-			polygonManager.centerPolygonSet(screenCentre);
-			for (OvalManager o : ovalList) {
-				o.setCx(screenCentre.x);
-				o.setCy(screenCentre.y);
-			}
-			return;
-		}
+		int al = layerManager.getActiveLayerId();
+		java.util.List<CubicCurveManager> targets = selectedPolygons.isEmpty()
+			? getManagersInLayer(al) : selectedPolygons;
+		java.util.List<OvalManager> ovalTargets = selectedOvals.isEmpty()
+			? getOvalsInLayer(al) : selectedOvals;
 		double cx = 0, cy = 0; int cnt = 0;
-		for (CubicCurveManager m : selectedPolygons) {
+		for (CubicCurveManager m : targets) {
 			if (m.getCurves().getCubicCurveTotal() > 0) {
 				Point2D.Double c = m.getAverageXY();
 				cx += c.x; cy += c.y; cnt++;
 			}
 		}
-		for (OvalManager o : selectedOvals) { cx += o.getCx(); cy += o.getCy(); cnt++; }
+		for (OvalManager o : ovalTargets) { cx += o.getCx(); cy += o.getCy(); cnt++; }
 		if (cnt == 0) return;
 		double dx = screenCentre.x - cx / cnt;
 		double dy = screenCentre.y - cy / cnt;
 		java.util.HashSet<CubicPoint> moved = new java.util.HashSet<>();
-		for (CubicCurveManager m : selectedPolygons) {
+		for (CubicCurveManager m : targets) {
 			m.setCenterPosition(new Point2D.Double(dx, dy), moved);
 		}
-		for (OvalManager o : selectedOvals) o.translate(dx, dy);
+		for (OvalManager o : ovalTargets) o.translate(dx, dy);
 	}
 
 	/**
@@ -1890,9 +1896,11 @@ public class BezierDrawPanel extends JPanel implements Runnable, MouseListener, 
 	 */
 	public void performFlip(boolean horizontal) {
 		takeUndoSnapshot();
+		int al = layerManager.getActiveLayerId();
 		java.util.List<CubicCurveManager> targets = selectedPolygons.isEmpty()
-			? getAllManagers() : selectedPolygons;
-		java.util.List<OvalManager> ovalTargets = selectedOvals.isEmpty() ? ovalList : selectedOvals;
+			? getManagersInLayer(al) : selectedPolygons;
+		java.util.List<OvalManager> ovalTargets = selectedOvals.isEmpty()
+			? getOvalsInLayer(al) : selectedOvals;
 		double cx = 0, cy = 0; int cnt = 0;
 		for (CubicCurveManager m : targets) {
 			if (m.getCurves().getCubicCurveTotal() > 0) {
@@ -1922,12 +1930,31 @@ public class BezierDrawPanel extends JPanel implements Runnable, MouseListener, 
 		}
 	}
 
-	/** Returns all closed polygon managers (excludes the active drawing manager). */
+	/** Returns all polygon managers (excludes the active drawing manager). */
 	private java.util.List<CubicCurveManager> getAllManagers() {
 		int tot = polygonManager.getPolygonCount();
 		java.util.List<CubicCurveManager> all = new ArrayList<>();
 		for (int i = 0; i < tot; i++) all.add(polygonManager.getManager(i));
 		return all;
+	}
+
+	/** Returns all managers on the given layer. */
+	private java.util.List<CubicCurveManager> getManagersInLayer(int layerId) {
+		int tot = polygonManager.getPolygonCount();
+		java.util.List<CubicCurveManager> result = new ArrayList<>();
+		for (int i = 0; i < tot; i++) {
+			CubicCurveManager m = polygonManager.getManager(i);
+			if (m.getLayerId() == layerId) result.add(m);
+		}
+		return result;
+	}
+
+	/** Returns all ovals on the given layer. */
+	private java.util.List<OvalManager> getOvalsInLayer(int layerId) {
+		java.util.List<OvalManager> result = new ArrayList<>();
+		for (OvalManager o : ovalList)
+			if (o.getLayerId() == layerId) result.add(o);
+		return result;
 	}
 
 	// ── Undo machinery ───────────────────────────────────────────────────────
@@ -2996,7 +3023,16 @@ public class BezierDrawPanel extends JPanel implements Runnable, MouseListener, 
 	public void keyPressed(KeyEvent e) {
 	}
 	public void keyReleased(KeyEvent e) {}
-	public void keyTyped(KeyEvent e) {}
+	public void keyTyped(KeyEvent e) {
+		// Plain (unmodified) letter shortcuts activate toolbar modes
+		if (e.getModifiersEx() == 0 && modeKeyListener != null) {
+			char c = e.getKeyChar();
+			if (c == 'a' || c == 's' || c == 'd' || c == 'f' ||
+				c == 'h' || c == 'j' || c == 'k' || c == 'l') {
+				modeKeyListener.onModeKey(c);
+			}
+		}
+	}
 
 	private void toggleActiveSubMode() {
 		if (pointSelectionModeEnabled) {

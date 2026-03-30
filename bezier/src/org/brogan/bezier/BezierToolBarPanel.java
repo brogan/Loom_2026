@@ -564,6 +564,22 @@ public class BezierToolBarPanel extends JPanel {
 				refreshSubModeIcons();
 			}
 		});
+
+		// ── Plain-key mode shortcuts ──────────────────────────────────────────
+		bezier.setModeKeyListener(new BezierDrawPanel.ModeKeyListener() {
+			public void onModeKey(char key) {
+				switch (key) {
+					case 'a': activatePointSelectionMode();     break;
+					case 's': activateEdgeSelectionMode();      break;
+					case 'd': activateOpenCurveSelectionMode(); break;
+					case 'f': activatePolygonSelectionMode();   break;
+					case 'h': activatePointMode();              break;
+					case 'j': activateCreateOvalMode();         break;
+					case 'k': activatePolygonMode();            break;
+					case 'l': activateFreehandMode();           break;
+				}
+			}
+		});
 	}
 
 	// ── Helpers ───────────────────────────────────────────────────────────────
@@ -654,6 +670,57 @@ public class BezierToolBarPanel extends JPanel {
 		bezier.setOpenCurveSelectionMode(false);
 		polygonSelectionMode.setSelected(true);
 		bezier.setPolygonSelectionMode(true);
+	}
+
+	/**
+	 * Activate Edge Selection Mode programmatically.
+	 */
+	public void activateEdgeSelectionMode() {
+		bezier.autoFinishOpenCurveIfNeeded();
+		CubicCurvePolygonManager polygonManager = bezier.getPolygonManager();
+		int idx = polygonManager.getPolygonCount();
+		polygonManager.getManager(idx).setAddPoints(false);
+		polygonMode.setSelected(false);
+		pointModeToggle.setSelected(false);
+		selectionMode.setSelected(false);
+		polygonSelectionMode.setSelected(false);
+		openCurveSelectionMode.setSelected(false);
+		knifeTool.setSelected(false);
+		drawCurveMode.setSelected(false);
+		bezier.setKnifeMode(false);
+		bezier.setFreehandMode(false);
+		bezier.setOpenCurveSelectionMode(false);
+		bezier.setPointMode(false);
+		bezier.setPolygonSelectionMode(false);
+		bezier.setPointSelectionMode(false);
+		edgeSelectionMode.setSelected(true);
+		bezier.setEdgeSelectionMode(true);
+	}
+
+	/**
+	 * Create a new oval and switch to Polygon Selection Mode programmatically.
+	 */
+	public void activateCreateOvalMode() {
+		bezier.autoFinishOpenCurveIfNeeded();
+		CubicCurvePolygonManager polygonManager = bezier.getPolygonManager();
+		int idx = polygonManager.getPolygonCount();
+		polygonManager.getManager(idx).setAddPoints(false);
+		selectionMode.setSelected(false);
+		edgeSelectionMode.setSelected(false);
+		openCurveSelectionMode.setSelected(false);
+		pointModeToggle.setSelected(false);
+		polygonMode.setSelected(false);
+		knifeTool.setSelected(false);
+		drawCurveMode.setSelected(false);
+		bezier.setKnifeMode(false);
+		bezier.setFreehandMode(false);
+		bezier.setOpenCurveSelectionMode(false);
+		bezier.setPointMode(false);
+		bezier.setEdgeSelectionMode(false);
+		bezier.setPointSelectionMode(false);
+		polygonSelectionMode.setSelected(true);
+		bezier.setPolygonSelectionMode(true);
+		bezier.createOval();
 	}
 
 	/**
