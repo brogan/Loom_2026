@@ -206,6 +206,22 @@ public class BezierKnifeTool {
             }
             raw.sort(Comparator.comparingDouble(x -> x.globalT));
             List<Intersection> hits = deduplicate(raw);
+
+            // Filter to intersections that lie within the drawn segment [lineA, lineB].
+            // The infinite-line equation used above also catches geometry far beyond the
+            // endpoints; projecting each hit onto the segment and discarding those outside
+            // [0,1] restricts cuts to only what the segment actually crosses.
+            double segDX = lineB.x - lineA.x, segDY = lineB.y - lineA.y;
+            double segLen2 = segDX * segDX + segDY * segDY;
+            if (segLen2 > 1e-10) {
+                List<Intersection> inSeg = new ArrayList<>();
+                for (Intersection ix : hits) {
+                    double s = ((ix.pt.x - lineA.x) * segDX + (ix.pt.y - lineA.y) * segDY) / segLen2;
+                    if (s >= -0.02 && s <= 1.02) inSeg.add(ix);
+                }
+                hits = inSeg;
+            }
+
             if (hits.size() < 2 || hits.size() % 2 != 0) continue;
 
             boolean sel = preKnifeSelection != null && preKnifeSelection.contains(mgr);

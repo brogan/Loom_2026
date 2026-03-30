@@ -550,7 +550,7 @@ public class BezierToolBarPanel extends JPanel {
 		toolBar.add(clearGrid);
 
 		deleteSelected = new JButton();
-		initButton(deleteSelected, "Erase Selected Polygons", "eraseSelectedPolygons");
+		initButton(deleteSelected, "Erase Selected Geometry", "eraseSelectedPolygons");
 		deleteSelected.addActionListener(new ActionListener() {
 			public void actionPerformed(ActionEvent e) {
 				bezier.performDelete();

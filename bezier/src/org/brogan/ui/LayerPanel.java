@@ -124,8 +124,8 @@ public class LayerPanel extends JPanel {
         JPanel btnRow = new JPanel(new FlowLayout(FlowLayout.LEFT, 3, 3));
         btnRow.add(newBtn);
         btnRow.add(renBtn);
-        btnRow.add(dupBtn);
         btnRow.add(deleteButton);
+        btnRow.add(dupBtn);
         btnRow.add(upBtn);
         btnRow.add(dnBtn);
         add(btnRow, BorderLayout.SOUTH);

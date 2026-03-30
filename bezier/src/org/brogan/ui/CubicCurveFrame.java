@@ -11,6 +11,7 @@ import java.awt.event.ActionEvent;
 import java.awt.event.ActionListener;
 import java.awt.event.ComponentAdapter;
 import java.awt.event.ComponentEvent;
+import java.awt.event.KeyEvent;
 import java.awt.event.WindowEvent;
 import java.awt.event.WindowListener;
 import java.io.IOException;
@@ -178,6 +179,46 @@ public class CubicCurveFrame extends JFrame implements WindowListener{
 	
 	private JMenuBar createMenuBar() {
 		JMenuBar menuBar = new JMenuBar();
+		int cmd = Toolkit.getDefaultToolkit().getMenuShortcutKeyMaskEx();
+
+		JMenu editMenu = new JMenu("Edit");
+
+		JMenuItem undoItem = new JMenuItem("Undo");
+		undoItem.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_Z, cmd));
+		undoItem.addActionListener(e -> curvePanel.getBezier().undo());
+
+		JMenuItem selectAllItem = new JMenuItem("Select All");
+		selectAllItem.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_A, cmd));
+		selectAllItem.addActionListener(e -> curvePanel.getBezier().selectAll());
+
+		JMenuItem deselectAllItem = new JMenuItem("Deselect All");
+		deselectAllItem.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_D, cmd));
+		deselectAllItem.addActionListener(e -> curvePanel.getBezier().deselectAll());
+
+		JMenuItem copyItem = new JMenuItem("Copy");
+		copyItem.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_C, cmd));
+		copyItem.addActionListener(e -> curvePanel.getBezier().copySelectedToClipboard());
+
+		JMenuItem pasteItem = new JMenuItem("Paste");
+		pasteItem.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_V, cmd));
+		pasteItem.addActionListener(e -> curvePanel.getBezier().pasteFromClipboard());
+
+		JMenuItem deleteItem = new JMenuItem("Cut");
+		deleteItem.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_X, cmd));
+		deleteItem.addActionListener(e -> {
+			curvePanel.getBezier().copySelectedToClipboard();
+			curvePanel.getBezier().performDelete();
+		});
+
+		editMenu.add(undoItem);
+		editMenu.addSeparator();
+		editMenu.add(selectAllItem);
+		editMenu.add(deselectAllItem);
+		editMenu.addSeparator();
+		editMenu.add(copyItem);
+		editMenu.add(pasteItem);
+		editMenu.add(deleteItem);
+		menuBar.add(editMenu);
 
 		JMenu helpMenu = new JMenu("Help");
 		JMenuItem helpItem = new JMenuItem("Bezier Help…");
