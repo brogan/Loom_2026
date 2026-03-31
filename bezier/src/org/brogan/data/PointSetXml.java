@@ -2,6 +2,7 @@ package org.brogan.data;
 
 import java.awt.geom.Point2D;
 import java.util.List;
+import java.util.ArrayList;
 
 import org.brogan.bezier.*;
 import org.brogan.ui.*;
@@ -21,16 +22,17 @@ public class PointSetXml extends XmlManager {
 
 	/**
 	 * Build and save the XML.
-	 * @param n         Name for the pointSet
-	 * @param points    Pixel-space Point2D.Double coordinates from BezierDrawPanel
-	 * @param ccP       CubicCurvePanel (used to query grid/offset dimensions)
-	 * @param sX        scaleX
-	 * @param sY        scaleY
-	 * @param rA        rotationAngle
-	 * @param tX        transX
-	 * @param tY        transY
+	 * @param n          Name for the pointSet
+	 * @param points     Pixel-space Point2D.Double coordinates from BezierDrawPanel
+	 * @param pressures  Per-point pressure values (parallel to points); may be null or shorter
+	 * @param ccP        CubicCurvePanel (used to query grid/offset dimensions)
+	 * @param sX         scaleX
+	 * @param sY         scaleY
+	 * @param rA         rotationAngle
+	 * @param tX         transX
+	 * @param tY         transY
 	 */
-	public void createNewXml(String n, List<Point2D.Double> points,
+	public void createNewXml(String n, List<Point2D.Double> points, List<Float> pressures,
 	                          CubicCurvePanel ccP, double sX, double sY, double rA, double tX, double tY) {
 
 		BezierDrawPanel bezier = ccP.getBezier();
@@ -44,7 +46,8 @@ public class PointSetXml extends XmlManager {
 		super.getRoot().appendChild(name);
 
 		// One <point> per discrete point
-		for (Point2D.Double pt : points) {
+		for (int i = 0; i < points.size(); i++) {
+			Point2D.Double pt = points.get(i);
 			// 1. normalise to [-0.5, 0.5]
 			double nX = (pt.x / (double) gridWidth)  - 0.5;
 			double nY = (pt.y / (double) gridHeight) - 0.5;
@@ -58,6 +61,11 @@ public class PointSetXml extends XmlManager {
 			Element pointEl = new Element("point");
 			pointEl.addAttribute(new Attribute("x", Double.toString(sX2)));
 			pointEl.addAttribute(new Attribute("y", Double.toString(sY2)));
+			// Write pressure only when it differs from the default
+			float pr = (pressures != null && i < pressures.size()) ? pressures.get(i) : 1.0f;
+			if (pr != 1.0f) {
+				pointEl.addAttribute(new Attribute("pressure", String.format("%.3f", pr)));
+			}
 			super.getRoot().appendChild(pointEl);
 		}
 

@@ -410,7 +410,7 @@ public class CubicCurvePanel extends JPanel implements MouseListener, ChangeList
 			String pointsXmlPath = pointSetsDir.getAbsolutePath() + File.separator + pointsFn + ".xml";
 			org.brogan.data.PointSetXml pointsXml = new org.brogan.data.PointSetXml(dtdPath);
 			pointsXml.setXmlFilePath(pointsXmlPath);
-			pointsXml.createNewXml(pointsFn, points, this, sX, sY, rotA, 0.5, 0.5);
+			pointsXml.createNewXml(pointsFn, points, bezier.getPointPressures(), this, sX, sY, rotA, 0.5, 0.5);
 			System.out.println("CubicCurvePanel: saved point set to " + pointsXmlPath);
 		}
 		// Save ovals (if any) to the ovalSets directory
@@ -520,7 +520,7 @@ public class CubicCurvePanel extends JPanel implements MouseListener, ChangeList
 
 		org.brogan.data.PointSetXml xml = new org.brogan.data.PointSetXml(dtdPath);
 		xml.setXmlFilePath(xmlPath);
-		xml.createNewXml(overallFn, points, this, sX, sY, rotA, 0.5, 0.5);
+		xml.createNewXml(overallFn, points, bezier.getPointPressures(), this, sX, sY, rotA, 0.5, 0.5);
 		System.out.println("CubicCurvePanel: saved point set to " + xmlPath);
 	}
 

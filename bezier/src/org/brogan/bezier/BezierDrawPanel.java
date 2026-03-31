@@ -173,6 +173,13 @@ public class BezierDrawPanel extends JPanel implements Runnable, MouseListener, 
 	private static final double FREEHAND_MIN_STEP = 3.0;
 	private static final double FREEHAND_SNAP_RADIUS = 20.0;
 
+	// ── Pressure sensitivity ──────────────────────────────────────────────────
+	private final PressureSource pressureSource = StylusPressureSource.createBest();
+	/** Pressure samples parallel to freehandRaw (guarded by freehandRaw monitor). */
+	private final java.util.List<Float> freehandPressures = new ArrayList<>();
+	/** Per-point pressure parallel to pointList. */
+	private java.util.List<Float> pointPressures = new ArrayList<>();
+
 	public BezierDrawPanel(CubicCurvePanel p, CubicCurveFrame  cF, Color strokeCol){
 		cubicCurvePanel = p;
 		curveFrame = cF;
@@ -346,18 +353,21 @@ public class BezierDrawPanel extends JPanel implements Runnable, MouseListener, 
 				rg.drawRect(rx, ry, rw, rh);
 			}
 
-			// Draw discrete points (point mode)
+			// Draw discrete points (point mode) — radius scales with pressure
 			if (!pointList.isEmpty()) {
 				Graphics2D pg = (Graphics2D) dBufferGraphics;
-				int r = 5;
+				pg.setStroke(new BasicStroke(1.5f));
 				for (int pi = 0; pi < pointList.size(); pi++) {
 					Point2D.Double pt = pointList.get(pi);
+					float pr = (pi < pointPressures.size()) ? pointPressures.get(pi) : 1.0f;
+					int r = Math.max(3, (int)(pr * 8)); // 3..8 px based on pressure
 					int px = (int) pt.x, py = (int) pt.y;
 					if (pi == selectedDiscretePointIndex) {
 						// Yellow selection ring
 						pg.setColor(new Color(255, 220, 0, 220));
 						pg.setStroke(new BasicStroke(2f));
 						pg.drawOval(px - r - 3, py - r - 3, (r + 3) * 2, (r + 3) * 2);
+						pg.setStroke(new BasicStroke(1.5f));
 					}
 					// Purple body (same colour selected or not)
 					pg.setColor(new Color(200, 0, 255, 220));
@@ -385,21 +395,20 @@ public class BezierDrawPanel extends JPanel implements Runnable, MouseListener, 
 				}
 			}
 
-			// Draw freehand stroke preview
+			// Draw freehand stroke preview — variable-width ribbon based on pressure
 			if (freehandActive) {
 				Point2D.Double[] fhSnap;
+				float[] fpSnap;
 				synchronized (freehandRaw) {
 					fhSnap = freehandRaw.toArray(new Point2D.Double[0]);
+					fpSnap = new float[freehandPressures.size()];
+					for (int fi = 0; fi < fpSnap.length; fi++) fpSnap[fi] = freehandPressures.get(fi);
 				}
 				if (fhSnap.length >= 2) {
 					Graphics2D fg = (Graphics2D) dBufferGraphics;
 					fg.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
-					fg.setColor(new Color(80, 80, 80, 160));
-					fg.setStroke(new BasicStroke(1.5f));
-					for (int i = 1; i < fhSnap.length; i++) {
-						Point2D.Double fa = fhSnap[i - 1], fb = fhSnap[i];
-						fg.draw(new java.awt.geom.Line2D.Double(fa.x, fa.y, fb.x, fb.y));
-					}
+					fg.setColor(new Color(60, 60, 100, 180));
+					drawPressureRibbon(fg, fhSnap, fpSnap, 5.0f);
 					if (freehandCurrentPos != null && fhSnap.length > 5 &&
 							Formulas.hypotenuse(freehandCurrentPos, freehandFirstPos) < FREEHAND_SNAP_RADIUS) {
 						fg.setColor(new Color(0, 180, 0, 200));
@@ -442,6 +451,56 @@ public class BezierDrawPanel extends JPanel implements Runnable, MouseListener, 
 	}
 
 
+	/**
+	 * Draw a variable-width ribbon along a polyline, where width at each vertex
+	 * is proportional to the corresponding pressure value.
+	 * @param g          graphics context (antialiasing should already be enabled)
+	 * @param pts        polyline vertices
+	 * @param pressures  pressure values parallel to pts; values in [0,1]
+	 * @param maxHalfW   maximum half-width in pixels at pressure=1.0
+	 */
+	private void drawPressureRibbon(Graphics2D g, Point2D.Double[] pts, float[] pressures, float maxHalfW) {
+		int n = pts.length;
+		if (n < 2) return;
+		double[] lx = new double[n], ly = new double[n];
+		double[] rx = new double[n], ry = new double[n];
+		for (int i = 0; i < n; i++) {
+			float pr = (i < pressures.length) ? pressures[i] : 1.0f;
+			double w = Math.max(0.5, pr * maxHalfW);
+			// Perpendicular direction at vertex i (averaged from adjacent segments)
+			double nx, ny;
+			if (i == 0) {
+				double ddx = pts[1].x - pts[0].x, ddy = pts[1].y - pts[0].y;
+				double len = Math.sqrt(ddx*ddx + ddy*ddy); if (len < 0.001) len = 1;
+				nx = -ddy / len; ny = ddx / len;
+			} else if (i == n - 1) {
+				double ddx = pts[n-1].x - pts[n-2].x, ddy = pts[n-1].y - pts[n-2].y;
+				double len = Math.sqrt(ddx*ddx + ddy*ddy); if (len < 0.001) len = 1;
+				nx = -ddy / len; ny = ddx / len;
+			} else {
+				double ddx1 = pts[i].x - pts[i-1].x, ddy1 = pts[i].y - pts[i-1].y;
+				double len1 = Math.sqrt(ddx1*ddx1 + ddy1*ddy1); if (len1 < 0.001) len1 = 1;
+				double ddx2 = pts[i+1].x - pts[i].x, ddy2 = pts[i+1].y - pts[i].y;
+				double len2 = Math.sqrt(ddx2*ddx2 + ddy2*ddy2); if (len2 < 0.001) len2 = 1;
+				nx = (-ddy1/len1 + -ddy2/len2) * 0.5;
+				ny = (ddx1/len1 +  ddx2/len2) * 0.5;
+				double nlen = Math.sqrt(nx*nx + ny*ny); if (nlen < 0.001) nlen = 1;
+				nx /= nlen; ny /= nlen;
+			}
+			lx[i] = pts[i].x + nx * w;
+			ly[i] = pts[i].y + ny * w;
+			rx[i] = pts[i].x - nx * w;
+			ry[i] = pts[i].y - ny * w;
+		}
+		// Build closed path: left edge forward, right edge backward
+		java.awt.geom.GeneralPath ribbon = new java.awt.geom.GeneralPath();
+		ribbon.moveTo(lx[0], ly[0]);
+		for (int i = 1; i < n; i++) ribbon.lineTo(lx[i], ly[i]);
+		for (int i = n - 1; i >= 0; i--) ribbon.lineTo(rx[i], ry[i]);
+		ribbon.closePath();
+		g.fill(ribbon);
+	}
+
 	/* (non-Javadoc)
 	 * @see java.awt.event.MouseMotionListener#mouseDragged(java.awt.event.MouseEvent)
 	 */
@@ -451,6 +510,7 @@ public class BezierDrawPanel extends JPanel implements Runnable, MouseListener, 
 			synchronized (freehandRaw) {
 				if (Formulas.hypotenuse(freehandRaw.get(freehandRaw.size() - 1), fhPos) >= FREEHAND_MIN_STEP) {
 					freehandRaw.add(fhPos);
+					freehandPressures.add(pressureSource.getPressure());
 				}
 			}
 			freehandCurrentPos = fhPos;
@@ -723,10 +783,15 @@ public class BezierDrawPanel extends JPanel implements Runnable, MouseListener, 
 
 		if (freehandMode) {
 			takeUndoSnapshot();
-			freehandRaw.clear();
-			Point2D.Double fhPos = scaleMouse(mE);
-			freehandRaw.add(fhPos);
-			freehandFirstPos = fhPos;
+			synchronized (freehandRaw) {
+				freehandRaw.clear();
+				freehandPressures.clear();
+				Point2D.Double fhPos = scaleMouse(mE);
+				freehandRaw.add(fhPos);
+				freehandPressures.add(pressureSource.getPressure());
+				freehandFirstPos = fhPos;
+			}
+			freehandFirstPos = freehandRaw.get(0);
 			freehandActive = true;
 			return;
 		}
@@ -872,9 +937,12 @@ public class BezierDrawPanel extends JPanel implements Runnable, MouseListener, 
 		if (freehandMode && freehandActive) {
 			freehandActive = false;
 			java.util.List<Point2D.Double> snapshot;
+			java.util.List<Float> pressureSnapshot;
 			synchronized (freehandRaw) {
 				snapshot = new java.util.ArrayList<>(freehandRaw);
+				pressureSnapshot = new java.util.ArrayList<>(freehandPressures);
 				freehandRaw.clear();
+				freehandPressures.clear();
 			}
 			if (snapshot.size() >= 2) {
 				boolean doClose = snapshot.size() > 5 &&
@@ -883,14 +951,24 @@ public class BezierDrawPanel extends JPanel implements Runnable, MouseListener, 
 					snapshot.add(new Point2D.Double(freehandFirstPos.x, freehandFirstPos.y));
 				Point2D.Double[] fitted = CurveFitter.fit(snapshot, freehandErrorThreshold);
 				if (fitted != null && fitted.length >= 4) {
+					// Map raw pressures to per-anchor pressures after curve fitting
+					int numSegments = fitted.length / 4;
+					int numAnchors  = numSegments + 1;
+					int rawN        = pressureSnapshot.size();
+					float[] anchorPressures = new float[numAnchors];
+					for (int k = 0; k < numAnchors; k++) {
+						int rawIdx = (numAnchors > 1)
+							? Math.round((float) k * (rawN - 1) / (numAnchors - 1))
+							: 0;
+						rawIdx = Math.max(0, Math.min(rawN - 1, rawIdx));
+						anchorPressures[k] = pressureSnapshot.get(rawIdx);
+					}
 					synchronized (polygonManager) {
-						if (doClose) polygonManager.addClosedFromPoints(fitted, strokeColor);
-						else         polygonManager.addOpenCurveFromPoints(fitted, strokeColor);
-						// Do NOT call addManager() here. addClosedFromPoints/addOpenCurveFromPoints
-						// insert the new manager at size-1 (before the existing blank), so the
-						// blank active manager is still at the end. addManager() would add a second
-						// blank, breaking the invariant and causing curves 3+ to fall outside the
-						// range that draw() iterates, making them invisible and unsaved.
+						CubicCurveManager newMgr;
+						if (doClose) newMgr = polygonManager.addClosedFromPoints(fitted, strokeColor);
+						else         newMgr = polygonManager.addOpenCurveFromPoints(fitted, strokeColor);
+						newMgr.setAnchorPressures(anchorPressures);
+						// Do NOT call addManager() here — see comment above.
 					}
 				}
 			}
@@ -1983,7 +2061,9 @@ public class BezierDrawPanel extends JPanel implements Runnable, MouseListener, 
 					}
 				}
 			}
-			managers[i] = new GeometrySnapshot.ManagerSnap(isSingleEdge, m.getIsClosed(), n, px, py, m.getLayerId());
+				float[] aps = m.getAnchorPressures();
+			float[] apsCopy = (aps != null) ? java.util.Arrays.copyOf(aps, aps.length) : null;
+			managers[i] = new GeometrySnapshot.ManagerSnap(isSingleEdge, m.getIsClosed(), n, px, py, m.getLayerId(), apsCopy);
 		}
 
 		// Capture cross-manager weld links (deduplicated by canonical index key)
@@ -2011,6 +2091,12 @@ public class BezierDrawPanel extends JPanel implements Runnable, MouseListener, 
 		}
 		// Snapshot the discrete point list
 		Point2D.Double[] pointsSnap = pointList.toArray(new Point2D.Double[0]);
+		// Snapshot per-point pressures
+		float[] ppSnap = null;
+		if (!pointPressures.isEmpty()) {
+			ppSnap = new float[pointPressures.size()];
+			for (int i = 0; i < ppSnap.length; i++) ppSnap[i] = pointPressures.get(i);
+		}
 		// Snapshot ovals
 		GeometrySnapshot.OvalSnap[] ovalsSnap = new GeometrySnapshot.OvalSnap[ovalList.size()];
 		for (int i = 0; i < ovalList.size(); i++) {
@@ -2019,7 +2105,7 @@ public class BezierDrawPanel extends JPanel implements Runnable, MouseListener, 
 		}
 		return new GeometrySnapshot(managers,
 			weldLinks.toArray(new GeometrySnapshot.WeldLinkSnap[0]),
-			pointsSnap, ovalsSnap);
+			pointsSnap, ovalsSnap, ppSnap);
 	}
 
 	/** Push the current geometry state onto the undo stack. */
@@ -2043,8 +2129,13 @@ public class BezierDrawPanel extends JPanel implements Runnable, MouseListener, 
 		polygonManager.restoreFromSnapshot(snap, strokeColor);
 		// Restore discrete points
 		pointList.clear();
-		for (Point2D.Double pt : snap.points) {
+		pointPressures.clear();
+		for (int i = 0; i < snap.points.length; i++) {
+			Point2D.Double pt = snap.points[i];
 			pointList.add(new Point2D.Double(pt.x, pt.y));
+			float pr = (snap.pointPressures != null && i < snap.pointPressures.length)
+				? snap.pointPressures[i] : 1.0f;
+			pointPressures.add(pr);
 		}
 		// Restore ovals
 		ovalList.clear();
@@ -2177,6 +2268,8 @@ public class BezierDrawPanel extends JPanel implements Runnable, MouseListener, 
 			Elements curves = openCurve.getChildElements("curve");
 			int totCurves = curves.size();
 
+			java.util.List<Float> anchorPrList = new java.util.ArrayList<>();
+
 			for (int c = 0; c < totCurves; c++) {
 				Element curve = curves.get(c);
 				Elements points = curve.getChildElements("point");
@@ -2197,6 +2290,14 @@ public class BezierDrawPanel extends JPanel implements Runnable, MouseListener, 
 				Double A2y = Double.valueOf(points.get(3).getAttributeValue("y")) + offset;
 				Point2D.Double A2 = new Point2D.Double(A2x, A2y);
 
+				// Collect anchor pressures (anchor = index 0 and 3 of each curve)
+				if (c == 0) {
+					String p0pr = points.get(0).getAttributeValue("pressure");
+					anchorPrList.add(p0pr != null ? Float.parseFloat(p0pr) : 1.0f);
+				}
+				String p3pr = points.get(3).getAttributeValue("pressure");
+				anchorPrList.add(p3pr != null ? Float.parseFloat(p3pr) : 1.0f);
+
 				if (c == 0) {
 					setPoint(A1, C1, C2);
 					setPoint(A2, C1, C2);
@@ -2210,6 +2311,12 @@ public class BezierDrawPanel extends JPanel implements Runnable, MouseListener, 
 			CubicCurveManager curveManager = polygonManager.getManager(polygonCount);
 			curveManager.finishOpen();
 			curveManager.setCurrentBezierPosition(curveManager.getAverageXY());
+			// Restore anchor pressures
+			if (!anchorPrList.isEmpty()) {
+				float[] aps = new float[anchorPrList.size()];
+				for (int i = 0; i < aps.length; i++) aps[i] = anchorPrList.get(i);
+				curveManager.setAnchorPressures(aps);
+			}
 			polygonManager.addManager();
 		}
 	}
@@ -2249,6 +2356,11 @@ public class BezierDrawPanel extends JPanel implements Runnable, MouseListener, 
 		return new ArrayList<>(pointList);
 	}
 
+	/** Retrieve a copy of the per-point pressure list (parallel to getPoints()). */
+	public java.util.List<Float> getPointPressures() {
+		return new ArrayList<>(pointPressures);
+	}
+
 	/** Replace the discrete point list (used by undo). */
 	public void setPoints(java.util.List<Point2D.Double> pts) {
 		pointList.clear();
@@ -2260,11 +2372,12 @@ public class BezierDrawPanel extends JPanel implements Runnable, MouseListener, 
 		pointList.clear();
 	}
 
-	/** Add a point at the scaled mouse position. */
+	/** Add a point at the scaled mouse position, capturing current pressure. */
 	public void addPointAtMouse(MouseEvent mE) {
 		takeUndoSnapshot();
 		Point2D.Double sp = scaleMouse(mE);
 		pointList.add(new Point2D.Double(sp.x, sp.y));
+		pointPressures.add(pressureSource.getPressure());
 	}
 
 	/** Return the index of the first discrete point within {@code radius} of {@code pos}, or -1. */
@@ -2291,6 +2404,8 @@ public class BezierDrawPanel extends JPanel implements Runnable, MouseListener, 
 			double pixelX = valX * GRIDWIDTH  + GRIDWIDTH  / 2.0;
 			double pixelY = valY * GRIDHEIGHT + GRIDHEIGHT / 2.0;
 			pointList.add(new Point2D.Double(pixelX, pixelY));
+			String prStr = ptEl.getAttributeValue("pressure");
+			pointPressures.add(prStr != null ? Float.parseFloat(prStr) : 1.0f);
 		}
 	}
 

@@ -22,6 +22,9 @@ public class CubicCurveManager {
 	private boolean scoped = false;
 	private int layerId = 0;
 	private boolean isClosed = false;
+	/** Per-anchor pressure values (0.0–1.0). Index k = anchor k in the open curve.
+	 *  Null means uniform pressure (1.0). Only meaningful for open curves. */
+	private float[] anchorPressures = null;
 	private Set<Integer> discreteEdgeIndices   = new HashSet<>();
 	private Set<Integer> relationalEdgeIndices = new HashSet<>();
 	private Set<Integer> weldableEdgeIndices   = new HashSet<>();
@@ -81,6 +84,33 @@ public class CubicCurveManager {
 		// --- Point highlights ---
 		for (CubicPoint pt : discretePointSet)   drawPointHighlight(g2D, pt, false);
 		for (CubicPoint pt : relationalPointSet) drawPointHighlight(g2D, pt, true);
+		// --- Pressure-scaled anchor dots for open curves ---
+		if (!isClosed && anchorPressures != null) {
+			CubicCurve[] pcArr = curves.getArrayofCubicCurves();
+			g2D.setStroke(new BasicStroke(1f));
+			for (int ai = 0; ai < pcArr.length; ai++) {
+				CubicPoint[] pp = pcArr[ai].getPoints();
+				if (pp[0] == null || pp[3] == null) continue;
+				// anchor ai
+				float pa0 = getAnchorPressure(ai);
+				int r0 = Math.max(2, (int)(pa0 * 7));
+				Point2D.Double pos0 = pp[0].getPos();
+				g2D.setColor(new Color(80, 80, 180, 160));
+				g2D.fillOval((int)pos0.x - r0, (int)pos0.y - r0, r0 * 2, r0 * 2);
+				g2D.setColor(new Color(0, 0, 0, 80));
+				g2D.drawOval((int)pos0.x - r0, (int)pos0.y - r0, r0 * 2, r0 * 2);
+				// last anchor of last curve
+				if (ai == pcArr.length - 1) {
+					float paL = getAnchorPressure(ai + 1);
+					int rL = Math.max(2, (int)(paL * 7));
+					Point2D.Double posL = pp[3].getPos();
+					g2D.setColor(new Color(80, 80, 180, 160));
+					g2D.fillOval((int)posL.x - rL, (int)posL.y - rL, rL * 2, rL * 2);
+					g2D.setColor(new Color(0, 0, 0, 80));
+					g2D.drawOval((int)posL.x - rL, (int)posL.y - rL, rL * 2, rL * 2);
+				}
+			}
+		}
 		// --- Scope indicator (yellow dashed outline) ---
 		if (scoped) {
 			g2D.setStroke(new BasicStroke(2f, BasicStroke.CAP_BUTT, BasicStroke.JOIN_MITER,
@@ -385,6 +415,16 @@ public class CubicCurveManager {
 	public void setLayerId(int id)     { this.layerId = id; }
 	public boolean getIsClosed()       { return isClosed; }
 	public void    setIsClosed(boolean b) { isClosed = b; }
+
+	/** Set per-anchor pressure data. Pass null to clear (uniform 1.0). */
+	public void setAnchorPressures(float[] p) { anchorPressures = p; }
+	/** Get per-anchor pressure array (may be null). */
+	public float[] getAnchorPressures() { return anchorPressures; }
+	/** Return pressure for anchor at index {@code k}, defaulting to 1.0f. */
+	public float getAnchorPressure(int k) {
+		if (anchorPressures == null || k < 0 || k >= anchorPressures.length) return 1.0f;
+		return anchorPressures[k];
+	}
 
 	public boolean isSelected() { return selected; }
 	public void setSelected(boolean selected) { this.selected = selected; }

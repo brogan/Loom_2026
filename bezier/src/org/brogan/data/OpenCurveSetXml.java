@@ -61,6 +61,15 @@ public class OpenCurveSetXml extends XmlManager {
 					Point2D.Double simpler = polyManager.simplifyPointValue(new Point2D.Double(offset.x, offset.y));
 					point.addAttribute(new Attribute("x", Double.toString(simpler.x)));
 					point.addAttribute(new Attribute("y", Double.toString(simpler.y)));
+					// Write pressure on anchor points (index 0 and 3); anchor index = c for p=0, c+1 for p=3
+					if (p == 0 || p == 3) {
+						int anchorIdx = (p == 0) ? c : (c + 1);
+						float pr = mgr.getAnchorPressure(anchorIdx);
+						if (pr != 1.0f) {
+							point.addAttribute(new Attribute("pressure",
+								String.format("%.3f", pr)));
+						}
+					}
 					curve.appendChild(point);
 				}
 				openCurve.appendChild(curve);

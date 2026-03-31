@@ -356,6 +356,7 @@ public class CubicCurvePolygonManager {
 				m.setOpenPoints(pts, strokeColor);
 				m.setIsClosed(false);
 			}
+			m.setAnchorPressures(ms.anchorPressures);
 			polys.addPolygon(m.getCurves());
 			cubicCurveManagers.add(m);
 		}

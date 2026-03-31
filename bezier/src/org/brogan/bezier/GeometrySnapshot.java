@@ -20,14 +20,17 @@ public class GeometrySnapshot {
         public final double[] py;
         /** Layer this polygon belongs to. */
         public final int layerId;
+        /** Per-anchor pressure values; null means uniform 1.0. Only set for open curves. */
+        public final float[] anchorPressures;
 
-        public ManagerSnap(boolean isSingleEdge, boolean isClosed, int curveCount, double[] px, double[] py, int layerId) {
-            this.isSingleEdge = isSingleEdge;
-            this.isClosed     = isClosed;
-            this.curveCount   = curveCount;
-            this.px           = px;
-            this.py           = py;
-            this.layerId      = layerId;
+        public ManagerSnap(boolean isSingleEdge, boolean isClosed, int curveCount, double[] px, double[] py, int layerId, float[] anchorPressures) {
+            this.isSingleEdge    = isSingleEdge;
+            this.isClosed        = isClosed;
+            this.curveCount      = curveCount;
+            this.px              = px;
+            this.py              = py;
+            this.layerId         = layerId;
+            this.anchorPressures = anchorPressures;
         }
     }
 
@@ -64,13 +67,16 @@ public class GeometrySnapshot {
     public final java.awt.geom.Point2D.Double[] points;
     /** Snapshot of the oval list (copied, never null). */
     public final OvalSnap[] ovals;
+    /** Per-point pressure values, parallel to {@code points}. May be null (all 1.0). */
+    public final float[] pointPressures;
 
     public GeometrySnapshot(ManagerSnap[] managers, WeldLinkSnap[] weldLinks,
                              java.awt.geom.Point2D.Double[] points,
-                             OvalSnap[] ovals) {
-        this.managers  = managers;
-        this.weldLinks = weldLinks;
-        this.points    = points;
-        this.ovals     = ovals;
+                             OvalSnap[] ovals, float[] pointPressures) {
+        this.managers       = managers;
+        this.weldLinks      = weldLinks;
+        this.points         = points;
+        this.ovals          = ovals;
+        this.pointPressures = pointPressures;
     }
 }
