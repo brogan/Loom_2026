@@ -108,17 +108,32 @@ object OpenCurveSetLoader {
     for (curveNode <- curveNodes) {
       val curves: NodeSeq = (curveNode \ "curve")
       val pts = ListBuffer[Vector2D]()
+      val numCurves = curves.length
+      val anchorPressures = Array.fill(numCurves + 1)(1.0f)
 
-      for (curve <- curves) {
+      for ((curve, cIdx) <- curves.zipWithIndex) {
         val points: NodeSeq = (curve \ "point")
-        for (point <- points) {
+        for ((point, pIdx) <- points.zipWithIndex) {
           val x = (point \ "@x").text.toDouble
           val y = (point \ "@y").text.toDouble
           pts += Vector2D(x, y)
+          if (pIdx == 0 || pIdx == 3) {
+            val prStr = (point \ "@pressure").text
+            if (prStr.nonEmpty) {
+              try {
+                val anchorIdx = if (pIdx == 0) cIdx else cIdx + 1
+                anchorPressures(anchorIdx) = prStr.toFloat
+              } catch { case _: NumberFormatException => () }
+            }
+          }
         }
       }
 
-      if (pts.nonEmpty) polys += Polygon2D(pts.toList, PolygonType.OPEN_SPLINE_POLYGON)
+      if (pts.nonEmpty) {
+        val poly = Polygon2D(pts.toList, PolygonType.OPEN_SPLINE_POLYGON)
+        if (anchorPressures.exists(_ != 1.0f)) poly.pressures = Some(anchorPressures)
+        polys += poly
+      }
     }
 
     polys.toList

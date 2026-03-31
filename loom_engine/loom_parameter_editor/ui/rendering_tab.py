@@ -440,6 +440,27 @@ class RendererEditor(QWidget):
         blur_row.addStretch()
         bs_layout.addLayout(blur_row)
 
+        # Pressure influence
+        pressure_row = QHBoxLayout()
+        pressure_row.addWidget(QLabel("Pressure → Size:"))
+        self.pressure_size_spin = QDoubleSpinBox()
+        self.pressure_size_spin.setRange(0.0, 1.0)
+        self.pressure_size_spin.setDecimals(2)
+        self.pressure_size_spin.setSingleStep(0.1)
+        self.pressure_size_spin.setToolTip("0 = ignore pressure, 1 = full pressure effect on stamp size")
+        self.pressure_size_spin.valueChanged.connect(self._on_brush_changed)
+        pressure_row.addWidget(self.pressure_size_spin)
+        pressure_row.addWidget(QLabel("→ Opacity:"))
+        self.pressure_alpha_spin = QDoubleSpinBox()
+        self.pressure_alpha_spin.setRange(0.0, 1.0)
+        self.pressure_alpha_spin.setDecimals(2)
+        self.pressure_alpha_spin.setSingleStep(0.1)
+        self.pressure_alpha_spin.setToolTip("0 = ignore pressure, 1 = full pressure effect on stamp opacity")
+        self.pressure_alpha_spin.valueChanged.connect(self._on_brush_changed)
+        pressure_row.addWidget(self.pressure_alpha_spin)
+        pressure_row.addStretch()
+        bs_layout.addLayout(pressure_row)
+
         # ------------------------------------------------------------------
         # Meander Path — collapsible section with separate Enabled checkbox
         # ------------------------------------------------------------------
@@ -1016,6 +1037,8 @@ class RendererEditor(QWidget):
             self.post_completion_combo.setCurrentIndex(pcm_idx)
 
         self.blur_radius_spin.setValue(config.blur_radius)
+        self.pressure_size_spin.setValue(config.pressure_size_influence)
+        self.pressure_alpha_spin.setValue(config.pressure_alpha_influence)
 
         mc = config.meander_config
         self.meander_enabled_check.setChecked(mc.enabled)
@@ -1057,6 +1080,8 @@ class RendererEditor(QWidget):
             agent_count=self.agent_count_spin.value(),
             post_completion_mode=self.post_completion_combo.currentData() or PostCompletionMode.HOLD,
             blur_radius=self.blur_radius_spin.value(),
+            pressure_size_influence=self.pressure_size_spin.value(),
+            pressure_alpha_influence=self.pressure_alpha_spin.value(),
             meander_config=MeanderConfig(
                 enabled=self.meander_enabled_check.isChecked(),
                 amplitude=self.meander_amplitude_spin.value(),

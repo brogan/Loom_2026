@@ -90,7 +90,15 @@ object PointSetLoader {
     for (pointEl <- pointElems) {
       val x = (pointEl \ "@x").text.toDouble
       val y = (pointEl \ "@y").text.toDouble
-      polys += Polygon2D(List(Vector2D(x, y)), PolygonType.POINT_POLYGON)
+      val poly = Polygon2D(List(Vector2D(x, y)), PolygonType.POINT_POLYGON)
+      val prStr = (pointEl \ "@pressure").text
+      if (prStr.nonEmpty) {
+        try {
+          val pr = prStr.toFloat
+          if (pr != 1.0f) poly.pressures = Some(Array(pr))
+        } catch { case _: NumberFormatException => () }
+      }
+      polys += poly
     }
     polys.toList
   }

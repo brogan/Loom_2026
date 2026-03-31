@@ -169,6 +169,8 @@ class BrushConfig:
     post_completion_mode: PostCompletionMode = PostCompletionMode.HOLD
     blur_radius: int = 0
     meander_config: MeanderConfig = field(default_factory=MeanderConfig)
+    pressure_size_influence: float = 0.0
+    pressure_alpha_influence: float = 0.0
 
     def copy(self) -> 'BrushConfig':
         return BrushConfig(
@@ -189,6 +191,8 @@ class BrushConfig:
             post_completion_mode=self.post_completion_mode,
             blur_radius=self.blur_radius,
             meander_config=self.meander_config.copy(),
+            pressure_size_influence=self.pressure_size_influence,
+            pressure_alpha_influence=self.pressure_alpha_influence,
         )
 
 

@@ -49,11 +49,14 @@ object BrushStampEngine {
           (pos, angle, -1.0)
       }
 
+      val pressure = edge.pressureStart + (edge.pressureEnd - edge.pressureStart) * tClamped
       val brush = brushes(Randomise.range(0, brushes.length - 1))
       val tintedBrush = BrushLibrary.getTintedBrush(brush, strokeColor)
-      val stampScale = if (pathScale >= 0 && config.meanderConfig.scaleAlongPath) pathScale
-                       else Randomise.range(config.scaleMin, config.scaleMax)
-      val opacity = Randomise.range(config.opacityMin, config.opacityMax).toFloat
+      val baseScale = if (pathScale >= 0 && config.meanderConfig.scaleAlongPath) pathScale
+                      else Randomise.range(config.scaleMin, config.scaleMax)
+      val stampScale = baseScale * (1.0 - config.pressureSizeInfluence + pressure * config.pressureSizeInfluence)
+      val baseOpacity = Randomise.range(config.opacityMin, config.opacityMax)
+      val opacity = (baseOpacity * (1.0 - config.pressureAlphaInfluence + pressure * config.pressureAlphaInfluence)).toFloat
       val perpJitter = Randomise.range(perpMin, perpMax)
 
       stampBrush(g2D, tintedBrush, position, tangentAngle, stampScale, opacity, perpJitter, config.followTangent)
@@ -108,11 +111,14 @@ object BrushStampEngine {
           (pos, angle, -1.0)
       }
 
+      val pressure = edge.pressureStart + (edge.pressureEnd - edge.pressureStart) * tClamped
       val brush = brushes(Randomise.range(0, brushes.length - 1))
       val tintedBrush = BrushLibrary.getTintedBrush(brush, strokeColor)
-      val stampScale = if (pathScale >= 0 && config.meanderConfig.scaleAlongPath) pathScale
-                       else Randomise.range(config.scaleMin, config.scaleMax)
-      val opacity = Randomise.range(config.opacityMin, config.opacityMax).toFloat
+      val baseScale = if (pathScale >= 0 && config.meanderConfig.scaleAlongPath) pathScale
+                      else Randomise.range(config.scaleMin, config.scaleMax)
+      val stampScale = baseScale * (1.0 - config.pressureSizeInfluence + pressure * config.pressureSizeInfluence)
+      val baseOpacity = Randomise.range(config.opacityMin, config.opacityMax)
+      val opacity = (baseOpacity * (1.0 - config.pressureAlphaInfluence + pressure * config.pressureAlphaInfluence)).toFloat
       val perpJitter = Randomise.range(perpMin, perpMax)
 
       stampBrush(g2D, tintedBrush, position, tangentAngle, stampScale, opacity, perpJitter, config.followTangent)
@@ -152,13 +158,16 @@ object BrushStampEngine {
     position: Vector2D,
     config: BrushConfig,
     brushes: Array[BufferedImage],
-    strokeColor: Color
+    strokeColor: Color,
+    pressure: Float = 1.0f
   ): Unit = {
     if (brushes.isEmpty) return
     val brush = brushes(Randomise.range(0, brushes.length - 1))
     val tintedBrush = BrushLibrary.getTintedBrush(brush, strokeColor)
-    val stampScale = Randomise.range(config.scaleMin, config.scaleMax)
-    val opacity = Randomise.range(config.opacityMin, config.opacityMax).toFloat
+    val baseScale = Randomise.range(config.scaleMin, config.scaleMax)
+    val stampScale = baseScale * (1.0 - config.pressureSizeInfluence + pressure * config.pressureSizeInfluence)
+    val baseOpacity = Randomise.range(config.opacityMin, config.opacityMax)
+    val opacity = (baseOpacity * (1.0 - config.pressureAlphaInfluence + pressure * config.pressureAlphaInfluence)).toFloat
     val perpJitter = Randomise.range(config.perpendicularJitterMin, config.perpendicularJitterMax)
     stampBrush(g2D, tintedBrush, position, 0.0, stampScale, opacity, perpJitter, false)
   }

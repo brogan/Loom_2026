@@ -492,8 +492,10 @@ class Sprite2D(val shape: Shape2D, val spriteParams: Sprite2DParams, var animato
 
     // POINT_POLYGON: stamp a single brush at each point position
     for (poly <- correctedPolys if poly.polyType == PolygonType.POINT_POLYGON) {
-      if (poly.points.nonEmpty)
-        BrushStampEngine.stampAtPoint(g2D, poly.points.head, config, brushes, ren.strokeColor)
+      if (poly.points.nonEmpty) {
+        val pressure = poly.pressures.map(ps => if (ps.nonEmpty) ps(0) else 1.0f).getOrElse(1.0f)
+        BrushStampEngine.stampAtPoint(g2D, poly.points.head, config, brushes, ren.strokeColor, pressure)
+      }
     }
 
     val edgePolys = correctedPolys.flatMap { p =>

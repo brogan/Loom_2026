@@ -561,6 +561,14 @@ class RenderingIO:
         if mc_elem is not None:
             config.meander_config = cls._parse_meander_config(mc_elem)
 
+        psi_elem = elem.find("PressureSizeInfluence")
+        if psi_elem is not None and psi_elem.text:
+            config.pressure_size_influence = float(psi_elem.text.strip())
+
+        pai_elem = elem.find("PressureAlphaInfluence")
+        if pai_elem is not None and pai_elem.text:
+            config.pressure_alpha_influence = float(pai_elem.text.strip())
+
         return config
 
     @classmethod
@@ -737,5 +745,8 @@ class RenderingIO:
         etree.SubElement(mc_elem, "ScaleAlongPath").text = str(mc.scale_along_path).lower()
         etree.SubElement(mc_elem, "ScaleAlongPathFrequency").text = str(mc.scale_along_path_frequency)
         etree.SubElement(mc_elem, "ScaleAlongPathRange").text = str(mc.scale_along_path_range)
+
+        etree.SubElement(elem, "PressureSizeInfluence").text = str(config.pressure_size_influence)
+        etree.SubElement(elem, "PressureAlphaInfluence").text = str(config.pressure_alpha_influence)
 
         return elem

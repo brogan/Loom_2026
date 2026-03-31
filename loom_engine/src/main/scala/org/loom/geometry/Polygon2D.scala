@@ -10,8 +10,9 @@ import scala.collection.mutable.ArrayBuffer
 import org.loom.utility.{Formulas, Randomise, Transform2D}
 
 class Polygon2D(val points: List[Vector2D], val polyType: Int) {
-  
+
    var visible: Boolean = true
+   var pressures: Option[Array[Float]] = None
 
    var sidesTotal: Int = 0
    if(polyType == PolygonType.LINE_POLYGON) {
@@ -87,6 +88,7 @@ class Polygon2D(val points: List[Vector2D], val polyType: Int) {
       for (point <- points) { copy(i) = point.clone(); i += 1 }
       val p = new Polygon2D(copy.toList, polyType)
       p.visible = this.visible
+      p.pressures = this.pressures.map(_.clone())
       p
    }
    

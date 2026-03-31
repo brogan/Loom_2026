@@ -12,7 +12,9 @@ import scala.collection.mutable
 class BrushEdge(
   val edgeType: Int,
   val points: Array[Vector2D],
-  val length: Double
+  val length: Double,
+  val pressureStart: Float = 1.0f,
+  val pressureEnd: Float = 1.0f
 ) {
   override def toString: String = s"BrushEdge(type=$edgeType, pts=${points.length}, len=$length)"
 }
@@ -87,7 +89,9 @@ class BrushState {
           if (!seen.contains(key)) {
             seen += key
             val length = approximateSplineLength(a1, c1, c2, a2, 10)
-            edgeList += new BrushEdge(PolygonType.SPLINE_POLYGON, Array(a1, c1, c2, a2), length)
+            val ps = poly.pressures.map(ps => if (i < ps.length) ps(i) else 1.0f).getOrElse(1.0f)
+            val pe = poly.pressures.map(ps => if (i + 1 < ps.length) ps(i + 1) else 1.0f).getOrElse(1.0f)
+            edgeList += new BrushEdge(PolygonType.SPLINE_POLYGON, Array(a1, c1, c2, a2), length, ps, pe)
           }
         }
       }

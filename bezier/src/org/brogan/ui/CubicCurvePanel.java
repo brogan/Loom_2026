@@ -378,24 +378,37 @@ public class CubicCurvePanel extends JPanel implements MouseListener, ChangeList
 			List<CubicCurveManager> managers = polygonManager.getManagersForLayer(layer.getId());
 			if (managers.isEmpty()) continue;
 
+			// Only write closed curves to polygonSets; open curves go to curveSets via saveAsOpenCurveSet()
+			List<CubicCurveManager> closedManagers = managers.stream()
+				.filter(CubicCurveManager::getIsClosed)
+				.collect(Collectors.toList());
+			if (closedManagers.isEmpty()) continue;
+
 			String layerFn = overallFn + "_" + toFilename(layer.getName());
 			String xmlPath = polygonSetFilePath + File.separator + layerFn + ".xml";
 
 			polygonXml = new PolygonSetXml(dtdPath);
 			polygonXml.setXmlFilePath(xmlPath);
-			polygonXml.createNewXml(layerFn, "CUBIC_CURVE", managers, this, sX, sY, rotA, 0.5, 0.5);
+			polygonXml.createNewXml(layerFn, "CUBIC_CURVE", closedManagers, this, sX, sY, rotA, 0.5, 0.5);
 
-			BezierSvgExporter.save(managers, svgDirPath, layerFn);
+			BezierSvgExporter.save(closedManagers, svgDirPath, layerFn);
 			anySaved = true;
 		}
 
-		// If no layers had polygons, fall back to saving everything as one file
+		// If no layers had closed polygons, fall back to saving all closed curves as one file
 		if (!anySaved) {
-			String filePath = polygonSetFilePath + File.separator + overallFn + ".xml";
-			polygonXml = new PolygonSetXml(dtdPath);
-			polygonXml.setXmlFilePath(filePath);
-			polygonXml.createNewXml(overall, "CUBIC_CURVE", polygonManager, this, sX, sY, rotA, 0.5, 0.5);
-			BezierSvgExporter.save(polygonManager, svgDirPath, overallFn);
+			List<CubicCurveManager> allClosed = new java.util.ArrayList<>();
+			for (int i = 0; i < polygonManager.getPolygonCount(); i++) {
+				CubicCurveManager m = polygonManager.getManager(i);
+				if (m.getIsClosed()) allClosed.add(m);
+			}
+			if (!allClosed.isEmpty()) {
+				String filePath = polygonSetFilePath + File.separator + overallFn + ".xml";
+				polygonXml = new PolygonSetXml(dtdPath);
+				polygonXml.setXmlFilePath(filePath);
+				polygonXml.createNewXml(overall, "CUBIC_CURVE", allClosed, this, sX, sY, rotA, 0.5, 0.5);
+				BezierSvgExporter.save(allClosed, svgDirPath, overallFn);
+			}
 		} else {
 			// Save the layer manifest
 			LayerSetXml.save(lm, overall, polygonSetFilePath);

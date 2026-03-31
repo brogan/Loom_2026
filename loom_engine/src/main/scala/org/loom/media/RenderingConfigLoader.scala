@@ -186,6 +186,9 @@ object RenderingConfigLoader {
       .map(parseMeanderConfig)
       .getOrElse(MeanderConfig.default())
 
+    val pressureSizeInfluence  = getDoubleOrDefault(node, "PressureSizeInfluence", 0.0)
+    val pressureAlphaInfluence = getDoubleOrDefault(node, "PressureAlphaInfluence", 0.0)
+
     BrushConfig(
       brushNames = brushNames,
       drawMode = drawMode,
@@ -202,7 +205,9 @@ object RenderingConfigLoader {
       agentCount = agentCount,
       postCompletionMode = postCompletionMode,
       blurRadius = blurRadius,
-      meanderConfig = meanderConfig
+      meanderConfig = meanderConfig,
+      pressureSizeInfluence = pressureSizeInfluence,
+      pressureAlphaInfluence = pressureAlphaInfluence
     )
   }
 

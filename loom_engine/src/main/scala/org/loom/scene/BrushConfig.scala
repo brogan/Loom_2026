@@ -20,7 +20,9 @@ class BrushConfig(
   var agentCount: Int,
   var postCompletionMode: Int,
   var blurRadius: Int,
-  var meanderConfig: MeanderConfig
+  var meanderConfig: MeanderConfig,
+  var pressureSizeInfluence: Double = 0.0,
+  var pressureAlphaInfluence: Double = 0.0
 ) {
 
   /**
@@ -95,13 +97,16 @@ object BrushConfig {
     agentCount: Int,
     postCompletionMode: Int,
     blurRadius: Int,
-    meanderConfig: MeanderConfig = MeanderConfig.default()
+    meanderConfig: MeanderConfig = MeanderConfig.default(),
+    pressureSizeInfluence: Double = 0.0,
+    pressureAlphaInfluence: Double = 0.0
   ): BrushConfig = {
     new BrushConfig(
       brushNames, drawMode, stampSpacing, spacingEasing, followTangent,
       perpendicularJitterMin, perpendicularJitterMax,
       scaleMin, scaleMax, opacityMin, opacityMax,
-      stampsPerFrame, agentCount, postCompletionMode, blurRadius, meanderConfig
+      stampsPerFrame, agentCount, postCompletionMode, blurRadius, meanderConfig,
+      pressureSizeInfluence, pressureAlphaInfluence
     )
   }
 }
