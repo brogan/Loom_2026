@@ -128,7 +128,7 @@
 <body>
 <header>
     <h1>Loom Parameter Editor</h1>
-    <p>Complete User Guide &amp; Configuration Reference &mdash; Updated March 2026</p>
+    <p>Complete User Guide &amp; Configuration Reference &mdash; Updated April 2026</p>
 </header>
 
 <nav>
@@ -153,6 +153,7 @@
         <li><a href="#rendering">Rendering</a></li>
         <li><a href="#brushed">Brush Renderer</a></li>
         <li><a href="#meander">↳ Meander Path</a></li>
+        <li><a href="#pressure">↳ Pressure Sensitivity</a></li>
         <li><a href="#run-tab">Run Tab</a></li>
         <li><a href="#file-management">File Management</a></li>
     </ul>
@@ -351,22 +352,28 @@ YourProject/
 <p>Press <kbd>Shift</kbd> while a selection mode is active to toggle between Relational and Discrete. Cmd+click on the toolbar button when switching to a mode also activates Discrete directly.</p>
 
 <table>
-    <tr><th>Mode</th><th>Click</th><th>Drag</th><th>Shift+drag</th></tr>
+    <tr><th>Mode</th><th>Key</th><th>Click</th><th>Drag</th><th>Shift+drag</th></tr>
     <tr>
-        <td><strong>Point Selection</strong></td>
-        <td>Select individual anchor or control points. Click inside a polygon first to "scope" it before clicking its points. Cmd+click adds to selection.</td>
+        <td><strong>Point Selection</strong></td><td><kbd>a</kbd></td>
+        <td>Select individual anchor or control points. Click inside a polygon first to "scope" it before clicking its points. Cmd+click adds to selection. Anchor dots reflect stylus pressure when drawn with a tablet.</td>
         <td>Move selected points. Anchor points carry their adjacent control points along.</td>
         <td>Rubber-band selection — drag a rectangle to select all points within it.</td>
     </tr>
     <tr>
-        <td><strong>Edge Selection</strong></td>
+        <td><strong>Edge Selection</strong></td><td><kbd>s</kbd></td>
         <td>Select a bezier curve segment. Click near an edge (within ~15 px). Click again to deselect. Multiple edges can be selected.</td>
         <td>Move the selected edge(s) and their control points.</td>
-        <td><em>Extrude</em> — creates a copy of the selected edge(s) that you drag to a new position; connector edges and weld links are created automatically on release. Chain-extruding edges is the fastest way to build a grid or net of polygons.</td>
+        <td><em>Extrude</em> — creates a copy of the selected edge(s) that you drag to a new position; connector edges and weld links are created automatically on release.</td>
     </tr>
     <tr>
-        <td><strong>Polygon Selection</strong></td>
-        <td>Select entire polygons by clicking inside them. Clicking another polygon adds it to the selection (or click empty space to deselect all).</td>
+        <td><strong>Open Curve Selection</strong></td><td><kbd>d</kbd></td>
+        <td>Select entire open (non-closed) curves by clicking inside or near them. Closed polygons are not selectable in this mode.</td>
+        <td>Move selected open curves as units.</td>
+        <td>Rubber-band selection — open curves whose centroid falls inside the marquee are selected.</td>
+    </tr>
+    <tr>
+        <td><strong>Polygon Selection</strong></td><td><kbd>f</kbd></td>
+        <td>Select entire closed polygons and ovals by clicking inside them. Open curves are not selectable in this mode.</td>
         <td>Move selected polygons as units. Auto-weld detects nearby edges during drag and snaps them on release.</td>
         <td>Rubber-band selection.</td>
     </tr>
@@ -474,13 +481,25 @@ YourProject/
 <div class="tip">Use layers to separate logically distinct parts of a complex polygon arrangement — for example, inner shapes on one layer and outer border shapes on another. Each layer can then be assigned different rendering styles in Loom.</div>
 
 <h3>Keyboard Shortcuts</h3>
+<p>All Cmd shortcuts live in the <strong>Edit menu</strong> (between the app name and Help). There are no duplicate panel bindings, so each shortcut fires exactly once per keypress.</p>
 <table>
     <tr><th>Shortcut</th><th>Action</th></tr>
-    <tr><td><kbd>Cmd+Z</kbd></td><td>Undo — restores the previous state from the undo stack. Clears the current selection.</td></tr>
-    <tr><td><kbd>Cmd+C</kbd></td><td>Copy selected polygons to the internal clipboard.</td></tr>
-    <tr><td><kbd>Cmd+V</kbd></td><td>Paste polygons from the clipboard as new closed polygons.</td></tr>
+    <tr><td><kbd>Cmd+Z</kbd></td><td>Undo — restores the previous state (up to 20 levels). Clears the current selection.</td></tr>
+    <tr><td><kbd>Cmd+A</kbd></td><td>Select All — selects all geometry on the active layer appropriate to the current mode (points, edges, open curves, or closed polygons).</td></tr>
+    <tr><td><kbd>Cmd+D</kbd></td><td>Deselect All — clears all selections in every mode simultaneously.</td></tr>
+    <tr><td><kbd>Cmd+C</kbd></td><td>Copy selected geometry to the internal clipboard. Works for closed polygons, open curves, and (per-edge) in edge mode. No-op in point mode.</td></tr>
+    <tr><td><kbd>Cmd+V</kbd></td><td>Paste clipboard at the current mouse position — the centroid of pasted shapes lands where the cursor is hovering. An undo snapshot is taken.</td></tr>
+    <tr><td><kbd>Cmd+X</kbd></td><td>Cut — copies selection to clipboard then immediately deletes it.</td></tr>
+    <tr><td><kbd>a</kbd></td><td>Point Selection Mode.</td></tr>
+    <tr><td><kbd>s</kbd></td><td>Edge Selection Mode.</td></tr>
+    <tr><td><kbd>d</kbd></td><td>Open Curve Selection Mode.</td></tr>
+    <tr><td><kbd>f</kbd></td><td>Polygon Selection Mode.</td></tr>
+    <tr><td><kbd>h</kbd></td><td>Create Points Mode.</td></tr>
+    <tr><td><kbd>j</kbd></td><td>Create Oval.</td></tr>
+    <tr><td><kbd>k</kbd></td><td>Create Polygons Mode.</td></tr>
+    <tr><td><kbd>l</kbd></td><td>Freehand Draw Mode.</td></tr>
     <tr><td><kbd>Shift</kbd> (mode active)</td><td>Toggle between Relational and Discrete sub-mode within the current selection mode.</td></tr>
-    <tr><td><kbd>Shift+drag</kbd></td><td>Rubber-band selection (Point and Polygon modes) or Edge Extrusion (Edge Selection mode).</td></tr>
+    <tr><td><kbd>Shift+drag</kbd></td><td>Rubber-band marquee selection (Point, Open Curve, and Polygon modes) or Edge Extrusion (Edge mode with edges selected).</td></tr>
 </table>
 
 <h3>Saving — File Types</h3>
@@ -792,6 +811,28 @@ YourProject/
 </table>
 
 <div class="tip">Use open curves with the STROKED renderer and a thin stroke for delicate line-work that complements subdivided polygon backgrounds. Use BRUSHED mode for ink or charcoal stroke effects.</div>
+
+<h3>Pressure-Sensitive Open Curves</h3>
+<p>Open curves drawn with a <strong>pressure-sensitive stylus and tablet</strong> carry per-anchor pressure values (0.0–1.0) that are saved in the <code>openCurveSet</code> XML. In Loom's BRUSHED renderer, these values modulate the brush stamp size and/or opacity along the stroke — lighter stylus pressure produces smaller/more transparent stamps, heavier pressure produces larger/more opaque ones.</p>
+
+<h4>Complete Workflow</h4>
+<ol class="step-list">
+    <li><strong>Draw with a stylus.</strong> In the Curves sub-tab click <strong>Create in Bezier</strong>. In Bezier Draw, select a pressure-sensitive drawing tool (requires a Wacom or similar tablet). Draw open curves — click to place anchor points while varying stylus pressure. The anchor dot sizes in Point Selection mode show recorded pressure levels.</li>
+    <li><strong>Save from Bezier Draw.</strong> Click Save in Bezier Draw. The open curves are written to <code>curveSets/{name}.xml</code> with <code>pressure="0.xxx"</code> attributes on each anchor point. Close Bezier Draw — the Curves sub-tab auto-detects the new file and selects it.</li>
+    <li><strong>Register the curve set.</strong> In the Curves sub-tab, ensure the file is selected in the dropdown. Note the curve set's <strong>Name</strong> — you will reference this from the Shapes tab.</li>
+    <li><strong>Create a Shape and Sprite.</strong> In the Shapes tab, create a new Shape and set its source to <em>Open Curve Set</em>, selecting your curve set by name. In the Sprites tab, create a Sprite referencing that Shape.</li>
+    <li><strong>Set up a BRUSHED renderer.</strong> In the Rendering tab, create a Renderer Set containing one Renderer with mode set to <strong>BRUSHED</strong>. Import or create a brush in the Brush Library. In the renderer's Brushes tab, enable the brush and configure Stamp Spacing, Scale, and Opacity.</li>
+    <li><strong>Enable pressure influence.</strong> Still in the Brushes tab, set <strong>Pressure → Size</strong> to a value between 0 and 1.
+        <ul>
+            <li><em>0.0</em> — pressure has no effect; all stamps are the same size.</li>
+            <li><em>0.5</em> — stamp size is 50% pressure-driven. Light pressure = 50% of base scale; full pressure = full base scale.</li>
+            <li><em>1.0</em> — stamp size is fully controlled by pressure. An anchor with pressure=0.05 will produce stamps at 5% of base scale (nearly invisible); pressure=0.9 gives 90% scale. This creates the strongest calligraphic effect.</li>
+        </ul>
+        Optionally set <strong>Pressure → Opacity</strong> similarly to make lighter strokes more transparent.
+    </li>
+    <li><strong>Assign the renderer set to the sprite</strong> and launch Loom (<kbd>Cmd+L</kbd>). Brush stamps along the open curve will now vary in size and/or opacity according to the drawn pressure profile.</li>
+</ol>
+<div class="warning"><strong>Mouse input has no pressure variation.</strong> Drawing with a mouse always records pressure=1.0 at every anchor. To get pressure variation, you must use a pressure-sensitive tablet. If you see no size variation despite Pressure → Size being non-zero, verify the curve XML contains <code>pressure</code> attributes (values other than 1.0) on its anchor points.</div>
 
 <a href="#" class="back-to-top">Back to top</a>
 </section>
@@ -1469,6 +1510,8 @@ Renderer Set Library
     <tr><td><code>Agents</code></td><td>Integer</td><td>PROGRESSIVE mode: number of independent drawing agents advancing along edges simultaneously.</td></tr>
     <tr><td><code>Post-Completion</code></td><td>Enum</td><td>PROGRESSIVE mode: <strong>HOLD</strong> freezes the final state; <strong>LOOP</strong> restarts; <strong>PING_PONG</strong> reverses.</td></tr>
     <tr><td><code>Blur Radius</code></td><td>Pixels</td><td>Gaussian blur applied to the brush image before stamping. Softens hard-edged brushes.</td></tr>
+    <tr><td><code>Pressure → Size</code></td><td>0.0–1.0</td><td>How strongly stylus pressure controls stamp scale. <em>0.0</em>: pressure has no effect (all stamps the same base size). <em>1.0</em>: stamp size is fully determined by pressure (light touch → near-invisible stamp; heavy touch → full base scale). Values in between blend the two. Only meaningful for open curve sets drawn with a pressure-sensitive tablet.</td></tr>
+    <tr><td><code>Pressure → Opacity</code></td><td>0.0–1.0</td><td>How strongly stylus pressure controls stamp opacity. Works on the same scale as Pressure → Size. Can be combined with Pressure → Size for full calligraphic control.</td></tr>
     <tr><td><code>Follow Tangent</code></td><td>Boolean</td><td>When enabled, stamps rotate to align with the edge direction. Disable for upright stamps regardless of edge angle (useful for image placement at points).</td></tr>
     <tr><td><code>Spacing Easing</code></td><td>String</td><td>Easing function for distributing stamps along an edge. <em>LINEAR</em> (default) gives even spacing.</td></tr>
 </table>
@@ -1690,6 +1733,83 @@ Renderer Set Library
     <li>Create a shape and sprite using this renderer. Press <kbd>Cmd+L</kbd> to launch Loom. The strokes follow a gently wandering organic path rather than the exact Bézier curves.</li>
     <li>Press <kbd>Cmd+R</kbd> after any parameter change to reload without restarting Loom.</li>
 </ol>
+
+<a href="#" class="back-to-top">Back to top</a>
+</section>
+
+<!-- ============================================================ PRESSURE SENSITIVITY -->
+<section id="pressure">
+<h2>Pressure Sensitivity <span class="tag tag-new">New</span></h2>
+<p>Loom supports end-to-end stylus pressure, from the moment you draw an open curve in Bezier Draw through to brush stamp size and opacity variation in the rendering engine. This enables calligraphic, ink-brush, and expressive mark effects where heavier stylus pressure produces larger, more opaque stamps and lighter pressure produces finer, more delicate ones.</p>
+
+<h3>How the Pipeline Works</h3>
+<div class="flow-diagram">
+  <span class="stage">Tablet stylus</span>
+  <span class="arrow">→</span>
+  <span class="stage">Bezier Draw<br><small>pressure recorded per anchor</small></span>
+  <span class="arrow">→</span>
+  <span class="stage">openCurveSet XML<br><small>pressure="0.xxx" attribute</small></span>
+  <span class="arrow">→</span>
+  <span class="stage">Scala engine load<br><small>Polygon2D.pressures[]</small></span>
+  <span class="arrow">→</span>
+  <span class="stage">BrushEdge<br><small>pressureStart / pressureEnd</small></span>
+  <span class="arrow">→</span>
+  <span class="stage">Stamp engine<br><small>scale &amp; opacity per stamp</small></span>
+</div>
+
+<h3>The Pressure Formula</h3>
+<p>At each stamp position along an edge, the engine linearly interpolates pressure between the start and end anchors of that segment, then applies:</p>
+<pre><code>pressure = lerp(edge.pressureStart, edge.pressureEnd, t)
+
+stampScale   = baseScale   × (1 − pressureSizeInfluence   + pressure × pressureSizeInfluence)
+stampOpacity = baseOpacity × (1 − pressureAlphaInfluence  + pressure × pressureAlphaInfluence)</code></pre>
+<p>At influence=0, the pressure term drops out and stamps use only the random base scale/opacity. At influence=1, stamps scale linearly with pressure from near-zero (at pressure=0) up to the full base scale (at pressure=1.0).</p>
+
+<h3>Step-by-Step: Creating a Pressure-Sensitive Brush Stroke</h3>
+<ol class="step-list">
+    <li><strong>Draw with a stylus.</strong> Launch Bezier Draw from the <strong>Curves sub-tab → Create in Bezier</strong>. Draw open curves using a pressure-sensitive stylus (Wacom or similar tablet). Vary pressure as you place each anchor — heavy for thick parts, light for fine tapering ends.</li>
+    <li><strong>Verify the pressure profile.</strong> Switch to Point Selection Mode (<kbd>a</kbd>) in Bezier Draw. Anchor points are drawn at a size proportional to their recorded pressure — large filled circles for high pressure, tiny dots for low. If all dots are the same size you are using a mouse; a tablet is required.</li>
+    <li><strong>Save.</strong> Click Save in Bezier Draw. The file is written to <code>curveSets/{name}.xml</code> with <code>pressure="0.xxx"</code> on each anchor point element. Close Bezier Draw.</li>
+    <li><strong>Register the curve set</strong> in the Curves sub-tab. The dropdown auto-selects the new file after Bezier closes.</li>
+    <li><strong>Create Shape and Sprite</strong> referencing the curve set (source type: Open Curve Set).</li>
+    <li><strong>Set up a BRUSHED renderer.</strong> In the Rendering tab, set the renderer mode to BRUSHED. Import or create a brush that suits the stroke style (a narrow oval, tapered brush, or brush with varying opacity works best).</li>
+    <li><strong>Configure pressure influence.</strong> In the renderer's Brushes tab:
+        <ul>
+            <li>Set <strong>Pressure → Size</strong> to 1.0 for maximum calligraphic effect. Values of 0.5–0.8 give a more subtle modulation.</li>
+            <li>Optionally set <strong>Pressure → Opacity</strong> to 0.3–0.7 so lighter strokes are also more transparent.</li>
+            <li>Keep Scale min/max close together (e.g. 0.9–1.1) when using full pressure influence, since the pressure curve already controls size variation.</li>
+        </ul>
+    </li>
+    <li><strong>Launch Loom</strong> (<kbd>Cmd+L</kbd>). Brush stamps along the stroke will vary dramatically — nearly invisible where you drew lightly, full-size and bold where you pressed hard.</li>
+    <li><strong>Iterate.</strong> Press <kbd>Cmd+R</kbd> to reload parameters without restarting. Adjust Pressure → Size and base Scale values to fine-tune the feel.</li>
+</ol>
+
+<h3>Troubleshooting</h3>
+<table>
+    <tr><th>Symptom</th><th>Likely cause</th><th>Fix</th></tr>
+    <tr>
+        <td>No size variation despite Pressure → Size = 1.0</td>
+        <td>The curve XML has no <code>pressure</code> attributes (drawn with a mouse, or pressure all equal to 1.0)</td>
+        <td>Open the curve's XML file in a text editor and search for <code>pressure=</code>. If absent, redraw with a pressure-sensitive tablet. Anchor points should vary in size in Bezier Draw's Point Selection Mode.</td>
+    </tr>
+    <tr>
+        <td>Stamps are uniformly tiny</td>
+        <td>Pressure values are all very low (drew with very light pressure throughout)</td>
+        <td>Either redraw with more pressure variation, or lower Pressure → Size and rely more on the base Scale range.</td>
+    </tr>
+    <tr>
+        <td>Pressure variation visible in Bezier but not in Loom</td>
+        <td>The renderer mode is not BRUSHED, or Pressure → Size is 0</td>
+        <td>Confirm renderer mode = BRUSHED and Pressure → Size &gt; 0 in the Brushes tab.</td>
+    </tr>
+    <tr>
+        <td>Pressure visible in Loom but no variation (flat scale)</td>
+        <td>Old Scala engine binary in use, predating the pressure pipeline</td>
+        <td>Run <code>sbt compile</code> from the <code>loom_engine/</code> directory to rebuild the engine with pressure support.</td>
+    </tr>
+</table>
+
+<div class="tip">For the most natural calligraphic feel, combine pressure sensitivity with Meander Path (Amplitude 6–12, animated at Speed 0.003). The stroke will both vary in width along its length and gently wander, closely resembling a real ink-brush mark.</div>
 
 <a href="#" class="back-to-top">Back to top</a>
 </section>

@@ -30,6 +30,7 @@
 <h1>Quick Reference</h1>
 
 <h2>Keyboard Shortcuts &mdash; Edit Menu (&#8984; Cmd)</h2>
+<p>All Edit menu shortcuts fire from the menu bar accelerator. There are no duplicate panel key bindings, so each shortcut fires exactly once per keypress.</p>
 <table>
   <tr><th>Shortcut</th><th>Action</th></tr>
   <tr><td><kbd>&#8984;</kbd>&nbsp;+&nbsp;<kbd>Z</kbd></td><td>Undo (up to 20 levels)</td></tr>
@@ -138,9 +139,20 @@
   <tr><th>Content saved</th><th>File(s)</th><th>Format / Loom use</th></tr>
   <tr><td>Closed polygons (1 layer)</td><td><code>polygonSets/{name}.xml</code></td><td><code>&lt;polygonSet&gt;</code> &mdash; polygon set for subdivision</td></tr>
   <tr><td>Closed polygons (multiple layers)</td><td><code>polygonSets/{name}_{layer}.xml</code> &times;N<br><code>polygonSets/{name}.layers.xml</code></td><td>Layer bundle &mdash; importable as a multi-layer polygon set</td></tr>
-  <tr><td>Open (non-closed) curves</td><td><code>curveSets/{name}.xml</code></td><td><code>&lt;openCurveSet&gt;</code> &mdash; stroked paths or brush stamps</td></tr>
+  <tr><td>Open (non-closed) curves</td><td><code>curveSets/{name}.xml</code></td><td><code>&lt;openCurveSet&gt;</code> &mdash; stroked paths or brush stamps. Includes per-anchor <code>pressure</code> attributes when drawn with a stylus.</td></tr>
   <tr><td>Discrete points</td><td><code>pointSets/{name}_points.xml</code></td><td><code>&lt;pointSet&gt;</code> &mdash; dot or brush-stamp scatter</td></tr>
   <tr><td>Any of the above</td><td><code>svgs/{name}.svg</code></td><td>SVG preview (all geometry types)</td></tr>
+</table>
+
+<h2>Pressure Sensitivity Summary</h2>
+<p>Pressure data flows from a stylus through Bezier Draw into the Loom rendering engine:</p>
+<table>
+  <tr><th>Stage</th><th>What happens</th></tr>
+  <tr><td><b>Bezier Draw</b></td><td>Stylus pressure at each anchor click is recorded per <code>CubicPoint</code>. Saved as <code>pressure="0.xxx"</code> attribute on anchor <code>&lt;point&gt;</code> elements in the <code>openCurveSet</code> XML. Anchor dot size in Point Selection Mode reflects recorded pressure.</td></tr>
+  <tr><td><b>Loom engine load</b></td><td>Pressure values are read from the XML and stored on the <code>Polygon2D</code> as a <code>pressures</code> array (one entry per anchor).</td></tr>
+  <tr><td><b>Brush State init</b></td><td>Each <code>BrushEdge</code> carries <code>pressureStart</code> and <code>pressureEnd</code> (the anchor pressures at its two endpoints).</td></tr>
+  <tr><td><b>Stamp engine</b></td><td>Pressure at each stamp position is linearly interpolated between <code>pressureStart</code> and <code>pressureEnd</code>. Applied as:<br><code>stampScale = baseScale &times; (1 &minus; influence + pressure &times; influence)</code></td></tr>
+  <tr><td><b>Loom Editor</b></td><td>Set <b>Pressure &rarr; Size</b> (0&ndash;1) and/or <b>Pressure &rarr; Opacity</b> (0&ndash;1) in the Brushes tab of a BRUSHED renderer. Values of 0 mean pressure has no effect; 1.0 gives full pressure control.</td></tr>
 </table>
 
 </body></html>

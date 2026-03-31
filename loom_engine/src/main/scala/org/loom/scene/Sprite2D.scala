@@ -624,7 +624,9 @@ class Sprite2D(val shape: Shape2D, val spriteParams: Sprite2DParams, var animato
       ccPoints(count) = new Vector2D(coordinateCorrection.x, coordinateCorrection.y)
       count += 1
     }
-    new Polygon2D(ccPoints.toList, pol.polyType)
+    val corrected = new Polygon2D(ccPoints.toList, pol.polyType)
+    corrected.pressures = pol.pressures
+    corrected
 
   }
 

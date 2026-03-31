@@ -98,6 +98,16 @@
 </ol>
 <div class="warn">A canvas can contain a mix of closed polygons and open curves, but they are saved as separate files on disk. Keep them in separate files for clarity &mdash; close all shapes with <i>Close Polygon</i> first, then save; or use a dedicated session for open curves.</div>
 
+<h3>Pressure Sensitivity</h3>
+<p>When drawing with a <b>pressure-sensitive stylus and tablet</b> (e.g. Wacom, or iPad with Apple Pencil via Sidecar), Bezier Draw records the stylus pressure at each anchor point as you place it. This pressure data is embedded in the saved <code>openCurveSet</code> XML file and used by Loom's brush rendering engine to vary stamp size and opacity along the stroke.</p>
+<ul>
+  <li>Pressure is captured only at <b>anchor points</b> (the points you click to place). Control points do not carry pressure values.</li>
+  <li>In <b>Point Selection Mode</b>, anchor points are drawn proportionally to their recorded pressure &mdash; a larger dot means the stylus was pressed harder at that anchor. This gives an immediate visual preview of the pressure profile of the curve.</li>
+  <li>Pressure data is saved automatically alongside the curve geometry &mdash; no extra steps are needed. Just draw with the stylus and save normally.</li>
+</ul>
+<div class="note">Drawing with a mouse records a uniform pressure of 1.0 at every anchor, producing no variation in Loom. A pressure-sensitive tablet is required to capture meaningful pressure profiles.</div>
+<div class="note">Pressure data is only meaningful in Loom's <b>BRUSHED</b> renderer mode. Set the <b>Pressure &rarr; Size</b> or <b>Pressure &rarr; Opacity</b> controls above 0 in the Loom Parameter Editor's Rendering tab to activate pressure-driven rendering. See the Loom Parameter Editor help for the full workflow.</div>
+
 <h2>Creating Point Sets</h2>
 <p>Point sets are collections of discrete positions. In Loom they are rendered as dot stamps or brush stamps (not connected, not subdivided).</p>
 <ol>
