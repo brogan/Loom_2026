@@ -299,9 +299,21 @@ public class BezierToolBarPanel extends JPanel {
 		toolBar.addSeparator();
 
 		closeCurves = new JButton();
-		initButton(closeCurves, "Close Polygon", "closePolygon");
+		initButton(closeCurves, "Close Polygon  (in Open Curve Selection mode: chain selected curves into a new closed polygon)", "closePolygon");
 		closeCurves.addActionListener(new ActionListener() {
 			public void actionPerformed(ActionEvent e) {
+				// Context-sensitive: if open curves are selected, chain-and-close them.
+				if (bezier.isOpenCurveSelectionModeEnabled()) {
+					String err = bezier.closeSelectedOpenCurvesAsPolygon();
+					if (err != null) {
+						JOptionPane.showMessageDialog(bezier, err, "Cannot Close Curves", JOptionPane.WARNING_MESSAGE);
+					} else {
+						activatePolygonSelectionMode();
+					}
+					return;
+				}
+
+				// Normal behaviour: close the polygon currently being drawn.
 				bezier.takeUndoSnapshot();
 				int polygonCount = polygonManager.getPolygonCount();
 				CubicCurveManager curveManager = polygonManager.getManager(polygonCount);

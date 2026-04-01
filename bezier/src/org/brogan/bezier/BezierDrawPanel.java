@@ -1782,6 +1782,7 @@ public class BezierDrawPanel extends JPanel implements Runnable, MouseListener, 
 			for (int i = 0; i < tot; i++) {
 				CubicCurveManager m = polygonManager.getManager(i);
 				if (m.getIsClosed() || m.getLayerId() != al || m.isSelected()) continue;
+				if (m.getCurves().getCubicCurveTotal() == 0) continue; // skip empty stubs
 				m.setSelected(true);
 				selectedPolygons.add(m);
 			}
@@ -3245,8 +3246,13 @@ public class BezierDrawPanel extends JPanel implements Runnable, MouseListener, 
 		if (scopedManager != null) {
 			SelectedEdge hit = findNearestEdgeInManager(mousePos, scopedManager);
 			if (hit != null) {
-				toggleEdgeSelection(hit, cmdDown);
-				updateEdgeHighlights();
+				// If already selected, leave intact so a subsequent drag can move it.
+				boolean already = selectedEdges.stream()
+					.anyMatch(s -> s.manager == hit.manager && s.curveIndex == hit.curveIndex);
+				if (!already) {
+					toggleEdgeSelection(hit, cmdDown);
+					updateEdgeHighlights();
+				}
 				return;
 			}
 		}
@@ -3258,8 +3264,13 @@ public class BezierDrawPanel extends JPanel implements Runnable, MouseListener, 
 				scopedManager = hit.manager;
 				hit.manager.setScoped(true);
 			}
-			toggleEdgeSelection(hit, cmdDown);
-			updateEdgeHighlights();
+			// If already selected, leave intact so a subsequent drag can move it.
+			boolean already = selectedEdges.stream()
+				.anyMatch(s -> s.manager == hit.manager && s.curveIndex == hit.curveIndex);
+			if (!already) {
+				toggleEdgeSelection(hit, cmdDown);
+				updateEdgeHighlights();
+			}
 			return;
 		}
 		// Click on empty canvas — clear
@@ -3418,6 +3429,128 @@ public class BezierDrawPanel extends JPanel implements Runnable, MouseListener, 
 				selectedPolygons.add(m);
 			}
 		}
+	}
+
+	// ─────────────────────────────────────────────────────────────────────────
+	// CHAIN-AND-CLOSE: weld selected open curves into a new closed polygon
+	// ─────────────────────────────────────────────────────────────────────────
+
+	/**
+	 * Attempt to chain all selected open curves into a single new closed polygon.
+	 * The original open curves are left untouched.
+	 * @return null on success, or a human-readable error message on failure.
+	 */
+	public String closeSelectedOpenCurvesAsPolygon() {
+		// Filter out empty managers (e.g. stubs loaded from XML) before chaining.
+		ArrayList<CubicCurveManager> nonEmpty = new ArrayList<>();
+		for (CubicCurveManager m : selectedPolygons)
+			if (m.getCurves().getCubicCurveTotal() > 0) nonEmpty.add(m);
+
+		if (nonEmpty.size() < 2)
+			return "Select at least 2 open curves to close as a polygon.";
+
+		final double TOLERANCE = 15.0;
+
+		ArrayList<CubicCurveManager> remaining = new ArrayList<>(nonEmpty);
+		ArrayList<CubicCurveManager> chain    = new ArrayList<>();
+		ArrayList<Boolean>           chainFwd = new ArrayList<>();
+
+		// Seed: first curve, forward direction
+		chain.add(remaining.remove(0));
+		chainFwd.add(Boolean.TRUE);
+
+		while (!remaining.isEmpty()) {
+			Point2D.Double lastPt = chainEndPos(chain.get(chain.size() - 1), chainFwd.get(chainFwd.size() - 1));
+			CubicCurveManager bestMgr  = null;
+			boolean           bestFwd  = true;
+			double            bestDist = Double.MAX_VALUE;
+
+			for (CubicCurveManager m : remaining) {
+				double d0 = euclidean(lastPt, anchorPos(m, true));
+				double dn = euclidean(lastPt, anchorPos(m, false));
+				if (d0 < bestDist) { bestDist = d0; bestMgr = m; bestFwd = true; }
+				if (dn < bestDist) { bestDist = dn; bestMgr = m; bestFwd = false; }
+			}
+
+			if (bestMgr == null || bestDist > TOLERANCE)
+				return "Curves do not connect within tolerance (gap: " + Math.round(bestDist) + " px).";
+
+			remaining.remove(bestMgr);
+			chain.add(bestMgr);
+			chainFwd.add(bestFwd);
+		}
+
+		// Verify the chain closes back to its own start
+		Point2D.Double chainStart = anchorPos(chain.get(0), true); // chain[0] is always forward
+		Point2D.Double chainEnd   = chainEndPos(chain.get(chain.size() - 1), chainFwd.get(chainFwd.size() - 1));
+		double closureGap = euclidean(chainStart, chainEnd);
+		if (closureGap > TOLERANCE)
+			return "The curve chain does not close (gap: " + Math.round(closureGap) + " px).";
+
+		// Build flat point array: 4 entries per bezier segment [a0, c1, c2, a1]
+		ArrayList<Point2D.Double> pts = new ArrayList<>();
+		Point2D.Double prevEnd = null;
+
+		for (int i = 0; i < chain.size(); i++) {
+			CubicCurve[] cvs = chain.get(i).getCurves().getArrayofCubicCurves();
+			boolean fwd = chainFwd.get(i);
+			boolean firstInGroup = true;
+
+			if (fwd) {
+				for (CubicCurve cv : cvs) {
+					CubicPoint[] p = cv.getPoints();
+					// Snap boundary anchor to exact previous endpoint
+					Point2D.Double a0 = (firstInGroup && prevEnd != null) ? copyPt(prevEnd) : copyPt(p[0].getPos());
+					pts.add(a0);
+					pts.add(copyPt(p[1].getPos()));
+					pts.add(copyPt(p[2].getPos()));
+					pts.add(copyPt(p[3].getPos()));
+					firstInGroup = false;
+				}
+			} else {
+				// Reversed: iterate segments in reverse, swap c1↔c2 and a0↔a3
+				for (int j = cvs.length - 1; j >= 0; j--) {
+					CubicPoint[] p = cvs[j].getPoints();
+					Point2D.Double a0 = (firstInGroup && prevEnd != null) ? copyPt(prevEnd) : copyPt(p[3].getPos());
+					pts.add(a0);
+					pts.add(copyPt(p[2].getPos()));
+					pts.add(copyPt(p[1].getPos()));
+					pts.add(copyPt(p[0].getPos()));
+					firstInGroup = false;
+				}
+			}
+			prevEnd = pts.get(pts.size() - 1);
+		}
+
+		// Snap final anchor to match the very first anchor for a clean closure
+		if (!pts.isEmpty())
+			pts.set(pts.size() - 1, copyPt(pts.get(0)));
+
+		takeUndoSnapshot();
+		polygonManager.addClosedFromPoints(pts.toArray(new Point2D.Double[0]), strokeColor);
+		return null; // success
+	}
+
+	/** First or last anchor position of a manager (direction-agnostic). */
+	private static Point2D.Double anchorPos(CubicCurveManager m, boolean first) {
+		CubicCurve[] cvs = m.getCurves().getArrayofCubicCurves();
+		if (cvs.length == 0) return new Point2D.Double(0, 0);
+		CubicPoint[] pts = first ? cvs[0].getPoints() : cvs[cvs.length - 1].getPoints();
+		return first ? pts[0].getPos() : pts[3].getPos();
+	}
+
+	/** Effective end position of a chain entry given its traversal direction. */
+	private static Point2D.Double chainEndPos(CubicCurveManager m, boolean fwd) {
+		return anchorPos(m, !fwd);
+	}
+
+	private static double euclidean(Point2D.Double a, Point2D.Double b) {
+		double dx = a.x - b.x, dy = a.y - b.y;
+		return Math.sqrt(dx * dx + dy * dy);
+	}
+
+	private static Point2D.Double copyPt(Point2D.Double p) {
+		return new Point2D.Double(p.x, p.y);
 	}
 
 	private CubicCurveManager findManagerForPoint(CubicPoint pt) {
@@ -3865,9 +3998,10 @@ public class BezierDrawPanel extends JPanel implements Runnable, MouseListener, 
 	/**
 	 * Finalize extrusion on mouse release:
 	 * For each (original edge, live edge) pair:
-	 *   - Create two straight connector edges (anchor0→anchor0, anchor1→anchor1)
-	 *   - Weld all four junction anchors into the WeldRegistry
-	 *   - Select the new edge so the next Shift+drag extrudes it further
+	 *   - Remove the live preview edge manager
+	 *   - Build a closed 4-sided quad polygon: bottom=original, right connector, top=live reversed, left connector
+	 *   - If the source edge belonged to a closed polygon, weld the bottom edge anchors to the originals
+	 *   - Select curve[2] of the new quad (the far/top edge) for chain-extrusion
 	 */
 	private void finalizeExtrude() {
 		WeldRegistry wr = polygonManager.getWeldRegistry();
@@ -3882,29 +4016,61 @@ public class BezierDrawPanel extends JPanel implements Runnable, MouseListener, 
 			CubicPoint[] livePts = liveMgr.getCurves().getCurve(0).getPoints();
 			if (origPts[0] == null || origPts[3] == null) continue;
 
-			// Left connector: orig.anchor0 → live.anchor0
-			CubicCurveManager leftMgr = polygonManager.addSingleEdge(
-				straightEdgePts(origPts[0].getPos(), livePts[0].getPos()), strokeColor);
+			// Snapshot orig anchor positions before removing the live manager
+			Point2D.Double origA0 = origPts[0].getPos();
+			Point2D.Double origC1 = origPts[1].getPos();
+			Point2D.Double origC2 = origPts[2].getPos();
+			Point2D.Double origA3 = origPts[3].getPos();
 
-			// Right connector: orig.anchor1 → live.anchor1
-			CubicCurveManager rightMgr = polygonManager.addSingleEdge(
-				straightEdgePts(origPts[3].getPos(), livePts[3].getPos()), strokeColor);
+			Point2D.Double liveA0 = livePts[0].getPos();
+			Point2D.Double liveA3 = livePts[3].getPos();
 
-			CubicPoint leftA0  = leftMgr.getCurves().getCurve(0).getPoints()[0];
-			CubicPoint leftA1  = leftMgr.getCurves().getCurve(0).getPoints()[3];
-			CubicPoint rightA0 = rightMgr.getCurves().getCurve(0).getPoints()[0];
-			CubicPoint rightA1 = rightMgr.getCurves().getCurve(0).getPoints()[3];
+			// Remove the live preview edge
+			int liveIdx = -1;
+			for (int j = 0; j < polygonManager.getPolygonCount(); j++) {
+				if (polygonManager.getManager(j) == liveMgr) { liveIdx = j; break; }
+			}
+			if (liveIdx >= 0) polygonManager.removeManagerAtIndex(liveIdx);
 
-			// Weld all four junctions
-			wr.registerWeld(origPts[0], leftA0);   // orig.a0  ↔ leftConn.a0
-			wr.registerWeld(livePts[0], leftA1);   // live.a0  ↔ leftConn.a1
-			wr.registerWeld(origPts[3], rightA0);  // orig.a1  ↔ rightConn.a0
-			wr.registerWeld(livePts[3], rightA1);  // live.a1  ↔ rightConn.a1
+			// Build 16-point array for a 4-sided closed quad:
+			//   curve[0]: bottom = original edge (preserved bezier)
+			//   curve[1]: right connector = origA3 → liveA3 (straight)
+			//   curve[2]: top = live edge REVERSED (liveA3 → liveA0, swap c1/c2)
+			//   curve[3]: left connector = liveA0 → origA0 (straight)
+			Point2D.Double[] quadPts = new Point2D.Double[16];
+			// curve[0] bottom
+			quadPts[0] = new Point2D.Double(origA0.x, origA0.y);
+			quadPts[1] = new Point2D.Double(origC1.x, origC1.y);
+			quadPts[2] = new Point2D.Double(origC2.x, origC2.y);
+			quadPts[3] = new Point2D.Double(origA3.x, origA3.y);
+			// curve[1] right connector
+			quadPts[4] = new Point2D.Double(origA3.x, origA3.y);
+			quadPts[5] = new Point2D.Double(origA3.x + (liveA3.x - origA3.x) / 3.0, origA3.y + (liveA3.y - origA3.y) / 3.0);
+			quadPts[6] = new Point2D.Double(origA3.x + 2*(liveA3.x - origA3.x) / 3.0, origA3.y + 2*(liveA3.y - origA3.y) / 3.0);
+			quadPts[7] = new Point2D.Double(liveA3.x, liveA3.y);
+			// curve[2] top = live edge reversed
+			quadPts[8]  = new Point2D.Double(liveA3.x, liveA3.y);
+			quadPts[9]  = new Point2D.Double(livePts[2].getPos().x, livePts[2].getPos().y);  // c2 becomes c1
+			quadPts[10] = new Point2D.Double(livePts[1].getPos().x, livePts[1].getPos().y);  // c1 becomes c2
+			quadPts[11] = new Point2D.Double(liveA0.x, liveA0.y);
+			// curve[3] left connector
+			quadPts[12] = new Point2D.Double(liveA0.x, liveA0.y);
+			quadPts[13] = new Point2D.Double(liveA0.x + (origA0.x - liveA0.x) / 3.0, liveA0.y + (origA0.y - liveA0.y) / 3.0);
+			quadPts[14] = new Point2D.Double(liveA0.x + 2*(origA0.x - liveA0.x) / 3.0, liveA0.y + 2*(origA0.y - liveA0.y) / 3.0);
+			quadPts[15] = new Point2D.Double(origA0.x, origA0.y);
 
-			// Clear purple highlight from the live edge
-			liveMgr.setWeldableEdgeIndices(Collections.emptySet());
+			CubicCurveManager quadMgr = polygonManager.addClosedFromPoints(quadPts, strokeColor);
 
-			newSelection.add(new SelectedEdge(liveMgr, 0));
+			// Weld bottom edge to source only when source is a closed polygon
+			if (se.manager.getIsClosed()) {
+				CubicPoint quadA0 = quadMgr.getCurves().getCurve(0).getPoints()[0];
+				CubicPoint quadA3 = quadMgr.getCurves().getCurve(0).getPoints()[3];
+				wr.registerWeld(origPts[0], quadA0);
+				wr.registerWeld(origPts[3], quadA3);
+			}
+
+			// Select curve[2] (the far top edge) for chain-extrusion
+			newSelection.add(new SelectedEdge(quadMgr, 2));
 		}
 
 		// Clear old selection and select the new edge(s)
