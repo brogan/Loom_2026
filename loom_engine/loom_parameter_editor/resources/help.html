@@ -363,7 +363,7 @@ YourProject/
         <td><strong>Edge Selection</strong></td><td><kbd>s</kbd></td>
         <td>Select a bezier curve segment. Click near an edge (within ~15 px). Click again to deselect. Multiple edges can be selected.</td>
         <td>Move the selected edge(s) and their control points.</td>
-        <td><em>Extrude</em> — creates a copy of the selected edge(s) that you drag to a new position; connector edges and weld links are created automatically on release.</td>
+        <td><em>Extrude</em> — creates a new closed quad polygon from the selected edge(s): the original edge forms the bottom, the dragged position forms the top, and straight connectors bridge the sides. If the source is a closed polygon, the bottom seam is automatically welded to the original. The top edge becomes the new selection for chained extrusions.</td>
     </tr>
     <tr>
         <td><strong>Open Curve Selection</strong></td><td><kbd>d</kbd></td>
@@ -387,7 +387,7 @@ YourProject/
     <tr><th>Button</th><th>Effect</th><th>Use for</th></tr>
     <tr>
         <td><strong>Close Polygon</strong></td>
-        <td>Adds a final segment connecting the last anchor back to the first anchor, creating a closed loop. Switches to Polygon Selection mode automatically.</td>
+        <td>In drawing mode: adds a final segment connecting the last anchor back to the first anchor, creating a closed loop. Switches to Polygon Selection mode automatically. <em>Also:</em> in Open Curve Selection Mode with curves selected, chains the selected open curves end-to-end into a single new closed polygon (chain-close) — useful for converting a set of aligned open curve segments into polygon geometry.</td>
         <td>Polygon sets used for subdivision in Loom. All Loom subdivision algorithms require closed polygons. Most of your drawing will end with this button.</td>
     </tr>
     <tr>

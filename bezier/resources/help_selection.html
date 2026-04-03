@@ -73,7 +73,7 @@
 <p>Clicking directly on a curve in any polygon selects it and auto-scopes that polygon in one step.</p>
 
 <h3>Multiple Edge Selection</h3>
-<p>Click further edges to add them to the selection (toggle behaviour &mdash; clicking a selected edge deselects it). You can select edges from different polygons. When exactly two edges from different polygons meet the weld proximity criteria (&le;80 px midpoint distance, directions within ~45&deg;), they turn <span class="chip purple">purple</span> indicating they are weldable.</p>
+<p>Click further edges to add them to the selection. You can select edges from different polygons. Clicking an <em>already-selected</em> edge keeps it selected (so you can begin dragging immediately without losing the selection). To deselect, click empty canvas or use <kbd>&#8984;</kbd>&nbsp;+&nbsp;<kbd>D</kbd>. When exactly two edges from different polygons meet the weld proximity criteria (&le;80 px midpoint distance, directions within ~45&deg;), they turn <span class="chip purple">purple</span> indicating they are weldable.</p>
 
 <h3>Edge Highlight Colours</h3>
 <table>
@@ -99,8 +99,19 @@
   <li>Clicking a selected curve again <b>deselects</b> it.</li>
   <li><kbd>&#8679; Shift</kbd>&nbsp;+&nbsp;drag draws a rubber-band marquee &mdash; open curves whose centroid falls inside the rectangle are selected.</li>
   <li><kbd>&#8984;</kbd>&nbsp;+&nbsp;<kbd>A</kbd> selects all open curves on the active layer.</li>
+  <li>With curves selected, clicking <b>Close Polygon</b> in the toolbar attempts to chain the selected curves into a new closed polygon (see below).</li>
 </ul>
 <div class="note">Scale, rotate, flip, centre, and duplicate all work in Open Curve Selection Mode and operate exclusively on the selected (or, if nothing is selected, all active-layer) open curves. Closed polygons and ovals are not affected.</div>
+
+<h3>Chain-Close to Polygon</h3>
+<p>If the selected open curves together form a closed loop &mdash; their endpoints connect end-to-end within a <b>15-pixel tolerance</b> &mdash; clicking <b>Close Polygon</b> creates a single new closed polygon tracing the entire chain.</p>
+<ul>
+  <li>The original open curves are <b>not deleted</b>; the new polygon is additional geometry on the active layer.</li>
+  <li>Curves can be in any order in the selection; the algorithm chains them greedily by nearest endpoint, reversing individual curves as needed to maintain winding direction.</li>
+  <li>If any endpoint gap exceeds 15 px, or if the last endpoint does not return within 15 px of the first anchor, a warning dialog is shown and no polygon is created.</li>
+  <li>After a successful chain-close, the editor switches to <b>Polygon Selection Mode</b> with the new polygon selected.</li>
+</ul>
+<div class="note">Use <kbd>&#8984;</kbd>&nbsp;+&nbsp;<kbd>A</kbd> to select all open curves on the active layer, then click <b>Close Polygon</b> to chain them all at once. Empty stub curves (zero-segment curves from loading a sparse open curve set XML) are automatically skipped.</div>
 
 <h2>Polygon Selection Mode</h2>
 <p>Click the <b>Polygon Selection</b> toolbar button (or press <kbd>f</kbd>). Entire closed polygons and ovals are selected and moved as units.</p>

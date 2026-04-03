@@ -123,7 +123,7 @@
 <p>The Weld Registry is a bidirectional map of linked anchor pairs. In Relational sub-mode, moving one point moves all transitively linked points &mdash; so a whole mesh moves cleanly when you drag any part of it.</p>
 
 <h2>Extrude</h2>
-<p>Extrude creates a new edge from a selected edge by Shift-dragging, bridged by straight connector edges. This is the fastest way to build a repeating grid or net of polygons.</p>
+<p>Extrude grows a new <b>closed quad polygon</b> from a selected edge by Shift-dragging. This is the fastest way to build a repeating grid or mesh of connected polygons.</p>
 <h3>Procedure</h3>
 <ol>
   <li>Enter <b>Edge Selection Mode</b> and select one or more edges.</li>
@@ -132,13 +132,16 @@
   <li>Release the mouse at the desired position.</li>
 </ol>
 <h3>Result</h3>
+<p>Each extruded edge produces one new <b>closed quad polygon</b> with four sides:</p>
 <ul>
-  <li><b>New edge</b> &mdash; the dragged duplicate placed at the release position.</li>
-  <li><b>Left connector</b> &mdash; straight edge from original.anchor0 to new.anchor0.</li>
-  <li><b>Right connector</b> &mdash; straight edge from original.anchor1 to new.anchor1.</li>
-  <li><b>4 weld links</b> &mdash; each connector endpoint welded to the corresponding anchor on the original and new edges.</li>
+  <li><b>Bottom</b> &mdash; the original selected edge (left in place, unchanged).</li>
+  <li><b>Top</b> &mdash; the dragged edge at the release position (curve reversed so the polygon winds correctly).</li>
+  <li><b>Left &amp; Right connectors</b> &mdash; straight edges bridging the corresponding anchor pairs.</li>
 </ul>
-<p>After release, the <b>new edge becomes the selected edge</b> &mdash; you can immediately <kbd>&#8679; Shift</kbd>&nbsp;+&nbsp;drag again to chain further extrusions.</p>
+<h3>Welding</h3>
+<p>If the source edge belongs to a <b>closed polygon</b>, the new quad&rsquo;s bottom anchors are automatically welded to the original edge&rsquo;s anchors &mdash; the shared seam is immediately linked in the Weld Registry. If the source edge belongs to an <b>open curve</b>, no weld is created (the new quad is standalone geometry).</p>
+<p>After release, the <b>top edge of the new quad becomes the active selection</b>, so you can immediately <kbd>&#8679; Shift</kbd>&nbsp;+&nbsp;drag again to chain further extrusions.</p>
+<div class="note">Use <b>Weld All Adjacent</b> after building a grid to automatically link any unconnected seams between quads.</div>
 
 <h2>Intersect (Quad Mesh)</h2>
 <p>Builds an annular quad-mesh filling the space between two concentric polygons.</p>

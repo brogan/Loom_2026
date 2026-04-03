@@ -89,6 +89,9 @@
 <p>Click <b>Close Polygon</b>. The editor adds a final segment connecting the last anchor back to the first, records the polygon as finished, and switches to Polygon Selection Mode. A new empty polygon is ready for the next shape.</p>
 <div class="note">Closed polygons are required for Loom's subdivision pipeline. Use <i>Close Polygon</i> whenever you are creating shapes for subdivision rendering.</div>
 
+<h3>Chain-Close from Open Curves</h3>
+<p>If you have drawn a set of open curves whose endpoints connect to form a closed loop, you can convert them into a single closed polygon without redrawing. In <b>Open Curve Selection Mode</b>, select all the curves that make up the loop (use <kbd>&#8984;</kbd>&nbsp;+&nbsp;<kbd>A</kbd> to select all on the active layer), then click <b>Close Polygon</b>. The editor chains the curves end-to-end (reversing individual curves as needed) and creates one new closed polygon. The original open curves remain on the canvas; the polygon is additional geometry. Endpoint gaps up to 15 px are tolerated; larger gaps produce a warning.</p>
+
 <h2>Creating Open Curves</h2>
 <p>Open curves are non-closed splines &mdash; paths with a distinct start and end. In Loom they are rendered directly as stroked paths or brush stamps (not subdivided).</p>
 <ol>
