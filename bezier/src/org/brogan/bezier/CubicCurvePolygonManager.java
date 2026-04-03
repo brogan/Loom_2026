@@ -31,7 +31,7 @@ public class CubicCurvePolygonManager {
 		addManager();
 	}
 
-	public void draw(Graphics2D g2D) {
+	public synchronized void draw(Graphics2D g2D) {
 		g2D.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
 
 		int totPolys = polys.getPolygonTotal();
@@ -69,12 +69,12 @@ public class CubicCurvePolygonManager {
 	/**
 	 * add manager to list of cubic curve managers
 	 */
-	public void addManager () {
+	public synchronized void addManager () {
 		CubicCurveManager m = new CubicCurveManager(strokeColor, this);
 		if (layerManager != null) m.setLayerId(layerManager.getActiveLayerId());
 		cubicCurveManagers.add(m);
 	}
-	public void clearManagers () {
+	public synchronized void clearManagers () {
 		int totCurveManagers = cubicCurveManagers.size();
 		System.out.println("CubicCurvePolygonManager, clearManagers, cubicCurveManagers size: " + totCurveManagers);
 		weldRegistry.clear();
@@ -185,7 +185,7 @@ public class CubicCurvePolygonManager {
 	 * Remove the closed polygon and its manager at the given index.
 	 * The index must be in range [0, getPolygonCount()-1] (i.e. a closed polygon, not the active drawing manager).
 	 */
-	public void removeManagerAtIndex(int i) {
+	public synchronized void removeManagerAtIndex(int i) {
 		// Unregister all points of this manager from the weld registry
 		CubicCurve[] curves = cubicCurveManagers.get(i).getCurves().getArrayofCubicCurves();
 		for (CubicCurve cv : curves)
@@ -201,7 +201,7 @@ public class CubicCurvePolygonManager {
 	 * manager/polygon index correspondence is preserved.
 	 * Returns the new CubicCurveManager so the caller can select it.
 	 */
-	public CubicCurveManager addDuplicateOf(CubicCurveManager source, double offsetX, double offsetY) {
+	public synchronized CubicCurveManager addDuplicateOf(CubicCurveManager source, double offsetX, double offsetY) {
 		CubicCurve[] cArray = source.getCurves().getArrayofCubicCurves();
 		int N = cArray.length;
 
@@ -244,7 +244,7 @@ public class CubicCurvePolygonManager {
 	 * Used by BezierSvgImporter to add imported SVG paths to the canvas.
 	 * Returns the new CubicCurveManager.
 	 */
-	public CubicCurveManager addClosedFromPoints(Point2D.Double[] pts, Color strokeColor) {
+	public synchronized CubicCurveManager addClosedFromPoints(Point2D.Double[] pts, Color strokeColor) {
 		CubicCurveManager newManager = new CubicCurveManager(strokeColor, this);
 		if (layerManager != null) newManager.setLayerId(layerManager.getActiveLayerId());
 		newManager.setAllPoints(pts, strokeColor);
@@ -261,7 +261,7 @@ public class CubicCurvePolygonManager {
 	 * Used when duplicating a selected edge in edge-selection mode.
 	 * Returns the new CubicCurveManager.
 	 */
-	public CubicCurveManager addSingleEdge(Point2D.Double[] pts, Color strokeColor) {
+	public synchronized CubicCurveManager addSingleEdge(Point2D.Double[] pts, Color strokeColor) {
 		CubicCurveManager newManager = new CubicCurveManager(strokeColor, this);
 		if (layerManager != null) newManager.setLayerId(layerManager.getActiveLayerId());
 		newManager.setSingleEdgePoints(pts, strokeColor);
@@ -331,7 +331,7 @@ public class CubicCurvePolygonManager {
 	 * Clears all existing managers and rebuilds from the snapshot data,
 	 * then re-registers cross-manager weld links.
 	 */
-	public void restoreFromSnapshot(GeometrySnapshot snap, java.awt.Color strokeColor) {
+	public synchronized void restoreFromSnapshot(GeometrySnapshot snap, java.awt.Color strokeColor) {
 		// Clear without the auto-addManager() that clearManagers() triggers
 		weldRegistry.clear();
 		cubicCurveManagers.clear();
@@ -389,7 +389,7 @@ public class CubicCurvePolygonManager {
 	 * Create a new open curve manager from an array of N*4 point positions.
 	 * Like addClosedFromPoints but does not link the last anchor back to the first.
 	 */
-	public CubicCurveManager addOpenCurveFromPoints(Point2D.Double[] pts, Color strokeColor) {
+	public synchronized CubicCurveManager addOpenCurveFromPoints(Point2D.Double[] pts, Color strokeColor) {
 		CubicCurveManager newManager = new CubicCurveManager(strokeColor, this);
 		if (layerManager != null) newManager.setLayerId(layerManager.getActiveLayerId());
 		newManager.setOpenPoints(pts, strokeColor);
