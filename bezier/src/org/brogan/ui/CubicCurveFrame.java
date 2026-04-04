@@ -191,9 +191,14 @@ public class CubicCurveFrame extends JFrame implements WindowListener{
 		selectAllItem.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_A, cmd));
 		selectAllItem.addActionListener(e -> curvePanel.getBezier().selectAll());
 
-		JMenuItem deselectAllItem = new JMenuItem("Deselect All");
-		deselectAllItem.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_D, cmd));
+		JMenuItem deselectAllItem = new JMenuItem("Deselect (Space)");
 		deselectAllItem.addActionListener(e -> curvePanel.getBezier().deselectAll());
+
+		JMenuItem prevSelectionItem = new JMenuItem("Previous Selection (\u2190)");
+		prevSelectionItem.addActionListener(e -> curvePanel.getBezier().navigateSelectionBack());
+
+		JMenuItem nextSelectionItem = new JMenuItem("Next Selection (\u2192)");
+		nextSelectionItem.addActionListener(e -> curvePanel.getBezier().navigateSelectionForward());
 
 		JMenuItem copyItem = new JMenuItem("Copy");
 		copyItem.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_C, cmd));
@@ -214,6 +219,8 @@ public class CubicCurveFrame extends JFrame implements WindowListener{
 		editMenu.addSeparator();
 		editMenu.add(selectAllItem);
 		editMenu.add(deselectAllItem);
+		editMenu.add(prevSelectionItem);
+		editMenu.add(nextSelectionItem);
 		editMenu.addSeparator();
 		editMenu.add(copyItem);
 		editMenu.add(pasteItem);

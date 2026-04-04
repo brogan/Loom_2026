@@ -91,6 +91,24 @@ public class BezierDrawPanel extends JPanel implements Runnable, MouseListener, 
 		final int curveIndex;
 		SelectedEdge(CubicCurveManager m, int i) { manager = m; curveIndex = i; }
 	}
+
+	/** Snapshot of all selection lists for history navigation (Space=deselect, ←/→ navigate). */
+	private static class SelectionSnapshot {
+		final ArrayList<CubicPoint>        points;
+		final ArrayList<SelectedEdge>      edges;
+		final ArrayList<CubicCurveManager> curves; // closed polygons and open curves
+		final ArrayList<OvalManager>       ovals;
+		SelectionSnapshot(java.util.List<CubicPoint> pts, java.util.List<SelectedEdge> eds,
+		                  java.util.List<CubicCurveManager> cvs, java.util.List<OvalManager> ovs) {
+			points = new ArrayList<>(pts);
+			edges  = new ArrayList<>(eds);
+			curves = new ArrayList<>(cvs);
+			ovals  = new ArrayList<>(ovs);
+		}
+		boolean isEmpty() {
+			return points.isEmpty() && edges.isEmpty() && curves.isEmpty() && ovals.isEmpty();
+		}
+	}
 	
 	private boolean started;
 
@@ -162,6 +180,13 @@ public class BezierDrawPanel extends JPanel implements Runnable, MouseListener, 
 	// ── Oval mode ─────────────────────────────────────────────────────────────
 	private java.util.List<OvalManager> ovalList = new ArrayList<>();
 	private java.util.List<OvalManager> selectedOvals = new ArrayList<>();
+
+	// ── Selection history  (Space = deselect, ← / → navigate up to 10 past selections) ──
+	private static final int SELECTION_HISTORY_MAX = 10;
+	private final ArrayList<SelectionSnapshot> selectionHistory = new ArrayList<>();
+	private int     selectionHistoryCursor = -1; // index in selectionHistory; -1 = empty
+	private boolean navigatingHistory      = false;
+	private int     historyLayerId         = -1; // layer when history was built; mismatch resets
 
 	// ── Freehand draw mode ────────────────────────────────────────────────────
 	private boolean freehandMode = false;
@@ -1017,6 +1042,7 @@ public class BezierDrawPanel extends JPanel implements Runnable, MouseListener, 
 		}
 		polygonClickCandidate = null;
 		polygonMouseMoved = false;
+		pushSelectionToHistory();
 	}
 	/**
 	 * @return the curveManager
@@ -1810,6 +1836,7 @@ public class BezierDrawPanel extends JPanel implements Runnable, MouseListener, 
 			}
 			updatePointHighlights();
 		}
+		pushSelectionToHistory();
 	}
 
 	public void deselectAll() {
@@ -1822,6 +1849,107 @@ public class BezierDrawPanel extends JPanel implements Runnable, MouseListener, 
 		clearScopeHighlight();
 		updatePointHighlights();
 		updateEdgeHighlights();
+	}
+
+	// ── Selection history helpers ────────────────────────────────────────────
+
+	private SelectionSnapshot takeSelectionSnapshot() {
+		return new SelectionSnapshot(selectedPoints, selectedEdges, selectedPolygons, selectedOvals);
+	}
+
+	/** Push the current non-empty selection to history. No-op while navigating or if unchanged. */
+	public void pushSelectionToHistory() {
+		if (navigatingHistory) return;
+		if (selectedPoints.isEmpty() && selectedEdges.isEmpty()
+				&& selectedPolygons.isEmpty() && selectedOvals.isEmpty()) return;
+		int currentLayer = (layerManager != null) ? layerManager.getActiveLayerId() : -1;
+		if (currentLayer != historyLayerId) {
+			selectionHistory.clear();
+			selectionHistoryCursor = -1;
+			historyLayerId = currentLayer;
+		}
+		// Truncate forward entries if a new selection is made while mid-navigation
+		if (selectionHistoryCursor >= 0 && selectionHistoryCursor < selectionHistory.size() - 1)
+			selectionHistory.subList(selectionHistoryCursor + 1, selectionHistory.size()).clear();
+		// Skip if identical to the most recent entry
+		if (!selectionHistory.isEmpty()) {
+			SelectionSnapshot last = selectionHistory.get(selectionHistory.size() - 1);
+			if (last.curves.size()  == selectedPolygons.size() && last.curves.containsAll(selectedPolygons)
+			 && last.ovals.size()   == selectedOvals.size()    && last.ovals.containsAll(selectedOvals)
+			 && last.edges.size()   == selectedEdges.size()
+			 && last.points.size()  == selectedPoints.size()   && last.points.containsAll(selectedPoints))
+				return;
+		}
+		selectionHistory.add(takeSelectionSnapshot());
+		if (selectionHistory.size() > SELECTION_HISTORY_MAX)
+			selectionHistory.remove(0);
+		selectionHistoryCursor = selectionHistory.size() - 1;
+	}
+
+	/** Clear history — call on layer switch or undo. */
+	public void clearSelectionHistory() {
+		selectionHistory.clear();
+		selectionHistoryCursor = -1;
+		historyLayerId = (layerManager != null) ? layerManager.getActiveLayerId() : -1;
+	}
+
+	/** Navigate to an older selection (← key). */
+	public void navigateSelectionBack() {
+		int currentLayer = (layerManager != null) ? layerManager.getActiveLayerId() : -1;
+		if (currentLayer != historyLayerId) { clearSelectionHistory(); return; }
+		if (selectionHistoryCursor <= 0) return;
+		selectionHistoryCursor--;
+		restoreSelectionSnapshot(selectionHistory.get(selectionHistoryCursor));
+	}
+
+	/** Navigate to a more recent selection (→ key). */
+	public void navigateSelectionForward() {
+		int currentLayer = (layerManager != null) ? layerManager.getActiveLayerId() : -1;
+		if (currentLayer != historyLayerId) { clearSelectionHistory(); return; }
+		if (selectionHistoryCursor < 0 || selectionHistoryCursor >= selectionHistory.size() - 1) return;
+		selectionHistoryCursor++;
+		restoreSelectionSnapshot(selectionHistory.get(selectionHistoryCursor));
+	}
+
+	private void restoreSelectionSnapshot(SelectionSnapshot snap) {
+		navigatingHistory = true;
+		for (CubicCurveManager m : selectedPolygons) m.clearAllHighlights();
+		for (OvalManager o : selectedOvals) o.setSelected(false);
+		selectedPoints.clear();
+		selectedEdges.clear();
+		selectedPolygons.clear();
+		selectedOvals.clear();
+		clearScopeHighlight();
+		int al = (layerManager != null) ? layerManager.getActiveLayerId() : -1;
+		if (polygonSelectionModeEnabled) {
+			for (CubicCurveManager m : snap.curves) {
+				if (!m.getIsClosed() || m.getLayerId() != al) continue;
+				m.setSelected(true);
+				m.setSelectedRelational(polySubMode == SelectionSubMode.RELATIONAL);
+				selectedPolygons.add(m);
+			}
+			for (OvalManager o : snap.ovals) {
+				if (o.getLayerId() != al) continue;
+				o.setSelected(true);
+				selectedOvals.add(o);
+			}
+		} else if (openCurveSelectionModeEnabled) {
+			for (CubicCurveManager m : snap.curves) {
+				if (m.getIsClosed() || m.getLayerId() != al) continue;
+				m.setSelected(true);
+				selectedPolygons.add(m);
+			}
+		} else if (edgeSelectionModeEnabled) {
+			selectedEdges.addAll(snap.edges);
+			updateEdgeHighlights();
+		} else if (pointSelectionModeEnabled) {
+			selectedPoints.addAll(snap.points);
+			updatePointHighlights();
+		}
+		updatePointHighlights();
+		updateEdgeHighlights();
+		navigatingHistory = false;
+		repaint();
 	}
 
 	//NOT WORKING YET
@@ -2118,6 +2246,7 @@ public class BezierDrawPanel extends JPanel implements Runnable, MouseListener, 
 	public void undo() {
 		GeometrySnapshot snap = undoManager.pop();
 		if (snap == null) return;
+		clearSelectionHistory();
 		// Clear all selection state first
 		selectedPoints.clear();
 		selectedEdges.clear();
@@ -3137,6 +3266,13 @@ public class BezierDrawPanel extends JPanel implements Runnable, MouseListener, 
 	public PrevMode getPrevModeBeforeKnife() { return prevModeBeforeKnife; }
 
 	public void keyPressed(KeyEvent e) {
+		int code = e.getKeyCode();
+		int mods = e.getModifiersEx();
+		if (mods == 0) {
+			if (code == KeyEvent.VK_SPACE) { deselectAll();              return; }
+			if (code == KeyEvent.VK_LEFT)  { navigateSelectionBack();    return; }
+			if (code == KeyEvent.VK_RIGHT) { navigateSelectionForward(); return; }
+		}
 	}
 	public void keyReleased(KeyEvent e) {}
 	public void keyTyped(KeyEvent e) {
@@ -3349,6 +3485,7 @@ public class BezierDrawPanel extends JPanel implements Runnable, MouseListener, 
 		} else if (openCurveSelectionModeEnabled) {
 			selectOpenCurvesInRect(rect);
 		}
+		pushSelectionToHistory();
 	}
 
 	/** Select all points (anchors and controls) whose position falls inside rect. */

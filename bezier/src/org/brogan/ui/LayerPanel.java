@@ -98,6 +98,7 @@ public class LayerPanel extends JPanel {
             if (idx >= 0 && idx < layers.size()) {
                 layerManager.setActiveLayerId(layers.get(idx).getId());
                 bezier.getPolygonManager().syncActiveDrawingManagerLayer();
+                bezier.clearSelectionHistory();
                 bezier.repaint();
                 repaint();
             }
@@ -141,6 +142,7 @@ public class LayerPanel extends JPanel {
         Layer l = layerManager.createLayer(name.trim());
         layerManager.setActiveLayerId(l.getId());
         bezier.getPolygonManager().syncActiveDrawingManagerLayer();
+        bezier.clearSelectionHistory();
         refreshTable();
         bezier.repaint();
     }
@@ -162,6 +164,7 @@ public class LayerPanel extends JPanel {
         if (dup != null) {
             layerManager.setActiveLayerId(dup.getId());
             bezier.getPolygonManager().syncActiveDrawingManagerLayer();
+            bezier.clearSelectionHistory();
             refreshTable();
             bezier.repaint();
         }
