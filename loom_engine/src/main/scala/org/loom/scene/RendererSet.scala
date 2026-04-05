@@ -95,6 +95,8 @@ class RendererSet(val name: String) {
 				}
 
 			}
+		} else {
+			println(s"[Loom] Warning: RendererSet '$name' has no renderers — getRenderer() returning null")
 		}
 		currentRenderer
 

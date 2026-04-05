@@ -707,12 +707,15 @@ class OpenCurveTab(QWidget):
             return
         shape_name = f"{root}_shape"
 
+        expected_set_name = f"{root}_curveSet"
         shape_done = bool(self._shape_library and any(
-            any(s.name == shape_name for s in ss.shapes)
+            ss.name == expected_set_name and any(s.name == shape_name for s in ss.shapes)
             for ss in getattr(self._shape_library, 'shape_sets', [])))
 
         sprite_done = bool(self._sprite_library and any(
-            any(getattr(sp, 'shape_name', '') == shape_name for sp in ss.sprites)
+            any(getattr(sp, 'shape_set_name', '') == expected_set_name
+                and getattr(sp, 'shape_name', '') == shape_name
+                for sp in ss.sprites)
             for ss in getattr(self._sprite_library, 'sprite_sets', [])))
 
         renderer_name = f"{root}_renderer"

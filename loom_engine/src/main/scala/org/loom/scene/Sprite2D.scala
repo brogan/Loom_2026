@@ -188,6 +188,10 @@ class Sprite2D(val shape: Shape2D, val spriteParams: Sprite2DParams, var animato
 
     var holdRendererCount: Int = 0
     var ren: Renderer = rendererSet.getRenderer()  // applies STATIC / SEQUENTIAL / RANDOM logic
+    if (ren == null) {
+      println(s"[Loom] Warning: getRenderer() returned null for renderer set '${rendererSet.name}' (size=${rendererSet.rendererSet.length}), skipping sprite draw")
+      return
+    }
     val changeRenMax: Int = ren.holdLength
 
     for (poly <- shape.polys) {
