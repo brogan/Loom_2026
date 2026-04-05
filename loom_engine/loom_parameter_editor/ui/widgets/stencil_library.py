@@ -2,18 +2,18 @@
 Stencil file management widget — lists available stencil PNGs with thumbnails.
 """
 import os
-from PyQt6.QtWidgets import (
+from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
     QListWidget, QListWidgetItem, QFileDialog, QMessageBox,
 )
-from PyQt6.QtCore import Qt, pyqtSignal, QSize
-from PyQt6.QtGui import QPixmap, QIcon
+from PySide6.QtCore import Qt, Signal, QSize
+from PySide6.QtGui import QPixmap, QIcon
 
 
 class StencilLibraryWidget(QWidget):
     """Grid/list of available stencils with thumbnails and management buttons."""
 
-    stencilSelected = pyqtSignal(str)  # emits filename when a stencil is selected
+    stencilSelected = Signal(str)  # emits filename when a stencil is selected
 
     def __init__(self, parent=None):
         super().__init__(parent)

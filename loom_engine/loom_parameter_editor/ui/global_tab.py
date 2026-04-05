@@ -4,12 +4,12 @@ Provides UI for editing global_config.xml settings.
 Quality/Scale/Animating/DrawBgOnce have been moved to the Run tab.
 """
 import os
-from PyQt6.QtWidgets import (
+from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QFormLayout, QGroupBox,
     QLineEdit, QTextEdit, QSpinBox, QCheckBox, QComboBox, QScrollArea, QLabel,
     QPushButton, QTabWidget
 )
-from PyQt6.QtCore import pyqtSignal, Qt
+from PySide6.QtCore import Signal, Qt
 from models.global_config import GlobalConfig
 from models.rendering import Color
 from .widgets.color_picker import ColorPickerWidget
@@ -18,9 +18,9 @@ from .widgets.color_picker import ColorPickerWidget
 class GlobalTab(QWidget):
     """Tab widget for editing global project configuration."""
 
-    modified = pyqtSignal()
-    background_image_browse_requested = pyqtSignal()
-    projects_dir_changed = pyqtSignal(str)
+    modified = Signal()
+    background_image_browse_requested = Signal()
+    projects_dir_changed = Signal(str)
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -197,7 +197,7 @@ class GlobalTab(QWidget):
         self.modified.emit()
 
     def _on_change_projects_dir(self):
-        from PyQt6.QtWidgets import QFileDialog
+        from PySide6.QtWidgets import QFileDialog
         dir_path = QFileDialog.getExistingDirectory(
             self, "Select Projects Directory", self._projects_dir
         )

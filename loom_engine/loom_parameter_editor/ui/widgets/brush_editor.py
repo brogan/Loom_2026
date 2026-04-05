@@ -1,18 +1,18 @@
 """
-PyQt6 pixel editor for creating/editing greyscale brush images.
+PySide6 pixel editor for creating/editing greyscale brush images.
 Brushes are small PNGs (typically 16x16 to 64x64) used as stamps
 in the BRUSHED renderer mode.
 """
 import os
 import math
 from typing import Optional
-from PyQt6.QtWidgets import (
+from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QSlider,
     QSpinBox, QComboBox, QPushButton, QFileDialog, QGroupBox,
     QSizePolicy
 )
-from PyQt6.QtCore import Qt, pyqtSignal, QPoint, QRect
-from PyQt6.QtGui import (
+from PySide6.QtCore import Qt, Signal, QPoint, QRect
+from PySide6.QtGui import (
     QImage, QPainter, QColor, QPen, QPixmap, QMouseEvent
 )
 
@@ -20,7 +20,7 @@ from PyQt6.QtGui import (
 class BrushCanvas(QWidget):
     """Zoomable pixel grid for painting greyscale brush images."""
 
-    modified = pyqtSignal()
+    modified = Signal()
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -187,7 +187,7 @@ class BrushCanvas(QWidget):
 class BrushEditorWidget(QWidget):
     """Legacy stub — brush_library.py now opens BrushEditorWindow directly."""
 
-    brushSaved = pyqtSignal(str)
+    brushSaved = Signal(str)
 
     def __init__(self, brushes_dir: str = "", parent=None):
         super().__init__(parent)

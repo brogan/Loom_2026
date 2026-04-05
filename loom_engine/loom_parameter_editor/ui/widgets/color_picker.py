@@ -1,18 +1,18 @@
 """
 RGBA color picker widget.
 """
-from PyQt6.QtWidgets import (
+from PySide6.QtWidgets import (
     QWidget, QHBoxLayout, QVBoxLayout, QLabel, QSpinBox, QPushButton, QColorDialog
 )
-from PyQt6.QtGui import QColor, QPalette
-from PyQt6.QtCore import pyqtSignal
+from PySide6.QtGui import QColor, QPalette
+from PySide6.QtCore import Signal
 from models.rendering import Color
 
 
 class ColorPickerWidget(QWidget):
     """A widget for picking RGBA colors with numeric inputs and a color preview."""
 
-    colorChanged = pyqtSignal(Color)
+    colorChanged = Signal(Color)
 
     def __init__(self, label: str = "", show_alpha: bool = True, parent=None):
         super().__init__(parent)
@@ -100,7 +100,7 @@ class ColorPickerWidget(QWidget):
 class CompactColorPicker(QWidget):
     """A compact color picker showing just a button with preview."""
 
-    colorChanged = pyqtSignal(Color)
+    colorChanged = Signal(Color)
 
     def __init__(self, label: str = "", show_alpha: bool = True, parent=None):
         super().__init__(parent)

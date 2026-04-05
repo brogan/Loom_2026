@@ -5,15 +5,15 @@ import os
 import shutil
 from pathlib import Path
 from typing import Optional
-from PyQt6.QtWidgets import (
+from PySide6.QtWidgets import (
     QMainWindow, QTabWidget, QMenuBar, QMenu, QFileDialog,
     QMessageBox, QLabel, QStatusBar, QDialog, QVBoxLayout,
     QHBoxLayout, QFormLayout, QLineEdit, QPushButton, QDialogButtonBox,
     QTableWidget, QTableWidgetItem, QHeaderView, QSizePolicy
 )
 import datetime
-from PyQt6.QtCore import Qt, QUrl, QTimer
-from PyQt6.QtGui import QAction, QKeySequence, QDesktopServices
+from PySide6.QtCore import Qt, QUrl, QTimer
+from PySide6.QtGui import QAction, QKeySequence, QDesktopServices
 from .rendering_tab import RenderingTab
 from .global_tab import GlobalTab
 from .geometry_tab import GeometryTab

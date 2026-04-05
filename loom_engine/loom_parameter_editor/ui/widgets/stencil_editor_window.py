@@ -12,15 +12,15 @@ import json
 from typing import Optional
 
 import math
-from PyQt6.QtWidgets import (
+from PySide6.QtWidgets import (
     QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QLabel,
     QSpinBox, QDoubleSpinBox, QPushButton, QCheckBox,
     QButtonGroup, QGroupBox, QScrollArea, QSlider,
     QToolBar, QStatusBar, QFileDialog, QMessageBox,
     QApplication, QRadioButton
 )
-from PyQt6.QtCore import Qt, pyqtSignal, QPoint, QSize, QRect
-from PyQt6.QtGui import (
+from PySide6.QtCore import Qt, Signal, QPoint, QSize, QRect
+from PySide6.QtGui import (
     QImage, QPainter, QColor, QPen, QMouseEvent, QKeySequence,
     QAction, QActionGroup, QPixmap, QBrush, QIcon
 )
@@ -44,7 +44,7 @@ DESELECT = 4
 class ColorSwatchWidget(QWidget):
     """Single colour swatch button — opens QColorDialog to pick RGBA."""
 
-    colorChanged = pyqtSignal(QColor)
+    colorChanged = Signal(QColor)
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -71,7 +71,7 @@ class ColorSwatchWidget(QWidget):
         self._update_swatch()
 
     def _on_click(self):
-        from PyQt6.QtWidgets import QColorDialog
+        from PySide6.QtWidgets import QColorDialog
         color = QColorDialog.getColor(
             self._color, self,
             "Pick paint colour",
@@ -109,8 +109,8 @@ class ColorSwatchWidget(QWidget):
 class StencilGridCanvas(QWidget):
     """Zoomable grid canvas that stores a list[list[tuple(r,g,b,a)]] paint grid."""
 
-    modified = pyqtSignal()
-    cellPainted = pyqtSignal(int, int)  # row, col
+    modified = Signal()
+    cellPainted = Signal(int, int)  # row, col
 
     CELL_SIZE = 16
 
@@ -460,7 +460,7 @@ class StencilGridCanvas(QWidget):
 class StencilEditorWindow(QMainWindow):
     """Floating standalone stencil editor window for RGBA PNG stencils."""
 
-    stencilSaved = pyqtSignal(str)   # emits filename (basename) on save
+    stencilSaved = Signal(str)   # emits filename (basename) on save
 
     def __init__(self, stencils_dir: str = "", initial_file: Optional[str] = None,
                  parent=None):

@@ -2,7 +2,7 @@
 """
 Loom Parameter Editor - Main entry point.
 
-A PyQt6 application for configuring renderer parameters for the Loom Scala application.
+A PySide6 application for configuring renderer parameters for the Loom Scala application.
 Creates XML configuration files that can be loaded by the Scala application.
 """
 import sys
@@ -14,8 +14,8 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import error_logger
 error_logger.install()
 
-from PyQt6.QtWidgets import QApplication
-from PyQt6.QtCore import Qt
+from PySide6.QtWidgets import QApplication
+from PySide6.QtCore import Qt
 from ui.main_window import MainWindow
 
 

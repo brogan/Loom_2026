@@ -2,11 +2,11 @@
 Editor widgets for renderer change configurations.
 """
 from typing import Optional
-from PyQt6.QtWidgets import (
+from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QGroupBox, QCheckBox,
     QLabel, QDoubleSpinBox, QSpinBox, QFormLayout
 )
-from PyQt6.QtCore import pyqtSignal
+from PySide6.QtCore import Signal
 from .color_picker import ColorPickerWidget
 from .enum_dropdown import EnumDropdown
 from .palette_editor import PaletteEditorWidget
@@ -18,7 +18,7 @@ from models.constants import ChangeKind, Motion, Cycle, Scale, ColorChannel
 class SizeChangeEditor(QGroupBox):
     """Editor for SizeChange (stroke width or point size)."""
 
-    changed = pyqtSignal()
+    changed = Signal()
 
     def __init__(self, title: str, preview_mode: str = None, parent=None):
         """preview_mode: 'stroke' or 'point' to enable size palette; None disables palette."""
@@ -160,7 +160,7 @@ class SizeChangeEditor(QGroupBox):
 class ColorChangeEditor(QGroupBox):
     """Editor for ColorChange (stroke color)."""
 
-    changed = pyqtSignal()
+    changed = Signal()
 
     def __init__(self, title: str, parent=None):
         super().__init__(title, parent)
@@ -304,7 +304,7 @@ class ColorChangeEditor(QGroupBox):
 class FillColorChangeEditor(QGroupBox):
     """Editor for FillColorChange with additional pause channel settings."""
 
-    changed = pyqtSignal()
+    changed = Signal()
 
     def __init__(self, title: str, parent=None):
         super().__init__(title, parent)
@@ -452,7 +452,7 @@ class FillColorChangeEditor(QGroupBox):
 class ChangeEditorWidget(QWidget):
     """Combined widget for all change editors."""
 
-    changed = pyqtSignal()
+    changed = Signal()
 
     def __init__(self, parent=None):
         super().__init__(parent)

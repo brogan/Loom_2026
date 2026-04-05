@@ -2,11 +2,11 @@
 Tree view widget for Library > Set > Renderer hierarchy.
 """
 from typing import Optional, Tuple
-from PyQt6.QtWidgets import (
+from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QTreeWidget, QTreeWidgetItem,
     QPushButton, QInputDialog, QMessageBox
 )
-from PyQt6.QtCore import pyqtSignal, Qt
+from PySide6.QtCore import Signal, Qt
 from models.rendering import RendererSetLibrary, RendererSet, Renderer
 
 
@@ -15,10 +15,10 @@ class RendererTreeWidget(QWidget):
 
     # Signal emitted when selection changes: (set_name, renderer_name)
     # renderer_name is None if a set is selected
-    selectionChanged = pyqtSignal(str, object)
+    selectionChanged = Signal(str, object)
 
     # Signal emitted when library is modified
-    libraryModified = pyqtSignal()
+    libraryModified = Signal()
 
     def __init__(self, parent=None):
         super().__init__(parent)

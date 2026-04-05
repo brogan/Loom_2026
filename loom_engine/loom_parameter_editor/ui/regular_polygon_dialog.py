@@ -2,13 +2,13 @@
 Dialog for creating/editing regular polygons with live preview.
 """
 import math
-from PyQt6.QtWidgets import (
+from PySide6.QtWidgets import (
     QDialog, QHBoxLayout, QVBoxLayout, QFormLayout, QGroupBox,
     QLineEdit, QSpinBox, QDoubleSpinBox, QDialogButtonBox, QWidget,
     QCheckBox
 )
-from PyQt6.QtCore import Qt, QPointF
-from PyQt6.QtGui import QPainter, QPen, QBrush, QColor, QPolygonF
+from PySide6.QtCore import Qt, QPointF
+from PySide6.QtGui import QPainter, QPen, QBrush, QColor, QPolygonF
 from models.polygon_config import RegularPolygonParams
 
 

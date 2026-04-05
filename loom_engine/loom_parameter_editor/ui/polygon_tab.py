@@ -7,15 +7,15 @@ import os
 import re
 import shutil
 import xml.etree.ElementTree as ET
-from PyQt6.QtWidgets import (
+from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QFormLayout, QGroupBox,
     QLineEdit, QSpinBox, QDoubleSpinBox, QComboBox, QTreeWidget,
     QTreeWidgetItem, QPushButton, QSplitter, QLabel, QStackedWidget,
     QMessageBox, QInputDialog, QFileDialog, QCheckBox, QSizePolicy
 )
-from PyQt6.QtCore import pyqtSignal, Qt, QProcess, QFileSystemWatcher
-from PyQt6.QtGui import QFont, QPainter, QPen, QColor, QPainterPath, QBrush
-from PyQt6.QtWidgets import QStyledItemDelegate
+from PySide6.QtCore import Signal, Qt, QProcess, QFileSystemWatcher
+from PySide6.QtGui import QFont, QPainter, QPen, QColor, QPainterPath, QBrush
+from PySide6.QtWidgets import QStyledItemDelegate
 from models.polygon_config import (
     PolygonSourceType, PolygonType, RegularPolygonParams,
     FileSource, PolygonSetDef, PolygonSetLibrary
@@ -338,13 +338,13 @@ class PolygonPreviewWidget(QWidget):
 class PolygonTab(QWidget):
     """Tab widget for editing polygon configuration."""
 
-    modified = pyqtSignal()
-    shapeLibraryChanged    = pyqtSignal()
-    subdivisionChanged     = pyqtSignal()
-    spriteLibraryChanged   = pyqtSignal()
-    rendererLibraryChanged = pyqtSignal()
-    newShapeCreated        = pyqtSignal(str, str)   # (set_name, shape_name)
-    newSpriteCreated       = pyqtSignal(str, str)   # (set_name, sprite_name)
+    modified = Signal()
+    shapeLibraryChanged    = Signal()
+    subdivisionChanged     = Signal()
+    spriteLibraryChanged   = Signal()
+    rendererLibraryChanged = Signal()
+    newShapeCreated        = Signal(str, str)   # (set_name, shape_name)
+    newSpriteCreated       = Signal(str, str)   # (set_name, sprite_name)
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -2180,7 +2180,7 @@ class PolygonTab(QWidget):
                 filename = os.path.basename(self._edit_file_path)
                 affected = self._sprites_with_morph_targets_for(filename)
                 if affected:
-                    from PyQt6.QtWidgets import QMessageBox as _QMB
+                    from PySide6.QtWidgets import QMessageBox as _QMB
                     _QMB.warning(
                         self, "Topology Changed",
                         f"The polygon/vertex count of '{filename}' changed:\n"

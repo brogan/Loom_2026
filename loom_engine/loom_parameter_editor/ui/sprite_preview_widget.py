@@ -11,9 +11,9 @@ import xml.etree.ElementTree as ET
 from dataclasses import dataclass, field
 from typing import Optional
 
-from PyQt6.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QLabel, QComboBox, QCheckBox
-from PyQt6.QtCore import pyqtSignal, Qt, QPointF, QRectF
-from PyQt6.QtGui import QPainter, QPen, QColor, QPainterPath, QBrush
+from PySide6.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QLabel, QComboBox, QCheckBox
+from PySide6.QtCore import Signal, Qt, QPointF, QRectF
+from PySide6.QtGui import QPainter, QPen, QColor, QPainterPath, QBrush
 
 
 # ── Data class ────────────────────────────────────────────────────────────────
@@ -251,8 +251,8 @@ _HANDLE_MODES = {
 class SpritePreviewCanvas(QWidget):
     """Canvas that renders all sprites in the current SpriteSet at configured positions."""
 
-    transform_changed = pyqtSignal(float, float, float, float, float)
-    selection_changed = pyqtSignal(int)  # emitted when user clicks a different sprite
+    transform_changed = Signal(float, float, float, float, float)
+    selection_changed = Signal(int)  # emitted when user clicks a different sprite
 
     _HANDLE_SIZE = 8
     _HANDLE_HIT_RADIUS = 6
@@ -856,10 +856,10 @@ class SpritePreviewCanvas(QWidget):
 class SpritePreviewWidget(QWidget):
     """Thin container: canvas + control strip."""
 
-    transform_changed = pyqtSignal(float, float, float, float, float)
+    transform_changed = Signal(float, float, float, float, float)
     # Emitted when user drags sprite in keyframe mode with Edit KF checked.
     # Args: (kf_0based_row, loc_x, loc_y, size_x, size_y, rotation)
-    kf_transform_changed = pyqtSignal(int, float, float, float, float, float)
+    kf_transform_changed = Signal(int, float, float, float, float, float)
 
     def __init__(self, parent=None):
         super().__init__(parent)

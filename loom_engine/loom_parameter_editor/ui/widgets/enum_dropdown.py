@@ -3,8 +3,8 @@ Dropdown widget for enum selection.
 """
 from typing import Type, TypeVar
 from enum import Enum
-from PyQt6.QtWidgets import QComboBox, QWidget, QHBoxLayout, QLabel
-from PyQt6.QtCore import pyqtSignal
+from PySide6.QtWidgets import QComboBox, QWidget, QHBoxLayout, QLabel
+from PySide6.QtCore import Signal
 
 E = TypeVar('E', bound=Enum)
 
@@ -12,7 +12,7 @@ E = TypeVar('E', bound=Enum)
 class EnumDropdown(QWidget):
     """A dropdown widget for selecting enum values."""
 
-    valueChanged = pyqtSignal(object)  # Emits the enum value
+    valueChanged = Signal(object)  # Emits the enum value
 
     def __init__(self, enum_class: Type[E], label: str = "", parent=None):
         super().__init__(parent)
@@ -52,7 +52,7 @@ class EnumDropdown(QWidget):
 class LabeledEnumDropdown(QWidget):
     """An enum dropdown with a label on the same line."""
 
-    valueChanged = pyqtSignal(object)
+    valueChanged = Signal(object)
 
     def __init__(self, enum_class: Type[E], label: str, label_width: int = 80, parent=None):
         super().__init__(parent)

@@ -4,14 +4,14 @@ Provides UI for editing points.xml settings.
 """
 import os
 import re
-from PyQt6.QtWidgets import (
+from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QFormLayout, QGroupBox,
     QLineEdit, QComboBox, QTreeWidget, QTreeWidgetItem, QPushButton,
     QSplitter, QLabel, QMessageBox, QInputDialog, QSizePolicy
 )
-from PyQt6.QtCore import pyqtSignal, Qt, QProcess, QFileSystemWatcher
-from PyQt6.QtGui import QColor, QFont, QBrush
-from PyQt6.QtWidgets import QStyledItemDelegate
+from PySide6.QtCore import Signal, Qt, QProcess, QFileSystemWatcher
+from PySide6.QtGui import QColor, QFont, QBrush
+from PySide6.QtWidgets import QStyledItemDelegate
 from models.point_config import PointSetDef, PointSetLibrary, PointSourceType
 from models.polygon_config import FileSource
 from models.shape_config import ShapeDef, ShapeSet, ShapeSourceType
@@ -28,13 +28,13 @@ BEZIER_WORKING_DIR = "/Users/broganbunt/Loom_2026/bezier"
 class PointTab(QWidget):
     """Tab widget for editing discrete point set configuration."""
 
-    modified = pyqtSignal()
-    shapeLibraryChanged    = pyqtSignal()
-    subdivisionChanged     = pyqtSignal()
-    spriteLibraryChanged   = pyqtSignal()
-    rendererLibraryChanged = pyqtSignal()
-    newShapeCreated        = pyqtSignal(str, str)   # (set_name, shape_name)
-    newSpriteCreated       = pyqtSignal(str, str)   # (set_name, sprite_name)
+    modified = Signal()
+    shapeLibraryChanged    = Signal()
+    subdivisionChanged     = Signal()
+    spriteLibraryChanged   = Signal()
+    rendererLibraryChanged = Signal()
+    newShapeCreated        = Signal(str, str)   # (set_name, shape_name)
+    newSpriteCreated       = Signal(str, str)   # (set_name, sprite_name)
 
     def __init__(self, parent=None):
         super().__init__(parent)

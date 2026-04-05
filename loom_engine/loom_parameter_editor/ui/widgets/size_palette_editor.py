@@ -2,12 +2,12 @@
 Size palette editor for PAL_SEQ / PAL_RAN size-change kinds (stroke width, point size).
 """
 import os
-from PyQt6.QtWidgets import (
+from PySide6.QtWidgets import (
     QWidget, QHBoxLayout, QVBoxLayout, QLabel, QPushButton,
     QScrollArea, QSizePolicy, QInputDialog
 )
-from PyQt6.QtCore import pyqtSignal, Qt, QSize
-from PyQt6.QtGui import QPainter, QColor, QPen, QBrush, QFont
+from PySide6.QtCore import Signal, Qt, QSize
+from PySide6.QtGui import QPainter, QColor, QPen, QBrush, QFont
 
 
 _BOX = 40          # preview box width & height (px)
@@ -18,8 +18,8 @@ _MAX_PALETTE = 12  # max palette entries
 class _SizePaletteCanvas(QWidget):
     """Row of size-preview boxes — internal widget."""
 
-    selectionChanged = pyqtSignal(int)
-    editRequested = pyqtSignal(int)
+    selectionChanged = Signal(int)
+    editRequested = Signal(int)
 
     def __init__(self, preview_mode: str = 'point', parent=None):
         """preview_mode: 'point' draws a circle; 'stroke' draws a vertical line."""
@@ -122,7 +122,7 @@ class _SizePaletteCanvas(QWidget):
 class SizePaletteEditorWidget(QWidget):
     """Public widget for editing a list of size values (stroke width or point size)."""
 
-    paletteChanged = pyqtSignal()
+    paletteChanged = Signal()
 
     def __init__(self, preview_mode: str = 'point', parent=None):
         super().__init__(parent)
@@ -139,7 +139,7 @@ class SizePaletteEditorWidget(QWidget):
         self._spin_label = QLabel("Value:")
         row.addWidget(self._spin_label)
 
-        from PyQt6.QtWidgets import QDoubleSpinBox
+        from PySide6.QtWidgets import QDoubleSpinBox
         self._spin = QDoubleSpinBox()
         self._spin.setRange(0.1, 999.9)
         self._spin.setDecimals(1)
@@ -262,7 +262,7 @@ class SizePaletteEditorWidget(QWidget):
     def _on_save(self) -> None:
         if not self._palettes_dir:
             return
-        from PyQt6.QtWidgets import QMessageBox
+        from PySide6.QtWidgets import QMessageBox
         name, ok = QInputDialog.getText(self, "Save Palette", "Palette name:")
         if not ok or not name.strip():
             return
@@ -277,7 +277,7 @@ class SizePaletteEditorWidget(QWidget):
     def _on_import(self) -> None:
         if not self._palettes_dir:
             return
-        from PyQt6.QtWidgets import QFileDialog, QMessageBox
+        from PySide6.QtWidgets import QFileDialog, QMessageBox
         path, _ = QFileDialog.getOpenFileName(
             self, "Import Palette", self._palettes_dir, "Size palettes (*_sizes.xml)"
         )

@@ -5,7 +5,7 @@ Provides UI for editing subdivision.xml settings.
 import os
 import re
 import shlex
-from PyQt6.QtWidgets import (
+from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QFormLayout, QGroupBox,
     QLineEdit, QSpinBox, QDoubleSpinBox, QComboBox, QCheckBox,
     QTreeWidget, QTreeWidgetItem, QPushButton, QSplitter, QLabel,
@@ -13,7 +13,7 @@ from PyQt6.QtWidgets import (
     QTabWidget
 )
 from typing import Optional
-from PyQt6.QtCore import pyqtSignal, Qt, QProcess, QProcessEnvironment
+from PySide6.QtCore import Signal, Qt, QProcess, QProcessEnvironment
 from models.subdivision_config import (
     SubdivisionType, VisibilityRule, Vector2D, Range, RangeXY, Transform2D,
     SubdivisionParams, SubdivisionParamsSet, SubdivisionParamsSetCollection
@@ -28,9 +28,9 @@ from models.transform_config import (
 class SubdivisionTab(QWidget):
     """Tab widget for editing subdivision configuration."""
 
-    modified = pyqtSignal()
-    subdividing_changed = pyqtSignal(bool)
-    polygon_baked = pyqtSignal()
+    modified = Signal()
+    subdividing_changed = Signal(bool)
+    polygon_baked = Signal()
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -1265,7 +1265,7 @@ class SubdivisionTab(QWidget):
 class TransformSetDialog(QDialog):
     """Dialog for editing the 5 transform types."""
 
-    liveChanged = pyqtSignal()
+    liveChanged = Signal()
 
     def __init__(self, transform_set: TransformSetConfig, parent=None):
         super().__init__(parent)

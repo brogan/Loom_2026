@@ -4,13 +4,13 @@ Provides UI for editing shapes.xml settings.
 """
 
 _SUBDIV_NONE = "(none)"   # sentinel shown in dropdown; maps to empty subdivision_params_set_name
-from PyQt6.QtWidgets import (
+from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QFormLayout, QGroupBox,
     QLineEdit, QSpinBox, QDoubleSpinBox, QComboBox, QTreeWidget,
     QTreeWidgetItem, QPushButton, QSplitter, QLabel, QStackedWidget,
     QMessageBox, QInputDialog, QScrollArea
 )
-from PyQt6.QtCore import pyqtSignal, Qt
+from PySide6.QtCore import Signal, Qt
 from models.shape_config import (
     ShapeSourceType, Shape3DType, Vector2D,
     ShapeDef, ShapeSet, ShapeLibrary
@@ -20,7 +20,7 @@ from models.shape_config import (
 class ShapeTab(QWidget):
     """Tab widget for editing shape configuration."""
 
-    modified = pyqtSignal()
+    modified = Signal()
 
     def __init__(self, parent=None):
         super().__init__(parent)

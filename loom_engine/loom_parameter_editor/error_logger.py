@@ -62,7 +62,7 @@ def install():
     """
     Install the global exception hook and log a startup marker.
     Call once at the top of main(), before any other imports that
-    could trigger PyQt6 widget construction.
+    could trigger PySide6 widget construction.
     """
     original_hook = sys.excepthook
 

@@ -2,11 +2,11 @@
 Palette editor widget for PAL_SEQ / PAL_RAN color change kinds.
 """
 import os
-from PyQt6.QtWidgets import (
+from PySide6.QtWidgets import (
     QWidget, QHBoxLayout, QVBoxLayout, QLabel, QPushButton, QScrollArea, QSizePolicy
 )
-from PyQt6.QtCore import pyqtSignal, Qt, QSize
-from PyQt6.QtGui import QPainter, QColor, QPen, QBrush
+from PySide6.QtCore import Signal, Qt, QSize
+from PySide6.QtGui import QPainter, QColor, QPen, QBrush
 from models.rendering import Color
 
 
@@ -18,8 +18,8 @@ _MAX_PALETTE = 32
 class _PaletteCanvas(QWidget):
     """Row of colour swatches — internal widget used by PaletteEditorWidget."""
 
-    selectionChanged = pyqtSignal(int)   # emits selected index (or -1)
-    editRequested = pyqtSignal(int)      # double-click on a swatch
+    selectionChanged = Signal(int)   # emits selected index (or -1)
+    editRequested = Signal(int)      # double-click on a swatch
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -81,7 +81,7 @@ class _PaletteCanvas(QWidget):
 class PaletteEditorWidget(QWidget):
     """Public widget for editing a list of palette colors (max 32)."""
 
-    paletteChanged = pyqtSignal()
+    paletteChanged = Signal()
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -163,7 +163,7 @@ class PaletteEditorWidget(QWidget):
     # ── slots ────────────────────────────────────────────────────────────────
 
     def _on_add(self) -> None:
-        from PyQt6.QtWidgets import QColorDialog
+        from PySide6.QtWidgets import QColorDialog
         if len(self._colors) >= _MAX_PALETTE:
             return
         col = QColorDialog.getColor(
@@ -200,7 +200,7 @@ class PaletteEditorWidget(QWidget):
         self.paletteChanged.emit()
 
     def _on_edit(self, idx: int) -> None:
-        from PyQt6.QtWidgets import QColorDialog
+        from PySide6.QtWidgets import QColorDialog
         col = QColorDialog.getColor(
             self._colors[idx], self, "Edit Palette Colour",
             QColorDialog.ColorDialogOption.ShowAlphaChannel
@@ -214,7 +214,7 @@ class PaletteEditorWidget(QWidget):
     def _on_save(self) -> None:
         if not self._palettes_dir:
             return
-        from PyQt6.QtWidgets import QInputDialog, QMessageBox
+        from PySide6.QtWidgets import QInputDialog, QMessageBox
         name, ok = QInputDialog.getText(self, "Save Palette", "Palette name:")
         if not ok or not name.strip():
             return
@@ -229,7 +229,7 @@ class PaletteEditorWidget(QWidget):
     def _on_import(self) -> None:
         if not self._palettes_dir:
             return
-        from PyQt6.QtWidgets import QFileDialog, QMessageBox
+        from PySide6.QtWidgets import QFileDialog, QMessageBox
         path, _ = QFileDialog.getOpenFileName(
             self, "Import Palette", self._palettes_dir, "Color palettes (*_colors.xml)"
         )

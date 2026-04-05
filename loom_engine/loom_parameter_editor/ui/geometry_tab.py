@@ -1,8 +1,8 @@
 """
 Geometry tab — hosts Polygons, Curves, and Points as sub-tabs.
 """
-from PyQt6.QtWidgets import QWidget, QVBoxLayout, QTabWidget
-from PyQt6.QtCore import pyqtSignal
+from PySide6.QtWidgets import QWidget, QVBoxLayout, QTabWidget
+from PySide6.QtCore import Signal
 from .polygon_tab import PolygonTab
 from .open_curve_tab import OpenCurveTab
 from .point_tab import PointTab
@@ -10,13 +10,13 @@ from .oval_tab import OvalTab
 
 
 class GeometryTab(QWidget):
-    modified = pyqtSignal()
-    shapeLibraryChanged    = pyqtSignal()
-    subdivisionChanged     = pyqtSignal()
-    spriteLibraryChanged   = pyqtSignal()
-    rendererLibraryChanged = pyqtSignal()
-    newShapeCreated        = pyqtSignal(str, str)   # (set_name, shape_name)
-    newSpriteCreated       = pyqtSignal(str, str)   # (set_name, sprite_name)
+    modified = Signal()
+    shapeLibraryChanged    = Signal()
+    subdivisionChanged     = Signal()
+    spriteLibraryChanged   = Signal()
+    rendererLibraryChanged = Signal()
+    newShapeCreated        = Signal(str, str)   # (set_name, shape_name)
+    newSpriteCreated       = Signal(str, str)   # (set_name, sprite_name)
 
     def __init__(self, parent=None):
         super().__init__(parent)

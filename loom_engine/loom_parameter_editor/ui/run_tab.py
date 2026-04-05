@@ -3,18 +3,18 @@ Run tab for launching and controlling the Loom Scala application.
 """
 import os
 from pathlib import Path
-from PyQt6.QtWidgets import (
+from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QFormLayout, QPushButton, QLabel,
     QPlainTextEdit, QCheckBox, QLineEdit, QFileDialog, QGroupBox, QSpinBox
 )
-from PyQt6.QtCore import pyqtSignal, QProcess, QProcessEnvironment
+from PySide6.QtCore import Signal, QProcess, QProcessEnvironment
 
 
 class RunTab(QWidget):
     """Tab for launching Loom, triggering reload, and capturing output."""
 
     # Signal emitted when we need the main window to save before run/reload
-    save_requested = pyqtSignal()
+    save_requested = Signal()
 
     # Default path to the Loom Scala project
     DEFAULT_LOOM_PATH = "/Users/broganbunt/Loom_2026/loom_engine"
@@ -335,7 +335,7 @@ class RunTab(QWidget):
             self._status_label.setStyleSheet("font-weight: bold; color: orange;")
             # Status reverts when Loom deletes the file (we don't track that)
             # Just show it briefly
-            from PyQt6.QtCore import QTimer
+            from PySide6.QtCore import QTimer
             QTimer.singleShot(2000, self._restore_status_after_reload)
 
     def _restore_status_after_reload(self):

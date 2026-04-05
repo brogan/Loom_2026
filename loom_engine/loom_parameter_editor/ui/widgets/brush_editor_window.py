@@ -11,15 +11,15 @@ import math
 import random
 from typing import Optional
 
-from PyQt6.QtWidgets import (
+from PySide6.QtWidgets import (
     QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QLabel,
     QSpinBox, QDoubleSpinBox, QPushButton, QCheckBox, QRadioButton,
     QButtonGroup, QGroupBox, QScrollArea, QSizePolicy,
     QToolBar, QStatusBar, QMenuBar, QFileDialog, QMessageBox,
     QApplication
 )
-from PyQt6.QtCore import Qt, pyqtSignal, QPoint, QSize, QRect
-from PyQt6.QtGui import (
+from PySide6.QtCore import Qt, Signal, QPoint, QSize, QRect
+from PySide6.QtGui import (
     QImage, QPainter, QColor, QPen, QMouseEvent, QKeySequence,
     QAction, QActionGroup, QPixmap, QBrush
 )
@@ -32,7 +32,7 @@ from PyQt6.QtGui import (
 class GreyscalePalette(QWidget):
     """Row of 11 greyscale swatches (0%–100%) that emits the selected value."""
 
-    valueChanged = pyqtSignal(int)   # 0-255
+    valueChanged = Signal(int)   # 0-255
 
     SWATCHES = [0, 25, 51, 76, 102, 128, 153, 178, 204, 229, 255]
     SWATCH_W = 24
@@ -88,8 +88,8 @@ DESELECT = 4
 class BrushGridCanvas(QWidget):
     """Zoomable grid canvas that stores a float[row][col] paint grid."""
 
-    modified = pyqtSignal()
-    cellPainted = pyqtSignal(int, int)   # row, col
+    modified = Signal()
+    cellPainted = Signal(int, int)   # row, col
 
     CELL_SIZE = 16  # display pixels per cell
 
@@ -455,7 +455,7 @@ class BrushGridCanvas(QWidget):
 class BrushEditorWindow(QMainWindow):
     """Floating standalone brush editor window."""
 
-    brushSaved = pyqtSignal(str)   # emits filename (basename) on save
+    brushSaved = Signal(str)   # emits filename (basename) on save
 
     def __init__(self, brushes_dir: str = "", initial_file: Optional[str] = None,
                  parent=None):

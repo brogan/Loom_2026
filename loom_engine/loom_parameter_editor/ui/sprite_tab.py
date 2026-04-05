@@ -6,7 +6,7 @@ import math
 import os
 import re
 import shutil
-from PyQt6.QtWidgets import (
+from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QFormLayout, QGroupBox,
     QLineEdit, QDoubleSpinBox, QSpinBox, QComboBox, QTreeWidget, QCheckBox,
     QTreeWidgetItem, QPushButton, QSplitter, QLabel, QListWidget,
@@ -14,8 +14,8 @@ from PyQt6.QtWidgets import (
     QHeaderView, QStyledItemDelegate, QDialog, QDialogButtonBox, QRadioButton,
     QButtonGroup, QTabWidget, QFileDialog
 )
-from PyQt6.QtCore import pyqtSignal, Qt
-from PyQt6.QtCore import QProcess
+from PySide6.QtCore import Signal, Qt
+from PySide6.QtCore import QProcess
 from models.sprite_config import (
     SpriteDef, SpriteParams, SpriteSet, SpriteLibrary, Keyframe, MorphTargetRef,
     EASING_TYPES, LOOP_MODES
@@ -31,7 +31,7 @@ BEZIER_WORKING_DIR = "/Users/broganbunt/Loom_2026/bezier"
 class SpriteTab(QWidget):
     """Tab widget for editing sprite configuration."""
 
-    modified = pyqtSignal()
+    modified = Signal()
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -1502,7 +1502,7 @@ class SpriteTab(QWidget):
             for col, val in [(1, loc_x), (2, loc_y), (3, size_x), (4, size_y), (5, rotation)]:
                 item = self.kf_table.item(kf_row, col)
                 if item is None:
-                    from PyQt6.QtWidgets import QTableWidgetItem
+                    from PySide6.QtWidgets import QTableWidgetItem
                     item = QTableWidgetItem()
                     self.kf_table.setItem(kf_row, col, item)
                 item.setText(f"{val:.4g}")

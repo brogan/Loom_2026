@@ -3,20 +3,20 @@ Brush file management widget — lists available brush PNGs with thumbnails.
 """
 import os
 from typing import Optional
-from PyQt6.QtWidgets import (
+from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
     QListWidget, QListWidgetItem, QFileDialog, QMessageBox,
     QSizePolicy
 )
-from PyQt6.QtCore import Qt, pyqtSignal, QSize
-from PyQt6.QtGui import QPixmap, QIcon, QImage
+from PySide6.QtCore import Qt, Signal, QSize
+from PySide6.QtGui import QPixmap, QIcon, QImage
 from .brush_editor import BrushEditorWidget
 
 
 class BrushLibraryWidget(QWidget):
     """Grid/list of available brushes with thumbnails and management buttons."""
 
-    brushSelected = pyqtSignal(str)  # emits filename when a brush is selected
+    brushSelected = Signal(str)  # emits filename when a brush is selected
 
     def __init__(self, parent=None):
         super().__init__(parent)

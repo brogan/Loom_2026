@@ -4,7 +4,7 @@ Rendering configuration tab with full editing capabilities.
 from typing import Optional
 import os
 import json
-from PyQt6.QtWidgets import (
+from PySide6.QtWidgets import (
     QWidget, QHBoxLayout, QVBoxLayout, QSplitter, QGroupBox,
     QLabel, QDoubleSpinBox, QSpinBox, QCheckBox, QComboBox,
     QScrollArea, QFrame, QListWidget, QPushButton, QInputDialog,
@@ -12,8 +12,8 @@ from PyQt6.QtWidgets import (
     QTableWidget, QTableWidgetItem, QHeaderView, QAbstractItemView,
     QSizePolicy
 )
-from PyQt6.QtCore import pyqtSignal, Qt
-from PyQt6.QtGui import QImage, QPainter, QColor, QPen, QPixmap
+from PySide6.QtCore import Signal, Qt
+from PySide6.QtGui import QImage, QPainter, QColor, QPen, QPixmap
 from .widgets.renderer_tree import RendererTreeWidget
 from .widgets.brush_editor import BrushEditorWidget  # kept for legacy compatibility
 from .widgets.color_picker import ColorPickerWidget
@@ -162,7 +162,7 @@ class StencilPreviewWidget(QWidget):
 class RendererEditor(QWidget):
     """Editor panel for a single renderer's properties."""
 
-    changed = pyqtSignal()
+    changed = Signal()
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -1526,7 +1526,7 @@ class RendererEditor(QWidget):
 class RendererSetConfigPanel(QGroupBox):
     """Configuration panel for renderer set playback settings."""
 
-    changed = pyqtSignal()
+    changed = Signal()
 
     def __init__(self, parent=None):
         super().__init__("Set Configuration", parent)
@@ -1614,7 +1614,7 @@ class RendererSetConfigPanel(QGroupBox):
 class RenderingTab(QWidget):
     """Main rendering configuration tab."""
 
-    modified = pyqtSignal()
+    modified = Signal()
 
     def __init__(self, parent=None):
         super().__init__(parent)
