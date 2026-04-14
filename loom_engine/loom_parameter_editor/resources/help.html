@@ -138,6 +138,8 @@
         <li><a href="#overview">Overview</a></li>
         <li><a href="#getting-started">Getting Started</a></li>
         <li><a href="#bezier-draw">Bezier Draw</a></li>
+        <li><a href="#bezier-draw">↳ Mesh Build Mode</a></li>
+        <li><a href="#bezier-draw">↳ Trace Image</a></li>
         <li><a href="#concepts">Key Concepts</a></li>
         <li><a href="#coordinate-system">Coordinate System</a></li>
         <li><a href="#global-config">Global Config</a></li>
@@ -216,7 +218,7 @@
     <li><strong>Java JDK 11+</strong> installed and on your PATH</li>
     <li><strong>Scala / SBT</strong> installed and on your PATH</li>
     <li><strong>Python 3.10+</strong> with <strong>PyQt6</strong> for the parameter editor</li>
-    <li><strong>Bezier Draw</strong> (optional) — a companion Java application for drawing custom spline polygon sets</li>
+    <li><strong>Bezier Draw (Python)</strong> (optional) — a companion PySide6 application for drawing custom polygon sets, open curve sets, and point sets. Located at <code>bezier_py/</code>; launched automatically by the editor via the Geometry tab Create/Edit buttons.</li>
 </ul>
 
 <h3>Creating a New Project</h3>
@@ -285,7 +287,8 @@ YourProject/
 <!-- ============================================================ BEZIER DRAW -->
 <section id="bezier-draw">
 <h2>Bezier Draw Application</h2>
-<p><strong>Bezier Draw</strong> is a companion Java application for creating the polygon sets, open curve sets, and point sets that Loom uses as base geometry. You do not draw shapes by entering numbers — you draw them visually on an interactive canvas, then save them to the project's geometry directories for Loom to load.</p>
+<p><strong>Bezier Draw</strong> is a companion PySide6 (Python) application for creating the polygon sets, open curve sets, and point sets that Loom uses as base geometry. You do not draw shapes by entering numbers — you draw them visually on an interactive canvas, then save them to the project's geometry directories for Loom to load.</p>
+<p>The Python version (<code>bezier_py/</code>) adds two new capabilities over the original Java version: <strong>Mesh Build Mode</strong> for constructing polygon meshes from traced point sets, and a persistent <strong>Trace Image</strong> layer that is saved with the document.</p>
 
 <h3>Launching Bezier Draw</h3>
 <p>Bezier Draw is always launched from within the Loom Parameter Editor — never opened directly. Three paths lead to it:</p>
@@ -400,6 +403,16 @@ YourProject/
 
 <h3>Toolbar Reference</h3>
 
+<h4>Selection Group</h4>
+<table>
+    <tr><th>Button</th><th>Key</th><th>Description</th></tr>
+    <tr><td><strong>Point Selection</strong></td><td><kbd>a</kbd></td><td>Select individual anchor and control points. Click inside a polygon to scope it, then click its points.</td></tr>
+    <tr><td><strong>Edge Selection</strong></td><td><kbd>s</kbd></td><td>Select Bézier curve segments. Shift+drag on a selected edge to extrude.</td></tr>
+    <tr><td><strong>Open Curve Selection</strong></td><td><kbd>d</kbd></td><td>Select entire open (non-closed) curves as units.</td></tr>
+    <tr><td><strong>Polygon Selection</strong></td><td><kbd>f</kbd></td><td>Select entire closed polygons and ovals. Supports drag-to-weld.</td></tr>
+    <tr><td><strong>Mesh</strong> <span class="tag tag-new">New</span></td><td><kbd>⌃A</kbd></td><td>Mesh Build Mode — hover over source points to sequence them face by face; press <kbd>P</kbd> to commit each polygon face. See <em>Mesh Build Mode</em> below.</td></tr>
+</table>
+
 <h4>Mesh Operations</h4>
 <table>
     <tr><th>Button</th><th>Description</th></tr>
@@ -498,20 +511,49 @@ YourProject/
     <tr><td><kbd>j</kbd></td><td>Create Oval.</td></tr>
     <tr><td><kbd>k</kbd></td><td>Create Polygons Mode.</td></tr>
     <tr><td><kbd>l</kbd></td><td>Freehand Draw Mode.</td></tr>
+    <tr><td><kbd>Ctrl+A</kbd></td><td>Toggle <strong>Mesh Build Mode</strong> on/off. <span class="tag tag-new">New</span></td></tr>
+    <tr><td><kbd>P</kbd> (Mesh Build Mode)</td><td>Commit current point sequence as a closed polygon face on the Mesh layer.</td></tr>
+    <tr><td><kbd>Backspace</kbd> (Mesh Build Mode)</td><td>Remove the last point from the current sequence.</td></tr>
+    <tr><td><kbd>Space</kbd> (Mesh Build Mode)</td><td>Clear the entire sequence without committing.</td></tr>
     <tr><td><kbd>Shift</kbd> (mode active)</td><td>Toggle between Relational and Discrete sub-mode within the current selection mode.</td></tr>
     <tr><td><kbd>Shift+drag</kbd></td><td>Rubber-band marquee selection (Point, Open Curve, and Polygon modes) or Edge Extrusion (Edge mode with edges selected).</td></tr>
 </table>
 
+<h3>Mesh Build Mode <span class="tag tag-new">New</span></h3>
+<p>Mesh Build Mode allows you to construct a closed polygon mesh by sequencing existing source points. You hover over points to add them to a face sequence, then press <kbd>P</kbd> to commit the polygon. All committed faces accumulate in an auto-created <strong>Mesh</strong> layer; adjacent faces are welded at shared vertices automatically.</p>
+
+<h4>Step-by-Step: Building a Mesh from Traced Points</h4>
+<ol>
+    <li><strong>Load a trace image</strong> — use <em>File → Load Trace Image…</em> to load a reference photograph or drawing. It appears as a semi-transparent Trace layer.</li>
+    <li><strong>Create source points</strong> — switch to <strong>Create Points Mode</strong> (<kbd>h</kbd>) and click to place anchor dots at the key vertex positions on your trace (corners, intersections, outline features). Save when done.</li>
+    <li><strong>Activate Mesh Build Mode</strong> — click the <strong>Mesh</strong> toolbar button or press <kbd>Ctrl+A</kbd>. The button highlights in orange. A <em>Mesh</em> layer is created automatically.</li>
+    <li><strong>Sequence a face</strong> — move the mouse near source points. Any point within <strong>10 px</strong> is auto-added to the sequence and shown with a <em>green numbered ring</em>. Points between 10 and 18 px show a larger preview ring but are not added yet.</li>
+    <li><strong>Commit the face</strong> — press <kbd>P</kbd> when you have sequenced all vertices of one polygon face (minimum 3). The polygon is added to the Mesh layer; vertices coincident with existing Mesh layer anchors (within 5 px) are welded automatically.</li>
+    <li><strong>Continue</strong> — the sequence clears; mode stays active. Build the next adjacent face. Repeat until the mesh is complete.</li>
+    <li><strong>Save</strong> — click Save. The Mesh layer writes to <code>polygonSets/</code>; the point layer writes to <code>pointSets/</code>.</li>
+</ol>
+
+<div class="tip"><strong>Suggested settings:</strong> Work with quads (4-vertex faces) for clean subdivision in Loom. Use <strong>Weld All Adjacent</strong> after building to catch any near-coincident seams. Keep control point handles visible while building to confirm weld quality.</div>
+<div class="warning">Source points are not removed or consumed when used in a face. Each point can be used in multiple adjacent faces — this is intentional and necessary for shared-vertex mesh topology.</div>
+
+<h3>Trace Image <span class="tag tag-new">New</span></h3>
+<p>A trace image is loaded via <em>File → Load Trace Image…</em> and appears as a semi-transparent <strong>Trace</strong> layer at the bottom of the canvas. Unlike the session-only Reference Image, the trace image is saved in the <code>.layers.xml</code> manifest and reloads automatically next time the file is opened.</p>
+<table>
+    <tr><th>Property</th><th>Trace Image</th><th>Reference Image</th></tr>
+    <tr><td>Persistent across sessions</td><td>Yes — saved in <code>.layers.xml</code></td><td>No — session only</td></tr>
+    <tr><td>Shown in Layers panel</td><td>Yes (Trace row)</td><td>No</td></tr>
+    <tr><td>Toggle visibility</td><td>Vis checkbox in Layers panel</td><td>Toggle Reference Image toolbar button</td></tr>
+</table>
+
 <h3>Saving — File Types</h3>
-<p>Clicking <strong>Save</strong> always uses the text in the <strong>Name</strong> field as the base filename (spaces become underscores, non-alphanumeric characters are stripped, lowercased). Depending on what is on the canvas, multiple files may be written:</p>
+<p>Clicking <strong>Save</strong> always uses the text in the <strong>Name</strong> field as the base filename (spaces become underscores, non-alphanumeric characters are stripped, lowercased). Polygon data is always routed to <code>polygonSets/</code> regardless of which directory Bezier Draw was launched with. Depending on what is on the canvas:</p>
 <table>
     <tr><th>Canvas content</th><th>Files written</th><th>Destination</th></tr>
-    <tr><td>Closed polygons, single layer</td><td><code>{name}.xml</code> (polygonSet format) + <code>{name}.svg</code></td><td><code>polygonSets/</code> and <code>svgs/</code></td></tr>
-    <tr><td>Closed polygons, multiple layers</td><td><code>{name}_{layerName}.xml</code> per layer, plus <code>{name}.layers.xml</code> manifest, plus SVGs</td><td><code>polygonSets/</code> and <code>svgs/</code></td></tr>
+    <tr><td>Closed polygons, single layer</td><td><code>{name}.xml</code> (polygonSet format) + <code>{name}.svg</code></td><td><code>polygonSets/</code> and <code>svg/</code></td></tr>
+    <tr><td>Closed polygons, multiple layers (incl. Mesh layer)</td><td><code>{name}_{layerName}.xml</code> per layer, plus <code>{name}.layers.xml</code> manifest (includes trace image reference if present)</td><td><code>polygonSets/</code></td></tr>
     <tr><td>Open (non-closed) curves</td><td><code>{name}.xml</code> (openCurveSet format)</td><td><code>curveSets/</code></td></tr>
-    <tr><td>Discrete points (from Create Points mode)</td><td><code>{name}_points.xml</code> (pointSet format)</td><td><code>pointSets/</code></td></tr>
+    <tr><td>Discrete points (from Create Points mode)</td><td><code>{name}.xml</code> (pointSet format)</td><td><code>pointSets/</code></td></tr>
 </table>
-<p>Open curves and point sets are written automatically alongside the polygon save if they are present. The Loom editor's Curves and Points sub-tabs will detect the new files the next time the dropdown is refreshed.</p>
 
 <h3>Loading Files</h3>
 <p>The <strong>Load</strong> button opens a file browser. Bezier Draw examines the root element of the selected XML file and dispatches appropriately:</p>
@@ -520,14 +562,14 @@ YourProject/
     <tr><td><code>&lt;polygonSet&gt;</code></td><td>Closed polygon set</td><td>Polygon Selection mode</td></tr>
     <tr><td><code>&lt;openCurveSet&gt;</code></td><td>Open curve set</td><td>Polygon Selection mode</td></tr>
     <tr><td><code>&lt;pointSet&gt;</code></td><td>Point set (discrete points)</td><td>Create Points mode</td></tr>
-    <tr><td>Filename ends in <code>.layers.xml</code></td><td>Multi-layer polygon set bundle</td><td>Polygon Selection mode, all layers loaded</td></tr>
+    <tr><td>Filename ends in <code>.layers.xml</code></td><td>Multi-layer polygon bundle — all layers loaded, trace image restored if referenced</td><td>Polygon Selection mode</td></tr>
 </table>
 
 <h3>SVG Import</h3>
-<p>The <strong>Import SVG</strong> button (in the name/save panel) opens a file browser pointing at the project's <code>svgs/</code> directory. The imported SVG's path data is converted into polygon geometry and added to the current canvas. Use this to import shapes from vector graphics software (Illustrator, Inkscape, etc.) as a starting point for Bezier editing.</p>
+<p>The <strong>Import SVG…</strong> item in the File menu opens a file browser. The imported SVG's path data is converted into polygon geometry and added to the current canvas. Use this to import shapes from vector graphics software (Illustrator, Inkscape, etc.) as a starting point for Bezier editing.</p>
 
-<h3>Help Menu</h3>
-<p>Bezier Draw has a single menu: <strong>Help → Bezier Help…</strong>. This opens a non-modal help window with five tabbed HTML pages covering: Overview &amp; Interface, Selection Modes, Operations, View &amp; Files, and Quick Reference. This is separate from the Loom Parameter Editor's help.</p>
+<h3>Help</h3>
+<p>The <strong>Help</strong> menu in Bezier Draw opens the full Bezier Draw help (<kbd>F1</kbd>) in your default browser. This is separate from the Loom Parameter Editor's help.</p>
 
 <a href="#" class="back-to-top">Back to top</a>
 </section>

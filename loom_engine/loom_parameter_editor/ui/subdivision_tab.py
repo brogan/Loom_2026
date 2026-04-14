@@ -820,6 +820,17 @@ class SubdivisionTab(QWidget):
         if self._updating:
             return
         self._save_ui_to_params()
+        # Keep the Type column in the tree in sync with the combo
+        if self._current_params is not None:
+            item = self.tree.currentItem()
+            if item is not None:
+                data = item.data(0, Qt.ItemDataRole.UserRole)
+                if data and data[0] == "params":
+                    abbrev = self._SUBDIV_TYPE_ABBREV.get(
+                        self._current_params.subdivision_type.name,
+                        self._current_params.subdivision_type.name,
+                    )
+                    item.setText(2, abbrev)
         self.modified.emit()
 
     def _add_set(self):

@@ -1,0 +1,820 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Bezier Draw (Python) — Help</title>
+<style>
+  body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; font-size: 13px; color: #222; background: #fafafa; margin: 0; padding: 0; }
+  .sidebar { position: fixed; top: 0; left: 0; width: 210px; height: 100%; background: #1e2330; color: #cdd4e0; overflow-y: auto; padding: 16px 0; box-sizing: border-box; }
+  .sidebar h2 { font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; color: #7a8499; margin: 18px 16px 6px; }
+  .sidebar a { display: block; padding: 5px 16px; color: #cdd4e0; text-decoration: none; font-size: 12px; border-left: 3px solid transparent; }
+  .sidebar a:hover { background: #2a3045; color: #fff; }
+  .sidebar a.active { border-left-color: #5b9cf6; color: #fff; }
+  .content { margin-left: 210px; padding: 32px 40px 60px; max-width: 860px; }
+  h1 { font-size: 24px; font-weight: 700; color: #1a1a2e; border-bottom: 2px solid #e0e4f0; padding-bottom: 12px; margin-top: 0; }
+  h2 { font-size: 18px; font-weight: 600; color: #1a1a2e; margin-top: 40px; border-bottom: 1px solid #e0e4f0; padding-bottom: 6px; }
+  h3 { font-size: 14px; font-weight: 600; color: #2c3060; margin-top: 24px; margin-bottom: 6px; }
+  h4 { font-size: 13px; font-weight: 600; color: #444; margin-top: 16px; margin-bottom: 4px; }
+  p { line-height: 1.65; margin: 8px 0; }
+  ul, ol { margin: 6px 0; padding-left: 22px; line-height: 1.7; }
+  li { margin-bottom: 3px; }
+  .note { background: #eef4ff; border-left: 4px solid #5b9cf6; padding: 10px 14px; border-radius: 0 6px 6px 0; margin: 14px 0; font-size: 12px; }
+  .warn { background: #fff8e6; border-left: 4px solid #f0a500; padding: 10px 14px; border-radius: 0 6px 6px 0; margin: 14px 0; font-size: 12px; }
+  .new  { background: #e4f5e4; border-left: 4px solid #27a040; padding: 10px 14px; border-radius: 0 6px 6px 0; margin: 14px 0; font-size: 12px; }
+  table { border-collapse: collapse; width: 100%; margin: 12px 0; font-size: 12px; }
+  th { background: #f0f2f8; text-align: left; padding: 8px 12px; border: 1px solid #d8dce8; font-weight: 600; color: #333; }
+  td { padding: 7px 12px; border: 1px solid #e4e7f0; vertical-align: top; }
+  tr:nth-child(even) td { background: #f7f8fc; }
+  kbd { background: #eef; border: 1px solid #aac; border-radius: 3px; padding: 1px 5px; font-family: monospace; font-size: 11px; }
+  code { font-family: monospace; background: #eef; padding: 0 4px; border-radius: 3px; font-size: 11px; }
+  .chip { display: inline-block; background: #e8ecff; color: #3050b0; border-radius: 10px; padding: 1px 8px; font-size: 11px; font-weight: 600; margin: 1px 2px; }
+  .chip.orange { background: #fff0e0; color: #b05000; }
+  .chip.purple { background: #f5e8ff; color: #7020a0; }
+  .chip.yellow { background: #fdf8e0; color: #807000; }
+  .chip.blue   { background: #e0f0ff; color: #0050a0; }
+  .chip.red    { background: #ffe8e8; color: #a00020; }
+  .chip.green  { background: #e4f5e4; color: #1a6e1a; }
+  .chip.magenta { background: #ffe8ff; color: #800080; }
+  .tag-new { display: inline-block; background: #27a040; color: #fff; font-size: 10px; font-weight: 700; border-radius: 8px; padding: 1px 7px; vertical-align: middle; margin-left: 5px; }
+  .color-swatch { display: inline-block; width: 12px; height: 12px; border-radius: 2px; border: 1px solid rgba(0,0,0,0.2); vertical-align: middle; margin-right: 4px; }
+  section { scroll-margin-top: 20px; }
+</style>
+</head>
+<body>
+
+<nav class="sidebar">
+  <h2>Loom 2026</h2>
+  <a href="../../docs/index.html" style="color:#5b9cf6; font-weight:600;">← Help Index</a>
+  <h2>Bezier Draw</h2>
+  <a href="#overview">Overview</a>
+  <a href="#layout">Interface Layout</a>
+  <a href="#drawing">Drawing Polygons</a>
+  <a href="#open-curves">Open Curves</a>
+  <a href="#point-sets">Point Sets</a>
+  <a href="#mesh-build">Mesh Build Mode ★</a>
+  <a href="#trace-image">Trace Image ★</a>
+  <a href="#layers">Layers</a>
+  <h2>Selection Modes</h2>
+  <a href="#point-mode">Point Selection</a>
+  <a href="#edge-mode">Edge Selection</a>
+  <a href="#open-curve-mode">Open Curve Selection</a>
+  <a href="#polygon-mode">Polygon Selection</a>
+  <a href="#submodes">Discrete &amp; Relational</a>
+  <a href="#scoping">Scoping</a>
+  <a href="#marquee">Marquee Selection</a>
+  <h2>Operations</h2>
+  <a href="#transform">Scale &amp; Rotate</a>
+  <a href="#translate">Translate</a>
+  <a href="#flip">Flip &amp; Centre</a>
+  <a href="#zoom">Zoom</a>
+  <a href="#snap">Snap to Grid</a>
+  <a href="#weld">Welding</a>
+  <a href="#extrude">Extrude</a>
+  <a href="#intersect">Intersect</a>
+  <a href="#knife">Knife Cut</a>
+  <a href="#duplicate">Duplicate &amp; Delete</a>
+  <h2>View &amp; Files</h2>
+  <a href="#view">View Toggles</a>
+  <a href="#saveload">Save &amp; Load</a>
+  <a href="#svg">SVG Export &amp; Import</a>
+  <a href="#undo">Undo</a>
+  <h2>Reference</h2>
+  <a href="#keyboard">Keyboard Shortcuts</a>
+  <a href="#mouse">Mouse &amp; Modifiers</a>
+  <a href="#colours">Highlight Colours</a>
+</nav>
+
+<div class="content">
+
+<!-- ═══════════════════════════════════════════════════════════ -->
+<section id="overview">
+<h1>Bezier Draw (Python) — Help</h1>
+<p>Bezier Draw is a tool for creating and editing three types of geometry that feed into the Loom drawing engine:</p>
+<ul>
+  <li><strong>Closed polygon sets</strong> — collections of closed cubic Bézier-curve polygons. Support subdivision, morph targets, and all renderer modes in Loom.</li>
+  <li><strong>Open curve sets</strong> — non-closed splines with a distinct start and end. Rendered in Loom as stroked paths or brush stamps; not subdivided.</li>
+  <li><strong>Point sets</strong> — collections of discrete anchor positions. Rendered in Loom as dot or brush stamps; not subdivided. Also used as <em>source points</em> for the <a href="#mesh-build">Mesh Build</a> workflow.</li>
+</ul>
+<p>This is the Python (PySide6) reimplementation of the Java Bezier Editor, with all original functionality plus two new features: <strong>Mesh Build Mode</strong> and a persistent <strong>Trace Image</strong> layer.</p>
+<div class="note">Bezier Draw is normally launched from within the Loom Parameter Editor via the Create / Edit buttons in the Geometry tab. When you close Bezier Draw the editor automatically detects new or changed files. It can also be launched directly from the command line.</div>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════════ -->
+<section id="layout">
+<h2>Interface Layout</h2>
+
+<h3>Layers Panel (left, 280 px)</h3>
+<p>A table listing all layers with <strong>Vis</strong> / <strong>#</strong> / <strong>Name</strong> columns, plus management buttons: <strong>New</strong>, <strong>Rename</strong>, <strong>Duplicate</strong>, <strong>Delete</strong>, <strong>↑</strong>, <strong>↓</strong>. The active layer's name is shown in bold. New geometry always goes to the active layer.</p>
+
+<h3>Toolbar (top)</h3>
+<p>Icon buttons organised into groups separated by visible frames. Left-to-right order:</p>
+<table>
+  <tr><th>Group</th><th>Buttons / Controls</th></tr>
+  <tr><td>Selection modes</td><td>Point Selection <kbd>a</kbd> · Edge Selection <kbd>s</kbd> · Open Curve Selection <kbd>d</kbd> · Polygon Selection <kbd>f</kbd> · <strong>Mesh</strong> <kbd>⌃A</kbd></td></tr>
+  <tr><td>Creation modes</td><td>Create Points <kbd>h</kbd> · Create Oval <kbd>j</kbd> · Create Polygons <kbd>k</kbd> · Freehand Draw <kbd>l</kbd></td></tr>
+  <tr><td>Detail</td><td>Detail slider (freehand smoothing, 1–50)</td></tr>
+  <tr><td>Finish</td><td>Close Polygon <kbd>⌘F</kbd> · Finish Open Curve</td></tr>
+  <tr><td>Weld</td><td>Auto-Weld Toggle · Weld All Adjacent</td></tr>
+  <tr><td>Mesh ops</td><td>Duplicate · Knife Tool · Intersect</td></tr>
+  <tr><td>Flip</td><td>Flip Horizontal · Flip Vertical</td></tr>
+  <tr><td>Snap</td><td>Snap Anchors · Snap Anchors &amp; Controls · Centre</td></tr>
+  <tr><td>Zoom</td><td>Zoom In · Zoom Out</td></tr>
+  <tr><td>View</td><td>Toggle Grid · Toggle Control Points</td></tr>
+  <tr><td>Erase</td><td>Clear All Geometry · Erase Selected Geometry</td></tr>
+</table>
+<div class="note">Selection mode buttons are highlighted in <span class="chip orange">orange</span> when active. Creation mode buttons are highlighted in <span class="chip green">green</span>.</div>
+
+<h3>Name / Save Panel (below toolbar)</h3>
+<ul>
+  <li><strong>Name</strong> field — the base filename for saving. Spaces become underscores; non-alphanumeric characters are stripped; the result is lowercased.</li>
+  <li><strong>Save</strong> button — writes geometry to the appropriate directories (see <a href="#saveload">Save &amp; Load</a>).</li>
+  <li><strong>Load</strong> button — opens a file browser. The root XML element determines what type is loaded.</li>
+  <li><strong>Import SVG</strong> button — adds SVG path geometry to the active layer.</li>
+</ul>
+
+<h3>Canvas (centre)</h3>
+<p>The drawing grid is 1000 × 1000 user units displayed on a 1040 × 1040 pixel panel (20 px border on each side). The grid has 10 × 10 major divisions. Coordinates are saved in a normalised form centred on 0 (typically −0.5 to +0.5) — the conversion happens automatically on save.</p>
+
+<h3>Transform Panel (below canvas)</h3>
+<ul>
+  <li><strong>Scale Axis</strong> — XY (proportional), X-only, or Y-only.</li>
+  <li><strong>Rotation Axis</strong> — Local (each polygon's own centre), Common (shared centroid), or Absolute (canvas centre).</li>
+  <li><strong>Scale slider</strong> — drag to scale; release to commit and reset to zero.</li>
+  <li><strong>Rotation slider</strong> — drag to rotate (±100 → ±180°); release to commit and reset.</li>
+  <li><strong>Edit Mode</strong> checkboxes — Anchor and Control: control which point types are selectable in Point Selection mode.</li>
+</ul>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════════ -->
+<section id="drawing">
+<h2>Drawing Polygons</h2>
+
+<h3>Entering Create Polygons Mode</h3>
+<p>Click the <strong>Create Polygons</strong> toolbar button (or press <kbd>k</kbd>). The cursor enters drawing mode for a new polygon.</p>
+
+<h3>Placing Points</h3>
+<p>Each click on the canvas places an <em>anchor point</em>. After the first two anchors, smooth cubic Bézier control points are generated automatically between them. Continue clicking to add more segments.</p>
+
+<h3>Closing a Polygon</h3>
+<p>Click <strong>Close Polygon</strong> (or <kbd>⌘F</kbd>). The editor connects the last anchor back to the first, records the polygon as finished, and switches to Polygon Selection Mode.</p>
+<div class="note">Closed polygons are required for Loom's subdivision pipeline. Use <em>Close Polygon</em> whenever you are creating shapes for subdivision rendering.</div>
+
+<h3>Chain-Close from Open Curves</h3>
+<p>If you have drawn a set of open curves whose endpoints connect to form a closed loop, select all the curves in <strong>Open Curve Selection Mode</strong> and click <strong>Close Polygon</strong>. The editor chains them end-to-end (reversing individual curves as needed) and creates one new closed polygon. Endpoint gaps up to 15 px are tolerated.</p>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════════ -->
+<section id="open-curves">
+<h2>Open Curves</h2>
+<p>An open curve is a cubic Bézier spline with a distinct start and end — it does not close back on itself. Used in Loom as stroked paths or brush stamps (not subdivided).</p>
+
+<h3>Creating Open Curves</h3>
+<ol>
+  <li>Enter <strong>Create Polygons Mode</strong> (<kbd>k</kbd>).</li>
+  <li>Place anchor points on the canvas by clicking.</li>
+  <li>When the curve is complete, click <strong>Finish Open Curve</strong> instead of Close Polygon. No closing segment is added.</li>
+</ol>
+
+<h3>Pressure Sensitivity</h3>
+<p>When drawing with a pressure-sensitive stylus, Bezier Draw records the stylus pressure at each anchor point. This is saved in the <code>openCurveSet</code> XML as <code>pressure="0.xxx"</code> attributes and used by Loom's BRUSHED renderer to vary stamp size and opacity.</p>
+<div class="note">Drawing with a mouse records a uniform pressure of 1.0 at every anchor, producing no variation in Loom. In Point Selection Mode, anchor dot size reflects recorded pressure.</div>
+
+<div class="warn">A canvas can contain both closed polygons and open curves, but they are saved as separate files. Keep closed-polygon sessions and open-curve sessions in separate files for clarity.</div>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════════ -->
+<section id="point-sets">
+<h2>Creating Point Sets</h2>
+<p>Point sets are collections of discrete positions. Used in Loom for scatter effects and brush-stamp placement (not subdivided). They are also used as <em>source points</em> for the <a href="#mesh-build">Mesh Build</a> workflow.</p>
+
+<ol>
+  <li>Click <strong>Create Points</strong> (<kbd>h</kbd>) to enter point-placement mode.</li>
+  <li>Each click on the canvas places a <span class="chip magenta">magenta dot</span>.</li>
+  <li>Click <strong>Save</strong>. The points are written to <code>pointSets/{name}.xml</code>.</li>
+</ol>
+<div class="note">Points have no bezier control points or edges. In Point Selection or Point Creation mode, click within 15 px of a point to select it — it shows as a <span class="chip magenta">magenta dot</span> with a <span class="chip yellow">yellow ring</span> when selected. Drag to move.</div>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════════ -->
+<section id="mesh-build">
+<h2>Mesh Build Mode <span class="tag-new">New</span></h2>
+<p>Mesh Build Mode lets you construct a closed polygon mesh by picking from an existing point set. You hover over source points to sequence them, then press <kbd>P</kbd> to commit each polygon face. All committed faces are accumulated in an auto-created <strong>Mesh</strong> layer, with adjacent polygon vertices automatically welded at their shared positions.</p>
+
+<div class="new">This is a new capability not present in the Java Bezier Editor. It enables a tracing-based mesh-building workflow: scatter your reference points over a tracing image, then build the mesh topology face by face using Mesh Build Mode.</div>
+
+<h3>Typical Workflow — Mesh from Traced Points</h3>
+<ol>
+  <li><strong>Load a trace image</strong> — use <em>File &rarr; Load Trace Image…</em> to load an image as a persistent trace layer. Position it at the canvas centre as a drawing reference.</li>
+  <li><strong>Place source points</strong> — switch to <strong>Create Points</strong> mode (<kbd>h</kbd>) on your working layer and click to scatter anchor points at key positions on the tracing (mesh vertices, corners, intersections).</li>
+  <li><strong>Save the point set</strong> — save to record your source points in <code>pointSets/</code>.</li>
+  <li><strong>Activate Mesh Build Mode</strong> — click the <strong>Mesh</strong> toolbar button or press <kbd>⌃A</kbd> (Ctrl+A). The toolbar button highlights in orange. A <strong>Mesh</strong> layer is created automatically if one does not exist.</li>
+  <li><strong>Sequence the first face</strong> — move the mouse near source points. When the cursor is within 10 px of a point, it is added to the sequence automatically (green numbered ring appears). Lines connect sequenced points in order.</li>
+  <li><strong>Commit the face</strong> — press <kbd>P</kbd> when the sequence shows the vertices of one polygon face. A closed quad (or polygon of any count) is built from the sequenced points and added to the Mesh layer. Vertices shared with already-built faces are welded automatically.</li>
+  <li><strong>Continue building</strong> — the sequence clears; mode stays active. Move on to the next face. Adjacent faces share welded anchor points.</li>
+  <li><strong>Save</strong> — click Save. The Mesh layer is written to <code>polygonSets/</code> as part of a multi-layer <code>.layers.xml</code> bundle. The point set layer is written to <code>pointSets/</code>.</li>
+</ol>
+
+<h3>Visual Feedback</h3>
+<table>
+  <tr><th>Visual</th><th>Meaning</th></tr>
+  <tr><td><span class="chip green">Green numbered ring</span> on point</td><td>Point has been added to the current face sequence (number = position in sequence)</td></tr>
+  <tr><td>Green connecting lines between rings</td><td>Shows the edge order of the face being built</td></tr>
+  <tr><td>Ghost closing line (dashed)</td><td>Preview of the edge that will close the polygon back to point #1</td></tr>
+  <tr><td>Larger <span class="chip green">preview ring</span> (10–18 px radius)</td><td>Mouse is near a point but not yet close enough to auto-add (within the preview zone)</td></tr>
+</table>
+
+<h3>Controls Within Mesh Build Mode</h3>
+<table>
+  <tr><th>Key / Action</th><th>Effect</th></tr>
+  <tr><td><kbd>P</kbd></td><td>Commit current sequence as a new closed polygon face on the Mesh layer. Requires at least 3 points. Mode remains active for the next face.</td></tr>
+  <tr><td><kbd>Backspace</kbd> / <kbd>Delete</kbd></td><td>Remove the last point from the current sequence (undo last hover-add).</td></tr>
+  <tr><td><kbd>Space</kbd></td><td>Clear the entire current sequence and start over (no polygon committed).</td></tr>
+  <tr><td><kbd>⌃A</kbd> again</td><td>Exit Mesh Build Mode (toggle off). The sequence is cleared.</td></tr>
+  <tr><td>Click the Mesh toolbar button</td><td>Toggle Mesh Build Mode on/off.</td></tr>
+</table>
+
+<h3>Proximity Thresholds</h3>
+<table>
+  <tr><th>Threshold</th><th>Value</th><th>Meaning</th></tr>
+  <tr><td>Auto-add radius</td><td>10 px</td><td>Mouse within this distance of an unsequenced point → it is added to the sequence automatically</td></tr>
+  <tr><td>Preview radius</td><td>18 px</td><td>Mouse within this distance → point shows a preview ring but is not yet added</td></tr>
+  <tr><td>Weld threshold</td><td>5 px</td><td>When committing a face, any sequenced point within 5 px of an anchor already in the Mesh layer is welded to it rather than creating a duplicate</td></tr>
+</table>
+
+<h3>Notes and Tips</h3>
+<ul>
+  <li>Source points are <strong>not consumed</strong> or deleted when used in faces — they remain available for building adjacent faces that share the same vertices.</li>
+  <li>The <strong>Mesh</strong> layer is created automatically on first commit and cannot be the active drawing layer (only the Mesh Build overlay writes to it). You can still inspect its content by making it active after switching out of Mesh Build Mode.</li>
+  <li>After completing a mesh, use <strong>Weld All Adjacent</strong> to catch any near-coincident anchors that fall just outside the 5 px auto-weld threshold.</li>
+  <li>For clean subdivision results, build quads (4-point faces) wherever possible.</li>
+</ul>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════════ -->
+<section id="trace-image">
+<h2>Trace Image <span class="tag-new">New</span></h2>
+<p>A <em>trace image</em> is a background photograph or drawing loaded as a special persistent layer, used as a drawing reference when building geometry. Unlike the session-only reference image, the trace image is saved with the document.</p>
+
+<div class="new">Trace image is a new feature not present in the Java Bezier Editor. The image is saved as a &lt;traceLayer&gt; entry in the .layers.xml manifest, so it reloads automatically the next time the file is opened.</div>
+
+<h3>Loading a Trace Image</h3>
+<ol>
+  <li>Choose <strong>File &rarr; Load Trace Image…</strong> from the menu bar.</li>
+  <li>Select a PNG, JPEG, BMP, TIFF, or WebP image. The browser starts in the project's <code>tracing_images/</code> folder (created automatically).</li>
+  <li>The image is loaded as a <strong>Trace</strong> layer in the Layers panel. It is automatically set as non-active (you cannot draw on it).</li>
+  <li>The first geometry layer becomes the active layer again.</li>
+</ol>
+
+<h3>Behaviour</h3>
+<ul>
+  <li>The trace layer appears at the <strong>bottom</strong> of the canvas at a default opacity of 45%.</li>
+  <li>The layer panel shows it labelled <em>Trace</em> with its visibility checkbox. Toggle visibility to hide/show without unloading.</li>
+  <li>The trace image position, scale, and opacity are stored in the <code>.layers.xml</code> manifest and reload automatically.</li>
+</ul>
+
+<h3>Difference from Reference Image</h3>
+<table>
+  <tr><th></th><th>Trace Image</th><th>Reference Image</th></tr>
+  <tr><td>Persistence</td><td>Saved in <code>.layers.xml</code> — reloads automatically</td><td>Session only — not saved</td></tr>
+  <tr><td>Appears in</td><td>Layers panel as a Trace layer</td><td>Canvas overlay only</td></tr>
+  <tr><td>Multi-layer save</td><td>Written to manifest when saving a layer bundle</td><td>Not written anywhere</td></tr>
+  <tr><td>Toggle</td><td>Vis checkbox in Layers panel</td><td>Toggle Reference Image toolbar button</td></tr>
+</table>
+
+<h3>Suggested Settings for Mesh Tracing</h3>
+<p>For the mesh-from-points workflow, load the trace image first, then:</p>
+<ul>
+  <li>The default opacity (~45%) gives a good balance between seeing the image and seeing your geometry. Adjust via the Loom Parameter Editor's trace layer settings if needed.</li>
+  <li>Place your source points (Create Points mode) directly over key structural features: corners, junctions, outline intersections.</li>
+  <li>Keep the trace layer visible while in Mesh Build Mode so you can see which faces you have built relative to the underlying image.</li>
+</ul>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════════ -->
+<section id="layers">
+<h2>Layers</h2>
+<p>Every polygon, open curve, and point belongs to exactly one named layer. Only the active layer is selectable; other visible layers appear at 20% opacity as a drawing reference.</p>
+
+<h3>Active Layer</h3>
+<p>Click a row in the Layers panel to make that layer <strong>active</strong>. The active layer is drawn at full opacity. All new geometry is created on the active layer. Hit-testing is restricted to the active layer.</p>
+
+<h3>Layer Buttons</h3>
+<table>
+  <tr><th>Button</th><th>Action</th></tr>
+  <tr><td><strong>New</strong></td><td>Add a new layer and make it active.</td></tr>
+  <tr><td><strong>Rename</strong></td><td>Rename the selected layer (opens a text dialog).</td></tr>
+  <tr><td><strong>Duplicate</strong></td><td>Copy all geometry from the selected layer into a new layer. The copy becomes active.</td></tr>
+  <tr><td><strong>Delete</strong></td><td>Delete the selected layer and all its geometry. Cannot delete the last geometry layer. Shows a confirmation warning if the layer has content.</td></tr>
+  <tr><td><strong>↑ / ↓</strong></td><td>Move the layer up or down in the draw order (lower = drawn first, underneath).</td></tr>
+</table>
+
+<h3>Multi-layer Export</h3>
+<p>When the canvas has polygons on two or more layers, clicking Save writes:</p>
+<ul>
+  <li>One <code>{name}_{layerName}.xml</code> per layer.</li>
+  <li>A <code>{name}.layers.xml</code> manifest listing all layers.</li>
+</ul>
+<p>If a trace image is loaded, a <code>&lt;traceLayer&gt;</code> element is also written to the manifest so the image path and settings reload automatically.</p>
+<div class="note">Use layers to organise complex geometry — for example, source points on one layer and the built mesh on the Mesh layer. Each polygon layer can be given a different renderer in Loom.</div>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════════ -->
+<section id="point-mode">
+<h2>Point Selection Mode</h2>
+<p>Click the <strong>Point Selection</strong> toolbar button (or press <kbd>a</kbd>). Individual anchor and control points can be selected, moved, scaled, and rotated.</p>
+
+<h3>Selecting Points — Two-Step Scoping</h3>
+<ol>
+  <li><strong>First click inside a polygon</strong> — <em>scopes</em> that polygon (outlined with a <span class="chip yellow">yellow dashed border</span>). No points are selected yet.</li>
+  <li><strong>Click a visible point</strong> inside the scoped polygon — selects it.</li>
+</ol>
+<p>Clicking directly on a point in any polygon auto-scopes that polygon and selects the point in one step.</p>
+
+<h3>Edit Mode Checkboxes</h3>
+<ul>
+  <li><strong>Anchor</strong> (default: on) — anchor points are selectable and moveable.</li>
+  <li><strong>Control</strong> (default: on) — bezier control point handles are selectable and moveable.</li>
+</ul>
+<p>Uncheck <em>Control</em> to ignore handles when clicking in dense geometry.</p>
+
+<h3>Selection Colours</h3>
+<table>
+  <tr><th>Colour</th><th>Meaning</th></tr>
+  <tr><td><span class="color-swatch" style="background:#6496ff"></span><span class="chip blue">Blue</span></td><td>Anchor selected — Discrete sub-mode</td></tr>
+  <tr><td><span class="color-swatch" style="background:#fff;border:1px solid #888"></span> White</td><td>Control point selected — Discrete sub-mode</td></tr>
+  <tr><td><span class="color-swatch" style="background:#dc3220"></span><span class="chip red">Red</span></td><td>Anchor selected — Relational sub-mode</td></tr>
+  <tr><td><span class="color-swatch" style="background:#ffdc00"></span><span class="chip yellow">Yellow</span></td><td>Control point selected — Relational sub-mode</td></tr>
+  <tr><td><span class="color-swatch" style="background:#ff00ff"></span><span class="chip magenta">Magenta</span></td><td>Free-standing discrete point (point set)</td></tr>
+</table>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════════ -->
+<section id="edge-mode">
+<h2>Edge Selection Mode</h2>
+<p>Click the <strong>Edge Selection</strong> toolbar button (or press <kbd>s</kbd>). A Bézier segment (curve between two consecutive anchor points) is treated as a single selectable edge.</p>
+
+<h3>Selecting Edges — Two-Step Scoping</h3>
+<ol>
+  <li><strong>First click inside a polygon</strong> — scopes it (<span class="chip yellow">yellow dashed outline</span>).</li>
+  <li><strong>Click within 15 px of a curve</strong> — selects that edge.</li>
+</ol>
+
+<h3>Edge Highlight Colours</h3>
+<table>
+  <tr><th>Colour</th><th>Meaning</th></tr>
+  <tr><td><span class="color-swatch" style="background:#0064ff"></span><span class="chip blue">Blue (4 px)</span></td><td>Edge selected — Discrete sub-mode</td></tr>
+  <tr><td><span class="color-swatch" style="background:#ff8c00"></span><span class="chip orange">Orange (4 px)</span></td><td>Edge selected — Relational sub-mode</td></tr>
+  <tr><td><span class="color-swatch" style="background:#dc00ff"></span><span class="chip purple">Purple (5 px)</span></td><td>Edge is weldable, or live duplicate during extrude drag</td></tr>
+</table>
+
+<h3>Operations in Edge Mode</h3>
+<ul>
+  <li><strong>Drag</strong> — moves the selected edge(s) and their adjacent control points.</li>
+  <li><strong>Duplicate</strong> — creates an offset copy of the selected edge as a standalone single-edge open curve.</li>
+  <li><strong>Delete</strong> — removes the selected curve segment from its parent polygon.</li>
+  <li><strong>Weld</strong> (two edges selected, purple) — snaps both to their midpoint and registers weld links.</li>
+  <li><strong>Extrude</strong> — <kbd>⇧ Shift</kbd> + drag (see <a href="#extrude">Extrude</a>).</li>
+</ul>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════════ -->
+<section id="open-curve-mode">
+<h2>Open Curve Selection Mode</h2>
+<p>Click the <strong>Open Curve Selection</strong> toolbar button (or press <kbd>d</kbd>). Entire open (non-closed) curves are selected and moved as units. Closed polygons are not selectable in this mode.</p>
+
+<ul>
+  <li>Click <strong>inside or near</strong> an open curve to select it. Outline turns <span class="chip blue">blue</span> (Discrete) or <span class="chip orange">orange</span> (Relational).</li>
+  <li>Clicking a selected curve again <strong>deselects</strong> it.</li>
+  <li><kbd>⇧ Shift</kbd> + drag — rubber-band marquee; curves whose centroid falls inside the rectangle are selected.</li>
+  <li><kbd>⌘A</kbd> — select all open curves on the active layer.</li>
+  <li>With curves selected, clicking <strong>Close Polygon</strong> attempts to chain them into a new closed polygon.</li>
+</ul>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════════ -->
+<section id="polygon-mode">
+<h2>Polygon Selection Mode</h2>
+<p>Click the <strong>Polygon Selection</strong> toolbar button (or press <kbd>f</kbd>). Entire closed polygons and ovals are selected and can be dragged, scaled, rotated, flipped, welded, duplicated, or deleted as units.</p>
+
+<h3>Selecting Polygons</h3>
+<ul>
+  <li>Click <strong>inside</strong> a polygon to select it. Outline turns <span class="chip blue">blue</span> (Discrete) or <span class="chip orange">orange</span> (Relational).</li>
+  <li>Clicking a selected polygon again <strong>deselects</strong> it.</li>
+  <li>Click <strong>empty canvas</strong> to clear all selections.</li>
+  <li><kbd>⌘</kbd> + click — add to selection without deselecting.</li>
+</ul>
+
+<h3>Drag-to-Weld</h3>
+<p>While dragging, edges meeting the proximity and alignment thresholds highlight in <span class="chip purple">purple</span>. Release to snap and weld them automatically.</p>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════════ -->
+<section id="submodes">
+<h2>Discrete &amp; Relational Sub-modes</h2>
+<table>
+  <tr><th>Sub-mode</th><th>What gets selected</th><th>What moves on drag</th></tr>
+  <tr><td><strong>Discrete</strong></td><td>Only the directly clicked element</td><td>Only that element — welded partners stay put</td></tr>
+  <tr><td><strong>Relational</strong> (default)</td><td>Clicked element + all weld-linked elements (transitive)</td><td>All linked elements — seams remain intact</td></tr>
+</table>
+
+<h3>Switching Sub-mode</h3>
+<ul>
+  <li>Tap <kbd>⇧ Shift</kbd> while a selection mode is active → toggles Discrete ↔ Relational. Highlight colours update immediately.</li>
+  <li><kbd>⇧ Shift</kbd> + click the toolbar selection button when switching modes → activates directly in Discrete.</li>
+</ul>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════════ -->
+<section id="scoping">
+<h2>Scoping</h2>
+<p>In Point and Edge Selection modes, a <em>scope</em> isolates one polygon so you can click precisely on its points or edges without hitting overlapping polygons. The scoped polygon is outlined with a <span class="chip yellow">yellow dashed border (2 px)</span>.</p>
+
+<ol>
+  <li>Click inside a polygon → it becomes scoped.</li>
+  <li>Click a point or edge within the scoped polygon → it is selected.</li>
+  <li>Click inside a <em>different</em> polygon → scope moves there; prior selection cleared (unless <kbd>⌘</kbd> held).</li>
+  <li>Click empty canvas → scope and selection both cleared.</li>
+</ol>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════════ -->
+<section id="marquee">
+<h2>Marquee (Rubber-Band) Selection</h2>
+<p>Hold <kbd>⇧ Shift</kbd> and drag on the canvas to draw a selection rectangle (translucent blue).</p>
+<ul>
+  <li><strong>Point mode</strong> — selects all visible points whose position falls inside the rectangle.</li>
+  <li><strong>Edge mode</strong> — selects all edges whose anchor-midpoint falls inside the rectangle.</li>
+  <li><strong>Open Curve mode</strong> — selects curves whose centroid falls inside the rectangle.</li>
+  <li><strong>Polygon mode</strong> — selects closed polygons whose centroid falls inside the rectangle.</li>
+</ul>
+<div class="note">When edges are already selected in Edge Mode, <kbd>⇧ Shift</kbd> + drag triggers <a href="#extrude">Extrude</a> instead of the marquee. Deselect all first with <kbd>⌘D</kbd> if you want to marquee in edge mode.</div>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════════ -->
+<section id="transform">
+<h2>Scale &amp; Rotate</h2>
+
+<h3>Scale Slider</h3>
+<p>Drag the <strong>Scale</strong> slider. Range −100 to +100 maps to a scale factor of 0.0–2.0. Release to commit and reset.</p>
+<h4>Scale Axis</h4>
+<ul>
+  <li><strong>XY</strong> (default) — proportional.</li>
+  <li><strong>X only</strong> — squeeze/stretch horizontally.</li>
+  <li><strong>Y only</strong> — squeeze/stretch vertically.</li>
+</ul>
+<h4>Scale Pivot</h4>
+<ul>
+  <li>Point mode — centroid of selected points.</li>
+  <li>Edge mode — centroid of selected edge anchors.</li>
+  <li>Polygon Relational — shared centroid of all selected polygons.</li>
+  <li>Polygon Discrete — each polygon scales around its own centroid independently.</li>
+  <li>Nothing selected — canvas centre.</li>
+</ul>
+
+<h3>Rotate Slider</h3>
+<p>Drag the <strong>Rotation</strong> slider. Range −100 to +100 maps to −180° to +180°. Release to commit and reset.</p>
+<h4>Rotation Axis</h4>
+<ul>
+  <li><strong>Local</strong> (default) — each polygon rotates about its own centroid.</li>
+  <li><strong>Common</strong> — all selected polygons orbit their shared centroid.</li>
+  <li><strong>Absolute</strong> — all polygons orbit the canvas centre (500, 500).</li>
+</ul>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════════ -->
+<section id="translate">
+<h2>Translate (Drag)</h2>
+<ul>
+  <li><strong>Point mode</strong> — drag any selected point to move all selected points.</li>
+  <li><strong>Edge mode</strong> — drag near a selected edge to move all selected edges.</li>
+  <li><strong>Polygon mode</strong> — drag inside a selected polygon to move all selected polygons.</li>
+</ul>
+<p>An undo snapshot is taken at the start of the first drag movement.</p>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════════ -->
+<section id="flip">
+<h2>Flip &amp; Centre</h2>
+<p><strong>Flip Horizontal</strong> — mirrors selected geometry left/right around their collective centroid. If nothing is selected, flips all geometry on the active layer.</p>
+<p><strong>Flip Vertical</strong> — mirrors top/bottom.</p>
+<p><strong>Centre</strong> — moves the selection (or all geometry if nothing selected) so the group's centroid coincides with canvas centre (500, 500). Relative positions are preserved.</p>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════════ -->
+<section id="zoom">
+<h2>Zoom In / Zoom Out</h2>
+<table>
+  <tr><th></th><th>Zoom In</th><th>Zoom Out</th></tr>
+  <tr><td>Factor</td><td>× 1.25</td><td>× 0.8</td></tr>
+</table>
+<p>Pivot priority: centroid of selected points → centroid of selected edge anchors → centroid of selected polygons → canvas centre.</p>
+<div class="warn">Zoom operates on <em>coordinate values</em> — it does not change the canvas view. It makes geometry physically larger or smaller. Keep coordinates in the approximate −0.5 to +0.5 normalised range for best compatibility with Loom's sprite sizing system.</div>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════════ -->
+<section id="snap">
+<h2>Snap to Grid</h2>
+<p>Grid spacing: 10 units per cell over a 1000 × 1000 canvas (100 × 100 intersections).</p>
+<p><strong>Snap Anchors</strong> — moves every anchor point on the active layer to the nearest grid intersection. Control points unchanged.</p>
+<p><strong>Snap Anchors &amp; Controls</strong> — also recalculates control points after snapping, restoring smooth tangents at the new grid positions.</p>
+<p>Both operations affect only the <strong>active layer</strong> and are undoable.</p>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════════ -->
+<section id="weld">
+<h2>Welding</h2>
+<p>Welding links anchor points from two different polygons so they share a position and move together in Relational mode. Correct welding is essential for Loom subdivision — unwelded adjacent polygons tear apart when point-level transforms are applied.</p>
+
+<h3>Auto-Weld Toggle</h3>
+<p>The <strong>Weld</strong> toolbar button is a two-state toggle. When <strong>on</strong> (default, button checked), drag-to-weld detection runs during polygon drags and edges auto-weld on release. Turn it <strong>off</strong> when you need to drag a polygon inside another (e.g. before using Intersect) without triggering accidental welds.</p>
+
+<h3>Explicit Weld (Edge Mode)</h3>
+<ol>
+  <li>Enter <strong>Edge Selection Mode</strong> and select <strong>exactly two edges</strong> from different polygons.</li>
+  <li>Both conditions must be met: midpoint distance ≤ <strong>80 px</strong> and directions within ~<strong>45°</strong>.</li>
+  <li>When conditions are met, edges turn <span class="chip purple">purple</span> automatically.</li>
+  <li>Click the <strong>Weld</strong> toolbar button.</li>
+</ol>
+<p>Both anchor pairs snap to their midpoints; all four point pairs are registered in the Weld Registry.</p>
+
+<h3>Weld All Adjacent</h3>
+<p>Click <strong>Weld All Adjacent</strong> to find all pairs of edges across different polygons on the active layer whose anchor endpoints are within <strong>5 px</strong> of each other, and weld them all in one step.</p>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════════ -->
+<section id="extrude">
+<h2>Extrude</h2>
+<p>Grows a new closed quad polygon from a selected edge by Shift-dragging. The fastest way to build a repeating grid.</p>
+<ol>
+  <li>Enter <strong>Edge Selection Mode</strong> and select one or more edges.</li>
+  <li>Hold <kbd>⇧ Shift</kbd> and drag on the canvas.</li>
+  <li>A <span class="chip purple">purple duplicate</span> of the selected edge(s) follows the mouse.</li>
+  <li>Release at the desired position.</li>
+</ol>
+<p>Each extruded edge produces one new closed quad: bottom = original edge, top = dragged position, left/right = straight connectors. If the source edge belongs to a closed polygon, the new quad's bottom anchors are automatically welded to the original edge's anchors. After release, the <strong>top edge of the new quad becomes the active selection</strong> for immediate chained extrusion.</p>
+<div class="note">Use <strong>Weld All Adjacent</strong> after building a grid to link any unconnected seams.</div>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════════ -->
+<section id="intersect">
+<h2>Intersect (Quad Mesh)</h2>
+<p>Builds an annular quad-mesh filling the space between two concentric polygons.</p>
+<ol>
+  <li>Enter <strong>Polygon Selection Mode</strong> and select <strong>exactly 2 polygons</strong> (one inside the other).</li>
+  <li>Click <strong>Intersect</strong>. Hold <kbd>⇧ Shift</kbd> when clicking to keep the inner polygon; without Shift it is removed.</li>
+</ol>
+<p>A ring of quad polygons is created connecting corresponding edge midpoints. All new quads are welded to their neighbours. Works best when both polygons have the same number of sides and are roughly concentric.</p>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════════ -->
+<section id="knife">
+<h2>Knife Cut</h2>
+<p>Cuts through polygons along a drawn segment.</p>
+<ol>
+  <li>Click <strong>Knife Tool</strong> in the toolbar to enter knife mode.</li>
+  <li>Drag across the canvas. A dashed red line shows the cut segment.</li>
+  <li>Release — every polygon on the active layer that the segment physically crosses is split at the intersection points.</li>
+  <li>Click Knife again (or any selection mode button) to exit knife mode.</li>
+</ol>
+<div class="note">The cut is undoable. New polygons at the cut seam are not automatically welded — use Weld All Adjacent afterwards.</div>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════════ -->
+<section id="duplicate">
+<h2>Duplicate &amp; Delete</h2>
+<h3>Duplicate</h3>
+<ul>
+  <li><strong>Polygon mode</strong> — copies of all selected polygons, offset 20 px. Originals are deselected; duplicates become the new selection.</li>
+  <li><strong>Edge mode</strong> — a single-edge open curve copy of each selected edge, offset 20 px.</li>
+</ul>
+<h3>Copy / Paste / Cut</h3>
+<ul>
+  <li><kbd>⌘C</kbd> — copies selected geometry to clipboard (closed polygons, open curves, or edges as open curves).</li>
+  <li><kbd>⌘V</kbd> — pastes clipboard as new geometry on the active layer, centred on the current mouse position.</li>
+  <li><kbd>⌘X</kbd> — cut: copies to clipboard then deletes.</li>
+</ul>
+<h3>Delete</h3>
+<ul>
+  <li><strong>Erase Selected Geometry</strong> (toolbar) — removes whatever is currently selected (polygons, open curves, edges, or free-standing points).</li>
+  <li><strong>Clear All Geometry</strong> — removes all geometry on the canvas. Undoable.</li>
+</ul>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════════ -->
+<section id="view">
+<h2>View Toggles</h2>
+<table>
+  <tr><th>Button</th><th>Effect</th></tr>
+  <tr><td><strong>Toggle Grid</strong></td><td>Show/hide background grid lines.</td></tr>
+  <tr><td><strong>Toggle Control Points</strong></td><td>Show/hide cubic Bézier control-point handles. Anchor points remain visible.</td></tr>
+  <tr><td><strong>Toggle Reference Image</strong></td><td>Show/hide the session reference image loaded via the Reference Image panel (File menu). Not persistent.</td></tr>
+</table>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════════ -->
+<section id="saveload">
+<h2>Save &amp; Load</h2>
+
+<h3>What Save Writes</h3>
+<p>Clicking <strong>Save</strong> dispatches by content type. The name field determines the base filename (lowercased, spaces → underscores, non-alphanumeric stripped):</p>
+<table>
+  <tr><th>Canvas content</th><th>Files written</th><th>Directory</th></tr>
+  <tr><td>Closed polygons — single layer</td><td><code>{name}.xml</code> (polygonSet) + <code>{name}.svg</code></td><td><code>polygonSets/</code> and <code>svg/</code></td></tr>
+  <tr><td>Closed polygons — multiple layers</td><td><code>{name}_{layer}.xml</code> per layer + <code>{name}.layers.xml</code> manifest + SVG</td><td><code>polygonSets/</code> and <code>svg/</code></td></tr>
+  <tr><td>Open (non-closed) curves only</td><td><code>{name}.xml</code> (openCurveSet) + <code>{name}.svg</code></td><td><code>curveSets/</code> and <code>svg/</code></td></tr>
+  <tr><td>Discrete points only</td><td><code>{name}.xml</code> (pointSet)</td><td><code>pointSets/</code></td></tr>
+</table>
+
+<div class="new"><strong>Save routing:</strong> Closed polygon data (including multi-layer bundles containing a Mesh layer) always goes to <code>polygonSets/</code>, even when Bezier Draw was launched with <code>--save-dir pointSets/</code>. Point data always goes to <code>pointSets/</code>. The save system detects the project layout automatically.</div>
+
+<h3>Layer Bundles and the Mesh Layer</h3>
+<p>When you use Mesh Build Mode, a <strong>Mesh</strong> layer is added alongside your point layer. On save:</p>
+<ul>
+  <li><code>pointSets/{name}_{pointLayerName}.xml</code> — the source point set.</li>
+  <li><code>polygonSets/{name}_mesh.xml</code> — the polygon mesh faces.</li>
+  <li><code>polygonSets/{name}.layers.xml</code> — manifest listing all polygon layers (and the trace layer if present).</li>
+</ul>
+
+<h3>Loading</h3>
+<p>Click <strong>Load</strong> to open a file browser. The root XML element determines what type is loaded:</p>
+<table>
+  <tr><th>Root element / filename</th><th>Loaded as</th></tr>
+  <tr><td><code>&lt;polygonSet&gt;</code></td><td>Closed polygon set — Polygon Selection Mode</td></tr>
+  <tr><td><code>&lt;openCurveSet&gt;</code></td><td>Open curve set — Polygon Selection Mode</td></tr>
+  <tr><td><code>&lt;pointSet&gt;</code></td><td>Discrete point set — Create Points Mode</td></tr>
+  <tr><td>Filename ends in <code>.layers.xml</code></td><td>Multi-layer bundle — all layers loaded; trace image reloaded if referenced</td></tr>
+</table>
+<div class="warn">Loading a file <strong>replaces</strong> all current geometry. Use Undo (<kbd>⌘Z</kbd>) immediately if you load by mistake.</div>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════════ -->
+<section id="svg">
+<h2>SVG Export &amp; Import</h2>
+
+<h3>Automatic SVG Export</h3>
+<p>Every Save writes an SVG copy to <code>svg/{name}.svg</code>. Each closed polygon becomes a <code>&lt;path&gt;</code> using M and C commands in a <code>viewBox="0 0 1000 1000"</code> SVG.</p>
+
+<h3>SVG Import</h3>
+<ol>
+  <li>Click <strong>Import SVG…</strong> from the File menu.</li>
+  <li>Select an SVG file (browser starts in <code>svg/</code>).</li>
+  <li>Each <code>&lt;path&gt;</code> is added as new polygon geometry. Existing geometry is preserved.</li>
+</ol>
+<h4>Supported SVG Path Commands</h4>
+<table>
+  <tr><th>Command</th><th>Handling</th></tr>
+  <tr><td><code>M / m</code></td><td>Move to (subpath start).</td></tr>
+  <tr><td><code>C / c</code></td><td>Cubic Bézier — used directly.</td></tr>
+  <tr><td><code>L / l</code></td><td>Line to — converted to cubic with control points at ⅓ and ⅔.</td></tr>
+  <tr><td><code>Q / q</code></td><td>Quadratic Bézier — converted to cubic via degree elevation.</td></tr>
+  <tr><td><code>Z / z</code></td><td>Close path.</td></tr>
+  <tr><td>H, V, S, T, A, …</td><td>Silently skipped.</td></tr>
+</table>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════════ -->
+<section id="undo">
+<h2>Undo</h2>
+<p>Press <kbd>⌘Z</kbd> to undo the last operation. Up to <strong>20 undo levels</strong> are kept. Undo restores complete polygon geometry, all weld links, and layer assignments. The current selection is cleared after an undo.</p>
+<div class="note">There is no Redo. If you undo too far, you will need to redo the work manually.</div>
+
+<h4>Operations that create undo points</h4>
+<ul>
+  <li>Any drag start (point, edge, or polygon)</li>
+  <li>First movement of a Scale or Rotate slider gesture</li>
+  <li>Close Polygon / Finish Open Curve</li>
+  <li>Place discrete point (one snapshot per click)</li>
+  <li>Mesh Build face commit (<kbd>P</kbd>)</li>
+  <li>Clear All Geometry</li>
+  <li>Zoom In / Zoom Out</li>
+  <li>Snap Anchors / Snap Anchors &amp; Controls</li>
+  <li>Flip / Centre</li>
+  <li>Weld (explicit and drag-to-weld)</li>
+  <li>Weld All Adjacent</li>
+  <li>Extrude</li>
+  <li>Knife cut</li>
+  <li>Intersect</li>
+  <li>Duplicate</li>
+  <li>Delete Selected</li>
+  <li>SVG Import</li>
+  <li>Paste (<kbd>⌘V</kbd>)</li>
+</ul>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════════ -->
+<section id="keyboard">
+<h2>Keyboard Shortcuts</h2>
+
+<h3>Edit Menu (<kbd>⌘ Cmd</kbd>)</h3>
+<table>
+  <tr><th>Shortcut</th><th>Action</th></tr>
+  <tr><td><kbd>⌘Z</kbd></td><td>Undo (up to 20 levels)</td></tr>
+  <tr><td><kbd>⌘A</kbd></td><td>Select All — selects all geometry of the current type on the active layer</td></tr>
+  <tr><td><kbd>⌘D</kbd></td><td>Deselect All</td></tr>
+  <tr><td><kbd>⌘C</kbd></td><td>Copy selected geometry to clipboard</td></tr>
+  <tr><td><kbd>⌘V</kbd></td><td>Paste clipboard at current mouse position</td></tr>
+  <tr><td><kbd>⌘X</kbd></td><td>Cut</td></tr>
+  <tr><td><kbd>⌘F</kbd></td><td>Close / Finish Polygon</td></tr>
+  <tr><td><kbd>⌘Q</kbd></td><td>Quit</td></tr>
+</table>
+
+<h3>Mode Keys (no modifier)</h3>
+<table>
+  <tr><th>Key</th><th>Mode</th></tr>
+  <tr><td><kbd>a</kbd></td><td>Point Selection Mode</td></tr>
+  <tr><td><kbd>s</kbd></td><td>Edge Selection Mode</td></tr>
+  <tr><td><kbd>d</kbd></td><td>Open Curve Selection Mode</td></tr>
+  <tr><td><kbd>f</kbd></td><td>Polygon Selection Mode</td></tr>
+  <tr><td><kbd>h</kbd></td><td>Create Points Mode</td></tr>
+  <tr><td><kbd>j</kbd></td><td>Create Oval</td></tr>
+  <tr><td><kbd>k</kbd></td><td>Create Polygons Mode</td></tr>
+  <tr><td><kbd>l</kbd></td><td>Freehand Draw Mode</td></tr>
+  <tr><td><kbd>Space</kbd></td><td><em>In Mesh Build Mode:</em> clear the current face sequence. <em>Otherwise:</em> deselect all.</td></tr>
+</table>
+
+<h3>Mesh Build Mode Keys (active when Mesh mode is on)</h3>
+<table>
+  <tr><th>Key</th><th>Action</th></tr>
+  <tr><td><kbd>P</kbd></td><td>Commit current sequence as a closed polygon face</td></tr>
+  <tr><td><kbd>Backspace</kbd> / <kbd>Delete</kbd></td><td>Remove last point from sequence</td></tr>
+  <tr><td><kbd>Space</kbd></td><td>Clear entire sequence</td></tr>
+</table>
+
+<h3>Ctrl Modifier</h3>
+<table>
+  <tr><th>Shortcut</th><th>Action</th></tr>
+  <tr><td><kbd>⌃A</kbd></td><td>Toggle Mesh Build Mode on/off</td></tr>
+</table>
+
+<h3>Mouse Modifiers</h3>
+<table>
+  <tr><th>Modifier + Action</th><th>Effect</th></tr>
+  <tr><td><kbd>⇧ Shift</kbd> (tap, selection mode active)</td><td>Toggle Relational ↔ Discrete sub-mode</td></tr>
+  <tr><td><kbd>⇧ Shift</kbd> + click toolbar selection button</td><td>Activate mode in Discrete sub-mode</td></tr>
+  <tr><td><kbd>⌘</kbd> + click point or edge</td><td>Add to selection</td></tr>
+  <tr><td><kbd>⇧ Shift</kbd> + drag (Edge mode, edges selected)</td><td>Extrude selected edges</td></tr>
+  <tr><td><kbd>⇧ Shift</kbd> + drag (any other mode)</td><td>Rubber-band marquee selection</td></tr>
+  <tr><td><kbd>⇧ Shift</kbd> + click Intersect</td><td>Build quad mesh, keep inner polygon</td></tr>
+</table>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════════ -->
+<section id="mouse">
+<h2>Mouse &amp; Modifier Summary</h2>
+<table>
+  <tr><th>Action</th><th>Modifier</th><th>Mode</th><th>Result</th></tr>
+  <tr><td>Click inside polygon</td><td>—</td><td>Point / Edge</td><td>Scope that polygon</td></tr>
+  <tr><td>Click inside polygon</td><td>—</td><td>Polygon</td><td>Select / deselect polygon</td></tr>
+  <tr><td>Click inside open curve</td><td>—</td><td>Open Curve</td><td>Select / deselect open curve</td></tr>
+  <tr><td>Click near free-standing point</td><td>—</td><td>Point / Create Points</td><td>Select that point</td></tr>
+  <tr><td>Click point or edge</td><td><kbd>⌘</kbd></td><td>Point / Edge</td><td>Add to selection</td></tr>
+  <tr><td>Drag selected item</td><td>—</td><td>Any</td><td>Translate selection</td></tr>
+  <tr><td>Drag canvas</td><td>—</td><td>Knife</td><td>Draw cut segment; release to cut</td></tr>
+  <tr><td>Move near point (within 10 px)</td><td>—</td><td>Mesh Build</td><td>Auto-add point to sequence</td></tr>
+  <tr><td>Shift + drag</td><td><kbd>⇧</kbd></td><td>Edge (edges selected)</td><td>Extrude</td></tr>
+  <tr><td>Shift + drag</td><td><kbd>⇧</kbd></td><td>Any other</td><td>Rubber-band marquee</td></tr>
+  <tr><td>Release after polygon drag</td><td>—</td><td>Polygon</td><td>Execute pending drag-to-weld</td></tr>
+  <tr><td>Click empty canvas</td><td>—</td><td>Any</td><td>Clear scope and selection</td></tr>
+</table>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════════ -->
+<section id="colours">
+<h2>Highlight Colour Reference</h2>
+<table>
+  <tr><th>Colour</th><th>Meaning</th></tr>
+  <tr><td><span class="color-swatch" style="background:#6496ff"></span><span class="chip blue">Blue outline (4 px)</span></td><td>Polygon, open curve, or edge selected — Discrete mode</td></tr>
+  <tr><td><span class="color-swatch" style="background:#ff8c00"></span><span class="chip orange">Orange outline (4 px)</span></td><td>Polygon, open curve, or edge selected — Relational mode</td></tr>
+  <tr><td><span class="color-swatch" style="background:#dc00ff"></span><span class="chip purple">Purple edge (5 px)</span></td><td>Edge is weldable (two edges meeting proximity criteria), or live extrude duplicate in progress</td></tr>
+  <tr><td><span class="color-swatch" style="background:#ffff64"></span><span class="chip yellow">Yellow dashed (2 px)</span></td><td>Polygon is scoped (Point / Edge mode)</td></tr>
+  <tr><td><span class="color-swatch" style="background:#6496ff;opacity:0.4"></span> Translucent blue rectangle</td><td>Rubber-band marquee in progress</td></tr>
+  <tr><td><span class="color-swatch" style="background:#ff0000"></span><span class="chip red">Red dashed + tick</span></td><td>Knife cut segment in progress</td></tr>
+  <tr><td><span class="color-swatch" style="background:#6496ff"></span> Blue dot</td><td>Anchor point selected — Discrete mode</td></tr>
+  <tr><td><span class="color-swatch" style="background:#fff;border:1px solid #888"></span> White dot</td><td>Control point selected — Discrete mode</td></tr>
+  <tr><td><span class="color-swatch" style="background:#dc3220"></span><span class="chip red">Red dot</span></td><td>Anchor point selected — Relational mode</td></tr>
+  <tr><td><span class="color-swatch" style="background:#ffdc00"></span><span class="chip yellow">Yellow dot</span></td><td>Control point selected — Relational mode</td></tr>
+  <tr><td><span class="color-swatch" style="background:#ff00ff"></span><span class="chip magenta">Magenta dot</span></td><td>Free-standing discrete point (unselected)</td></tr>
+  <tr><td><span class="color-swatch" style="background:#ff00ff"></span> Magenta + <span class="color-swatch" style="background:#ffff00;border:1px solid #888"></span><span class="chip yellow">yellow ring</span></td><td>Free-standing discrete point (selected)</td></tr>
+  <tr><td><span class="color-swatch" style="background:#00c840"></span><span class="chip green">Green numbered ring</span></td><td>Point added to Mesh Build sequence (number = position in sequence)</td></tr>
+  <tr><td><span class="color-swatch" style="background:#00c840;opacity:0.5"></span> Larger green ring</td><td>Mesh Build preview — point is near but not yet auto-added</td></tr>
+</table>
+</section>
+
+</div><!-- .content -->
+
+<script>
+// Highlight the active sidebar link based on scroll position
+const sections = document.querySelectorAll('section[id]');
+const links = document.querySelectorAll('.sidebar a[href^="#"]');
+function updateActive() {
+  let current = '';
+  sections.forEach(s => { if (window.scrollY >= s.offsetTop - 60) current = s.id; });
+  links.forEach(a => {
+    a.classList.toggle('active', a.getAttribute('href') === '#' + current);
+  });
+}
+window.addEventListener('scroll', updateActive, { passive: true });
+updateActive();
+</script>
+</body>
+</html>

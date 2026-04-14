@@ -428,12 +428,19 @@ class BrushGridCanvas(QWidget):
             painter.drawImage(0, 0, scaled_to_canvas)
             painter.setOpacity(1.0)
 
-        # Grid lines
+        # Grid lines — normal + centre guide lines
         if self._show_grid:
-            painter.setPen(QPen(QColor(50, 50, 50), 1))
+            cc = self._cols // 2
+            rc = self._rows // 2
+            centre_cols = {cc - 1, cc, cc + 1}
+            centre_rows = {rc - 1, rc, rc + 1}
+            pen_normal = QPen(QColor(50, 50, 50), 1)
+            pen_centre = QPen(QColor(40, 90, 200), 1)
             for col in range(self._cols + 1):
+                painter.setPen(pen_centre if col in centre_cols else pen_normal)
                 painter.drawLine(col * cs, 0, col * cs, self._rows * cs)
             for row in range(self._rows + 1):
+                painter.setPen(pen_centre if row in centre_rows else pen_normal)
                 painter.drawLine(0, row * cs, self._cols * cs, row * cs)
 
         # Selection rect

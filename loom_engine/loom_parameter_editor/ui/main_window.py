@@ -18,7 +18,6 @@ from .rendering_tab import RenderingTab
 from .global_tab import GlobalTab
 from .geometry_tab import GeometryTab
 from .subdivision_tab import SubdivisionTab
-from .shape_tab import ShapeTab
 from .sprite_tab import SpriteTab
 from .run_tab import RunTab
 from models.project import Project
@@ -26,7 +25,6 @@ from models.rendering import RendererSetLibrary
 from models.global_config import GlobalConfig
 from models.polygon_config import PolygonSetLibrary
 from models.subdivision_config import SubdivisionParamsSetCollection
-from models.shape_config import ShapeLibrary
 from models.sprite_config import SpriteLibrary
 from models.open_curve_config import OpenCurveSetLibrary
 from models.point_config import PointSetLibrary
@@ -36,8 +34,7 @@ from file_io.rendering_io import RenderingIO
 from file_io.global_config_io import GlobalConfigIO
 from file_io.polygon_config_io import PolygonConfigIO
 from file_io.subdivision_config_io import SubdivisionConfigIO
-from file_io.shape_config_io import ShapeConfigIO
-from file_io.sprite_config_io import SpriteConfigIO
+from file_io.sprite_config_io import SpriteConfigIO, auto_generate_shapes_xml, migrate_shapes_into_sprites
 from file_io.open_curve_config_io import OpenCurveConfigIO
 from file_io.point_config_io import PointConfigIO
 from file_io.oval_config_io import OvalConfigIO
@@ -322,7 +319,7 @@ class MainWindow(QMainWindow):
         self.geometry_tab.modified.connect(self._on_geometry_modified)
         self.tab_widget.addTab(self.geometry_tab, "Geometry")
         # Aliases so all existing references in this file continue to work:
-        self.polygon_tab    = self.geometry_tab.polygon_tab
+        self.polygon_tab    = self.geometry_tab.spline_tab
         self.open_curve_tab = self.geometry_tab.open_curve_tab
         self.point_tab      = self.geometry_tab.point_tab
         self.oval_tab       = self.geometry_tab.oval_tab
@@ -331,11 +328,6 @@ class MainWindow(QMainWindow):
         self.subdivision_tab.modified.connect(self._on_modified)
         self.subdivision_tab.polygon_baked.connect(self._on_polygon_baked)
         self.tab_widget.addTab(self.subdivision_tab, "Subdivision")
-
-        self.shape_tab = ShapeTab()
-        self.shape_tab.modified.connect(self._on_modified)
-        self.shape_tab.modified.connect(self._on_shape_library_for_polygon_counts)
-        self.tab_widget.addTab(self.shape_tab, "Shapes")
 
         self.sprite_tab = SpriteTab()
         self.sprite_tab.modified.connect(self._on_modified)
@@ -347,11 +339,9 @@ class MainWindow(QMainWindow):
         self.tab_widget.addTab(self.rendering_tab, "Rendering")
 
         # Wire geometry convenience-panel signals to refresh downstream tabs
-        self.geometry_tab.shapeLibraryChanged.connect(self._on_geometry_shape_library_changed)
         self.geometry_tab.subdivisionChanged.connect(self._on_geometry_subdivision_changed)
         self.geometry_tab.spriteLibraryChanged.connect(self._on_geometry_sprite_library_changed)
         self.geometry_tab.rendererLibraryChanged.connect(self._on_geometry_renderer_library_changed)
-        self.geometry_tab.newShapeCreated.connect(self._on_geometry_new_shape_created)
         self.geometry_tab.newSpriteCreated.connect(self._on_geometry_new_sprite_created)
 
         self.run_tab = RunTab(save_callback=self._save_project)
@@ -432,10 +422,6 @@ class MainWindow(QMainWindow):
         save_subdivision_action.triggered.connect(lambda: self._save_single_tab("subdivision"))
         save_tab_menu.addAction(save_subdivision_action)
 
-        save_shapes_action = QAction("Save Shapes Config", self)
-        save_shapes_action.triggered.connect(lambda: self._save_single_tab("shapes"))
-        save_tab_menu.addAction(save_shapes_action)
-
         save_sprites_action = QAction("Save Sprites Config", self)
         save_sprites_action.triggered.connect(lambda: self._save_single_tab("sprites"))
         save_tab_menu.addAction(save_sprites_action)
@@ -457,10 +443,6 @@ class MainWindow(QMainWindow):
         export_subdivision_action.triggered.connect(self._export_subdivision)
         export_menu.addAction(export_subdivision_action)
 
-        export_shapes_action = QAction("Export Shapes XML...", self)
-        export_shapes_action.triggered.connect(self._export_shapes)
-        export_menu.addAction(export_shapes_action)
-
         export_sprites_action = QAction("Export Sprites XML...", self)
         export_sprites_action.triggered.connect(self._export_sprites)
         export_menu.addAction(export_sprites_action)
@@ -478,10 +460,6 @@ class MainWindow(QMainWindow):
         import_subdivision_action = QAction("Import Subdivision XML...", self)
         import_subdivision_action.triggered.connect(self._import_subdivision)
         import_menu.addAction(import_subdivision_action)
-
-        import_shapes_action = QAction("Import Shapes XML...", self)
-        import_shapes_action.triggered.connect(self._import_shapes)
-        import_menu.addAction(import_shapes_action)
 
         import_sprites_action = QAction("Import Sprites XML...", self)
         import_sprites_action.triggered.connect(self._import_sprites)
@@ -614,14 +592,11 @@ class MainWindow(QMainWindow):
         library = self.rendering_tab.create_default_library()
         self.rendering_tab.set_library(library)
 
-        polygon_library = self.polygon_tab.create_default_library()
-        self.polygon_tab.set_library(polygon_library)
+        polygon_library = self.geometry_tab.create_default_polygon_library()
+        self.geometry_tab.set_polygon_library(polygon_library)
 
         subdivision_collection = self.subdivision_tab.create_default_collection()
         self.subdivision_tab.set_collection(subdivision_collection)
-
-        shape_library = self.shape_tab.create_default_library()
-        self.shape_tab.set_library(shape_library)
 
         sprite_library = self.sprite_tab.create_default_library()
         self.sprite_tab.set_library(sprite_library)
@@ -688,14 +663,11 @@ class MainWindow(QMainWindow):
             library = self.rendering_tab.create_default_library()
             self.rendering_tab.set_library(library)
 
-            polygon_library = self.polygon_tab.create_default_library()
-            self.polygon_tab.set_library(polygon_library)
+            polygon_library = self.geometry_tab.create_default_polygon_library()
+            self.geometry_tab.set_polygon_library(polygon_library)
 
             subdivision_collection = self.subdivision_tab.create_default_collection()
             self.subdivision_tab.set_collection(subdivision_collection)
-
-            shape_library = self.shape_tab.create_default_library()
-            self.shape_tab.set_library(shape_library)
 
             sprite_library = self.sprite_tab.create_default_library()
             self.sprite_tab.set_library(sprite_library)
@@ -753,53 +725,35 @@ class MainWindow(QMainWindow):
             if hasattr(self, 'open_curve_tab') and hasattr(self.open_curve_tab, 'set_curve_sets_directory'):
                 self.open_curve_tab.set_curve_sets_directory(curve_sets_dir)
 
-            # Notify polygon tab of regularPolygons directory
+            # Notify regular polygon tab of regularPolygons directory
             regular_polygons_dir = os.path.join(self._project_dir, "regularPolygons")
-            if hasattr(self.polygon_tab, 'set_regular_polygons_directory'):
-                self.polygon_tab.set_regular_polygons_directory(regular_polygons_dir)
-
-            # Notify shape tab of subdivision config for params set dropdown
-            if hasattr(self.shape_tab, 'set_subdivision_collection'):
-                self.shape_tab.set_subdivision_collection(
-                    self.subdivision_tab.get_collection())
-
-            # Notify shape tab of polygon library for polygon set dropdown
-            if hasattr(self.shape_tab, 'set_polygon_library'):
-                self.shape_tab.set_polygon_library(
-                    self.polygon_tab.get_library())
-
-            # Notify shape tab of open curve library for open curve set dropdown
-            if hasattr(self, 'open_curve_tab') and hasattr(self.shape_tab, 'set_open_curve_library'):
-                self.shape_tab.set_open_curve_library(
-                    self.open_curve_tab.get_library())
+            self.geometry_tab.set_regular_polygons_directory(regular_polygons_dir)
 
             # Notify point tab of pointSets directory
             point_sets_dir = os.path.join(self._project_dir, "pointSets")
             if hasattr(self, 'point_tab') and hasattr(self.point_tab, 'set_point_sets_directory'):
                 self.point_tab.set_point_sets_directory(point_sets_dir)
 
-            # Notify shape tab of point set library for point set dropdown
-            if hasattr(self, 'point_tab') and hasattr(self.shape_tab, 'set_point_set_library'):
-                self.shape_tab.set_point_set_library(self.point_tab.get_library())
-
             # Notify oval tab of ovalSets directory
             oval_sets_dir = os.path.join(self._project_dir, "ovalSets")
             if hasattr(self, 'oval_tab') and hasattr(self.oval_tab, 'set_oval_sets_directory'):
                 self.oval_tab.set_oval_sets_directory(oval_sets_dir)
 
-            # Notify shape tab of oval set library for oval set dropdown
-            if hasattr(self, 'oval_tab') and hasattr(self.shape_tab, 'set_oval_set_library'):
-                self.shape_tab.set_oval_set_library(self.oval_tab.get_library())
-
-            # Notify all geometry sub-tabs of shape/sprite libraries (for usage counts + Quick Setup)
-            if hasattr(self.geometry_tab, 'set_shape_library'):
-                self.geometry_tab.set_shape_library(self.shape_tab.get_library())
+            # Notify geometry tab of sprite library (for usage counts + Quick Setup)
             if hasattr(self.geometry_tab, 'set_sprite_library'):
                 self.geometry_tab.set_sprite_library(self.sprite_tab.get_library())
 
-            # Notify sprite tab of shape and rendering configs for dropdowns
-            if hasattr(self.sprite_tab, 'set_shape_library'):
-                self.sprite_tab.set_shape_library(self.shape_tab.get_library())
+            # Notify sprite tab of geometry libraries and rendering config for dropdowns
+            if hasattr(self.sprite_tab, 'set_polygon_library'):
+                self.sprite_tab.set_polygon_library(self.geometry_tab.get_polygon_library())
+            if hasattr(self, 'open_curve_tab') and hasattr(self.sprite_tab, 'set_open_curve_library'):
+                self.sprite_tab.set_open_curve_library(self.open_curve_tab.get_library())
+            if hasattr(self, 'point_tab') and hasattr(self.sprite_tab, 'set_point_set_library'):
+                self.sprite_tab.set_point_set_library(self.point_tab.get_library())
+            if hasattr(self, 'oval_tab') and hasattr(self.sprite_tab, 'set_oval_set_library'):
+                self.sprite_tab.set_oval_set_library(self.oval_tab.get_library())
+            if hasattr(self.sprite_tab, 'set_subdivision_collection'):
+                self.sprite_tab.set_subdivision_collection(self.subdivision_tab.get_collection())
             if hasattr(self.sprite_tab, 'set_renderer_library'):
                 self.sprite_tab.set_renderer_library(self.rendering_tab.get_library())
 
@@ -824,6 +778,12 @@ class MainWindow(QMainWindow):
 
             # Notify run tab of project directory
             self.run_tab.set_project_dir(self._project_dir)
+
+            # Notify bitmap polygon tab of relevant directories
+            if hasattr(self.geometry_tab, 'set_bitmap_polygon_dirs'):
+                bg_image_dir = os.path.join(self._project_dir, "background_image")
+                self.geometry_tab.set_bitmap_polygon_dirs(
+                    polygon_sets_dir, bg_image_dir)
 
     def _open_project(self) -> None:
         """Open an existing project via the project-list dialog."""
@@ -924,13 +884,13 @@ class MainWindow(QMainWindow):
                 polygons_path = os.path.join(project_dir, polygons_file.path)
                 if os.path.exists(polygons_path):
                     polygon_library = PolygonConfigIO.load(polygons_path)
-                    self.polygon_tab.set_library(polygon_library)
+                    self.geometry_tab.set_polygon_library(polygon_library)
                 else:
-                    polygon_library = self.polygon_tab.create_default_library()
-                    self.polygon_tab.set_library(polygon_library)
+                    polygon_library = self.geometry_tab.create_default_polygon_library()
+                    self.geometry_tab.set_polygon_library(polygon_library)
             else:
-                polygon_library = self.polygon_tab.create_default_library()
-                self.polygon_tab.set_library(polygon_library)
+                polygon_library = self.geometry_tab.create_default_polygon_library()
+                self.geometry_tab.set_polygon_library(polygon_library)
 
             # Load subdivision configuration
             subdivision_file = self._project.get_file("subdivision")
@@ -946,20 +906,6 @@ class MainWindow(QMainWindow):
                 subdivision_collection = self.subdivision_tab.create_default_collection()
                 self.subdivision_tab.set_collection(subdivision_collection)
 
-            # Load shape configuration
-            shape_file = self._project.get_file("shapes")
-            if shape_file:
-                shape_path = os.path.join(project_dir, shape_file.path)
-                if os.path.exists(shape_path):
-                    shape_library = ShapeConfigIO.load(shape_path)
-                    self.shape_tab.set_library(shape_library)
-                else:
-                    shape_library = self.shape_tab.create_default_library()
-                    self.shape_tab.set_library(shape_library)
-            else:
-                shape_library = self.shape_tab.create_default_library()
-                self.shape_tab.set_library(shape_library)
-
             # Load sprite configuration
             sprite_file = self._project.get_file("sprites")
             if sprite_file:
@@ -973,6 +919,13 @@ class MainWindow(QMainWindow):
             else:
                 sprite_library = self.sprite_tab.create_default_library()
                 self.sprite_tab.set_library(sprite_library)
+
+            # Backward-compat migration: copy shapes.xml geo fields into SpriteDef
+            shapes_path = os.path.join(project_dir, "configuration", "shapes.xml")
+            if not os.path.isfile(shapes_path):
+                shapes_path = os.path.join(project_dir, "shapes.xml")
+            if os.path.isfile(shapes_path):
+                migrate_shapes_into_sprites(shapes_path, sprite_library)
 
             # Load open curve configuration
             curves_file = self._project.get_file("curves")
@@ -1178,7 +1131,7 @@ class MainWindow(QMainWindow):
                 if polygons_file:
                     polygons_path = os.path.join(project_dir, polygons_file.path)
                     os.makedirs(os.path.dirname(polygons_path), exist_ok=True)
-                    polygon_library = self.polygon_tab.get_library()
+                    polygon_library = self.geometry_tab.get_polygon_library()
                     if polygon_library:
                         PolygonConfigIO.save(polygon_library, polygons_path)
                         self.status_bar.showMessage(f"Saved {polygons_path}", 3000)
@@ -1192,16 +1145,6 @@ class MainWindow(QMainWindow):
                     if subdivision_collection:
                         SubdivisionConfigIO.save(subdivision_collection, subdivision_path)
                         self.status_bar.showMessage(f"Saved {subdivision_path}", 3000)
-
-            elif tab_name == "shapes":
-                shape_file = self._project.get_file("shapes")
-                if shape_file:
-                    shape_path = os.path.join(project_dir, shape_file.path)
-                    os.makedirs(os.path.dirname(shape_path), exist_ok=True)
-                    shape_library = self.shape_tab.get_library()
-                    if shape_library:
-                        ShapeConfigIO.save(shape_library, shape_path)
-                        self.status_bar.showMessage(f"Saved {shape_path}", 3000)
 
             elif tab_name == "sprites":
                 sprite_file = self._project.get_file("sprites")
@@ -1290,8 +1233,14 @@ class MainWindow(QMainWindow):
                 self._save_single_tab("rendering")
                 self._save_single_tab("polygons")
                 self._save_single_tab("subdivision")
-                self._save_single_tab("shapes")
                 self._save_single_tab("sprites")
+                # Auto-generate shapes.xml from sprite geo fields (Scala reads it unchanged)
+                sprite_lib = self.sprite_tab.get_library()
+                if sprite_lib and self._project.get_file("shapes"):
+                    shapes_path = os.path.join(project_dir,
+                                               self._project.get_file("shapes").path)
+                    os.makedirs(os.path.dirname(shapes_path), exist_ok=True)
+                    auto_generate_shapes_xml(sprite_lib, shapes_path)
                 self._save_single_tab("curves")
                 self._save_single_tab("points")
                 self._save_single_tab("ovals")
@@ -1317,15 +1266,11 @@ class MainWindow(QMainWindow):
 
     def _export_polygons(self) -> None:
         """Export polygons configuration."""
-        self._export_tab("Polygons", self.polygon_tab.get_library(), PolygonConfigIO.save, "polygons.xml")
+        self._export_tab("Polygons", self.geometry_tab.get_polygon_library(), PolygonConfigIO.save, "polygons.xml")
 
     def _export_subdivision(self) -> None:
         """Export subdivision configuration."""
         self._export_tab("Subdivision", self.subdivision_tab.get_collection(), SubdivisionConfigIO.save, "subdivision.xml")
-
-    def _export_shapes(self) -> None:
-        """Export shapes configuration."""
-        self._export_tab("Shapes", self.shape_tab.get_library(), ShapeConfigIO.save, "shapes.xml")
 
     def _export_sprites(self) -> None:
         """Export sprites configuration."""
@@ -1377,7 +1322,7 @@ class MainWindow(QMainWindow):
 
         try:
             library = PolygonConfigIO.load(file_path)
-            self.polygon_tab.set_library(library)
+            self.geometry_tab.set_polygon_library(library)
             self._modified = True
             self._update_title()
             self.status_bar.showMessage(f"Imported from {file_path}", 3000)
@@ -1396,24 +1341,6 @@ class MainWindow(QMainWindow):
         try:
             collection = SubdivisionConfigIO.load(file_path)
             self.subdivision_tab.set_collection(collection)
-            self._modified = True
-            self._update_title()
-            self.status_bar.showMessage(f"Imported from {file_path}", 3000)
-        except Exception as e:
-            QMessageBox.critical(self, "Error", f"Failed to import:\n{e}")
-
-    def _import_shapes(self) -> None:
-        """Import shapes configuration."""
-        file_path, _ = QFileDialog.getOpenFileName(
-            self, "Import Shapes XML",
-            "", "XML Files (*.xml);;All Files (*)"
-        )
-        if not file_path:
-            return
-
-        try:
-            library = ShapeConfigIO.load(file_path)
-            self.shape_tab.set_library(library)
             self._modified = True
             self._update_title()
             self.status_bar.showMessage(f"Imported from {file_path}", 3000)
@@ -1469,39 +1396,12 @@ class MainWindow(QMainWindow):
     def _on_polygon_baked(self) -> None:
         """Add baked polygon set to library and refresh the geometry tab."""
         if hasattr(self, 'geometry_tab'):
-            self.geometry_tab.polygon_tab._refresh_file_list()
-            self.geometry_tab.polygon_tab._reconcile_polygon_sets()
-
-    def _on_polygon_library_changed(self) -> None:
-        """Propagate polygon library changes to the shape tab."""
-        if hasattr(self, 'shape_tab'):
-            self.shape_tab.set_polygon_library(self.polygon_tab.get_library())
-
-    def _on_open_curve_library_changed(self) -> None:
-        """Propagate open curve library changes to the shape tab."""
-        if hasattr(self, 'shape_tab') and hasattr(self.shape_tab, 'set_open_curve_library'):
-            self.shape_tab.set_open_curve_library(self.open_curve_tab.get_library())
-
-    def _on_point_set_library_changed(self) -> None:
-        """Propagate point set library changes to the shape tab."""
-        if hasattr(self, 'shape_tab') and hasattr(self.shape_tab, 'set_point_set_library'):
-            self.shape_tab.set_point_set_library(self.point_tab.get_library())
-
-    def _on_oval_set_library_changed(self) -> None:
-        """Propagate oval set library changes to the shape tab."""
-        if hasattr(self, 'shape_tab') and hasattr(self.shape_tab, 'set_oval_set_library'):
-            self.shape_tab.set_oval_set_library(self.oval_tab.get_library())
+            self.geometry_tab.spline_tab._refresh_file_list()
+            self.geometry_tab.spline_tab._reconcile_polygon_sets()
 
     def _on_geometry_modified(self) -> None:
         """Dispatch geometry sub-tab change notifications."""
-        self._on_polygon_library_changed()
-        self._on_open_curve_library_changed()
-        self._on_point_set_library_changed()
-        self._on_oval_set_library_changed()
-
-    def _on_geometry_shape_library_changed(self) -> None:
-        if hasattr(self, 'shape_tab'):
-            self.shape_tab._refresh_tree()
+        pass  # cross-references updated via _notify_tabs_of_project_dir in _on_modified
 
     def _on_geometry_subdivision_changed(self) -> None:
         if hasattr(self, 'subdivision_tab'):
@@ -1515,11 +1415,6 @@ class MainWindow(QMainWindow):
         if hasattr(self, 'rendering_tab') and hasattr(self.rendering_tab, 'tree_widget'):
             self.rendering_tab.tree_widget._refresh_tree()
 
-    def _on_geometry_new_shape_created(self, set_name: str, shape_name: str) -> None:
-        """After shape_tab refreshes, select the newly created shape."""
-        if hasattr(self, 'shape_tab'):
-            QTimer.singleShot(0, lambda: self.shape_tab._select_shape(set_name, shape_name))
-
     def _on_geometry_new_sprite_created(self, set_name: str, sprite_name: str) -> None:
         """After sprite_tab refreshes, select the newly created sprite."""
         if hasattr(self, 'sprite_tab'):
@@ -1530,11 +1425,6 @@ class MainWindow(QMainWindow):
         self._save_single_tab("polygons")
         self._save_single_tab("curves")
         self._save_single_tab("points")
-
-    def _on_shape_library_for_polygon_counts(self) -> None:
-        """Refresh geometry sub-tab usage counts when the shape library changes."""
-        if hasattr(self, 'geometry_tab'):
-            self.geometry_tab.set_shape_library(self.shape_tab.get_library())
 
     def _on_sprite_library_for_polygon_counts(self) -> None:
         """Refresh geometry sub-tab usage counts when the sprite library changes."""

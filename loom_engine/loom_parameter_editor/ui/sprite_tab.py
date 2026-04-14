@@ -12,20 +12,22 @@ from PySide6.QtWidgets import (
     QTreeWidgetItem, QPushButton, QSplitter, QLabel, QListWidget,
     QMessageBox, QInputDialog, QScrollArea, QTableWidget, QTableWidgetItem,
     QHeaderView, QStyledItemDelegate, QDialog, QDialogButtonBox, QRadioButton,
-    QButtonGroup, QTabWidget, QFileDialog
+    QButtonGroup, QTabWidget, QTabBar, QFileDialog
 )
 from PySide6.QtCore import Signal, Qt
 from PySide6.QtCore import QProcess
 from models.sprite_config import (
     SpriteDef, SpriteParams, SpriteSet, SpriteLibrary, Keyframe, MorphTargetRef,
+    GeoSourceType, GeoShape3DType,
     EASING_TYPES, LOOP_MODES
 )
 from ui.sprite_preview_widget import SpritePreviewWidget
 
 ANIMATOR_TYPES = ["random", "keyframe", "jitter_morph", "keyframe_morph"]
 
-BEZIER_JAR = "/Users/broganbunt/Loom_2026/bezier/out/artifacts/Bezier_jar/Bezier.jar"
-BEZIER_WORKING_DIR = "/Users/broganbunt/Loom_2026/bezier"
+BEZIER_PY        = "/Users/broganbunt/Loom_2026/bezier_py/main.py"
+PYTHON           = "/Users/broganbunt/Loom_2026/loom_engine/loom_parameter_editor/.venv/bin/python"
+_BEZIER_RESOURCES = "/Users/broganbunt/Loom_2026/bezier/resources"
 
 
 class SpriteTab(QWidget):
@@ -40,7 +42,11 @@ class SpriteTab(QWidget):
         self._current_sprite: SpriteDef = None
         self._updating = False
         self._checking = False
-        self._shape_library = None  # Reference to shape library for dropdowns
+        self._polygon_lib = None
+        self._curve_lib = None
+        self._point_lib = None
+        self._oval_lib = None
+        self._subdivision_coll = None
         self._renderer_library = None  # Reference to renderer library for dropdowns
         self._project_dir = None  # Project directory for morph target file ops
         self._bezier_process = None  # QProcess for Bezier editor
@@ -160,23 +166,90 @@ class SpriteTab(QWidget):
 
         right_layout.addWidget(identity_group)
 
-        # References
+        # ── Geometry source ────────────────────────────────────────────────────
+        geo_group = QGroupBox("Geometry")
+        geo_layout = QFormLayout(geo_group)
+
+        self.geo_source_combo = QComboBox()
+        self.geo_source_combo.addItems([
+            "Polygon Set", "Open Curve Set", "Point Set", "Oval Set", "Regular Polygon"
+        ])
+        self.geo_source_combo.currentIndexChanged.connect(self._on_geo_source_changed)
+        geo_layout.addRow("Source Type:", self.geo_source_combo)
+
+        self.geo_name_combo = QComboBox()
+        self.geo_name_combo.setEditable(True)
+        self.geo_name_combo.setPlaceholderText("Geometry file name")
+        self.geo_name_combo.currentTextChanged.connect(self._on_modified)
+        geo_layout.addRow("Name:", self.geo_name_combo)
+
+        self.geo_sides_spin = QSpinBox()
+        self.geo_sides_spin.setRange(3, 64)
+        self.geo_sides_spin.setValue(4)
+        self.geo_sides_spin.valueChanged.connect(self._on_modified)
+        geo_layout.addRow("Sides:", self.geo_sides_spin)
+
+        self.geo_subdiv_combo = QComboBox()
+        self.geo_subdiv_combo.setEditable(True)
+        self.geo_subdiv_combo.setPlaceholderText("Subdivision params set")
+        self.geo_subdiv_combo.currentTextChanged.connect(self._on_modified)
+        geo_layout.addRow("Subdivision Set:", self.geo_subdiv_combo)
+
+        # 3D settings — collapsible tab bar; content hidden by default
+        _geo_3d_bar = QTabBar()
+        _geo_3d_bar.addTab("3D (not implemented)")
+        _geo_3d_bar.setExpanding(False)
+        _geo_3d_bar.setDrawBase(False)
+
+        _three_d_contents = QWidget()
+        _three_d_contents.setVisible(False)
+        _three_d_form = QFormLayout(_three_d_contents)
+        _three_d_form.setContentsMargins(4, 4, 4, 4)
+
+        self.geo_3d_combo = QComboBox()
+        self.geo_3d_combo.addItems(["None", "Crystal", "Rect Prism", "Extrusion", "Grid Plane", "Grid Block"])
+        self.geo_3d_combo.currentIndexChanged.connect(self._on_geo_3d_changed)
+        _three_d_form.addRow("3D Type:", self.geo_3d_combo)
+
+        params_3d_layout = QHBoxLayout()
+        self.geo_p1_spin = QSpinBox()
+        self.geo_p1_spin.setRange(1, 999)
+        self.geo_p1_spin.setValue(4)
+        self.geo_p1_spin.valueChanged.connect(self._on_modified)
+        params_3d_layout.addWidget(QLabel("P1:"))
+        params_3d_layout.addWidget(self.geo_p1_spin)
+        self.geo_p2_spin = QSpinBox()
+        self.geo_p2_spin.setRange(1, 999)
+        self.geo_p2_spin.setValue(4)
+        self.geo_p2_spin.valueChanged.connect(self._on_modified)
+        params_3d_layout.addWidget(QLabel("P2:"))
+        params_3d_layout.addWidget(self.geo_p2_spin)
+        self.geo_p3_spin = QSpinBox()
+        self.geo_p3_spin.setRange(1, 999)
+        self.geo_p3_spin.setValue(4)
+        self.geo_p3_spin.valueChanged.connect(self._on_modified)
+        params_3d_layout.addWidget(QLabel("P3:"))
+        params_3d_layout.addWidget(self.geo_p3_spin)
+        self._geo_3d_params_widget = QWidget()
+        self._geo_3d_params_widget.setLayout(params_3d_layout)
+        _three_d_form.addRow("3D Params:", self._geo_3d_params_widget)
+
+        _geo_3d_bar.tabBarClicked.connect(lambda _: _three_d_contents.setVisible(not _three_d_contents.isVisible()))
+
+        _geo_3d_wrapper = QWidget()
+        _geo_3d_vbox = QVBoxLayout(_geo_3d_wrapper)
+        _geo_3d_vbox.setContentsMargins(0, 0, 0, 0)
+        _geo_3d_vbox.setSpacing(0)
+        _geo_3d_vbox.addWidget(_geo_3d_bar)
+        _geo_3d_vbox.addWidget(_three_d_contents)
+        geo_layout.addRow(_geo_3d_wrapper)
+
+
+        right_layout.addWidget(geo_group)
+
+        # References (renderer only now)
         ref_group = QGroupBox("References")
         ref_layout = QFormLayout(ref_group)
-
-        # Shape Set dropdown
-        self.shape_set_combo = QComboBox()
-        self.shape_set_combo.setEditable(True)
-        self.shape_set_combo.setPlaceholderText("Shape set name from shapes.xml")
-        self.shape_set_combo.currentTextChanged.connect(self._on_shape_set_changed)
-        ref_layout.addRow("Shape Set:", self.shape_set_combo)
-
-        # Shape Name dropdown (updates based on selected shape set)
-        self.shape_name_combo = QComboBox()
-        self.shape_name_combo.setEditable(True)
-        self.shape_name_combo.setPlaceholderText("Shape name from shapes.xml")
-        self.shape_name_combo.currentTextChanged.connect(self._on_modified)
-        ref_layout.addRow("Shape Name:", self.shape_name_combo)
 
         # Renderer Set dropdown
         self.renderer_set_combo = QComboBox()
@@ -701,8 +774,15 @@ class SpriteTab(QWidget):
         self._updating = True
         try:
             self.name_edit.clear()
-            self.shape_set_combo.setCurrentText("")
-            self.shape_name_combo.setCurrentText("")
+            self.geo_source_combo.setCurrentIndex(0)
+            self.geo_name_combo.setCurrentText("")
+            self.geo_sides_spin.setValue(4)
+            self.geo_subdiv_combo.setCurrentText("")
+            self.geo_3d_combo.setCurrentIndex(0)
+            self.geo_p1_spin.setValue(4)
+            self.geo_p2_spin.setValue(4)
+            self.geo_p3_spin.setValue(4)
+
             self.renderer_set_combo.setCurrentText("")
             self.animator_combo.setCurrentIndex(0)
             self.loc_x_spin.setValue(0)
@@ -734,10 +814,44 @@ class SpriteTab(QWidget):
         try:
             self.name_edit.setText(sprite.name)
 
-            # References
-            self.shape_set_combo.setCurrentText(sprite.shape_set_name)
-            self._update_shape_names_dropdown()  # Update shape names for selected set
-            self.shape_name_combo.setCurrentText(sprite.shape_name)
+            # Geometry source
+            _src_idx = {
+                GeoSourceType.POLYGON_SET: 0,
+                GeoSourceType.OPEN_CURVE_SET: 1,
+                GeoSourceType.POINT_SET: 2,
+                GeoSourceType.OVAL_SET: 3,
+                GeoSourceType.REGULAR_POLYGON: 4,
+            }
+            self.geo_source_combo.setCurrentIndex(
+                _src_idx.get(sprite.geo_source_type, 0))
+            self._refresh_geo_name_combo()
+            # Set geo name field based on source type
+            geo_name = {
+                GeoSourceType.POLYGON_SET: sprite.geo_polygon_set_name,
+                GeoSourceType.OPEN_CURVE_SET: sprite.geo_open_curve_set_name,
+                GeoSourceType.POINT_SET: sprite.geo_point_set_name,
+                GeoSourceType.OVAL_SET: sprite.geo_oval_set_name,
+            }.get(sprite.geo_source_type, "")
+            self.geo_name_combo.setCurrentText(geo_name)
+            self.geo_sides_spin.setValue(sprite.geo_regular_polygon_sides)
+            self.geo_subdiv_combo.setCurrentText(sprite.geo_subdivision_params_set_name)
+            _3d_idx = {
+                GeoShape3DType.NONE: 0,
+                GeoShape3DType.CRYSTAL: 1,
+                GeoShape3DType.RECT_PRISM: 2,
+                GeoShape3DType.EXTRUSION: 3,
+                GeoShape3DType.GRID_PLANE: 4,
+                GeoShape3DType.GRID_BLOCK: 5,
+            }
+            self.geo_3d_combo.setCurrentIndex(
+                _3d_idx.get(sprite.geo_shape_3d_type, 0))
+            self.geo_p1_spin.setValue(sprite.geo_shape_3d_param1)
+            self.geo_p2_spin.setValue(sprite.geo_shape_3d_param2)
+            self.geo_p3_spin.setValue(sprite.geo_shape_3d_param3)
+
+            self._update_geo_visibility()
+
+            # Renderer reference
             self.renderer_set_combo.setCurrentText(sprite.renderer_set_name)
 
             idx = self.animator_combo.findText(sprite.animator_type)
@@ -805,9 +919,44 @@ class SpriteTab(QWidget):
         self._current_sprite.name = self.name_edit.text()
         # sprite.enabled is managed by tree col 2 checkbox — not saved here
 
-        # References
-        self._current_sprite.shape_set_name = self.shape_set_combo.currentText()
-        self._current_sprite.shape_name = self.shape_name_combo.currentText()
+        # Geometry source
+        _idx_src = [
+            GeoSourceType.POLYGON_SET,
+            GeoSourceType.OPEN_CURVE_SET,
+            GeoSourceType.POINT_SET,
+            GeoSourceType.OVAL_SET,
+            GeoSourceType.REGULAR_POLYGON,
+        ]
+        idx = self.geo_source_combo.currentIndex()
+        stype = _idx_src[idx] if 0 <= idx < len(_idx_src) else GeoSourceType.POLYGON_SET
+        self._current_sprite.geo_source_type = stype
+        geo_name = self.geo_name_combo.currentText()
+        if stype == GeoSourceType.POLYGON_SET:
+            self._current_sprite.geo_polygon_set_name = geo_name
+        elif stype == GeoSourceType.OPEN_CURVE_SET:
+            self._current_sprite.geo_open_curve_set_name = geo_name
+        elif stype == GeoSourceType.POINT_SET:
+            self._current_sprite.geo_point_set_name = geo_name
+        elif stype == GeoSourceType.OVAL_SET:
+            self._current_sprite.geo_oval_set_name = geo_name
+        self._current_sprite.geo_regular_polygon_sides = self.geo_sides_spin.value()
+        self._current_sprite.geo_subdivision_params_set_name = self.geo_subdiv_combo.currentText()
+        _idx_3d = [
+            GeoShape3DType.NONE,
+            GeoShape3DType.CRYSTAL,
+            GeoShape3DType.RECT_PRISM,
+            GeoShape3DType.EXTRUSION,
+            GeoShape3DType.GRID_PLANE,
+            GeoShape3DType.GRID_BLOCK,
+        ]
+        i3d = self.geo_3d_combo.currentIndex()
+        self._current_sprite.geo_shape_3d_type = _idx_3d[i3d] if 0 <= i3d < len(_idx_3d) else GeoShape3DType.NONE
+        self._current_sprite.geo_shape_3d_param1 = self.geo_p1_spin.value()
+        self._current_sprite.geo_shape_3d_param2 = self.geo_p2_spin.value()
+        self._current_sprite.geo_shape_3d_param3 = self.geo_p3_spin.value()
+
+
+        # Renderer reference
         self._current_sprite.renderer_set_name = self.renderer_set_combo.currentText()
 
         # Animator type from the animation mode combo (not the old references combo)
@@ -1130,11 +1279,25 @@ class SpriteTab(QWidget):
     def create_default_library(self) -> SpriteLibrary:
         return SpriteLibrary(name="MainLibrary")
 
-    def set_shape_library(self, library) -> None:
-        """Set the shape library for populating shape set and shape name dropdowns."""
-        self._shape_library = library
-        self._refresh_shape_set_dropdown()
-        self.preview_widget.set_shape_library(library)
+    def set_polygon_library(self, lib) -> None:
+        self._polygon_lib = lib
+        self._refresh_geo_name_combo()
+
+    def set_open_curve_library(self, lib) -> None:
+        self._curve_lib = lib
+        self._refresh_geo_name_combo()
+
+    def set_point_set_library(self, lib) -> None:
+        self._point_lib = lib
+        self._refresh_geo_name_combo()
+
+    def set_oval_set_library(self, lib) -> None:
+        self._oval_lib = lib
+        self._refresh_geo_name_combo()
+
+    def set_subdivision_collection(self, coll) -> None:
+        self._subdivision_coll = coll
+        self._refresh_subdiv_combo()
 
     def set_canvas_size(self, w: int, h: int) -> None:
         self.preview_widget.set_canvas_size(w, h)
@@ -1144,76 +1307,87 @@ class SpriteTab(QWidget):
         self._renderer_library = library
         self._refresh_renderer_set_dropdown()
 
-    def _on_shape_set_changed(self, text: str) -> None:
-        """Handle shape set selection change - update shape names dropdown."""
-        self._update_shape_names_dropdown()
+    def _on_geo_source_changed(self, idx: int) -> None:
+        """Handle source type combo change — refresh geo name combo."""
+        self._refresh_geo_name_combo()
+        self._update_geo_visibility()
         if not self._updating:
             self._save_ui_to_sprite()
             self.modified.emit()
 
+    def _on_geo_3d_changed(self, idx: int) -> None:
+        """Handle 3D type combo change — show/hide param spinboxes."""
+        self._update_geo_visibility()
+        if not self._updating:
+            self._save_ui_to_sprite()
+            self.modified.emit()
+
+    def _update_geo_visibility(self) -> None:
+        """Show/hide geo widgets based on current selections."""
+        idx = self.geo_source_combo.currentIndex()
+        is_regular = (idx == 4)
+        self.geo_name_combo.setVisible(not is_regular)
+        self.geo_sides_spin.setVisible(is_regular)
+        # 3D params visible when 3D type != None
+        has_3d = self.geo_3d_combo.currentIndex() > 0
+        self._geo_3d_params_widget.setVisible(has_3d)
+
+    def _refresh_geo_name_combo(self) -> None:
+        """Populate geo name combo from the appropriate library."""
+        was = self._updating
+        self._updating = True
+        try:
+            current = self.geo_name_combo.currentText()
+            self.geo_name_combo.clear()
+            idx = self.geo_source_combo.currentIndex()
+            lib_map = {
+                0: (self._polygon_lib,  'polygon_file_sets'),
+                1: (self._curve_lib,    'open_curve_sets'),
+                2: (self._point_lib,    'point_sets'),
+                3: (self._oval_lib,     'oval_sets'),
+            }
+            lib, attr = lib_map.get(idx, (None, None))
+            names = []
+            if lib is not None and attr:
+                items = getattr(lib, attr, None)
+                if items:
+                    names = sorted(item.name for item in items)
+            self.geo_name_combo.addItems(names)
+            if current:
+                i = self.geo_name_combo.findText(current)
+                if i >= 0:
+                    self.geo_name_combo.setCurrentIndex(i)
+                else:
+                    self.geo_name_combo.setCurrentText(current)
+        finally:
+            self._updating = was
+
+    def _refresh_subdiv_combo(self) -> None:
+        """Populate subdivision set combo from collection."""
+        was = self._updating
+        self._updating = True
+        try:
+            current = self.geo_subdiv_combo.currentText()
+            self.geo_subdiv_combo.clear()
+            if self._subdivision_coll is not None:
+                items = getattr(self._subdivision_coll, 'params_sets', None)
+                if items:
+                    names = sorted(ps.name for ps in items)
+                    self.geo_subdiv_combo.addItems(names)
+            if current:
+                i = self.geo_subdiv_combo.findText(current)
+                if i >= 0:
+                    self.geo_subdiv_combo.setCurrentIndex(i)
+                else:
+                    self.geo_subdiv_combo.setCurrentText(current)
+        finally:
+            self._updating = was
+
     def _refresh_all_dropdowns(self) -> None:
         """Refresh all reference dropdowns."""
-        self._refresh_shape_set_dropdown()
+        self._refresh_geo_name_combo()
+        self._refresh_subdiv_combo()
         self._refresh_renderer_set_dropdown()
-
-    def _refresh_shape_set_dropdown(self) -> None:
-        """Refresh the shape set dropdown from the shape library."""
-        # Block signals to prevent triggering _on_modified during refresh
-        self._updating = True
-        try:
-            current_text = self.shape_set_combo.currentText()
-            self.shape_set_combo.clear()
-
-            if self._shape_library is not None:
-                try:
-                    if hasattr(self._shape_library, 'shape_sets'):
-                        names = [ss.name for ss in self._shape_library.shape_sets]
-                        names.sort()
-                        self.shape_set_combo.addItems(names)
-                except Exception:
-                    pass
-
-            if current_text:
-                index = self.shape_set_combo.findText(current_text)
-                if index >= 0:
-                    self.shape_set_combo.setCurrentIndex(index)
-                else:
-                    self.shape_set_combo.setCurrentText(current_text)
-
-            self._update_shape_names_dropdown()
-        finally:
-            self._updating = False
-
-    def _update_shape_names_dropdown(self) -> None:
-        """Update the shape names dropdown based on the selected shape set."""
-        # Block signals to prevent triggering _on_modified during refresh
-        was_updating = self._updating
-        self._updating = True
-        try:
-            current_text = self.shape_name_combo.currentText()
-            self.shape_name_combo.clear()
-
-            if self._shape_library is not None:
-                selected_set_name = self.shape_set_combo.currentText()
-                if selected_set_name:
-                    try:
-                        # Find the shape set in the library
-                        shape_set = self._shape_library.get(selected_set_name)
-                        if shape_set and hasattr(shape_set, 'shapes'):
-                            names = [s.name for s in shape_set.shapes]
-                            names.sort()
-                            self.shape_name_combo.addItems(names)
-                    except Exception:
-                        pass
-
-            if current_text:
-                index = self.shape_name_combo.findText(current_text)
-                if index >= 0:
-                    self.shape_name_combo.setCurrentIndex(index)
-                else:
-                    self.shape_name_combo.setCurrentText(current_text)
-        finally:
-            self._updating = was_updating
 
     def _refresh_renderer_set_dropdown(self) -> None:
         """Refresh the renderer set dropdown from the renderer library."""
@@ -1648,19 +1822,11 @@ class SpriteTab(QWidget):
     # === Morph target creation ===
 
     def _get_base_shape_source_type(self) -> str:
-        """Return 'curve' if the current sprite's shape is an open curve set, else 'poly'."""
-        if self._current_sprite is None or self._shape_library is None:
+        """Return 'curve' if the current sprite's geometry is an open curve set, else 'poly'."""
+        if self._current_sprite is None:
             return 'poly'
-        sprite = self._current_sprite
-        shape_set = self._shape_library.get(sprite.shape_set_name)
-        if shape_set is None:
-            return 'poly'
-        for sd in shape_set.shapes:
-            if sd.name == sprite.shape_name:
-                from models.shape_config import ShapeSourceType
-                if sd.source_type == ShapeSourceType.OPEN_CURVE_SET:
-                    return 'curve'
-                return 'poly'
+        if self._current_sprite.geo_source_type == GeoSourceType.OPEN_CURVE_SET:
+            return 'curve'
         return 'poly'
 
     def _infer_base_from_morph_filename(self, filename: str) -> str:
@@ -1799,9 +1965,9 @@ class SpriteTab(QWidget):
 
     def _launch_bezier_for_morph(self, full_path: str, morph_dir: str, suffix: str) -> None:
         """Shared Bezier launch for both create and edit flows."""
-        if not os.path.isfile(BEZIER_JAR):
+        if not os.path.isfile(BEZIER_PY):
             QMessageBox.warning(self, "Bezier Not Found",
-                                f"Bezier JAR not found at:\n{BEZIER_JAR}")
+                                f"Bezier not found at:\n{BEZIER_PY}")
             return
 
         if (self._bezier_process is not None
@@ -1839,7 +2005,7 @@ class SpriteTab(QWidget):
             self._edit_morph_bezier_saved = os.path.join(
                 morph_dir, bezier_name + '_layer_1.xml')
 
-        args = ["-Xmx4G", "-jar", BEZIER_JAR,
+        args = [BEZIER_PY,
                 "--save-dir", morph_dir,
                 "--load", load_path,
                 "--name", bezier_name]
@@ -1847,9 +2013,8 @@ class SpriteTab(QWidget):
             args.append("--point-select")
 
         self._bezier_process = QProcess(self)
-        self._bezier_process.setWorkingDirectory(BEZIER_WORKING_DIR)
         self._bezier_process.finished.connect(self._on_edit_morph_bezier_finished)
-        self._bezier_process.start("java", args)
+        self._bezier_process.start(PYTHON, args)
 
     def _on_edit_morph_bezier_finished(self, exit_code, exit_status) -> None:
         """Handle Bezier process finishing after morph target create/edit."""
@@ -1956,7 +2121,7 @@ class SpriteTab(QWidget):
         dtd_dest = os.path.join(dtd_dir, "polygonSet.dtd")
         if not os.path.isfile(dtd_dest):
             # Copy from Bezier's resources
-            dtd_source = os.path.join(BEZIER_WORKING_DIR, "resources", "dtd", "polygonSet.dtd")
+            dtd_source = os.path.join(_BEZIER_RESOURCES, "dtd", "polygonSet.dtd")
             if os.path.isfile(dtd_source):
                 os.makedirs(dtd_dir, exist_ok=True)
                 shutil.copy2(dtd_source, dtd_dest)

@@ -27,6 +27,12 @@ loom_engine/loom_parameter_editor/.venv/
 **/*.log
 **/nohup.out
 
+# macOS app bundles (built artefacts)
+**/*.app/
+
+# Claude Code session files
+**/Claude_Code_*.txt
+
 # Large user data / project outputs
 loom_engine/sketches/
 

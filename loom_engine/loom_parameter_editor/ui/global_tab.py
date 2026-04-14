@@ -151,7 +151,7 @@ class GlobalTab(QWidget):
         layout.addStretch()
 
         # 3D Settings Group  (lives in the "3D & Serial" tab)
-        three_d_group = QGroupBox("3D Settings")
+        three_d_group = QGroupBox("3D Settings (not implemented)")
         three_d_form = QFormLayout(three_d_group)
 
         self.three_d_check = QCheckBox()

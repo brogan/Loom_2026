@@ -4,25 +4,25 @@ Provides UI for editing points.xml settings.
 """
 import os
 import re
+import shutil
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QFormLayout, QGroupBox,
     QLineEdit, QComboBox, QTreeWidget, QTreeWidgetItem, QPushButton,
-    QSplitter, QLabel, QMessageBox, QInputDialog, QSizePolicy
+    QSplitter, QLabel, QMessageBox, QInputDialog, QSizePolicy, QFileDialog
 )
 from PySide6.QtCore import Signal, Qt, QProcess, QFileSystemWatcher
 from PySide6.QtGui import QColor, QFont, QBrush
 from PySide6.QtWidgets import QStyledItemDelegate
 from models.point_config import PointSetDef, PointSetLibrary, PointSourceType
 from models.polygon_config import FileSource
-from models.shape_config import ShapeDef, ShapeSet, ShapeSourceType
-from models.sprite_config import SpriteDef, SpriteSet
+from models.sprite_config import SpriteDef, SpriteSet, GeoSourceType
 from models.subdivision_config import SubdivisionParams, SubdivisionParamsSet, SubdivisionType
 from models.rendering import Renderer, RendererSet
 from models.constants import RenderMode
 from ui.polygon_tab import PolygonPreviewWidget, _COL_ORANGE, _COL_GREEN, _COL_SEL_GREEN, _FilenameDelegate
 
-BEZIER_JAR = "/Users/broganbunt/Loom_2026/bezier/out/artifacts/Bezier_jar/Bezier.jar"
-BEZIER_WORKING_DIR = "/Users/broganbunt/Loom_2026/bezier"
+BEZIER_PY = "/Users/broganbunt/Loom_2026/bezier_py/main.py"
+PYTHON    = "/Users/broganbunt/Loom_2026/loom_engine/loom_parameter_editor/.venv/bin/python"
 
 
 class PointTab(QWidget):
@@ -44,11 +44,9 @@ class PointTab(QWidget):
         self._point_sets_dir: str = ""
         self._bezier_process: QProcess = None
         self._pre_launch_files: set = set()
-        self._shape_library = None
         self._sprite_library = None
         self._subdivision_collection = None
         self._renderer_library = None
-        self._conv_shape_group = None
         self._conv_sprite_group = None
         self._conv_render_group = None
 
@@ -77,26 +75,19 @@ class PointTab(QWidget):
         left_layout.addWidget(self.set_list)
 
         btn_layout = QHBoxLayout()
-        self.new_btn = QPushButton("New")
-        self.new_btn.clicked.connect(self._new_point_set)
-        btn_layout.addWidget(self.new_btn)
+        self.del_btn = QPushButton("Delete")
+        self.del_btn.clicked.connect(self._delete_point_set)
+        btn_layout.addWidget(self.del_btn)
+
+        self.dup_btn = QPushButton("Duplicate")
+        self.dup_btn.clicked.connect(self._duplicate_point_set)
+        btn_layout.addWidget(self.dup_btn)
 
         self.rename_btn = QPushButton("Rename")
         self.rename_btn.clicked.connect(self._rename_point_set)
         btn_layout.addWidget(self.rename_btn)
 
-        btn_layout2 = QHBoxLayout()
-        self.dup_btn = QPushButton("Duplicate")
-        self.dup_btn.clicked.connect(self._duplicate_point_set)
-        btn_layout2.addWidget(self.dup_btn)
-
-        self.del_btn = QPushButton("Delete")
-        self.del_btn.clicked.connect(self._delete_point_set)
-        btn_layout2.addWidget(self.del_btn)
-
         left_layout.addLayout(btn_layout)
-        left_layout.addLayout(btn_layout2)
-        left_layout.addStretch()
         splitter.addWidget(left_panel)
 
         # ── Right panel ───────────────────────────────────────────────────────
@@ -128,6 +119,10 @@ class PointTab(QWidget):
         self.create_btn.clicked.connect(self._create_in_bezier)
         btn_row.addWidget(self.create_btn)
 
+        self.import_btn = QPushButton("Import")
+        self.import_btn.clicked.connect(self._import)
+        btn_row.addWidget(self.import_btn)
+
         self.edit_btn = QPushButton("Edit in Bezier")
         self.edit_btn.clicked.connect(self._edit_in_bezier)
         btn_row.addWidget(self.edit_btn)
@@ -145,14 +140,13 @@ class PointTab(QWidget):
         preview_layout.setContentsMargins(4, 4, 4, 4)
         self.preview_widget = PolygonPreviewWidget()
         preview_layout.addWidget(self.preview_widget)
-        right_layout.addWidget(preview_group)
+        right_layout.addWidget(preview_group, 1)
 
         qs_label = QLabel("Quick Setup")
         qs_label.setStyleSheet("font-weight: bold; margin-top: 4px;")
         right_layout.addWidget(qs_label)
         right_layout.addWidget(self._create_convenience_panel())
 
-        right_layout.addStretch()
         splitter.addWidget(right_panel)
         splitter.setSizes([220, 580])
 
@@ -175,10 +169,6 @@ class PointTab(QWidget):
             self._fs_watcher.addPath(directory)
         self._refresh_file_list()
         self._auto_discover()
-
-    def set_shape_library(self, library) -> None:
-        self._shape_library = library
-        self._refresh_convenience_combos()
 
     def set_sprite_library(self, library) -> None:
         self._sprite_library = library
@@ -300,37 +290,74 @@ class PointTab(QWidget):
 
     # ── CRUD ─────────────────────────────────────────────────────────────────
 
-    def _new_point_set(self):
-        name, ok = QInputDialog.getText(self, "New Point Set", "Name:")
-        if not ok or not name.strip():
-            return
-        name = name.strip()
-        if self._library.get_point_set(name):
-            QMessageBox.warning(self, "Duplicate Name", f"A point set named '{name}' already exists.")
-            return
-        ps = PointSetDef(name=name, file_source=FileSource(folder="pointSets"))
-        self._library.add_point_set(ps)
-        self._refresh_list()
-        self.modified.emit()
-        for i in range(self.set_list.topLevelItemCount()):
-            item = self.set_list.topLevelItem(i)
-            if item.data(0, Qt.ItemDataRole.UserRole).name == name:
-                self.set_list.setCurrentItem(item)
-                break
-
     def _rename_point_set(self):
+        if self._bezier_process is not None and \
+                self._bezier_process.state() != QProcess.ProcessState.NotRunning:
+            QMessageBox.warning(self, "Bezier Running", "Close Bezier before renaming.")
+            return
         if self._current_set is None:
             return
-        old_name = self._current_set.name
-        name, ok = QInputDialog.getText(self, "Rename", "New name:", text=old_name)
-        if not ok or not name.strip() or name.strip() == old_name:
+        cs = self._current_set
+        old_root = cs.file_source.filename if (cs.file_source and cs.file_source.filename) else cs.name
+        if old_root.lower().endswith('.xml'):
+            old_root = old_root[:-4]
+        new_root, ok = QInputDialog.getText(
+            self, "Rename Point Set",
+            f"New root name  ('{old_root}.xml' will be renamed):",
+            text=old_root)
+        if not ok or not new_root.strip():
             return
-        name = name.strip()
-        if self._library.get_point_set(name):
-            QMessageBox.warning(self, "Duplicate Name", f"'{name}' already exists.")
+        new_root = new_root.strip()
+        if new_root == old_root:
             return
-        self._current_set.name = name
+        if any(p.name == new_root for p in self._library.point_sets if p is not cs):
+            QMessageBox.warning(self, "Duplicate",
+                f"A point set named '{new_root}' already exists.")
+            return
+        old_fn = old_root + '.xml'
+        new_fn = new_root + '.xml'
+        if self._point_sets_dir and os.path.isfile(
+                os.path.join(self._point_sets_dir, old_fn)):
+            try:
+                os.rename(os.path.join(self._point_sets_dir, old_fn),
+                          os.path.join(self._point_sets_dir, new_fn))
+            except OSError as e:
+                QMessageBox.critical(self, "Rename Error", str(e))
+                return
+        cs.name = new_root
+        if cs.file_source:
+            cs.file_source.filename = new_fn
         self._refresh_list()
+        self._refresh_file_list()
+        self.modified.emit()
+
+    def _import(self) -> None:
+        path, _ = QFileDialog.getOpenFileName(
+            self, "Import Point Set", self._point_sets_dir or "", "XML Files (*.xml)")
+        if not path:
+            return
+        if not self._point_sets_dir:
+            QMessageBox.warning(self, "No Project", "Please save the project first.")
+            return
+        os.makedirs(self._point_sets_dir, exist_ok=True)
+        dst = os.path.join(self._point_sets_dir, os.path.basename(path))
+        if os.path.abspath(path) == os.path.abspath(dst):
+            return
+        if os.path.exists(dst):
+            if QMessageBox.question(
+                    self, "Overwrite?",
+                    f"'{os.path.basename(path)}' already exists. Overwrite?",
+                    QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+                    ) != QMessageBox.StandardButton.Yes:
+                return
+        try:
+            shutil.copy2(path, dst)
+        except Exception as e:
+            QMessageBox.critical(self, "Import Error", str(e))
+            return
+        self._strip_xml_headers(dst)
+        self._refresh_file_list()
+        self.filename_combo.setCurrentText(os.path.basename(path))
         self.modified.emit()
 
     def _duplicate_point_set(self):
@@ -388,11 +415,11 @@ class PointTab(QWidget):
         self._pre_launch_files = self._snapshot_files()
 
         self._bezier_process = QProcess(self)
-        self._bezier_process.setWorkingDirectory(BEZIER_WORKING_DIR)
         self._bezier_process.finished.connect(self._on_create_bezier_finished)
-        self._bezier_process.start("java", [
-            "-Xmx4G", "-jar", BEZIER_JAR,
-            "--save-dir", self._point_sets_dir
+        self._bezier_process.start(PYTHON, [
+            BEZIER_PY,
+            "--save-dir", self._point_sets_dir,
+            "--point-mode"
         ])
 
     def _on_create_bezier_finished(self, exit_code, exit_status) -> None:
@@ -433,12 +460,12 @@ class PointTab(QWidget):
             return
 
         self._bezier_process = QProcess(self)
-        self._bezier_process.setWorkingDirectory(BEZIER_WORKING_DIR)
         self._bezier_process.finished.connect(self._on_edit_bezier_finished)
-        self._bezier_process.start("java", [
-            "-Xmx4G", "-jar", BEZIER_JAR,
+        self._bezier_process.start(PYTHON, [
+            BEZIER_PY,
             "--save-dir", self._point_sets_dir,
-            "--load", full_path
+            "--load", full_path,
+            "--point-select"
         ])
 
     def _on_edit_bezier_finished(self, exit_code, exit_status):
@@ -478,7 +505,7 @@ class PointTab(QWidget):
     def _create_convenience_panel(self) -> QWidget:
         """Build the sequential workflow panel (horizontal layout).
 
-        Row 1: Shapes | Sprites
+        Row 1: Sprites
         Row 2: Rendering
         """
         container = QWidget()
@@ -486,33 +513,9 @@ class PointTab(QWidget):
         outer.setContentsMargins(0, 0, 0, 0)
         outer.setSpacing(4)
 
-        # ── Row 1: Shapes | Sprites ────────────────────────────────────────
+        # ── Row 1: Sprites ─────────────────────────────────────────────────
         row1 = QHBoxLayout()
         row1.setSpacing(4)
-
-        # Shapes group
-        shape_group = QGroupBox("Shapes")
-        self._conv_shape_group = shape_group
-        sg_layout = QVBoxLayout(shape_group)
-        sg_layout.setContentsMargins(4, 4, 4, 4)
-        sg_layout.setSpacing(4)
-        srow = QHBoxLayout()
-        srow.addWidget(QLabel("Set:"))
-        self.conv_shape_set_combo = QComboBox()
-        self.conv_shape_set_combo.setMinimumWidth(80)
-        self.conv_shape_set_combo.currentIndexChanged.connect(
-            lambda: self._update_conv_combo_style(self.conv_shape_set_combo))
-        srow.addWidget(self.conv_shape_set_combo, 1)
-        add_shape_set_btn = QPushButton("+ Set")
-        add_shape_set_btn.setMaximumWidth(48)
-        add_shape_set_btn.clicked.connect(self._on_conv_add_shape_set)
-        srow.addWidget(add_shape_set_btn)
-        sg_layout.addLayout(srow)
-        make_shape_btn = QPushButton("Make Shape")
-        make_shape_btn.clicked.connect(self._on_conv_make_shape)
-        sg_layout.addWidget(make_shape_btn)
-        sg_layout.addStretch()
-        row1.addWidget(shape_group)
 
         # Sprites group
         sprite_group = QGroupBox("Sprites")
@@ -577,7 +580,7 @@ class PointTab(QWidget):
 
     def _update_convenience_borders(self) -> None:
         """Apply green border to convenience groups whose workflow step is done."""
-        groups = (self._conv_shape_group, self._conv_sprite_group, self._conv_render_group)
+        groups = (self._conv_sprite_group, self._conv_render_group)
         if any(g is None for g in groups):
             return
         root = self._convenience_root()
@@ -585,16 +588,10 @@ class PointTab(QWidget):
             for g in groups:
                 g.setStyleSheet("")
             return
-        shape_name = f"{root}_shape"
 
-        expected_set_name = f"{root}_pointSet"
-        shape_done = bool(self._shape_library and any(
-            ss.name == expected_set_name and any(s.name == shape_name for s in ss.shapes)
-            for ss in getattr(self._shape_library, 'shape_sets', [])))
-
-        sprite_done = bool(self._sprite_library and any(
-            any(getattr(sp, 'shape_set_name', '') == expected_set_name
-                and getattr(sp, 'shape_name', '') == shape_name
+        geo_set_name = self._current_set.name if self._current_set else ""
+        sprite_done = bool(self._sprite_library and geo_set_name and any(
+            any(getattr(sp, 'geo_point_set_name', '') == geo_set_name
                 for sp in ss.sprites)
             for ss in getattr(self._sprite_library, 'sprite_sets', [])))
 
@@ -604,7 +601,6 @@ class PointTab(QWidget):
             for rs in getattr(self._renderer_library, 'renderer_sets', [])))
 
         gs = self._CONV_GREEN_BORDER
-        self._conv_shape_group.setStyleSheet(gs if shape_done else "")
         self._conv_sprite_group.setStyleSheet(gs if sprite_done else "")
         self._conv_render_group.setStyleSheet(gs if render_done else "")
 
@@ -627,19 +623,13 @@ class PointTab(QWidget):
             combo.setStyleSheet("")
 
     def _refresh_convenience_combos(self) -> None:
-        if not hasattr(self, 'conv_shape_set_combo'):
+        if not hasattr(self, 'conv_sprite_set_combo'):
             return
-        shape_sel = self.conv_shape_set_combo.currentText()
         sprite_sel = self.conv_sprite_set_combo.currentText()
         renderer_sel = self.conv_renderer_set_combo.currentText()
-        self.conv_shape_set_combo.blockSignals(True)
         self.conv_sprite_set_combo.blockSignals(True)
         self.conv_renderer_set_combo.blockSignals(True)
         try:
-            self.conv_shape_set_combo.clear()
-            if self._shape_library:
-                for s in self._shape_library.shape_sets:
-                    self.conv_shape_set_combo.addItem(s.name)
             self.conv_sprite_set_combo.clear()
             if self._sprite_library:
                 for s in self._sprite_library.sprite_sets:
@@ -649,11 +639,9 @@ class PointTab(QWidget):
                 for rs in self._renderer_library.renderer_sets:
                     self.conv_renderer_set_combo.addItem(rs.name)
         finally:
-            self.conv_shape_set_combo.blockSignals(False)
             self.conv_sprite_set_combo.blockSignals(False)
             self.conv_renderer_set_combo.blockSignals(False)
         for combo, sel in [
-            (self.conv_shape_set_combo, shape_sel),
             (self.conv_sprite_set_combo, sprite_sel),
             (self.conv_renderer_set_combo, renderer_sel),
         ]:
@@ -662,56 +650,6 @@ class PointTab(QWidget):
                 if idx >= 0:
                     combo.setCurrentIndex(idx)
             self._update_conv_combo_style(combo)
-
-    def _on_conv_add_shape_set(self) -> None:
-        root = self._convenience_root()
-        suggestion = f"{root}_pointSet" if root else "pointSet"
-        name, ok = QInputDialog.getText(self, "Add Shape Set", "Name:", text=suggestion)
-        if not ok or not name.strip():
-            return
-        name = name.strip()
-        if self._shape_library is None:
-            QMessageBox.warning(self, "No Shape Library", "Shape library not available.")
-            return
-        if any(s.name == name for s in self._shape_library.shape_sets):
-            QMessageBox.warning(self, "Duplicate", f"Shape set '{name}' already exists.")
-            return
-        self._shape_library.add(ShapeSet(name=name))
-        self._refresh_convenience_combos()
-        idx = self.conv_shape_set_combo.findText(name)
-        if idx >= 0:
-            self.conv_shape_set_combo.setCurrentIndex(idx)
-        self.shapeLibraryChanged.emit()
-        self.modified.emit()
-
-    def _on_conv_make_shape(self) -> None:
-        root = self._convenience_root()
-        if not root:
-            QMessageBox.warning(self, "No File", "Select a point file first.")
-            return
-        set_name = self.conv_shape_set_combo.currentText()
-        if not set_name or self._shape_library is None:
-            QMessageBox.warning(self, "No Shape Set", "Select or create a shape set first.")
-            return
-        shape_set = next((s for s in self._shape_library.shape_sets if s.name == set_name), None)
-        if shape_set is None:
-            return
-        name = f"{root}_shape"
-        if any(s.name == name for s in shape_set.shapes):
-            QMessageBox.warning(self, "Duplicate", f"Shape '{name}' already exists in '{set_name}'.")
-            return
-        point_set_name = ""
-        if self._current_set:
-            point_set_name = self._current_set.name
-        shape_set.add(ShapeDef(
-            name=name,
-            source_type=ShapeSourceType.POINT_SET,
-            point_set_name=point_set_name,
-        ))
-        self.newShapeCreated.emit(set_name, name)
-        self.shapeLibraryChanged.emit()
-        self.modified.emit()
-        self._update_convenience_borders()
 
     def _on_conv_make_subdivision_set(self) -> None:
         root = self._convenience_root()
@@ -769,17 +707,13 @@ class PointTab(QWidget):
         while any(s.name == name for s in sprite_set.sprites):
             count += 1
             name = f"{set_name}_{count:03d}"
-        shape_set_name = self.conv_shape_set_combo.currentText()
-        shape_name = ""
-        if shape_set_name and self._shape_library:
-            ss = next((s for s in self._shape_library.shape_sets if s.name == shape_set_name), None)
-            if ss and any(sh.name == f"{root}_shape" for sh in ss.shapes):
-                shape_name = f"{root}_shape"
+        geo_set_name = self._current_set.name if self._current_set else ""
+        renderer_set_name = self.conv_renderer_set_combo.currentText() or "DefaultSet"
         sprite_set.add(SpriteDef(
             name=name,
-            shape_set_name=shape_set_name,
-            shape_name=shape_name,
-            renderer_set_name="DefaultSet",
+            geo_source_type=GeoSourceType.POINT_SET,
+            geo_point_set_name=geo_set_name,
+            renderer_set_name=renderer_set_name,
         ))
         self.newSpriteCreated.emit(set_name, name)
         self.spriteLibraryChanged.emit()

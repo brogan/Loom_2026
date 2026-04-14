@@ -3,11 +3,35 @@ Sprite configuration XML I/O.
 
 Handles reading and writing sprites.xml files.
 XML format matches Scala SpriteConfigLoader expectations.
+shapes.xml is auto-generated from sprite geometry fields on every save.
 """
 from lxml import etree
 from models.sprite_config import (
-    SpriteLibrary, SpriteSet, SpriteDef, SpriteParams, Keyframe, MorphTargetRef
+    SpriteLibrary, SpriteSet, SpriteDef, SpriteParams, Keyframe, MorphTargetRef,
+    GeoSourceType, GeoShape3DType, GeoInlinePoint,
 )
+
+# String → enum maps for parsing geo fields
+_GEO_SOURCE_TYPE_MAP = {
+    "POLYGON_SET": GeoSourceType.POLYGON_SET,
+    "REGULAR_POLYGON": GeoSourceType.REGULAR_POLYGON,
+    "INLINE_POINTS": GeoSourceType.INLINE_POINTS,
+    "OPEN_CURVE_SET": GeoSourceType.OPEN_CURVE_SET,
+    "OPENCURVESET": GeoSourceType.OPEN_CURVE_SET,
+    "POINT_SET": GeoSourceType.POINT_SET,
+    "POINTSET": GeoSourceType.POINT_SET,
+    "OVAL_SET": GeoSourceType.OVAL_SET,
+    "OVALSET": GeoSourceType.OVAL_SET,
+}
+
+_GEO_3D_TYPE_MAP = {
+    "NONE": GeoShape3DType.NONE,
+    "CRYSTAL": GeoShape3DType.CRYSTAL,
+    "RECT_PRISM": GeoShape3DType.RECT_PRISM,
+    "EXTRUSION": GeoShape3DType.EXTRUSION,
+    "GRID_PLANE": GeoShape3DType.GRID_PLANE,
+    "GRID_BLOCK": GeoShape3DType.GRID_BLOCK,
+}
 
 
 class SpriteConfigIO:
@@ -227,6 +251,32 @@ class SpriteConfigIO:
                 sprite.params.speed_factor_x = float(spf_elem.get("x", "0"))
                 sprite.params.speed_factor_y = float(spf_elem.get("y", "0"))
 
+            # Geometry fields (new format — eliminated shapes.xml layer)
+            geo_elem = ext_elem.find("Geometry")
+            if geo_elem is not None:
+                src_str = geo_elem.get("sourceType", "POLYGON_SET").upper()
+                sprite.geo_source_type = _GEO_SOURCE_TYPE_MAP.get(src_str, GeoSourceType.POLYGON_SET)
+                sprite.geo_polygon_set_name = geo_elem.get("polygonSet", "")
+                sprite.geo_open_curve_set_name = geo_elem.get("openCurveSet", "")
+                sprite.geo_point_set_name = geo_elem.get("pointSet", "")
+                sprite.geo_oval_set_name = geo_elem.get("ovalSet", "")
+                sprite.geo_regular_polygon_sides = int(geo_elem.get("sides", "4"))
+                sprite.geo_subdivision_params_set_name = geo_elem.get("subdivisionParamsSet", "")
+                s3d_str = geo_elem.get("shape3D", "NONE").upper()
+                sprite.geo_shape_3d_type = _GEO_3D_TYPE_MAP.get(s3d_str, GeoShape3DType.NONE)
+                sprite.geo_shape_3d_param1 = int(geo_elem.get("p1", "4"))
+                sprite.geo_shape_3d_param2 = int(geo_elem.get("p2", "4"))
+                sprite.geo_shape_3d_param3 = int(geo_elem.get("p3", "4"))
+
+                # Parse inline points if present
+                inline_pts = []
+                for pt in geo_elem.findall("InlinePoint"):
+                    inline_pts.append(GeoInlinePoint(
+                        x=float(pt.get("x", "0")),
+                        y=float(pt.get("y", "0")),
+                    ))
+                sprite.geo_inline_points = inline_pts
+
         # Legacy format: parse Params block if present (for backwards compatibility)
         params_elem = elem.find("Params")
         if params_elem is not None and pos_elem is None:
@@ -262,27 +312,27 @@ class SpriteConfigIO:
             # Write enabled sprites as direct children (visible to Scala)
             for sprite in sprite_set.sprites:
                 if sprite.enabled:
-                    SpriteConfigIO._build_sprite_xml(set_elem, sprite)
+                    SpriteConfigIO._build_sprite_xml(set_elem, sprite, sprite_set.name)
 
             # Write disabled sprites inside EditorDisabled wrapper (invisible to Scala)
             disabled = [s for s in sprite_set.sprites if not s.enabled]
             if disabled:
                 disabled_elem = etree.SubElement(set_elem, "EditorDisabled")
                 for sprite in disabled:
-                    SpriteConfigIO._build_sprite_xml(disabled_elem, sprite)
+                    SpriteConfigIO._build_sprite_xml(disabled_elem, sprite, sprite_set.name)
 
         return root
 
     @staticmethod
-    def _build_sprite_xml(parent: etree._Element, sprite: SpriteDef) -> None:
+    def _build_sprite_xml(parent: etree._Element, sprite: SpriteDef,
+                          sprite_set_name: str = "") -> None:
         """Build XML for a single sprite (Scala SpriteConfigLoader format)."""
         sprite_elem = etree.SubElement(parent, "Sprite", name=sprite.name)
 
-        # Shape reference: use shapeSet attribute (Scala format)
-        if sprite.shape_set_name or sprite.shape_name:
-            etree.SubElement(sprite_elem, "Shape",
-                             shapeSet=sprite.shape_set_name,
-                             name=sprite.shape_name)
+        # Shape reference — auto-derived names so Scala resolves via auto-generated shapes.xml
+        shape_set = sprite_set_name or sprite.shape_set_name or "default"
+        shape_name = sprite.name
+        etree.SubElement(sprite_elem, "Shape", shapeSet=shape_set, name=shape_name)
 
         # Renderer set reference
         if sprite.renderer_set_name:
@@ -372,3 +422,146 @@ class SpriteConfigIO:
                          value=str(params.rotation_factor))
         etree.SubElement(ext_elem, "SpeedFactor",
                          x=str(params.speed_factor_x), y=str(params.speed_factor_y))
+
+        # Geometry fields (Scala ignores; used by editor to rebuild shapes.xml on load)
+        geo_attribs = {
+            "sourceType": sprite.geo_source_type.name,
+            "polygonSet": sprite.geo_polygon_set_name,
+            "openCurveSet": sprite.geo_open_curve_set_name,
+            "pointSet": sprite.geo_point_set_name,
+            "ovalSet": sprite.geo_oval_set_name,
+            "sides": str(sprite.geo_regular_polygon_sides),
+            "subdivisionParamsSet": sprite.geo_subdivision_params_set_name,
+            "shape3D": sprite.geo_shape_3d_type.name,
+            "p1": str(sprite.geo_shape_3d_param1),
+            "p2": str(sprite.geo_shape_3d_param2),
+            "p3": str(sprite.geo_shape_3d_param3),
+
+        }
+        geo_elem = etree.SubElement(ext_elem, "Geometry", **geo_attribs)
+        for pt in sprite.geo_inline_points:
+            etree.SubElement(geo_elem, "InlinePoint", x=str(pt.x), y=str(pt.y))
+
+
+# ── Module-level utility functions ───────────────────────────────────────────
+
+def _build_shape_elem(parent: "etree._Element", sprite: SpriteDef) -> None:
+    """Write a <Shape> element into parent, populated from sprite.geo_* fields."""
+    shape_elem = etree.SubElement(parent, "Shape", name=sprite.name)
+
+    stype = sprite.geo_source_type
+    if stype == GeoSourceType.OPEN_CURVE_SET:
+        src = etree.SubElement(shape_elem, "Source", type="openCurveSet")
+        src.set("openCurveSet", sprite.geo_open_curve_set_name)
+    elif stype == GeoSourceType.POINT_SET:
+        src = etree.SubElement(shape_elem, "Source", type="pointSet")
+        src.set("pointSet", sprite.geo_point_set_name)
+    elif stype == GeoSourceType.OVAL_SET:
+        src = etree.SubElement(shape_elem, "Source", type="ovalSet")
+        src.set("ovalSet", sprite.geo_oval_set_name)
+    elif stype == GeoSourceType.REGULAR_POLYGON:
+        src = etree.SubElement(shape_elem, "Source", type="REGULAR_POLYGON")
+        src.set("sides", str(sprite.geo_regular_polygon_sides))
+    elif stype == GeoSourceType.INLINE_POINTS:
+        src = etree.SubElement(shape_elem, "Source", type="INLINE_POINTS")
+        for pt in sprite.geo_inline_points:
+            etree.SubElement(src, "Point", x=str(pt.x), y=str(pt.y))
+    else:  # POLYGON_SET
+        src = etree.SubElement(shape_elem, "Source", type="POLYGON_SET")
+        src.set("polygonSet", sprite.geo_polygon_set_name)
+
+    if sprite.geo_subdivision_params_set_name:
+        etree.SubElement(shape_elem, "SubdivisionParamsSet",
+                         name=sprite.geo_subdivision_params_set_name)
+
+    if sprite.geo_shape_3d_type != GeoShape3DType.NONE:
+        etree.SubElement(shape_elem, "Shape3D",
+                         type=sprite.geo_shape_3d_type.name,
+                         param1=str(sprite.geo_shape_3d_param1),
+                         param2=str(sprite.geo_shape_3d_param2),
+                         param3=str(sprite.geo_shape_3d_param3))
+
+
+
+def auto_generate_shapes_xml(sprite_library: SpriteLibrary, output_path: str) -> None:
+    """Auto-generate shapes.xml from sprite geometry fields.
+
+    Called before saving sprites.xml.  Scala reads this file unchanged.
+    Each sprite_set becomes a ShapeSet; each sprite becomes a Shape.
+    """
+    root = etree.Element("ShapeConfig", version="1.0")
+    lib_elem = etree.SubElement(root, "ShapeLibrary", name="MainLibrary")
+
+    for sprite_set in sprite_library.sprite_sets:
+        set_elem = etree.SubElement(lib_elem, "ShapeSet", name=sprite_set.name)
+        for sprite in sprite_set.sprites:
+            _build_shape_elem(set_elem, sprite)
+
+    etree.ElementTree(root).write(
+        output_path, pretty_print=True, xml_declaration=True, encoding="UTF-8"
+    )
+
+
+def migrate_shapes_into_sprites(shapes_path: str, sprite_library: SpriteLibrary) -> None:
+    """Read an old shapes.xml and copy ShapeDef fields into matching SpriteDefs.
+
+    Called once on load of old projects that have shapes.xml but no Geometry
+    elements in EditorExtensions.  After re-save the migration is permanent.
+    """
+    try:
+        from file_io.shape_config_io import ShapeConfigIO
+        shape_lib = ShapeConfigIO.load(shapes_path)
+    except Exception:
+        return  # shapes.xml missing or corrupt — silently skip
+
+    _source_type_map = {
+        0: GeoSourceType.POLYGON_SET,
+        1: GeoSourceType.REGULAR_POLYGON,
+        2: GeoSourceType.INLINE_POINTS,
+        3: GeoSourceType.OPEN_CURVE_SET,
+        4: GeoSourceType.POINT_SET,
+        5: GeoSourceType.OVAL_SET,
+    }
+    _3d_type_map = {
+        0: GeoShape3DType.NONE,
+        1: GeoShape3DType.CRYSTAL,
+        2: GeoShape3DType.RECT_PRISM,
+        3: GeoShape3DType.EXTRUSION,
+        4: GeoShape3DType.GRID_PLANE,
+        5: GeoShape3DType.GRID_BLOCK,
+    }
+
+    for sprite_set in sprite_library.sprite_sets:
+        for sprite in sprite_set.sprites:
+            # Only migrate sprites that haven't been migrated yet
+            if sprite.geo_polygon_set_name or sprite.geo_open_curve_set_name \
+                    or sprite.geo_point_set_name or sprite.geo_oval_set_name \
+                    or sprite.geo_source_type != GeoSourceType.POLYGON_SET:
+                continue  # already has geometry data
+
+            shape_set = shape_lib.get(sprite.shape_set_name)
+            if shape_set is None:
+                continue
+            sd = shape_set.get(sprite.shape_name)
+            if sd is None:
+                continue
+
+            sprite.geo_source_type = _source_type_map.get(
+                sd.source_type.value if hasattr(sd.source_type, 'value') else int(sd.source_type),
+                GeoSourceType.POLYGON_SET)
+            sprite.geo_polygon_set_name = sd.polygon_set_name
+            sprite.geo_open_curve_set_name = sd.open_curve_set_name
+            sprite.geo_point_set_name = sd.point_set_name
+            sprite.geo_oval_set_name = sd.oval_set_name
+            sprite.geo_regular_polygon_sides = sd.regular_polygon_sides
+            sprite.geo_inline_points = [
+                GeoInlinePoint(x=p.x, y=p.y) for p in sd.inline_points
+            ]
+            sprite.geo_subdivision_params_set_name = sd.subdivision_params_set_name
+            sprite.geo_shape_3d_type = _3d_type_map.get(
+                sd.shape_3d_type.value if hasattr(sd.shape_3d_type, 'value') else int(sd.shape_3d_type),
+                GeoShape3DType.NONE)
+            sprite.geo_shape_3d_param1 = sd.shape_3d_param1
+            sprite.geo_shape_3d_param2 = sd.shape_3d_param2
+            sprite.geo_shape_3d_param3 = sd.shape_3d_param3
+

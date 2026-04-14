@@ -2,13 +2,14 @@
 Sprite configuration models.
 
 Sprites in Loom combine:
-- A Shape2D (from shapes.xml)
+- Geometry source (polygon set, curve set, point set, oval set, or regular polygon)
 - Location, size, rotation parameters
 - Animation parameters
 - A RendererSet reference (from rendering.xml)
 """
 from dataclasses import dataclass, field
 from copy import deepcopy
+from enum import Enum
 from typing import List, Optional
 
 
@@ -35,6 +36,33 @@ EASING_TYPES = [
 ]
 
 LOOP_MODES = ["NONE", "LOOP", "PING_PONG"]
+
+
+class GeoSourceType(Enum):
+    """How the sprite's geometry is sourced (replaces ShapeSourceType from shape_config)."""
+    POLYGON_SET = 0
+    REGULAR_POLYGON = 1
+    INLINE_POINTS = 2
+    OPEN_CURVE_SET = 3
+    POINT_SET = 4
+    OVAL_SET = 5
+
+
+class GeoShape3DType(Enum):
+    """3D shape generator type (replaces Shape3DType from shape_config)."""
+    NONE = 0
+    CRYSTAL = 1
+    RECT_PRISM = 2
+    EXTRUSION = 3
+    GRID_PLANE = 4
+    GRID_BLOCK = 5
+
+
+@dataclass
+class GeoInlinePoint:
+    """A 2D point used for INLINE_POINTS geometry source."""
+    x: float = 0.0
+    y: float = 0.0
 
 
 @dataclass
@@ -124,7 +152,22 @@ class SpriteDef:
     name: str = "default"
     enabled: bool = True
 
-    # Reference to shape (from shapes.xml)
+    # Geometry source (direct — replaces shape_set_name/shape_name indirection)
+    geo_source_type: GeoSourceType = GeoSourceType.POLYGON_SET
+    geo_polygon_set_name: str = ""
+    geo_open_curve_set_name: str = ""
+    geo_point_set_name: str = ""
+    geo_oval_set_name: str = ""
+    geo_regular_polygon_sides: int = 4
+    geo_inline_points: List[GeoInlinePoint] = field(default_factory=list)
+    geo_subdivision_params_set_name: str = ""
+    geo_shape_3d_type: GeoShape3DType = GeoShape3DType.NONE
+    geo_shape_3d_param1: int = 4
+    geo_shape_3d_param2: int = 4
+    geo_shape_3d_param3: int = 4
+
+
+    # Shape reference for Scala (auto-derived from sprite_set.name/sprite.name on save)
     shape_set_name: str = ""
     shape_name: str = ""
 

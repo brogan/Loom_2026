@@ -268,13 +268,13 @@ class SpritePreviewCanvas(QWidget):
         self._sprite_set = None
         self._sprite_library = None            # full library for cross-set rendering
         self._selected_index: int = -1
-        self._shape_library = None
         self._polygon_sets_dir: str = ""
         self._curve_sets_dir: str = ""
         self._point_sets_dir: str = ""
         self._oval_sets_dir: str = ""
         self._regular_polygons_dir: str = ""
         self._geo_cache: dict[str, Optional[ParsedGeo]] = {}
+        self._polygon_registry: Optional[dict] = None   # lazily built from polygons.xml
         self._grid_size_pct: float = 10.0
         self._snap: bool = False
         self._canvas_w: int = 1080
@@ -304,11 +304,6 @@ class SpritePreviewCanvas(QWidget):
         self._sprite_library = lib
         self.update()
 
-    def set_shape_library(self, lib):
-        self._shape_library = lib
-        self._geo_cache.clear()
-        self.update()
-
     def set_directories(self, poly_dir: str, curve_dir: str, point_dir: str,
                         oval_dir: str = "", regular_dir: str = ""):
         self._polygon_sets_dir = poly_dir
@@ -317,7 +312,41 @@ class SpritePreviewCanvas(QWidget):
         self._oval_sets_dir = oval_dir
         self._regular_polygons_dir = regular_dir
         self._geo_cache.clear()
+        self._polygon_registry = None   # reset so it's rebuilt for the new project
         self.update()
+
+    def _get_polygon_registry(self) -> dict:
+        """Lazily build a {polygon_set_name: filepath} dict from configuration/polygons.xml.
+
+        This lets the preview resolve polygon sets whose name differs from their filename
+        (e.g. name="Layer 1" → file="cat_byhand_layer_1.xml").
+        """
+        if self._polygon_registry is not None:
+            return self._polygon_registry
+        self._polygon_registry = {}
+        if not self._polygon_sets_dir:
+            return self._polygon_registry
+        # polygons.xml lives at <project_dir>/configuration/polygons.xml
+        project_dir = os.path.dirname(self._polygon_sets_dir)
+        polygons_xml = os.path.join(project_dir, "configuration", "polygons.xml")
+        if not os.path.isfile(polygons_xml):
+            return self._polygon_registry
+        try:
+            tree = ET.parse(polygons_xml)
+            for ps_elem in tree.getroot().iter("PolygonSet"):
+                name = ps_elem.get("name", "").strip()
+                src = ps_elem.find("Source")
+                if src is None:
+                    continue
+                src_type = src.get("type", "")
+                if src_type == "file":
+                    filename = (src.findtext("Filename") or "").strip()
+                    if name and filename:
+                        self._polygon_registry[name] = os.path.join(
+                            self._polygon_sets_dir, filename)
+        except Exception:
+            pass
+        return self._polygon_registry
 
     def set_grid_size(self, pct: float):
         self._grid_size_pct = pct
@@ -391,43 +420,23 @@ class SpritePreviewCanvas(QWidget):
 
     def _resolve_geometry(self, sprite) -> Optional[ParsedGeo]:
         """Look up and cache geometry for a sprite. Returns None on failure."""
-        if self._shape_library is None:
-            return None
         try:
-            from models.shape_config import ShapeSourceType
-            # Find the ShapeSet
-            shape_set = None
-            for ss in self._shape_library.shape_sets:
-                if ss.name == sprite.shape_set_name:
-                    shape_set = ss
-                    break
-            if shape_set is None:
+            from models.sprite_config import GeoSourceType
+            stype = sprite.geo_source_type
+
+            if stype == GeoSourceType.REGULAR_POLYGON:
+                return _make_ngon(max(3, sprite.geo_regular_polygon_sides))
+
+            geo_map = {
+                GeoSourceType.POLYGON_SET:    (sprite.geo_polygon_set_name,    self._polygon_sets_dir),
+                GeoSourceType.OPEN_CURVE_SET: (sprite.geo_open_curve_set_name, self._curve_sets_dir),
+                GeoSourceType.POINT_SET:      (sprite.geo_point_set_name,      self._point_sets_dir),
+                GeoSourceType.OVAL_SET:       (sprite.geo_oval_set_name,       self._oval_sets_dir),
+            }
+            if stype not in geo_map:
                 return None
 
-            shape_def = shape_set.get(sprite.shape_name)
-            if shape_def is None:
-                return None
-
-            stype = shape_def.source_type
-            if stype == ShapeSourceType.REGULAR_POLYGON:
-                n = max(3, shape_def.regular_polygon_sides)
-                return _make_ngon(n)
-
-            if stype == ShapeSourceType.POLYGON_SET:
-                name = shape_def.polygon_set_name
-                base_dir = self._polygon_sets_dir
-            elif stype == ShapeSourceType.OPEN_CURVE_SET:
-                name = shape_def.open_curve_set_name
-                base_dir = self._curve_sets_dir
-            elif stype == ShapeSourceType.POINT_SET:
-                name = shape_def.point_set_name
-                base_dir = self._point_sets_dir
-            elif stype == ShapeSourceType.OVAL_SET:
-                name = shape_def.oval_set_name
-                base_dir = self._oval_sets_dir
-            else:
-                return None
-
+            name, base_dir = geo_map[stype]
             if not name or not base_dir:
                 return None
 
@@ -436,14 +445,28 @@ class SpritePreviewCanvas(QWidget):
                 return self._geo_cache[filepath]
 
             if not os.path.isfile(filepath):
-                # For POLYGON_SET, fall back to regularPolygons/ parameter file
-                if stype == ShapeSourceType.POLYGON_SET and self._regular_polygons_dir:
-                    reg_path = os.path.join(self._regular_polygons_dir, name + ".xml")
-                    if reg_path in self._geo_cache:
-                        return self._geo_cache[reg_path]
-                    geo = _parse_regular_polygon_xml(reg_path)
-                    self._geo_cache[reg_path] = geo
-                    return geo
+                if stype == GeoSourceType.POLYGON_SET:
+                    # Fall back 1: look up actual filename via polygons.xml registry
+                    # (handles cases where polygon set name ≠ filename, e.g. "Layer 1")
+                    registry = self._get_polygon_registry()
+                    if name in registry:
+                        reg_filepath = registry[name]
+                        if reg_filepath in self._geo_cache:
+                            return self._geo_cache[reg_filepath]
+                        if os.path.isfile(reg_filepath):
+                            tree = ET.parse(reg_filepath, parser=ET.XMLParser(encoding='utf-8'))
+                            geo = _parse_geo_from_root(tree.getroot())
+                            self._geo_cache[reg_filepath] = geo
+                            return geo
+
+                    # Fall back 2: regularPolygons/ parameter file
+                    if self._regular_polygons_dir:
+                        reg_path = os.path.join(self._regular_polygons_dir, name + ".xml")
+                        if reg_path in self._geo_cache:
+                            return self._geo_cache[reg_path]
+                        geo = _parse_regular_polygon_xml(reg_path)
+                        self._geo_cache[reg_path] = geo
+                        return geo
                 self._geo_cache[filepath] = None
                 return None
 
@@ -1110,9 +1133,6 @@ class SpritePreviewWidget(QWidget):
 
     def set_sprite_library(self, lib):
         self._canvas.set_sprite_library(lib)
-
-    def set_shape_library(self, lib):
-        self._canvas.set_shape_library(lib)
 
     def refresh_for_params_change(self, canvas_index: int):
         """Called when sprite base params change.
