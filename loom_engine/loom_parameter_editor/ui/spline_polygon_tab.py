@@ -250,9 +250,11 @@ class SplinePolygonTab(QWidget):
         if current is None:
             self._current_set = None
             self._clear_editor()
+            self._refresh_convenience_for_geometry()
             return
         self._current_set = current.data(0, Qt.ItemDataRole.UserRole)
         self._load_set_to_editor(self._current_set)
+        self._refresh_convenience_for_geometry()
 
     def _clear_editor(self):
         self._updating = True
@@ -329,14 +331,26 @@ class SplinePolygonTab(QWidget):
         ps = self._current_set
         if ps is None:
             return
+        if ps.file_source and ps.file_source.filename and \
+                ps.file_source.filename.lower().endswith('.layers.xml'):
+            QMessageBox.warning(self, "Duplicate", "Duplicate is not supported for layer bundles.")
+            return
+        existing = {p.name for p in self._library.polygon_sets}
+        i = 1
+        while True:
+            name = f"{ps.name}_clone_{i:03d}"
+            if name not in existing:
+                break
+            i += 1
         new_ps = ps.copy()
-        base = ps.name + "_copy"
-        name, i = base, 2
-        while any(p.name == name for p in self._library.polygon_sets):
-            name = f"{base}{i}"; i += 1
         new_ps.name = name
-        if new_ps.file_source:
-            new_ps.file_source.filename = name + ".xml"
+        if new_ps.file_source and new_ps.file_source.filename and self._polygon_sets_dir:
+            new_fn = name + ".xml"
+            src = os.path.join(self._polygon_sets_dir, ps.file_source.filename)
+            dst = os.path.join(self._polygon_sets_dir, new_fn)
+            if os.path.isfile(src) and not os.path.exists(dst):
+                shutil.copy2(src, dst)
+            new_ps.file_source.filename = new_fn
         self._library.add_polygon_set(new_ps)
         self._refresh_list()
         self.modified.emit()
@@ -1041,6 +1055,44 @@ class SplinePolygonTab(QWidget):
                     combo.setCurrentIndex(idx)
             self._update_conv_combo_style(combo)
 
+    def _refresh_convenience_for_geometry(self) -> None:
+        """Set Quick Setup combo selections to reflect the currently selected geometry."""
+        if not hasattr(self, 'conv_sprite_set_combo'):
+            return
+        geo_name = self._current_set.name if self._current_set else ""
+        found_sprite_set = ""
+        found_renderer_set = ""
+        if geo_name and self._sprite_library:
+            for ss in self._sprite_library.sprite_sets:
+                for sp in ss.sprites:
+                    if getattr(sp, 'geo_polygon_set_name', '') == geo_name:
+                        found_sprite_set = ss.name
+                        found_renderer_set = sp.renderer_set_name or ""
+                        break
+                if found_sprite_set:
+                    break
+        self.conv_sprite_set_combo.blockSignals(True)
+        self.conv_renderer_set_combo.blockSignals(True)
+        try:
+            self.conv_sprite_set_combo.clear()
+            if self._sprite_library:
+                for s in self._sprite_library.sprite_sets:
+                    self.conv_sprite_set_combo.addItem(s.name)
+            self.conv_renderer_set_combo.clear()
+            if self._renderer_library:
+                for rs in self._renderer_library.renderer_sets:
+                    self.conv_renderer_set_combo.addItem(rs.name)
+            idx = self.conv_sprite_set_combo.findText(found_sprite_set)
+            self.conv_sprite_set_combo.setCurrentIndex(idx)
+            idx = self.conv_renderer_set_combo.findText(found_renderer_set)
+            self.conv_renderer_set_combo.setCurrentIndex(idx)
+        finally:
+            self.conv_sprite_set_combo.blockSignals(False)
+            self.conv_renderer_set_combo.blockSignals(False)
+        self._update_conv_combo_style(self.conv_sprite_set_combo)
+        self._update_conv_combo_style(self.conv_renderer_set_combo)
+        self._update_convenience_borders()
+
     def _on_conv_make_subdivision_set(self) -> None:
         root = self._convenience_root()
         if not root:
@@ -1110,7 +1162,7 @@ class SplinePolygonTab(QWidget):
             candidate = f"{root}_Subdivide"
             if self._subdivision_collection.get_params_set(candidate):
                 sub_set_name = candidate
-        renderer_set_name = self.conv_renderer_set_combo.currentText() or "DefaultSet"
+        renderer_set_name = self.conv_renderer_set_combo.currentText()
         sprite_set.add(SpriteDef(
             name=name,
             geo_source_type=GeoSourceType.POLYGON_SET,

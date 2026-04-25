@@ -220,10 +220,12 @@ class PointTab(QWidget):
         if current is None:
             self._current_set = None
             self._clear_editor()
+            self._refresh_convenience_for_geometry()
             return
         ps = current.data(0, Qt.ItemDataRole.UserRole)
         self._current_set = ps
         self._load_set_to_editor(ps)
+        self._refresh_convenience_for_geometry()
 
     def _clear_editor(self):
         self._updating = True
@@ -361,10 +363,29 @@ class PointTab(QWidget):
         self.modified.emit()
 
     def _duplicate_point_set(self):
-        if self._current_set is None:
+        ps = self._current_set
+        if ps is None:
             return
-        new_ps = self._current_set.copy()
-        new_ps.name = self._current_set.name + "_copy"
+        if ps.file_source and ps.file_source.filename and \
+                ps.file_source.filename.lower().endswith('.layers.xml'):
+            QMessageBox.warning(self, "Duplicate", "Duplicate is not supported for layer bundles.")
+            return
+        existing = {p.name for p in self._library.point_sets}
+        i = 1
+        while True:
+            name = f"{ps.name}_clone_{i:03d}"
+            if name not in existing:
+                break
+            i += 1
+        new_ps = ps.copy()
+        new_ps.name = name
+        if new_ps.file_source and new_ps.file_source.filename and self._point_sets_dir:
+            new_fn = name + ".xml"
+            src = os.path.join(self._point_sets_dir, ps.file_source.filename)
+            dst = os.path.join(self._point_sets_dir, new_fn)
+            if os.path.isfile(src) and not os.path.exists(dst):
+                shutil.copy2(src, dst)
+            new_ps.file_source.filename = new_fn
         self._library.add_point_set(new_ps)
         self._refresh_list()
         self.modified.emit()
@@ -651,6 +672,44 @@ class PointTab(QWidget):
                     combo.setCurrentIndex(idx)
             self._update_conv_combo_style(combo)
 
+    def _refresh_convenience_for_geometry(self) -> None:
+        """Set Quick Setup combo selections to reflect the currently selected geometry."""
+        if not hasattr(self, 'conv_sprite_set_combo'):
+            return
+        geo_name = self._current_set.name if self._current_set else ""
+        found_sprite_set = ""
+        found_renderer_set = ""
+        if geo_name and self._sprite_library:
+            for ss in self._sprite_library.sprite_sets:
+                for sp in ss.sprites:
+                    if getattr(sp, 'geo_point_set_name', '') == geo_name:
+                        found_sprite_set = ss.name
+                        found_renderer_set = sp.renderer_set_name or ""
+                        break
+                if found_sprite_set:
+                    break
+        self.conv_sprite_set_combo.blockSignals(True)
+        self.conv_renderer_set_combo.blockSignals(True)
+        try:
+            self.conv_sprite_set_combo.clear()
+            if self._sprite_library:
+                for s in self._sprite_library.sprite_sets:
+                    self.conv_sprite_set_combo.addItem(s.name)
+            self.conv_renderer_set_combo.clear()
+            if self._renderer_library:
+                for rs in self._renderer_library.renderer_sets:
+                    self.conv_renderer_set_combo.addItem(rs.name)
+            idx = self.conv_sprite_set_combo.findText(found_sprite_set)
+            self.conv_sprite_set_combo.setCurrentIndex(idx)
+            idx = self.conv_renderer_set_combo.findText(found_renderer_set)
+            self.conv_renderer_set_combo.setCurrentIndex(idx)
+        finally:
+            self.conv_sprite_set_combo.blockSignals(False)
+            self.conv_renderer_set_combo.blockSignals(False)
+        self._update_conv_combo_style(self.conv_sprite_set_combo)
+        self._update_conv_combo_style(self.conv_renderer_set_combo)
+        self._update_convenience_borders()
+
     def _on_conv_make_subdivision_set(self) -> None:
         root = self._convenience_root()
         if not root:
@@ -708,7 +767,7 @@ class PointTab(QWidget):
             count += 1
             name = f"{set_name}_{count:03d}"
         geo_set_name = self._current_set.name if self._current_set else ""
-        renderer_set_name = self.conv_renderer_set_combo.currentText() or "DefaultSet"
+        renderer_set_name = self.conv_renderer_set_combo.currentText()
         sprite_set.add(SpriteDef(
             name=name,
             geo_source_type=GeoSourceType.POINT_SET,

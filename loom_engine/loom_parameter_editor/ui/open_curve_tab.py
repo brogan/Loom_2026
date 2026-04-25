@@ -231,10 +231,12 @@ class OpenCurveTab(QWidget):
         if current is None:
             self._current_set = None
             self._clear_editor()
+            self._refresh_convenience_for_geometry()
             return
         cs = current.data(0, Qt.ItemDataRole.UserRole)
         self._current_set = cs
         self._load_set_to_editor(cs)
+        self._refresh_convenience_for_geometry()
 
     def _clear_editor(self):
         self._updating = True
@@ -370,11 +372,29 @@ class OpenCurveTab(QWidget):
         self.modified.emit()
 
     def _duplicate_curve_set(self):
-        if self._current_set is None:
+        cs = self._current_set
+        if cs is None:
             return
-        base = self._current_set.name + "_copy"
-        new_cs = self._current_set.copy()
-        new_cs.name = base
+        if cs.file_source and cs.file_source.filename and \
+                cs.file_source.filename.lower().endswith('.layers.xml'):
+            QMessageBox.warning(self, "Duplicate", "Duplicate is not supported for layer bundles.")
+            return
+        existing = {c.name for c in self._library.curve_sets}
+        i = 1
+        while True:
+            name = f"{cs.name}_clone_{i:03d}"
+            if name not in existing:
+                break
+            i += 1
+        new_cs = cs.copy()
+        new_cs.name = name
+        if new_cs.file_source and new_cs.file_source.filename and self._curve_sets_dir:
+            new_fn = name + ".xml"
+            src = os.path.join(self._curve_sets_dir, cs.file_source.filename)
+            dst = os.path.join(self._curve_sets_dir, new_fn)
+            if os.path.isfile(src) and not os.path.exists(dst):
+                shutil.copy2(src, dst)
+            new_cs.file_source.filename = new_fn
         self._library.add_curve_set(new_cs)
         self._refresh_list()
         self.modified.emit()
@@ -774,6 +794,44 @@ class OpenCurveTab(QWidget):
                     combo.setCurrentIndex(idx)
             self._update_conv_combo_style(combo)
 
+    def _refresh_convenience_for_geometry(self) -> None:
+        """Set Quick Setup combo selections to reflect the currently selected geometry."""
+        if not hasattr(self, 'conv_sprite_set_combo'):
+            return
+        geo_name = self._current_set.name if self._current_set else ""
+        found_sprite_set = ""
+        found_renderer_set = ""
+        if geo_name and self._sprite_library:
+            for ss in self._sprite_library.sprite_sets:
+                for sp in ss.sprites:
+                    if getattr(sp, 'geo_open_curve_set_name', '') == geo_name:
+                        found_sprite_set = ss.name
+                        found_renderer_set = sp.renderer_set_name or ""
+                        break
+                if found_sprite_set:
+                    break
+        self.conv_sprite_set_combo.blockSignals(True)
+        self.conv_renderer_set_combo.blockSignals(True)
+        try:
+            self.conv_sprite_set_combo.clear()
+            if self._sprite_library:
+                for s in self._sprite_library.sprite_sets:
+                    self.conv_sprite_set_combo.addItem(s.name)
+            self.conv_renderer_set_combo.clear()
+            if self._renderer_library:
+                for rs in self._renderer_library.renderer_sets:
+                    self.conv_renderer_set_combo.addItem(rs.name)
+            idx = self.conv_sprite_set_combo.findText(found_sprite_set)
+            self.conv_sprite_set_combo.setCurrentIndex(idx)
+            idx = self.conv_renderer_set_combo.findText(found_renderer_set)
+            self.conv_renderer_set_combo.setCurrentIndex(idx)
+        finally:
+            self.conv_sprite_set_combo.blockSignals(False)
+            self.conv_renderer_set_combo.blockSignals(False)
+        self._update_conv_combo_style(self.conv_sprite_set_combo)
+        self._update_conv_combo_style(self.conv_renderer_set_combo)
+        self._update_convenience_borders()
+
     def _on_conv_make_subdivision_set(self) -> None:
         root = self._convenience_root()
         if not root:
@@ -831,7 +889,7 @@ class OpenCurveTab(QWidget):
             count += 1
             name = f"{set_name}_{count:03d}"
         geo_set_name = self._current_set.name if self._current_set else ""
-        renderer_set_name = self.conv_renderer_set_combo.currentText() or "DefaultSet"
+        renderer_set_name = self.conv_renderer_set_combo.currentText()
         sprite_set.add(SpriteDef(
             name=name,
             geo_source_type=GeoSourceType.OPEN_CURVE_SET,
