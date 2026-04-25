@@ -15,6 +15,7 @@ class RunTab(QWidget):
 
     # Signal emitted when we need the main window to save before run/reload
     save_requested = Signal()
+    loom_app_path_changed = Signal(str)
 
     # Default path to the Loom Scala project
     DEFAULT_LOOM_PATH = "/Users/broganbunt/Loom_2026/loom_engine"
@@ -25,6 +26,8 @@ class RunTab(QWidget):
         self._project_name = None
         self._save_callback = save_callback
         self._loom_path = self.DEFAULT_LOOM_PATH
+        self._loom_app_path = "/Users/broganbunt/Loom_2026/loom_swift"  # loom_swift source dir
+        self._engine = "scala"     # "scala" or "swift"
         self._process = None
         self._last_render_type: str = ""
 
@@ -140,13 +143,30 @@ class RunTab(QWidget):
 
         layout.addWidget(capture_group)
 
-        # --- Loom path setting ---
-        path_row = QHBoxLayout()
-        path_row.addWidget(QLabel("Loom SBT path:"))
+        # --- Loom path setting (Scala engine) ---
+        self._scala_path_widget = QWidget()
+        scala_path_row = QHBoxLayout(self._scala_path_widget)
+        scala_path_row.setContentsMargins(0, 0, 0, 0)
+        scala_path_row.addWidget(QLabel("Loom SBT path:"))
         self._loom_path_edit = QLineEdit(self._loom_path)
         self._loom_path_edit.editingFinished.connect(self._on_loom_path_changed)
-        path_row.addWidget(self._loom_path_edit)
-        layout.addLayout(path_row)
+        scala_path_row.addWidget(self._loom_path_edit)
+        layout.addWidget(self._scala_path_widget)
+
+        # --- LoomApp path setting (Swift engine) ---
+        self._swift_path_widget = QWidget()
+        swift_path_row = QHBoxLayout(self._swift_path_widget)
+        swift_path_row.setContentsMargins(0, 0, 0, 0)
+        swift_path_row.addWidget(QLabel("Loom Swift path:"))
+        self._loom_app_path_edit = QLineEdit(self._loom_app_path)
+        self._loom_app_path_edit.setPlaceholderText("Path to loom_swift source directory…")
+        self._loom_app_path_edit.editingFinished.connect(self._on_loom_app_path_changed)
+        swift_path_row.addWidget(self._loom_app_path_edit)
+        browse_app_btn = QPushButton("Browse…")
+        browse_app_btn.clicked.connect(self._on_browse_loom_app)
+        swift_path_row.addWidget(browse_app_btn)
+        self._swift_path_widget.setVisible(False)
+        layout.addWidget(self._swift_path_widget)
 
         # --- Output console ---
         console_group = QGroupBox("Loom Output")
@@ -162,6 +182,25 @@ class RunTab(QWidget):
         console_layout.addWidget(clear_btn)
 
         layout.addWidget(console_group, stretch=1)
+
+    # --- Engine public API ---
+
+    def set_engine(self, engine: str) -> None:
+        """Switch between 'scala' and 'swift' engine modes."""
+        self._engine = engine
+        is_swift = engine == "swift"
+        self._scala_path_widget.setVisible(not is_swift)
+        self._swift_path_widget.setVisible(is_swift)
+        self._run_btn.setText("Run LoomApp" if is_swift else "Run Loom")
+        self._stop_btn.setVisible(True)  # both engines use a managed QProcess
+
+    def set_loom_app_path(self, path: str) -> None:
+        """Set the LoomApp.app bundle path (Swift engine)."""
+        self._loom_app_path = path
+        self._loom_app_path_edit.setText(path)
+
+    def get_loom_app_path(self) -> str:
+        return self._loom_app_path
 
     # --- Public API ---
 
@@ -222,6 +261,55 @@ class RunTab(QWidget):
         return True
 
     def _on_run(self):
+        if self._engine == "swift":
+            self._on_run_swift()
+        else:
+            self._on_run_scala()
+
+    def _on_run_swift(self):
+        """Launch LoomApp via `swift run` (managed QProcess, same pattern as Scala)."""
+        if self._process and self._process.state() != QProcess.ProcessState.NotRunning:
+            self._append_output("[Editor] LoomApp is already running.\n")
+            return
+
+        if not self._project_dir:
+            self._append_output("[Editor] No project loaded. Open or create a project first.\n")
+            return
+
+        swift_dir = self._loom_app_path.strip()
+        if not swift_dir or not os.path.isdir(swift_dir):
+            self._append_output("[Editor] Loom Swift path not set or invalid. Set it in the path field below.\n")
+            return
+
+        if not self._do_save_if_needed():
+            self._append_output("[Editor] Save failed. Aborting launch.\n")
+            return
+
+        self._process = QProcess(self)
+        self._process.setWorkingDirectory(swift_dir)
+        self._process.readyReadStandardOutput.connect(self._read_stdout)
+        self._process.readyReadStandardError.connect(self._read_stderr)
+        self._process.finished.connect(self._on_process_finished)
+        self._process.errorOccurred.connect(self._on_process_error)
+
+        env = QProcessEnvironment.systemEnvironment()
+        self._process.setProcessEnvironment(env)
+
+        # Pass project directory so LoomApp auto-opens it on startup
+        shell_cmd = f'swift run LoomApp -- --project "{self._project_dir}"'
+        self._append_output(f"[Editor] Launching: {shell_cmd}\n")
+        self._append_output(f"[Editor] Working dir: {swift_dir}\n")
+        self._append_output("[Editor] (First run compiles — this may take a minute)\n")
+
+        self._process.start("/bin/zsh", ["-l", "-c", shell_cmd])
+        self._status_label.setText("Swift running")
+        self._status_label.setStyleSheet("font-weight: bold; color: blue;")
+        self._run_btn.setEnabled(False)
+        self._stop_btn.setEnabled(True)
+        self._clear_pause()
+
+    def _on_run_scala(self):
+        """Launch Loom via SBT (managed QProcess)."""
         if self._process and self._process.state() != QProcess.ProcessState.NotRunning:
             self._append_output("[Editor] Loom is already running.\n")
             return
@@ -434,3 +522,15 @@ class RunTab(QWidget):
 
     def _on_loom_path_changed(self):
         self._loom_path = self._loom_path_edit.text().strip()
+
+    def _on_loom_app_path_changed(self):
+        self._loom_app_path = self._loom_app_path_edit.text().strip()
+        self.loom_app_path_changed.emit(self._loom_app_path)
+
+    def _on_browse_loom_app(self):
+        start = self._loom_app_path or os.path.expanduser("~")
+        path = QFileDialog.getExistingDirectory(self, "Select Loom Swift Source Directory", start)
+        if path:
+            self._loom_app_path = path
+            self._loom_app_path_edit.setText(path)
+            self.loom_app_path_changed.emit(path)

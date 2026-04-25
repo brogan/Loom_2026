@@ -7,13 +7,14 @@ from __future__ import annotations
 
 from PySide6.QtWidgets import (
     QWidget, QHBoxLayout, QVBoxLayout, QSlider, QLabel,
-    QRadioButton, QButtonGroup, QFrame, QSizePolicy,
+    QRadioButton, QButtonGroup, QFrame, QSizePolicy, QComboBox,
 )
 from PySide6.QtCore import Qt
 
 from canvas.draw_panel import (
     ROTATE_LOCAL, ROTATE_COMMON, ROTATE_ABSOLUTE,
     SCALE_XY, SCALE_X, SCALE_Y,
+    SCALE_TARGET_BOTH, SCALE_TARGET_ANCHORS, SCALE_TARGET_CONTROLS,
 )
 
 
@@ -82,9 +83,26 @@ class SliderPanel(QWidget):
         radio_row.addWidget(self._scale_x_rb)
         radio_row.addWidget(self._scale_y_rb)
 
+        # Target dropdown: which point types the scale affects
+        self._scale_target_combo = QComboBox()
+        self._scale_target_combo.addItem("Anchors + Controls", SCALE_TARGET_BOTH)
+        self._scale_target_combo.addItem("Anchors only",       SCALE_TARGET_ANCHORS)
+        self._scale_target_combo.addItem("Controls only",      SCALE_TARGET_CONTROLS)
+        self._scale_target_combo.setToolTip(
+            "Choose whether scale affects anchor points, control points, or both"
+        )
+        self._scale_target_combo.currentIndexChanged.connect(self._on_scale_target_changed)
+
+        bottom_row = QHBoxLayout()
+        bottom_row.setContentsMargins(0, 0, 0, 0)
+        bottom_row.setSpacing(6)
+        bottom_row.addLayout(radio_row)
+        bottom_row.addStretch()
+        bottom_row.addWidget(self._scale_target_combo)
+
         vbox.addWidget(lbl)
         vbox.addWidget(self._scale_slider)
-        vbox.addLayout(radio_row)
+        vbox.addLayout(bottom_row)
         return grp
 
     def _make_rotate_group(self) -> QFrame:
@@ -132,6 +150,10 @@ class SliderPanel(QWidget):
         if axis < 0:
             axis = SCALE_XY
         self._bw.scale_xy(float(self._scale_slider.value()), axis)
+
+    def _on_scale_target_changed(self, _index: int) -> None:
+        target = self._scale_target_combo.currentData()
+        self._bw.set_scale_target(target)
 
     def _on_rotate_changed(self, value: int) -> None:
         axis = self._rotate_axis_group.checkedId()

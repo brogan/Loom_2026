@@ -347,8 +347,17 @@ class MainWindow(QMainWindow):
         self.run_tab = RunTab(save_callback=self._save_project)
         self.tab_widget.addTab(self.run_tab, "Run")
 
-        # Initialise global tab with persisted projects directory
+        # Initialise global tab with persisted projects directory and engine selection
         self.global_tab.set_projects_dir(self._app_settings.default_projects_dir)
+        self.global_tab.set_selected_engine(self._app_settings.selected_engine)
+        self.run_tab.set_engine(self._app_settings.selected_engine)
+        self.subdivision_tab.set_engine(self._app_settings.selected_engine)
+        if self._app_settings.loom_app_path:
+            self.run_tab.set_loom_app_path(self._app_settings.loom_app_path)
+
+        # Propagate engine changes from Global tab → Run tab and persist
+        self.global_tab.engine_changed.connect(self._on_engine_changed)
+        self.run_tab.loom_app_path_changed.connect(self._on_loom_app_path_changed)
 
         # Connect signals for output size hint (quality × canvas dims)
         self.run_tab._quality_spin.valueChanged.connect(self._update_output_hint)
@@ -1513,6 +1522,18 @@ class MainWindow(QMainWindow):
     def _on_projects_dir_changed(self, path: str) -> None:
         """Handle change in the default projects directory."""
         self._app_settings.default_projects_dir = path
+        self._app_settings.save()
+
+    def _on_engine_changed(self, engine: str) -> None:
+        """Propagate engine selection to RunTab, SubdivisionTab and persist it."""
+        self.run_tab.set_engine(engine)
+        self.subdivision_tab.set_engine(engine)
+        self._app_settings.selected_engine = engine
+        self._app_settings.save()
+
+    def _on_loom_app_path_changed(self, path: str) -> None:
+        """Persist the LoomApp.app path from RunTab."""
+        self._app_settings.loom_app_path = path
         self._app_settings.save()
 
     def get_project_dir(self) -> Optional[str]:

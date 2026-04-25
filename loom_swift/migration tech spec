@@ -1,0 +1,679 @@
+migration tech spec
+
+                                                                                          
+❯ Ok, I'm hoping that we now how a good basis for the migration.  We have the existing code-base and the detailed tech specs with recommended improvements.  What more would be       
+  useful to you specifically?  You have access to existing projects in .loom_projects.  I guess what we need is a step by step plan for implementation in which features can be, as   
+  far as possible, indipendently tested.  How would you approach this?  Please also keep in mind that one additional feature that I'd like to include is scope for digital video      
+  output (rather than just stills)>  I only mention this because I assume it relates to issues of timing - sifting away from abitrary draw cycle timing to something that corresponds 
+   to fps.                                                                                                                                                                            
+                                                                                                                                                                                      
+⏺ Good question to ask before starting — there are a few things that would sharpen the plan significantly.                                                                            
+                                                                                          
+  What I'd find useful before coding begins                                                                                                                                           
+                                                                                                                                                                                      
+  1. Platform decisions (these affect every layer)                                                                                                                                    
+                                                                                                                                                                                      
+  - macOS only, or iOS too?                                                                                                                                                           
+  - UI framework: SwiftUI, AppKit, or mixed?                
+  - Rendering API: Core Graphics (closest to current Java2D), Metal (better for video), or SwiftUI Canvas (built on CG)?                                                              
+                                                                                                                                                                                      
+  Metal is worth considering seriously given the video output goal — AVAssetWriter with a Metal-backed pixel buffer is the cleanest path to high-quality video export, and Metal also 
+  gives you real compositing and effect options that Core Graphics doesn't.                                                                                                           
+                                                                                                                                                                                      
+  2. A look at an actual .loom_projects project             
+
+  I want to read one real project directory to validate that my schema understanding from the specs matches what's actually on disk — especially rendering.xml and subdivision.xml    
+  which are the most complex. Discrepancies there would cause subtle bugs at the assembly stage. Can you point me to a representative one?
+                                                                                                                                                                                      
+  3. Scope clarity                                          
+
+  Full feature parity from day one, or MVP first? My instinct is MVP first — core subdivision + rendering + basic animation + video export, deferring brush/stencil stamping and      
+  serial comms to a later phase. Brush/stencil are significant rendering complexity and are independent of everything else.
+                                                                                                                                                                                      
+  ---                                                       
+  The video output point — you're exactly right
+                                                                                                                                                                                      
+  The current Thread.sleep(100) model is incompatible with deterministic video export. The fix is deltaTime, and it's architectural — it has to be built in from the start, not added
+  later.                                                                                                                                                                              
+                                                            
+  The key insight is that preview mode and export mode are the same render loop with different time sources:                                                                          
+                                                            
+  protocol FrameLoop {                                                                                                                                                                
+      func tick(update: (Double) -> Void, draw: (CGContext) -> Void)
+  }                                                                                                                                                                                   
+   
+  // Preview: CADisplayLink drives real-time, deltaTime = actual elapsed time                                                                                                         
+  class DisplayLinkFrameLoop: FrameLoop { ... }             
+                                                                                                                                                                                      
+  // Export: no display, deltaTime = 1.0 / targetFPS, runs as fast as CPU allows                                                                                                      
+  class ExportFrameLoop: FrameLoop { ... }                                                                                                                                            
+                                                                                                                                                                                      
+  Every update(deltaTime:) call advances animation state by exactly that duration. Export mode feeds 1.0/fps deterministically — the same project always produces identical output    
+  regardless of machine speed. This also means a 60-second animation at 30fps is exactly 1800 render calls, which you can progress-bar and time.
+                                                                                                                                                                                      
+  ---                                                       
+  Implementation Plan
+                     
+  Phase 1 — Core geometry (no dependencies, fully unit-testable)
+                                                                                                                                                                                      
+  Vector2D, Vector3D, Polygon2D, Polygon3D as Swift value types (struct).                                                                                                             
+                                                                                                                                                                                      
+  - Immutable by default; mutation returns a new value                                                                                                                                
+  - All geometric operations: translate, scale, rotate, lerp, perspective divide
+  - No UI, no file I/O — pure XCTest coverage                                                                                                                                         
+  - Validate against Scala output using known polygon sets from .loom_projects
+                                                                                                                                                                                      
+  This phase also establishes the coordinate convention (world space, Y-up) cleanly from the start — no silent orientation correction needed later.                                   
+                                                                                                                                                                                      
+  ---                                                                                                                                                                                 
+  Phase 2 — Subdivision engine (pure function, no UI)       
+                                                     
+  func subdivide(_ polygons: [Polygon2D], params: SubdivisionParams) -> [Polygon2D]
+  func recursiveSubdivide(_ polygons: [Polygon2D], paramSet: [SubdivisionParams]) -> [Polygon2D]                                                                                      
+                                                                                                                                                                                      
+  All 19 algorithm variants. No Shape2D wrapper — polygons in, polygons out.                                                                                                          
+                                                                                                                                                                                      
+  - Fully unit-testable: feed known input, assert output polygon count and point positions                                                                                            
+  - Cross-validate against Scala: run same params on same input, compare results
+  - Bypass polygon logic (OPEN_SPLINE, POINT, OVAL) handled explicitly                                                                                                                
+  - Visibility filtering between passes included                                                                                                                                      
+                                                                                                                                                                                      
+  ---                                                                                                                                                                                 
+  Phase 3 — Configuration and serialization                                                                                                                                           
+                                                            
+  All config types as Codable structs with defaults.
+                                                                                                                                                                                      
+  Decision point here: continue reading the existing XML format (for compatibility with existing .loom_projects and the Python editor), or migrate to JSON and provide a one-time     
+  conversion script?                                                                                                                                                                  
+                                                                                                                                                                                      
+  My recommendation: read XML for now using XMLParser, write JSON going forward. The Python editor can continue targeting the existing XML format; the Swift engine reads both. This  
+  avoids a big-bang format migration and lets you use real project files from day one for testing.
+                                                                                                                                                                                      
+  - ProjectLoader reads a project directory and produces a ProjectConfig value                                                                                                        
+  - Testable: load a real .loom_projects project, assert structure is correct
+  - GlobalConfig, SubdivisionParamsSet, RendererSetLibrary, SpriteLibrary etc. all covered                                                                                            
+                                                                                                                                                                                      
+  ---                                                                                                                                                                                 
+  Phase 4 — Rendering primitives (off-screen CGContext or Metal, no animation)                                                                                                        
+                                                                              
+  RenderEngine takes ([Polygon2D], Renderer, CGContext) and draws. All 6 modes.
+                                                                                                                                                                                      
+  - Start with Core Graphics — equivalent capability to current Java2D, lower complexity                                                                                              
+  - If Metal is chosen for video, the CG layer still makes sense for the parameter editor preview                                                                                     
+  - Testable off-screen: render to CGContext(bitmapInfo:...), export to PNG, visually verify                                                                                          
+  - Brush and stencil can be deferred — render only POINTS/STROKED/FILLED/FILLED_STROKED first                                                                                        
+                                                                                                                                                                                      
+  ---                                                                                                                                                                                 
+  Phase 5 — Animation (value-type, delta-time from the start)                                                                                                                         
+                                                                                                                                                                                      
+  protocol Animator {
+      func advance(sprite: Sprite, deltaTime: Double) -> Sprite                                                                                                                       
+  }                                                         
+                                                                                                                                                                                      
+  - Animator2D, KeyframeAnimator, JitterMorphAnimator, KeyframeMorphAnimator                                                                                                          
+  - All return a new Sprite — no mutation
+  - Testable: step N frames, assert final position/rotation/scale                                                                                                                     
+                                                                                                                                                                                      
+  The morph animators require geometry loading (Phase 3) but are otherwise self-contained.                                                                                            
+                                                                                                                                                                                      
+  ---                                                                                                                                                                                 
+  Phase 6 — Scene assembly                                  
+                                                                                                                                                                                      
+  SceneAssembler takes a ProjectConfig and produces a Scene: [Sprite].
+                                                                                                                                                                                      
+  Translates the name-resolution chain (spec 05 §10.3) into Swift:                                                                                                                    
+  - Polygon lookup by name
+  - Subdivision application                                                                                                                                                           
+  - Sprite construction with correct animator and renderer  
+  - Z-order from SpriteLibrary order                                                                                                                                                  
+                                    
+  Testable: assemble a known project, assert sprite count, polygon count per sprite, animator types.                                                                                  
+                                                                                                                                                                                      
+  ---                                                                                                                                                                                 
+  Phase 7 — Frame loop and timing                                                                                                                                                     
+                                                            
+  class Engine {
+      var scene: Scene
+      var frameLoop: FrameLoop
+
+      func update(deltaTime: Double)    // advances all animators                                                                                                                     
+      func draw(into context: CGContext) // renders all sprites
+  }                                                                                                                                                                                   
+                                                            
+  Two FrameLoop implementations:                                                                                                                                                      
+  - DisplayLinkFrameLoop — CADisplayLink, real-time preview 
+  - ExportFrameLoop — deterministic 1.0/fps steps, no display
+                                                             
+  RenderTransform parameter animation (renderer color/width cycling) also advances by deltaTime here, not by frame count.                                                             
+                                                                                                                                                                                      
+  ---                                                                                                                                                                                 
+  Phase 8 — Video export                                                                                                                                                              
+                                                            
+  class VideoExporter {
+      func export(engine: Engine, fps: Int, duration: Double, 
+                  resolution: CGSize, outputURL: URL) async                                                                                                                           
+  }                                                                                                                                                                                   
+                                                                                                                                                                                      
+  - AVAssetWriter + AVAssetWriterInputPixelBufferAdaptor                                                                                                                              
+  - Driven by ExportFrameLoop — each frame rendered off-screen to a CVPixelBuffer
+  - Presentation timestamps: CMTime(value: frameIndex, timescale: fps)                                                                                                                
+  - Progress reporting via AsyncStream or callback                                                                                                                                    
+  - Codec configurable: H.264, HEVC, ProRes                                                                                                                                           
+                                                                                                                                                                                      
+  Because the animation state is fully determined by deltaTime accumulation, the same engine that drives live preview drives export — no separate export code path for animation      
+  logic.                                                    
+                                                                                                                                                                                      
+  ---                                                       
+  Phase 9 — UI shell
+
+  SwiftUI app with:
+  - MTKView or NSViewRepresentable wrapping the render surface
+  - Project selector / file open                                                                                                                                                      
+  - Sentinel file watcher replaced with proper DispatchSource (FSEvents)
+  - Export sheet (fps, resolution, duration, format)                                                                                                                                  
+  - Brush/stencil stamping added here (Phase 4 deferred it)                                                                                                                           
+                                                                                                                                                                                      
+  ---                                                                                                                                                                                 
+  Phase 10 — Serial communication (deferred)                                                                                                                                          
+                                                                                                                                                                                      
+  IOKit or ORSSerialPort with async delegate. Low priority unless hardware interaction is needed early.
+                                                                                                                                                                                      
+  ---
+  Summary table                                                                                                                                                                       
+                                                            
+  ┌───────┬──────────────────────┬─────────────────────────────────────────────────────┐
+  │ Phase │         What         │                     Testable by                     │
+  ├───────┼──────────────────────┼─────────────────────────────────────────────────────┤
+  │ 1     │ Core geometry        │ XCTest, assert point coordinates                    │
+  ├───────┼──────────────────────┼─────────────────────────────────────────────────────┤
+  │ 2     │ Subdivision engine   │ XCTest, cross-validate vs Scala                     │                                                                                              
+  ├───────┼──────────────────────┼─────────────────────────────────────────────────────┤
+  │ 3     │ Config/serialization │ Load real .loom_projects, assert structure          │                                                                                              
+  ├───────┼──────────────────────┼─────────────────────────────────────────────────────┤                                                                                              
+  │ 4     │ Rendering primitives │ Off-screen PNG render, visual check                 │
+  ├───────┼──────────────────────┼─────────────────────────────────────────────────────┤                                                                                              
+  │ 5     │ Animation            │ Frame-step simulation, assert transforms            │
+  ├───────┼──────────────────────┼─────────────────────────────────────────────────────┤                                                                                              
+  │ 6     │ Scene assembly       │ Assert sprite count + geometry from known project   │
+  ├───────┼──────────────────────┼─────────────────────────────────────────────────────┤                                                                                              
+  │ 7     │ Frame loop + timing  │ Assert deltaTime accumulation; verify frame pacing  │
+  ├───────┼──────────────────────┼─────────────────────────────────────────────────────┤                                                                                              
+  │ 8     │ Video export         │ Export short sequence; check frame count + playback │
+  ├───────┼──────────────────────┼─────────────────────────────────────────────────────┤                                                                                              
+  │ 9     │ UI                   │ Manual + SwiftUI previews                           │
+  ├───────┼──────────────────────┼─────────────────────────────────────────────────────┤                                                                                              
+  │ 10    │ Serial               │ Hardware or mock port                               │
+  └───────┴──────────────────────┴─────────────────────────────────────────────────────┘                                                                                              
+                                                            
+  Each phase depends only on those before it. Phases 1–6 require no UI at all — they're pure logic testable in a Swift Package with XCTest. The UI (Phase 9) is genuinely the last    
+  thing, not the first.
+                                                                                                                                                                                      
+  The platform/rendering API question (Metal vs Core Graphics) is the main decision that would change this plan. What's your current thinking on that?                                
+   
+✻ Sautéed for 1m 31s                                                                                                                                                                  
+                                                                                          
+※ recap: Writing the Swift Loom engine migration plan. Waiting on your answers to the three questions — platform target, Metal vs Core Graphics, and whether to keep XML or migrate to
+   JSON.                                                                                                                                                                              
+                                                                                                                                                                                      
+❯ I get the sense that Core Graphics provides a more natural match for Java 2D but that it lack advanced features that would facilitate video output and perhaps overall processing   
+  efficiency.  I would prefer Metal on this basis but can Metal readily facilitate the fairly basic 2D drawing operations that Loom employs?  Can it do this in way that you can      
+  easily implement and maintain?  Which of the two do you recommend?                                                                                                                  
+                                                                                                                                                                                      
+⏺ Honest answer: Core Graphics, with a clean video pipeline built around it from the start.                                                                                           
+                                                                                          
+  Here's the full reasoning.                                                                                                                                                          
+                                                                                                                                                                                      
+  What Metal actually means for 2D path rendering                                                                                                                                     
+                                                                                                                                                                                      
+  Metal is a triangle rasteriser. It has no concept of a Bézier curve, a stroked path, or a fill rule. Everything Loom draws — spline polygons, open curves, filled shapes — would    
+  have to be tessellated into triangle meshes before Metal can touch them. You would need to write or integrate a tessellator, handle winding rules, manage anti-aliasing, and
+  maintain vertex/fragment shaders for what is currently a single CGContext.fillPath() call.                                                                                          
+                                                            
+  That is a substantial body of code with no direct relationship to Loom's actual domain. It increases implementation complexity significantly and creates a maintenance burden       
+  (shaders are effectively a second codebase).
+                                                                                                                                                                                      
+  Core Graphics, by contrast, maps almost one-to-one onto the current rendering model:                                                                                                
+   
+  ┌─────────────────────────┬───────────────────────────────┐                                                                                                                         
+  │     Java2D (Scala)      │     Core Graphics (Swift)     │
+  ├─────────────────────────┼───────────────────────────────┤
+  │ GeneralPath + curveTo() │ CGMutablePath + addCurve(to:) │
+  ├─────────────────────────┼───────────────────────────────┤
+  │ g2D.fill(path)          │ ctx.fillPath()                │                                                                                                                         
+  ├─────────────────────────┼───────────────────────────────┤                                                                                                                         
+  │ g2D.draw(path)          │ ctx.strokePath()              │                                                                                                                         
+  ├─────────────────────────┼───────────────────────────────┤                                                                                                                         
+  │ BasicStroke(width)      │ ctx.setLineWidth()            │
+  ├─────────────────────────┼───────────────────────────────┤                                                                                                                         
+  │ Color(r,g,b,a)          │ CGColor / NSColor             │
+  ├─────────────────────────┼───────────────────────────────┤                                                                                                                         
+  │ AffineTransform         │ CGAffineTransform             │
+  └─────────────────────────┴───────────────────────────────┘                                                                                                                         
+                                                            
+  The translation is mechanical, not creative.                                                                                                                                        
+                                                            
+  Video output does not require Metal                                                                                                                                                 
+                                                            
+  The video pipeline with Core Graphics is well-established and performs well:                                                                                                        
+   
+  // Each frame:                                                                                                                                                                      
+  let pixelBuffer: CVPixelBuffer = ...                      
+  CVPixelBufferLockBaseAddress(pixelBuffer, [])
+  let ctx = CGContext(data: CVPixelBufferGetBaseAddress(pixelBuffer),                                                                                                                 
+                     width: width, height: height,                                                                                                                                    
+                     bitsPerComponent: 8, bytesPerRow: bytesPerRow,                                                                                                                   
+                     space: CGColorSpaceCreateDeviceRGB(),                                                                                                                            
+                     bitmapInfo: CGImageAlphaInfo.premultipliedFirst.rawValue)!
+                                                                                                                                                                                      
+  engine.draw(into: ctx)   // all rendering happens here                                                                                                                              
+                                                                                                                                                                                      
+  CVPixelBufferUnlockBaseAddress(pixelBuffer, [])                                                                                                                                     
+  adaptor.append(pixelBuffer, withPresentationTime: frameTimestamp)
+
+  This is the standard pattern for software-rendered video on Apple platforms. It is reliable, well-documented, and fast enough — a 1080×1080 frame in Core Graphics at Loom's typical
+   polygon complexity renders in well under a frame budget even at 60fps. High-quality export (2× or 4×) runs faster-than-realtime because the export loop has no display wait.
+                                                                                                                                                                                      
+  Where Metal would genuinely help                                                                                                                                                    
+   
+  Metal would buy you meaningful gains in exactly two places:                                                                                                                         
+                                                            
+  1. Brush/stencil stamping at high polygon counts and high quality multiples — BufferedImage compositing in stamping is the current bottleneck                                       
+  2. Real-time preview at very high resolutions (4K+)       
+                                                                                                                                                                                      
+  Both are addressable later without touching the rendering logic. Core Image (which is GPU-accelerated and lives above Metal) can replace the software-compositing brush stamp path  
+  if it becomes a performance issue. You add that capability to one method without rewriting the coordinate or path code.                                                             
+                                                                                                                                                                                      
+  The recommendation                                        
+
+  Core Graphics for all path rendering. AVAssetWriter for video. CADisplayLink for display. Revisit Metal only if brush/stencil performance at high resolution becomes a real measured
+   bottleneck.
+                                                                                                                                                                                      
+  The implementation stays close to the Scala code you already understand, the translation from specs to Swift is direct, and the video pipeline is a first-class concern from Phase 7
+   rather than a retrofit. The deltaTime-based frame loop (which is the important timing change for video correctness) is completely independent of the rendering API.
+                                                                                                                                                                                      
+  One refinement worth noting: for the display surface itself, using an NSView that draws its CGContext content via a CALayer gives you hardware-composited display without any Metal 
+  code. This is what most macOS drawing apps do and it performs well.
+                                                                                                                                                                                      
+  The platform question I'd still want confirmed before phase 1: macOS only, or iOS/iPadOS too? It doesn't change the rendering recommendation but it affects whether AppKit or UIKit 
+  is the display layer, and whether SwiftUI is a viable choice for the full UI.
+                                                                                                                                                                                      
+✻ Brewed for 55s                                            
+                                                                                          
+❯ I'm currently only working with macOS but can see the value in making something that can work both on macOS and iOS/iPadOS if it does not invovle undue complexity or performance   
+  compromises.                                                                                                                                                                        
+                                                                                                                                                                                      
+⏺ Good news: the architecture I was going to recommend is already the right answer for cross-platform. It doesn't add meaningful complexity — it's more a matter of building it       
+  correctly from the start than adding a feature.                                                                                                                                     
+                                                                                                                                                                                      
+  The architecture that makes this natural                                                                                                                                            
+                                                                                                                                                                                      
+  Two layers, cleanly separated:                                                                                                                                                      
+                                                            
+  ┌─────────────────────────────────────────────────────┐
+  │  Swift Package: LoomEngine                          │                                                                                                                             
+  │  (Foundation + CoreGraphics + AVFoundation only)    │
+  │                                                     │                                                                                                                             
+  │  Geometry · Subdivision · Rendering · Animation     │   
+  │  Scene · Assembly · FrameLoop · VideoExport         │                                                                                                                             
+  │                                                     │                                                                                                                             
+  │  Zero platform imports — compiles unchanged         │
+  │  for macOS, iOS, iPadOS                             │                                                                                                                             
+  └─────────────────────────────────────────────────────┘   
+            ↑ used by                                                                                                                                                                 
+  ┌─────────────────────────────────────────────────────┐   
+  │  SwiftUI App (macOS + iOS from one codebase)        │                                                                                                                             
+  │                                                     │                                                                                                                             
+  │  RenderSurface (thin NSView/UIView wrapper)         │
+  │  Project management · Export UI · Parameter editor  │                                                                                                                             
+  │                                                     │                                                                                                                             
+  │  #if os(macOS) needed only for:                     │                                                                                                                             
+  │  - File open/save panels (NSOpenPanel vs .fileImporter)│                                                                                                                          
+  │  - Keyboard shortcuts                               │                                                                                                                             
+  │  - Window management                                │                                                                                                                             
+  └─────────────────────────────────────────────────────┘                                                                                                                             
+                                                                                                                                                                                      
+  CoreGraphics, AVFoundation, and CADisplayLink are identical APIs on both platforms. The engine package genuinely does not need to know which platform it's running on.              
+                                                                                                                                                                                      
+  The one real difference: input                                                                                                                                                      
+                                                            
+  The current keyboard/mouse/9-DOF-camera model doesn't translate to touch. But this is actually an opportunity rather than a problem — the camera control in the Scala engine was    
+  always a rough tool. On iOS the natural model is:         
+                                                                                                                                                                                      
+  - Pinch → zoom/scale                                                                                                                                                                
+  - Two-finger drag → pan camera
+  - Two-finger rotate → rotate                                                                                                                                                        
+  - Tap → select / trigger                                  
+                                                                                                                                                                                      
+  On macOS these same gestures work on a trackpad, with keyboard shortcuts as an additional layer. SwiftUI handles gesture recognition uniformly across both platforms. The           
+  InteractionManager equivalent becomes a CameraController that accepts normalised gestures rather than raw VK key codes — cleaner on both platforms.
+                                                                                                                                                                                      
+  The one version constraint                                
+
+  CADisplayLink on macOS requires macOS 14 (Sonoma). Before Sonoma, macOS used CVDisplayLink (a different, C-level API). If you need macOS 13 compatibility you'd need a small shim.  
+  Given you're starting new development now, targeting macOS 14+ is reasonable and gives you API parity with iOS 17+.
+                                                                                                                                                                                      
+  What this changes in the plan                             
+
+  Almost nothing. The phases stay identical. The only additions:                                                                                                                      
+   
+  - Phase 1: set up the engine as a Swift Package from the start (not just a folder of files)                                                                                         
+  - Phase 9: SwiftUI UI targets both platforms in the same app target; file I/O uses .fileImporter / .fileExporter SwiftUI modifiers (cross-platform) instead of AppKit panels
+  - Input becomes gesture-based rather than raw key events — simpler, not more complex                                                                                                
+                                                                                                                                                                                      
+  Confirming the full stack                                                                                                                                                           
+                                                                                                                                                                                      
+  ┌──────────────────────┬────────────────────────────────────────────────────┬────────────────────────────────────┐                                                                  
+  │        Layer         │                     Technology                     │               Notes                │
+  ├──────────────────────┼────────────────────────────────────────────────────┼────────────────────────────────────┤                                                                  
+  │ Geometry / rendering │ Core Graphics                                      │ Same API on both platforms         │
+  ├──────────────────────┼────────────────────────────────────────────────────┼────────────────────────────────────┤
+  │ Display surface      │ CALayer in NSView/UIView via SwiftUI representable │ #if os(macOS) for the wrapper only │                                                                  
+  ├──────────────────────┼────────────────────────────────────────────────────┼────────────────────────────────────┤                                                                  
+  │ Frame loop           │ CADisplayLink                                      │ macOS 14+ / iOS 17+                │                                                                  
+  ├──────────────────────┼────────────────────────────────────────────────────┼────────────────────────────────────┤                                                                  
+  │ Video export         │ AVAssetWriter                                      │ Identical on both                  │
+  ├──────────────────────┼────────────────────────────────────────────────────┼────────────────────────────────────┤                                                                  
+  │ UI framework         │ SwiftUI                                            │ Single codebase                    │
+  ├──────────────────────┼────────────────────────────────────────────────────┼────────────────────────────────────┤                                                                  
+  │ Input                │ SwiftUI gestures + .onKeyPress (macOS)             │ Touch-first, keyboard as addition  │
+  ├──────────────────────┼────────────────────────────────────────────────────┼────────────────────────────────────┤                                                                  
+  │ Minimum targets      │ macOS 14 · iOS 17                                  │ Enables API parity                 │
+  └──────────────────────┴────────────────────────────────────────────────────┴────────────────────────────────────┘                                                                  
+                                                            
+  The summary: design the engine package to know nothing about the platform, keep the UI shell thin, use SwiftUI throughout. Cross-platform comes essentially for free given those    
+  choices. Shall I update the implementation plan to reflect this and write it up as the definitive starting point?
+
+
+  ⏺ Let me write the definitive migration plan as a spec document so it's durable and you can point me back to it in future sessions.                                                   
+                                                                                                                                                                                      
+⏺ Write(loom_engine/spec/08_swift_migration_plan.md)                                                                                                                                  
+  ⎿  Wrote 781 lines to loom_engine/spec/08_swift_migration_plan.md                                                                                                                   
+       1 # Loom Engine — Swift Migration Plan                                                                                                                                         
+       2 **Specification 08**                                                                                                                                                         
+       3 **Date:** 2026-04-19                               
+       4 **Depends on:** All previous specs (01–07)                                                                                                                                   
+       5                                                                                                                                                                              
+       6 ---
+       7
+       8 ## 1. Goals and Constraints
+       9
+      10 **Goals:**
+     … +771 lines (ctrl+o to expand)
+
+  Wrote 1 memory (ctrl+o to expand)                  
+                                                                                          
+⏺ 08_swift_migration_plan.md is written. A few things worth noting about decisions baked into it:
+                                                                                                                                                                                      
+  On video and timing: The increment values in existing rendering XML configs are currently "units per ~10fps frame". The plan converts these at load time (multiply by 1.0/10.0 →    
+  "units per second") so existing projects work correctly at any frame rate. This is documented in Phase 7 and is the only place existing config values need interpretation.          
+                                                                                                                                                                                      
+  On the orientation correction: The current Scala engine applies standShapesUpright() and reverseShapesHorizontally() at runtime on every sketch load. The plan moves this into      
+  XMLPolygonLoader as a one-time normalisation matrix at parse time — cleaner, no hidden transforms in the assembly pipeline, and the internal coordinate convention is unambiguous   
+  from Phase 1 onwards.                                                                                                                                                               
+                                                            
+  On error handling: The assembly pipeline in Phase 6 throws typed errors rather than silently returning nil on unresolved names. This is one of the more practically useful          
+  improvements over the Scala version — debugging a missing renderer set name currently requires tracing through several silent fallbacks.
+                                                                                                                                                                                      
+  Phases 1 and 2 have no external dependencies and can start as soon as you have an Xcode project and Swift Package set up. Whenever you're ready to nominate a test project, that    
+  unlocks Phase 3.
+                          
+
+
+)))))))))))))
+
+⏺ 145 tests, 0 failures. Phase 2 is complete.                                                                                                                                         
+                                                                                          
+  Summary of what just passed:                                                                                                                                                        
+                                                                                                                                                                                      
+  - BezierMathTests (17 tests) — point eval, de Casteljau split (continuity, endpoints, curve agreement), centreSpline, reverseSegment, extractSides, connector geometry, insetPoints 
+  - InsetTransformTests (9 tests) — scale/translate/rotate, applyAbsolute, identity, Codable round-trip                                                                               
+  - SubdivisionTypeTests (4 tests) — all 19 raw values match Scala constants, outputCount for n=4 and n=3                                                                             
+  - VisibilityRuleTests (2 tests) — all 16 raw values, case count                                                                                                                     
+  - SubdivisionParamsTests (5 tests) — defaults, splitRatio continuous/non-continuous, Codable                                                                                        
+  - SubdivisionEngineTests (44 tests) — bypass passthrough for all 3 bypass types; output counts for all 19 algorithms on a square; output counts for triangle;                       
+  all-children-are-spline and all-have-4N-points invariants; cross-check actual vs. outputCount; quad corner invariant; echo centre invariant; all visibility rules; process          
+  two-generation pipeline, pruning between generations, bypass preservation, empty paramSet; ranMiddle validity                                                                       
+                                                                                                                                                                                      
+✻ Cogitated for 18m 35s                                     
+                                                                                          
+※ recap: Phase 2 subdivision tests complete — 145/145 passing. Next: start Phase 3, beginning with the config and serialization structs (SpriteConfig, XMLConfigLoader).
+
+***************************
+
+※ recap: Phase 4 static rendering is done, 202 tests passing. Ready to start Phase 5 — the animation system and RenderTransform.                                    
+                                                                                                                                                                    
+❯ Should I include some animation in Test_051? If so, which type would be useful for testing purposes - or a number of types?                                       
+                                                                                                                                                                    
+⏺ Before recommending specific types, I need to understand what the animation system looks like on the Swift side — we haven't designed Phase 5 yet, so I want to   
+  make sure my advice is grounded in what you're actually planning to build rather than guessing at the structure.
+                                                                                                                                                                    
+  A few questions to frame the answer:
+                                                                                                                                                                    
+  What does a RenderTransform actually vary?                                                                                                                        
+  From the Phase 4 summary I know it produces a modified Renderer per frame (strokeWidth, colour, etc.) — but what are the categories of animation? For example, are
+   they things like:                                                                                                                                                
+  - Numeric parameter oscillation (strokeWidth pulses, opacity fades)
+  - Palette cycling (stroke/fill colour steps through a palette)                                                                                                    
+  - Hold-length variation (changes how many frames a renderer is held before advancing)
+  - Something else entirely                                                                                                                                         
+                                                                                                                                                                    
+  Is animation attached to the Renderer, the Sprite, or the SubdivisionParams?                                                                                      
+  The Scala system presumably has a config file (or section within rendering/sprites) for animation — is that represented in the Python editor already? The git     
+  status shows global_tab.py, sprite_tab.py, subdivision_tab.py all modified, which suggests animation parameters live across multiple config domains.              
+                                                                                                                                                                    
+  Is Test_051 the right fixture for this at all?                                                                                                                    
+  My instinct is no — Test_051 is already earning its keep as the geometry/config integration fixture. Mixing animation data into it risks making failures harder to
+   diagnose. A dedicated Test_AnimBasic fixture with a single sprite and one example of each animation type under test would give you cleaner, focused test         
+  coverage.                                                 
+                                                                                                                                                                    
+  ---                                                       
+  Once I know the animation type taxonomy I can tell you exactly which 2–3 types give the best coverage for the least fixture complexity. What does the Loom
+  animation system look like from the existing Python/Scala side?                                                                                                   
+   
+❯ Render transform is capable of all the things you mention across different scales - points, polygons and sprites - and can also involve random numerical or       
+  palette item selection change.  Animation sets are attached to sprites.  There can be set level rendering animation by moving sequentially or randomly through a  
+  set.  Sets can also be static and only utlise one renderer or  render each frame with all renderers in the set.  But the most important animation of renderring   
+  occurs within individual renderers (following the model described in my first sentence).  This is just to describe animation rendering.  More general animation   
+  (transformation based - translation, rotation, sclaing) is attached to sprites and can involve random jitter, keyframe and morph target animation.  All of this   
+  is represented in Loom Editor/Sprites tab and processes are documented not only in animation tech spec but in the Loom Editor html help system.  I'll create a    
+  simple project that incorporates all kinds of sprite animation if you like, plus some rendering animation.                                                        
+                                                                                                                                                                    
+⏺ Yes, a dedicated animation fixture would be very valuable — and having you author it directly from the editor means the XML is guaranteed to match what the real  
+  system produces.                       
+                                                                                                                                                                    
+  Here's what I'd suggest including to get maximum test coverage with minimum fixture complexity:                                                                   
+                                                                                                                                                                    
+  Keep geometry trivially simple — a single square or circle per sprite. The tests should be about animation values, not geometry parsing.                          
+                                                            
+  For render animation, aim to cover each distinct code path:                                                                                                       
+  - One sprite with a static renderer set (single renderer, no cycling) — baseline
+  - One sprite with a sequential renderer set (2–3 renderers) — tests set-level advance logic                                                                       
+  - One sprite with at least one renderer that has numeric parameter animation (e.g. strokeWidth that varies across frames) — this is the core RenderTransform path
+  you said is most important                                                                                                                                        
+  - One sprite with palette/colour animation on a renderer — exercises the colour cycling path                                                                      
+                                                                                                                                                                    
+  For transform animation, one example of each category:                                                                                                            
+  - Keyframe translation or rotation — deterministic, ideal for exact-value assertions
+  - Random jitter — just one example; tests that the random path parses and runs without crashing (exact values aren't checkable without seeded RNG, so the test    
+  just verifies bounds)                                                                                                                                         
+  - Morph target if it's straightforward to add — otherwise it could be a separate fixture later when that phase is being built                                     
+                                                                                                                               
+  One thing to flag before you build it: for the random examples (random renderer selection, random jitter), the Swift tests will need injectable randomness — same 
+  pattern as SubdivisionEngine uses for visibility rules. Worth confirming the animation system is designed to accept a RandomNumberGenerator parameter before I    
+  wire that up.                                                                                                                                                     
+                                                                                                                                                                    
+  If you keep it to roughly 4 sprites on simple geometry, the fixture stays legible and each test class maps cleanly to one animation category.   
+
+
+  )))))))))))
+
+  ⏺ Based on the spec and the current file list, the migration is substantially complete. Here's where things stand:
+                                                                                                                                                                
+  ---                                                                                                                                                           
+  Done                                                                                                                                                          
+                                                                                                                                                                
+  Everything in Phases 1–9 and most of Phase 10:                                                                                                                
+                                                                                                                                                                
+  - Core geometry — Vector2D/3D, Polygon2D/3D, ViewTransform                                                                                                    
+  - Subdivision — all 7 algorithm families (Quad, Tri, Echo, Split, QuadBord, TriBord, TriStar), all visibility rules, all transform plugins
+  - Config & loaders — all 9 config structs, XMLConfigLoader, XMLPolygonLoader (all 5 polygon formats), JSONConfigLoader, ProjectLoader                         
+  - Rendering — stroked, filled, filledStroked, points modes; brush (BRUSHED) with meander, pressure, scatter PNG; stamp (STAMPED) at point positions           
+  - Animation — TransformAnimator (keyframe + random), MorphInterpolator, RenderStateEngine (color/width palette cycling), SpriteTransform                      
+  - Scene — SpriteScene, SpriteInstance, SpriteState, full sprite lifecycle (advance/render)                                                                    
+  - Frame loop + engine — FrameLoop, Engine, DisplayLinkFrameLoop, ExportFrameLoop                                                                              
+  - Export — StillExporter, VideoExporter (AVAssetWriter)                                                                                                       
+  - UI shell — LoomApp, ContentView, RenderSurface, ExportSheet, EngineController (project open/reload/playback)                                                
+                                                                                                                                                                
+  ---                                                                                                                                                           
+  Remaining gaps                                                                                                                                                
+                                                            
+  1. STENCILED renderer mode — In Scala this is distinct from STAMPED: a stencil follows brush edges (same path-walking machinery as BRUSHED) rather than
+  placing at discrete point positions. RendererMode.stenciled exists in the enum but falls through to break in SpriteScene.renderInstance. This needs           
+  BrushStampEngine called with the stencil image instead of a brush mask.
+                                                                                                                                                                
+  2. Brush blur — blurRadius is parsed into BrushConfig but not applied anywhere in BrushStampEngine. The spec calls for Core Image CIFilter Gaussian blur on   
+  the stamp result.
+                                                                                                                                                                
+  3. Overlay color — GlobalConfig.overlayColor is parsed but I don't see it applied in LoomEngine.renderImpl after the sprite pass. This is what fades old      
+  content in accumulation mode.
+                                                                                                                                                                
+  4. Bitmap polygon type — The Python editor has new bitmap_polygon_tab.py and BitmapPolygonDialog (visible in git status). If it produces a new polygon XML    
+  format, the Swift loaders don't know about it yet.
+                                                                                                                                                                
+  5. Delta-time animation — The spec mandated true delta-time throughout (Animator2D advances by deltaTime, RenderTransform animates in unitsPerSecond). The    
+  current engine uses frame counts (drawCycle += 1). This matters for frame-rate independence and for the iOS target.
+                                                                                                                                                                
+  6. Sentinel file watcher — EngineController likely uses polling or manual reload rather than DispatchSource.makeFileSystemObjectSource. Not blocking, but a   
+  quality-of-life item.
+                                                                                                                                                                
+  7. Phase 11 serial — Not started, explicitly low priority, macOS-only.                                                                                        
+   
+  ---                                                                                                                                                           
+  Priority order                                            
+                
+  If you're aiming for full parity with Scala before the iOS port:
+                                                                                                                                                                
+  1. Overlay color — small, high-impact on many projects                                                                                                        
+  2. STENCILED mode — reuses BrushStampEngine, mostly wiring                                                                                                    
+  3. Blur — Core Image, self-contained                                                                                                                          
+  4. Delta-time — required before iOS (CADisplayLink timing varies)
+  5. Bitmap polygon — only if the Python editor is actively producing them   
+
+  ((((((((((()))))))))))   
+
+    Delta-time: What's actually involved                                                    
+                                                                                                                                                                
+  The plumbing already exists. Engine.update(deltaTime:) already receives real wall-clock delta from CADisplayLink — it just throws it away and calls           
+  loomEngine.advance(). The top-level wiring is done; only the interior needs work.                                                                             
+                                                                                                                                                                
+  The job breaks into four layers of increasing difficulty:                                                                                                     
+  
+  ---                                                                                                                                                           
+  Layer 1 — Signature propagation (30 min, trivial)         
+                                                                                                                                                                
+  Pass deltaTime down the call chain:
+  - LoomEngine.advance() → advance(deltaTime: Double)                                                                                                           
+  - SpriteScene.advance(using:) → advance(deltaTime: Double, using:)
+  - Engine.update already calls both — just update the calls                                                                                                    
+                                                            
+  ---                                                                                                                                                           
+  Layer 2 — Keyframe time-basing (2–3 hours, moderate)
+                                                                                                                                                                
+  The hard part. Keyframe drawCycle values in XML are integer frame numbers (e.g., 0, 30, 60, 90). To go time-based you must decide: what frame rate did the 
+  Scala engine assume?                                                                                                                                          
+                                                            
+  Options:                                                                                                                                                      
+  - Add targetFPS to GlobalConfig (default 30) — multiply deltaTime * targetFPS to get a fractional cycle count, then pass Double time to TransformAnimator
+  instead of Int cycle. Fully XML-compatible.                                                                                                                   
+  - Reinterpret XML values as milliseconds — breaking change, requires migrating all project files.
+                                                                                                                                                                
+  The first option is the right call. TransformAnimator would accumulate elapsedTime in SpriteInstance.state, and normalizedCycle becomes                       
+  normalizedTime(elapsed: Double, totalSeconds: Double, loopMode:).                                                                                             
+                                                                                                                                                                
+  ---                                                                                                                                                           
+  Layer 3 — RenderStateEngine palette stepping (2–4 hours, significant)
+                                                                       
+  Currently steps one palette entry per frame — no duration concept. For true delta-time it needs fractional accumulation: PaletteIndexState gains a
+  timeAccumulator: Double, and RendererChanges gets a "seconds per step" field (or steps per second). This is a config format change.                           
+  
+  This is the fiddly layer. The Scala engine also stepped one per frame, so current Swift behaviour already matches Scala. The only real problem is if the app  
+  runs at a different frame rate than Scala's default.      
+                                                                                                                                                                
+  ---                                                       
+  Layer 4 — Meander noise phase (1–2 hours, moderate)
+                                                     
+  PathPerturbation.perturb(edge:config:edgeIndex:frame:...) uses frame: Int for noise phase offset. Replace with elapsedTime: Double and use elapsedTime * 
+  frequency instead of frame * frequency.                                                                                                                       
+  
+  ---                                                                                                                                                           
+  Summary                                                   
+
+  ┌──────────────────────────┬────────┬──────────────────────────────────────────────────────────────────┐
+  │          Layer           │  Time  │                               Risk                               │
+  ├──────────────────────────┼────────┼──────────────────────────────────────────────────────────────────┤
+  │ 1. Signature propagation │ 30 min │ None                                                             │
+  ├──────────────────────────┼────────┼──────────────────────────────────────────────────────────────────┤
+  │ 2. Keyframe time-basing  │ 2–3 hr │ Low — XML-compatible if targetFPS added to GlobalConfig          │                                                      
+  ├──────────────────────────┼────────┼──────────────────────────────────────────────────────────────────┤                                                      
+  │ 3. Palette stepping      │ 2–4 hr │ Medium — config format change needed for proper duration control │                                                      
+  ├──────────────────────────┼────────┼──────────────────────────────────────────────────────────────────┤                                                      
+  │ 4. Meander phase         │ 1–2 hr │ Low                                                              │
+  └──────────────────────────┴────────┴──────────────────────────────────────────────────────────────────┘                                                      
+                                                            
+  Minimum useful increment: Layers 1 + 2 give you frame-rate-independent keyframe animation in ~3 hours with zero XML migration. Layers 3 and 4 can wait — the  
+  current frame-counting behaviour matches Scala exactly for palette and meander.
+                                                                                                                                                                
+  The main gotcha: every project's drawCycle values were authored against Scala's actual frame rate. If you don't know what that was, you'll need to calibrate  
+  targetFPS by feel against the Scala output. For most Loom projects, 30 fps is the safe assumption.
+
+  >>>>>>>>>>>>>>
+
+
+    Swift Engine — Remaining Gaps                                                                                                                                 
+                                                                                                                                                                
+  Functional bugs (affect existing projects)                                                                                                                    
+                                                                                                                                                                
+  1. .stenciled mode not dispatched                         
+  SpriteScene.renderInstance only checks resolved.mode == .stamped. Any project with STENCILED in its XML (the old name) falls through to vector rendering. Fix:
+   add || resolved.mode == .stenciled to the dispatch condition. One line.                                                                                      
+   
+  2. Stamp opacity animation ignores kind/motion/cycle                                                                                                          
+  StampEngine.pickOpacity always picks randomly from the palette regardless of StencilOpacityChange.kind. SEQ and PING_PONG motion modes are not honoured — the
+  config fields exist and are loaded but aren't acted on. To fix properly requires per-stamp-renderer palette state tracking similar to RenderStateEngine, i.e. 
+  a StencilOpacityState in RendererAnimationState. Medium scope.
+                                                                                                                                                                
+  Silent feature gaps (source types that load empty)                                                                                                            
+   
+  3. inlinePoints source type silently returns []                                                                                                               
+  SpriteScene.loadBasePolygons has no case .inlinePoints. The Python editor supports it; the engine drops it on the floor. Needs a loader path that reads the
+  inline point list from the sprite XML directly (no separate file).                                                                                            
+   
+  4. regularPolygon source type silently returns []                                                                                                             
+  Same issue — no case .regularPolygon in the switch. Regular polygon generation is supported via .polygonSet + regularParams, but only when the Python editor
+  uses POLYGON_SET as the source type. If it writes REGULAR_POLYGON, it's ignored. Worth checking what the Python editor actually writes.                       
+   
+  Platform gap                                                                                                                                                  
+                                                            
+  5. No macOS DisplayLinkFrameLoop in the package                                                                                                               
+  FrameLoop.swift has the iOS/tvOS CADisplayLink implementation behind #if os(iOS) || os(tvOS). macOS display link logic lives in EngineController (app layer)
+  rather than in the LoomEngine package. This means any future macOS-targeted use of the package (e.g., a test host, CLI tool, or future iOS port using the same
+   package) has to re-implement the display link. Not urgent but architecturally inconsistent with the spec.
+                                                                                                                                                                
+  Quality / completeness                                                                                                                                        
+   
+  6. Test coverage                                                                                                                                              
+  Test files exist (SubdivisionTests, AnimationEngineTests, ConfigLoaderTests, etc.) but the spec-prescribed cross-validation tests (Scala vs Swift subdivision
+  output comparison, animation timing assertions, export duration validation) are likely incomplete or absent. Not a functional gap but the safety net is       
+  partial.
+                                                                                                                                                                
+  Explicitly deferred (no gap)                              
+
+  - Phase 11 serial — acknowledged low priority, macOS only.                                                                                                    
+  - 3D rendering — Polygon3D/Vector3D exist but no 3D pipeline. Not in the phase plan.
+  - Bitmap polygon tab — the new Python tool creates standard polygonSet XML from bitmaps; it's a creation tool, not a new source type. No engine change needed.
+  - Sentinel file watcher — already implemented via DispatchSource in EngineController.                                                                         
+  - Delta-time — just completed (Layers 1–4).                                                                                                                   
+                                                                                                                                                                
+  ---                                                                                                                                                           
+  In priority order: #1 is a one-liner fix. #2 is the most user-visible functional gap for stamp-heavy projects. #3/#4 depend on whether any real projects use
+  those source types. #5 is a packaging hygiene issue.     3

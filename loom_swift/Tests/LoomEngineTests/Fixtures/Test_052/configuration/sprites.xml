@@ -1,0 +1,107 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<SpriteConfig version="1.0">
+  <SpriteLibrary name="MainLibrary">
+    <SpriteSet name="rect_sprite">
+      <Sprite name="keyframe_rect">
+        <Shape shapeSet="rect_sprite" name="keyframe_rect"/>
+        <RendererSet name="rect_renderSet"/>
+        <Position x="0.6" y="-0.9"/>
+        <Scale x="1.0" y="1.0"/>
+        <Rotation>0.0</Rotation>
+        <Animation enabled="true" type="keyframe" loopMode="LOOP">
+          <TotalDraws>200</TotalDraws>
+          <ScaleRange xMin="0.0" xMax="0.0" yMin="0.0" yMax="0.0"/>
+          <RotationRange min="0.0" max="0.0"/>
+          <TranslationRange xMin="0.0" xMax="0.0" yMin="0.0" yMax="0.0"/>
+          <Keyframes>
+            <Keyframe drawCycle="0" posX="0.0" posY="0.0" scaleX="1.0" scaleY="1.0" rotation="0.0" easing="EASE_IN_OUT_QUAD"/>
+            <Keyframe drawCycle="50" posX="50.0" posY="0.0" scaleX="0.5" scaleY="0.5" rotation="-45.0" easing="EASE_IN_OUT_QUAD"/>
+            <Keyframe drawCycle="100" posX="-50.0" posY="0.0" scaleX="0.5" scaleY="0.2" rotation="45.0" easing="EASE_IN_OUT_QUAD"/>
+            <Keyframe drawCycle="150" posX="0.0" posY="0.0" scaleX="1.0" scaleY="1.0" rotation="0.0" easing="EASE_IN_OUT_QUAD"/>
+          </Keyframes>
+        </Animation>
+        <EditorExtensions enabled="true" animator="keyframe">
+          <RotationOffset x="0.0" y="0.0"/>
+          <ScaleFactor x="1.0" y="1.0"/>
+          <RotationFactor value="0.0"/>
+          <SpeedFactor x="0.0" y="0.0"/>
+          <Geometry sourceType="POLYGON_SET" polygonSet="rect" openCurveSet="" pointSet="" ovalSet="" sides="4" subdivisionParamsSet="rect_Subdivide" shape3D="NONE" p1="4" p2="4" p3="4"/>
+        </EditorExtensions>
+      </Sprite>
+      <Sprite name="jitter_rect">
+        <Shape shapeSet="rect_sprite" name="jitter_rect"/>
+        <RendererSet name="rect_renderSet"/>
+        <Position x="0.4" y="47.8"/>
+        <Scale x="1.0" y="1.0"/>
+        <Rotation>0.0</Rotation>
+        <Animation enabled="true" type="random" jitter="true">
+          <TotalDraws>0</TotalDraws>
+          <ScaleRange xMin="0.0" xMax="0.0" yMin="0.0" yMax="0.0"/>
+          <RotationRange min="0.0" max="0.0"/>
+          <TranslationRange xMin="-30.0" xMax="30.0" yMin="0.0" yMax="0.0"/>
+        </Animation>
+        <EditorExtensions enabled="true" animator="random">
+          <RotationOffset x="0.0" y="0.0"/>
+          <ScaleFactor x="1.0" y="1.0"/>
+          <RotationFactor value="0.0"/>
+          <SpeedFactor x="0.0" y="0.0"/>
+          <Geometry sourceType="POLYGON_SET" polygonSet="rect" openCurveSet="" pointSet="" ovalSet="" sides="4" subdivisionParamsSet="rect_Subdivide" shape3D="NONE" p1="4" p2="4" p3="4"/>
+        </EditorExtensions>
+      </Sprite>
+    </SpriteSet>
+    <SpriteSet name="saw_sprite">
+      <Sprite name="morphTarget_saw">
+        <Shape shapeSet="saw_sprite" name="morphTarget_saw"/>
+        <RendererSet name="saw_renderSet"/>
+        <Position x="0.0" y="-54.4"/>
+        <Scale x="1.477" y="1.0"/>
+        <Rotation>0.0</Rotation>
+        <Animation enabled="true" type="keyframe_morph" loopMode="PING_PONG">
+          <TotalDraws>100</TotalDraws>
+          <ScaleRange xMin="0.0" xMax="0.0" yMin="0.0" yMax="0.0"/>
+          <RotationRange min="0.0" max="0.0"/>
+          <TranslationRange xMin="0.0" xMax="0.0" yMin="0.0" yMax="0.0"/>
+          <MorphTargets>
+            <MorphTarget file="saw_mt_1.poly.xml"/>
+            <MorphTarget file="saw_mt_2.poly.xml"/>
+          </MorphTargets>
+          <Keyframes>
+            <Keyframe drawCycle="0" posX="0.0" posY="0.0" scaleX="1.0" scaleY="1.0" rotation="0.0" easing="LINEAR" morphAmount="1.0"/>
+            <Keyframe drawCycle="50" posX="0.0" posY="0.0" scaleX="1.0" scaleY="1.0" rotation="0.0" easing="LINEAR" morphAmount="2.0"/>
+          </Keyframes>
+        </Animation>
+        <EditorExtensions enabled="true" animator="keyframe_morph">
+          <RotationOffset x="0.0" y="0.0"/>
+          <ScaleFactor x="1.0" y="1.0"/>
+          <RotationFactor value="0.0"/>
+          <SpeedFactor x="0.0" y="0.0"/>
+          <Geometry sourceType="POLYGON_SET" polygonSet="saw" openCurveSet="" pointSet="" ovalSet="" sides="4" subdivisionParamsSet="none" shape3D="NONE" p1="4" p2="4" p3="4"/>
+        </EditorExtensions>
+      </Sprite>
+      <Sprite name="jitter_morph_saw">
+        <Shape shapeSet="saw_sprite" name="jitter_morph_saw"/>
+        <RendererSet name="saw_renderSet"/>
+        <Position x="0.0" y="79.5"/>
+        <Scale x="0.3" y="0.3"/>
+        <Rotation>0.0</Rotation>
+        <Animation enabled="true" type="jitter_morph">
+          <TotalDraws>50</TotalDraws>
+          <ScaleRange xMin="0.0" xMax="0.0" yMin="0.0" yMax="0.0"/>
+          <RotationRange min="0.0" max="0.0"/>
+          <TranslationRange xMin="0.0" xMax="0.0" yMin="0.0" yMax="0.0"/>
+          <MorphTargets morphMin="0.0" morphMax="2.0">
+            <MorphTarget file="saw_mt_1.poly.xml"/>
+            <MorphTarget file="saw_mt_2.poly.xml"/>
+          </MorphTargets>
+        </Animation>
+        <EditorExtensions enabled="true" animator="jitter_morph">
+          <RotationOffset x="0.0" y="0.0"/>
+          <ScaleFactor x="1.0" y="1.0"/>
+          <RotationFactor value="0.0"/>
+          <SpeedFactor x="0.0" y="0.0"/>
+          <Geometry sourceType="POLYGON_SET" polygonSet="saw" openCurveSet="" pointSet="" ovalSet="" sides="4" subdivisionParamsSet="none" shape3D="NONE" p1="4" p2="4" p3="4"/>
+        </EditorExtensions>
+      </Sprite>
+    </SpriteSet>
+  </SpriteLibrary>
+</SpriteConfig>

@@ -1,0 +1,29 @@
+Swift LoomApp Fixes
+
+- Brushes tab blur setting is not enabling a graduated response - switches abruptly between two states between the values of 2 and 3
+- Quality Multiple and scale image in run tab are not working - not scaling properly like Scala version (I notice particularly for brushes)
+- animation is going infinitely even though set to 5 for a single sprite
+- Subdivision tab - visibility rule, every fifth (maybe? indistinguishable from every fourth) and all random options not working
+- Subdivision tab: the various Polygons Transform Whole do not seem to be working in Swift version.
+- Subdivision tab: the various Polygons Transform Points do not seem to be working in Swift version.
+
+
+Improvements
+- add alpha value to keyframe animation
+
+Subdivision Bug
+
+We are working on migrating the Scala Loom Engine to Swift.  There are a number of missing features and bugs in the current Swift Engine.  The issue I want to address first relates to the most basic features of the subdivision engine.  I created a project in Loom Editor (Loom_056) that employs a simple square as the base geometry.  As a sprite this is then subject to 4 stages of recursive quad subdivision.  This produces correct results up until the 3rd stage of subdivision - then the shape of some of the squares becomes noticeably non-square.  The number of non-square shapes increases again in the 4th stage of subdivision.  I should note that the Scala Engine produces no such deformations.  Please have a look a the output of the two engines in the renders/stills directory.  There are renderings for each of the four stages of subdivision for both engines (the Swift versions have swift in the file title).  I have also created baked versions of each of the subdivisions so that you can see that the distortion is not being introduced in Loom Editor.  It is occuring downstream as Swift Loom pursues the recursive subdivision process.  I should note that there is a detailed subdivision test file in tests.  Two full sessions devoted to fixing this bug have failed.  Here is the last summary you wrote:
+What was proved this session: testQuad3LevelRectCollinearity passed — every Bézier segment in all 64 level-3 polygons is geometrically straight. The bug is definitively not in
+  control point placement.
+
+  What remains unexplained: The large visible S/U curves must come from somewhere else. The three most likely leads for tomorrow:
+
+  1. Polygon winding in the central band — some level-3 quads may be self-intersecting ("butterfly" shaped) due to how connector sub-halves assemble at depth 3. CoreGraphics fills a
+   butterfly quad as an X-shape, which looks like an S-curve. Check convexity of the 64 anchor sets, especially the interior ones (the anchor print only covered the 4 corner
+  polygons).
+  2. Compare anchor coordinates with Scala — the Swift anchors show tiny positional errors (~0.0006 units). If Scala's level-3 anchors are different positions (not just collinear vs
+   non-collinear), the assembly logic differs despite appearing correct analytically.
+  3. Test_055 runtime params vs hardcoded test params — verify the app's actual loaded subdivision params match what the test assumes.
+
+  I'm not convinced by this account.  I don't believe convexity is an issue here.  For a start tere are no curved lines.  It seems more like some miscalculation of anchor vertices.  But what remain unclear is why it only becomes apparent after two stages of subdivision.  The quad parameters for each stage are identical.  Why should conditions suddenly change in the 3rd stage?  I really don';t believe it is about the accumulation of tiny numerical irregularities.  There is something more decisive an dobvious happening.

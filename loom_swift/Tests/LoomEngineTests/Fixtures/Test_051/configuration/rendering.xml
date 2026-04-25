@@ -1,0 +1,22 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<RenderingConfig version="1.0">
+  <RendererSetLibrary name="MainLibrary">
+    <RendererSet name="goodcat_mesh_mesh_renderSet">
+      <PlaybackConfig>
+        <Mode>SEQUENTIAL</Mode>
+        <PreferredRenderer></PreferredRenderer>
+        <PreferredProbability>50.0</PreferredProbability>
+        <ModifyInternalParameters>false</ModifyInternalParameters>
+      </PlaybackConfig>
+      <Renderer name="goodcat_mesh_mesh_renderer">
+        <Mode>STROKED</Mode>
+        <StrokeWidth>1.0</StrokeWidth>
+        <StrokeColor r="0" g="0" b="0" a="255"/>
+        <FillColor r="0" g="0" b="0" a="255"/>
+        <PointSize>2.0</PointSize>
+        <HoldLength>1</HoldLength>
+        <PointStyle stroked="true" filled="true"/>
+      </Renderer>
+    </RendererSet>
+  </RendererSetLibrary>
+</RenderingConfig>

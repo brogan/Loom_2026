@@ -1,0 +1,39 @@
+CLAUDE CODE COMMANDS
+
+Core Session & Setup Commands
+These commands are used when launching Claude Code or managing the environment. 
+claude: Starts a new interactive coding session in the current directory.
+claude --continue (or -c): Resumes the most recent conversation in the current directory.
+claude --resume <id|name> (or -r): Resumes a specific session by its ID or display name.
+claude update: Updates Claude Code to the latest available version.
+claude auth login: Authenticates your session with your Anthropic Console account. 
+Essential Slash Commands
+Slash commands are built-in operations used within an active interactive session. Use the /help command inside the CLI to see a full authoritative list. 
+
+www.adventureppc.com
+ +2
+/init: Initializes a CLAUDE.md file to store project context, coding standards, and build commands.
+/clear: Wipes the current conversation history to free up context window space.
+/compact: Summarizes the existing conversation to reduce token usage while keeping key details.
+/diff: Opens an interactive viewer to review uncommitted changes made by Claude.
+/rewind: Rolls back the conversation or code state to a specific earlier checkpoint.
+/config: Opens an interactive configuration panel to adjust themes and default behavior.
+/cost: Displays the current session's token consumption and estimated dollar cost.
+/btw: Allows you to provide additional context or side notes without adding them to the main conversation thread. 
+
+code.claude.com
+ +7
+Productivity & Advanced Commands
+/model [sonnet|opus]: Switches the active LLM model during the session.
+/effort [low|medium|high|max]: Adjusts the thinking depth and token budget for complex tasks.
+/plan: Switches to "Plan Mode" to analyze the codebase and generate a strategy without making immediate edits.
+/mcp: Manages Model Context Protocol (MCP) servers to extend Claude's capabilities with external tools.
+/doctor: Diagnoses and verifies your installation, environment, and settings for troubleshooting. 
+
+code.claude.com
+ +5
+Common Keyboard Shortcuts
+Shift+Tab: Cycles between permission modes: Default (asks for everything), Accept Edits, and Plan Mode.
+Esc (Twice): Quickly opens the /rewind menu.
+Ctrl+C: Cancels the current model generation or input.
+Ctrl+G: Opens an external editor for easier multi-line input.

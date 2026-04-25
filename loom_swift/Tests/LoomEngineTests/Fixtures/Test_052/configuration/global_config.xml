@@ -1,0 +1,30 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<GlobalConfig version="1.0">
+  <!-- Project identification -->
+  <Name>Test_052</Name>
+  <Note>Project contains 2 pieces of polygonSet geometry - a rect and a saw.  Both form the basis for two sprites. A keyframee_rect sprite does keyframe animation.  A jitter_rect sprite does jitter animation (translation on the x axis).  A morphTarge_saw sprite does morp target animation with 2 morph states.  Finally a jitter_morph_saw sprite does jitter morphtarget animation.  The rect sprites have filled random  palette rendering with a brief pause state.  The saw sprites have stroke change variation.</Note>
+  <!-- Canvas dimensions -->
+  <Width>1080</Width>
+  <Height>1080</Height>
+  <!-- Quality and rendering -->
+  <QualityMultiple>1</QualityMultiple>
+  <ScaleImage>false</ScaleImage>
+  <!-- Animation -->
+  <Animating>true</Animating>
+  <DrawBackgroundOnce>true</DrawBackgroundOnce>
+  <!-- Display -->
+  <Fullscreen>false</Fullscreen>
+  <BorderColor r="0" g="0" b="0" a="255"/>
+  <BackgroundColor r="255" g="255" b="255" a="255"/>
+  <OverlayColor r="0" g="0" b="0" a="170"/>
+  <!-- 3D settings -->
+  <ThreeD>false</ThreeD>
+  <CameraViewAngle>120</CameraViewAngle>
+  <!-- Subdivision -->
+  <Subdividing>true</Subdividing>
+  <!-- Serial communication (legacy) -->
+  <Serial>false</Serial>
+  <Port>/dev/ttyUSB0</Port>
+  <Mode>bytes</Mode>
+  <Quantity>4</Quantity>
+</GlobalConfig>

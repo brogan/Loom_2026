@@ -40,6 +40,7 @@ class SubdivisionTab(QWidget):
         self._updating = False
         self._checking = False
         self._project_dir: str = ""
+        self._engine: str = "scala"
         self._bake_process = None
         self._transform_dialog: Optional['TransformSetDialog'] = None
 
@@ -1176,6 +1177,10 @@ class SubdivisionTab(QWidget):
         """Called by MainWindow when a project is loaded."""
         self._project_dir = d
 
+    def set_engine(self, engine: str) -> None:
+        """Called by MainWindow when the engine selection changes."""
+        self._engine = engine
+
     def _on_bake(self) -> None:
         """Open the bake dialog and start a bake if confirmed."""
         if not self._project_dir:
@@ -1215,18 +1220,30 @@ class SubdivisionTab(QWidget):
         self._run_bake(input_path, subdiv_xml, set_name, output_path)
 
     def _run_bake(self, input_path: str, subdiv_xml: str, set_name: str, output_path: str) -> None:
-        """Launch sbt bake-subdivision as a QProcess."""
-        LOOM_ENGINE_PATH = "/Users/broganbunt/Loom_2026/loom_engine"
-        shell_cmd = (
-            f'sbt "run --bake-subdivision '
-            f'{shlex.quote(input_path)} '
-            f'{shlex.quote(subdiv_xml)} '
-            f'{shlex.quote(set_name)} '
-            f'{shlex.quote(output_path)}"'
-        )
+        """Launch a bake-subdivision process (Scala or Swift) as a QProcess."""
+        if self._engine == "swift":
+            LOOM_SWIFT_PATH = "/Users/broganbunt/Loom_2026/loom_swift"
+            shell_cmd = (
+                f'swift run LoomBake '
+                f'{shlex.quote(input_path)} '
+                f'{shlex.quote(subdiv_xml)} '
+                f'{shlex.quote(set_name)} '
+                f'{shlex.quote(output_path)}'
+            )
+            working_dir = LOOM_SWIFT_PATH
+        else:
+            LOOM_ENGINE_PATH = "/Users/broganbunt/Loom_2026/loom_engine"
+            shell_cmd = (
+                f'sbt "run --bake-subdivision '
+                f'{shlex.quote(input_path)} '
+                f'{shlex.quote(subdiv_xml)} '
+                f'{shlex.quote(set_name)} '
+                f'{shlex.quote(output_path)}"'
+            )
+            working_dir = LOOM_ENGINE_PATH
 
         self._bake_process = QProcess(self)
-        self._bake_process.setWorkingDirectory(LOOM_ENGINE_PATH)
+        self._bake_process.setWorkingDirectory(working_dir)
         env = QProcessEnvironment.systemEnvironment()
         self._bake_process.setProcessEnvironment(env)
         self._bake_process.finished.connect(

@@ -7,7 +7,7 @@ import os
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QFormLayout, QGroupBox,
     QLineEdit, QTextEdit, QSpinBox, QCheckBox, QComboBox, QScrollArea, QLabel,
-    QPushButton, QTabWidget
+    QPushButton, QTabWidget, QRadioButton, QButtonGroup
 )
 from PySide6.QtCore import Signal, Qt
 from models.global_config import GlobalConfig
@@ -21,6 +21,7 @@ class GlobalTab(QWidget):
     modified = Signal()
     background_image_browse_requested = Signal()
     projects_dir_changed = Signal(str)
+    engine_changed = Signal(str)   # emits "scala" or "swift"
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -89,6 +90,23 @@ class GlobalTab(QWidget):
         projects_dir_layout.addRow("Directory:", dir_row)
 
         layout.addWidget(projects_dir_group)
+
+        # Loom Engine Group
+        engine_group = QGroupBox("Loom Engine")
+        engine_layout = QHBoxLayout(engine_group)
+
+        self._engine_btn_group = QButtonGroup(self)
+        self._scala_radio = QRadioButton("Scala")
+        self._swift_radio = QRadioButton("Swift")
+        self._scala_radio.setChecked(True)
+        self._engine_btn_group.addButton(self._scala_radio, 0)
+        self._engine_btn_group.addButton(self._swift_radio, 1)
+        engine_layout.addWidget(self._scala_radio)
+        engine_layout.addWidget(self._swift_radio)
+        engine_layout.addStretch()
+        self._engine_btn_group.idToggled.connect(self._on_engine_toggled)
+
+        layout.addWidget(engine_group)
 
         # Canvas Group
         canvas_group = QGroupBox("Canvas")
@@ -190,6 +208,11 @@ class GlobalTab(QWidget):
         three_d_layout.addWidget(serial_group)
         three_d_layout.addStretch()
 
+    def _on_engine_toggled(self, btn_id: int, checked: bool):
+        if checked:
+            engine = "swift" if btn_id == 1 else "scala"
+            self.engine_changed.emit(engine)
+
     def _on_modified(self):
         """Handle any value change."""
         if self._updating:
@@ -223,6 +246,21 @@ class GlobalTab(QWidget):
             self._output_size_label.setText(f"{w} × {h} px")
         else:
             self._output_size_label.setText("")
+
+    # --- Engine selection public API ---
+
+    def get_selected_engine(self) -> str:
+        """Return 'scala' or 'swift'."""
+        return "swift" if self._swift_radio.isChecked() else "scala"
+
+    def set_selected_engine(self, engine: str) -> None:
+        """Set the engine radio button without emitting engine_changed."""
+        self._engine_btn_group.blockSignals(True)
+        if engine == "swift":
+            self._swift_radio.setChecked(True)
+        else:
+            self._scala_radio.setChecked(True)
+        self._engine_btn_group.blockSignals(False)
 
     # --- Projects dir public API ---
 

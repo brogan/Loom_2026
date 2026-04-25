@@ -1,0 +1,1401 @@
+<polygonSet>
+    <name>goodcat_mesh_mesh</name>
+    <shapeType>CUBIC_CURVE</shapeType>
+    <polygon>
+        <curve>
+            <point x="-0.43" y="0.11"/>
+            <point x="-0.42" y="0.12"/>
+            <point x="-0.4" y="0.14"/>
+            <point x="-0.39" y="0.15"/>
+        </curve>
+        <curve>
+            <point x="-0.39" y="0.15"/>
+            <point x="-0.4" y="0.16"/>
+            <point x="-0.41" y="0.17"/>
+            <point x="-0.42" y="0.18"/>
+        </curve>
+        <curve>
+            <point x="-0.42" y="0.18"/>
+            <point x="-0.43" y="0.17"/>
+            <point x="-0.44" y="0.16"/>
+            <point x="-0.44" y="0.16"/>
+        </curve>
+        <curve>
+            <point x="-0.44" y="0.16"/>
+            <point x="-0.44" y="0.14"/>
+            <point x="-0.43" y="0.13"/>
+            <point x="-0.43" y="0.11"/>
+        </curve>
+    </polygon>
+    <polygon>
+        <curve>
+            <point x="-0.39" y="0.15"/>
+            <point x="-0.37" y="0.16"/>
+            <point x="-0.35" y="0.18"/>
+            <point x="-0.34" y="0.19"/>
+        </curve>
+        <curve>
+            <point x="-0.34" y="0.19"/>
+            <point x="-0.35" y="0.19"/>
+            <point x="-0.36" y="0.19"/>
+            <point x="-0.38" y="0.2"/>
+        </curve>
+        <curve>
+            <point x="-0.38" y="0.2"/>
+            <point x="-0.39" y="0.19"/>
+            <point x="-0.41" y="0.18"/>
+            <point x="-0.42" y="0.18"/>
+        </curve>
+        <curve>
+            <point x="-0.42" y="0.18"/>
+            <point x="-0.41" y="0.17"/>
+            <point x="-0.4" y="0.16"/>
+            <point x="-0.39" y="0.15"/>
+        </curve>
+    </polygon>
+    <polygon>
+        <curve>
+            <point x="-0.4" y="0.09"/>
+            <point x="-0.39" y="0.1"/>
+            <point x="-0.38" y="0.1"/>
+            <point x="-0.37" y="0.11"/>
+        </curve>
+        <curve>
+            <point x="-0.37" y="0.11"/>
+            <point x="-0.38" y="0.12"/>
+            <point x="-0.38" y="0.13"/>
+            <point x="-0.39" y="0.15"/>
+        </curve>
+        <curve>
+            <point x="-0.39" y="0.15"/>
+            <point x="-0.4" y="0.14"/>
+            <point x="-0.42" y="0.12"/>
+            <point x="-0.43" y="0.11"/>
+        </curve>
+        <curve>
+            <point x="-0.43" y="0.11"/>
+            <point x="-0.42" y="0.1"/>
+            <point x="-0.41" y="0.1"/>
+            <point x="-0.4" y="0.09"/>
+        </curve>
+    </polygon>
+    <polygon>
+        <curve>
+            <point x="-0.37" y="0.11"/>
+            <point x="-0.35" y="0.12"/>
+            <point x="-0.34" y="0.13"/>
+            <point x="-0.32" y="0.15"/>
+        </curve>
+        <curve>
+            <point x="-0.32" y="0.15"/>
+            <point x="-0.33" y="0.16"/>
+            <point x="-0.33" y="0.18"/>
+            <point x="-0.34" y="0.19"/>
+        </curve>
+        <curve>
+            <point x="-0.34" y="0.19"/>
+            <point x="-0.35" y="0.18"/>
+            <point x="-0.37" y="0.16"/>
+            <point x="-0.39" y="0.15"/>
+        </curve>
+        <curve>
+            <point x="-0.39" y="0.15"/>
+            <point x="-0.38" y="0.13"/>
+            <point x="-0.38" y="0.12"/>
+            <point x="-0.37" y="0.11"/>
+        </curve>
+    </polygon>
+    <polygon>
+        <curve>
+            <point x="-0.32" y="0.15"/>
+            <point x="-0.3" y="0.15"/>
+            <point x="-0.28" y="0.16"/>
+            <point x="-0.26" y="0.17"/>
+        </curve>
+        <curve>
+            <point x="-0.26" y="0.17"/>
+            <point x="-0.27" y="0.18"/>
+            <point x="-0.27" y="0.19"/>
+            <point x="-0.27" y="0.19"/>
+        </curve>
+        <curve>
+            <point x="-0.27" y="0.19"/>
+            <point x="-0.3" y="0.19"/>
+            <point x="-0.32" y="0.19"/>
+            <point x="-0.34" y="0.19"/>
+        </curve>
+        <curve>
+            <point x="-0.34" y="0.19"/>
+            <point x="-0.33" y="0.18"/>
+            <point x="-0.33" y="0.16"/>
+            <point x="-0.32" y="0.15"/>
+        </curve>
+    </polygon>
+    <polygon>
+        <curve>
+            <point x="-0.36" y="0.06"/>
+            <point x="-0.35" y="0.06"/>
+            <point x="-0.34" y="0.07"/>
+            <point x="-0.34" y="0.08"/>
+        </curve>
+        <curve>
+            <point x="-0.34" y="0.08"/>
+            <point x="-0.34" y="0.09"/>
+            <point x="-0.36" y="0.1"/>
+            <point x="-0.37" y="0.11"/>
+        </curve>
+        <curve>
+            <point x="-0.37" y="0.11"/>
+            <point x="-0.38" y="0.1"/>
+            <point x="-0.39" y="0.1"/>
+            <point x="-0.4" y="0.09"/>
+        </curve>
+        <curve>
+            <point x="-0.4" y="0.09"/>
+            <point x="-0.39" y="0.08"/>
+            <point x="-0.37" y="0.07"/>
+            <point x="-0.36" y="0.06"/>
+        </curve>
+    </polygon>
+    <polygon>
+        <curve>
+            <point x="-0.34" y="0.08"/>
+            <point x="-0.33" y="0.09"/>
+            <point x="-0.31" y="0.1"/>
+            <point x="-0.3" y="0.11"/>
+        </curve>
+        <curve>
+            <point x="-0.3" y="0.11"/>
+            <point x="-0.31" y="0.12"/>
+            <point x="-0.31" y="0.13"/>
+            <point x="-0.32" y="0.15"/>
+        </curve>
+        <curve>
+            <point x="-0.32" y="0.15"/>
+            <point x="-0.34" y="0.13"/>
+            <point x="-0.35" y="0.12"/>
+            <point x="-0.37" y="0.11"/>
+        </curve>
+        <curve>
+            <point x="-0.37" y="0.11"/>
+            <point x="-0.36" y="0.1"/>
+            <point x="-0.34" y="0.09"/>
+            <point x="-0.34" y="0.08"/>
+        </curve>
+    </polygon>
+    <polygon>
+        <curve>
+            <point x="-0.3" y="0.11"/>
+            <point x="-0.28" y="0.12"/>
+            <point x="-0.27" y="0.13"/>
+            <point x="-0.25" y="0.15"/>
+        </curve>
+        <curve>
+            <point x="-0.25" y="0.15"/>
+            <point x="-0.26" y="0.15"/>
+            <point x="-0.26" y="0.16"/>
+            <point x="-0.26" y="0.17"/>
+        </curve>
+        <curve>
+            <point x="-0.26" y="0.17"/>
+            <point x="-0.28" y="0.16"/>
+            <point x="-0.3" y="0.15"/>
+            <point x="-0.32" y="0.15"/>
+        </curve>
+        <curve>
+            <point x="-0.32" y="0.15"/>
+            <point x="-0.31" y="0.13"/>
+            <point x="-0.31" y="0.12"/>
+            <point x="-0.3" y="0.11"/>
+        </curve>
+    </polygon>
+    <polygon>
+        <curve>
+            <point x="-0.31" y="0.0"/>
+            <point x="-0.3" y="0.01"/>
+            <point x="-0.29" y="0.02"/>
+            <point x="-0.28" y="0.03"/>
+        </curve>
+        <curve>
+            <point x="-0.28" y="0.03"/>
+            <point x="-0.3" y="0.04"/>
+            <point x="-0.32" y="0.06"/>
+            <point x="-0.34" y="0.08"/>
+        </curve>
+        <curve>
+            <point x="-0.34" y="0.08"/>
+            <point x="-0.34" y="0.07"/>
+            <point x="-0.35" y="0.06"/>
+            <point x="-0.36" y="0.06"/>
+        </curve>
+        <curve>
+            <point x="-0.36" y="0.06"/>
+            <point x="-0.34" y="0.04"/>
+            <point x="-0.33" y="0.02"/>
+            <point x="-0.31" y="0.0"/>
+        </curve>
+    </polygon>
+    <polygon>
+        <curve>
+            <point x="-0.28" y="0.03"/>
+            <point x="-0.26" y="0.04"/>
+            <point x="-0.25" y="0.06"/>
+            <point x="-0.24" y="0.07"/>
+        </curve>
+        <curve>
+            <point x="-0.24" y="0.07"/>
+            <point x="-0.26" y="0.09"/>
+            <point x="-0.28" y="0.1"/>
+            <point x="-0.3" y="0.11"/>
+        </curve>
+        <curve>
+            <point x="-0.3" y="0.11"/>
+            <point x="-0.31" y="0.1"/>
+            <point x="-0.33" y="0.09"/>
+            <point x="-0.34" y="0.08"/>
+        </curve>
+        <curve>
+            <point x="-0.34" y="0.08"/>
+            <point x="-0.32" y="0.06"/>
+            <point x="-0.3" y="0.04"/>
+            <point x="-0.28" y="0.03"/>
+        </curve>
+    </polygon>
+    <polygon>
+        <curve>
+            <point x="-0.22" y="-0.04"/>
+            <point x="-0.21" y="-0.03"/>
+            <point x="-0.21" y="-0.02"/>
+            <point x="-0.2" y="0.0"/>
+        </curve>
+        <curve>
+            <point x="-0.2" y="0.0"/>
+            <point x="-0.22" y="0.01"/>
+            <point x="-0.25" y="0.02"/>
+            <point x="-0.28" y="0.03"/>
+        </curve>
+        <curve>
+            <point x="-0.28" y="0.03"/>
+            <point x="-0.29" y="0.02"/>
+            <point x="-0.3" y="0.01"/>
+            <point x="-0.31" y="0.0"/>
+        </curve>
+        <curve>
+            <point x="-0.31" y="0.0"/>
+            <point x="-0.28" y="-0.02"/>
+            <point x="-0.25" y="-0.03"/>
+            <point x="-0.22" y="-0.04"/>
+        </curve>
+    </polygon>
+    <polygon>
+        <curve>
+            <point x="-0.2" y="0.0"/>
+            <point x="-0.19" y="0.01"/>
+            <point x="-0.18" y="0.02"/>
+            <point x="-0.17" y="0.04"/>
+        </curve>
+        <curve>
+            <point x="-0.17" y="0.04"/>
+            <point x="-0.2" y="0.05"/>
+            <point x="-0.21" y="0.06"/>
+            <point x="-0.24" y="0.07"/>
+        </curve>
+        <curve>
+            <point x="-0.24" y="0.07"/>
+            <point x="-0.25" y="0.06"/>
+            <point x="-0.26" y="0.04"/>
+            <point x="-0.28" y="0.03"/>
+        </curve>
+        <curve>
+            <point x="-0.28" y="0.03"/>
+            <point x="-0.25" y="0.02"/>
+            <point x="-0.22" y="0.01"/>
+            <point x="-0.2" y="0.0"/>
+        </curve>
+    </polygon>
+    <polygon>
+        <curve>
+            <point x="-0.24" y="0.07"/>
+            <point x="-0.22" y="0.09"/>
+            <point x="-0.21" y="0.1"/>
+            <point x="-0.2" y="0.11"/>
+        </curve>
+        <curve>
+            <point x="-0.2" y="0.11"/>
+            <point x="-0.21" y="0.12"/>
+            <point x="-0.23" y="0.13"/>
+            <point x="-0.25" y="0.15"/>
+        </curve>
+        <curve>
+            <point x="-0.25" y="0.15"/>
+            <point x="-0.27" y="0.13"/>
+            <point x="-0.28" y="0.12"/>
+            <point x="-0.3" y="0.11"/>
+        </curve>
+        <curve>
+            <point x="-0.3" y="0.11"/>
+            <point x="-0.28" y="0.1"/>
+            <point x="-0.26" y="0.09"/>
+            <point x="-0.24" y="0.07"/>
+        </curve>
+    </polygon>
+    <polygon>
+        <curve>
+            <point x="-0.2" y="0.11"/>
+            <point x="-0.19" y="0.12"/>
+            <point x="-0.17" y="0.14"/>
+            <point x="-0.16" y="0.16"/>
+        </curve>
+        <curve>
+            <point x="-0.16" y="0.16"/>
+            <point x="-0.18" y="0.16"/>
+            <point x="-0.2" y="0.16"/>
+            <point x="-0.21" y="0.16"/>
+        </curve>
+        <curve>
+            <point x="-0.21" y="0.16"/>
+            <point x="-0.22" y="0.16"/>
+            <point x="-0.24" y="0.15"/>
+            <point x="-0.25" y="0.15"/>
+        </curve>
+        <curve>
+            <point x="-0.25" y="0.15"/>
+            <point x="-0.23" y="0.13"/>
+            <point x="-0.21" y="0.12"/>
+            <point x="-0.2" y="0.11"/>
+        </curve>
+    </polygon>
+    <polygon>
+        <curve>
+            <point x="-0.17" y="0.04"/>
+            <point x="-0.16" y="0.05"/>
+            <point x="-0.15" y="0.07"/>
+            <point x="-0.13" y="0.09"/>
+        </curve>
+        <curve>
+            <point x="-0.13" y="0.09"/>
+            <point x="-0.16" y="0.1"/>
+            <point x="-0.18" y="0.1"/>
+            <point x="-0.2" y="0.11"/>
+        </curve>
+        <curve>
+            <point x="-0.2" y="0.11"/>
+            <point x="-0.21" y="0.1"/>
+            <point x="-0.22" y="0.09"/>
+            <point x="-0.24" y="0.07"/>
+        </curve>
+        <curve>
+            <point x="-0.24" y="0.07"/>
+            <point x="-0.21" y="0.06"/>
+            <point x="-0.2" y="0.05"/>
+            <point x="-0.17" y="0.04"/>
+        </curve>
+    </polygon>
+    <polygon>
+        <curve>
+            <point x="-0.13" y="0.09"/>
+            <point x="-0.12" y="0.1"/>
+            <point x="-0.1" y="0.13"/>
+            <point x="-0.08" y="0.15"/>
+        </curve>
+        <curve>
+            <point x="-0.08" y="0.15"/>
+            <point x="-0.11" y="0.16"/>
+            <point x="-0.13" y="0.16"/>
+            <point x="-0.16" y="0.16"/>
+        </curve>
+        <curve>
+            <point x="-0.16" y="0.16"/>
+            <point x="-0.17" y="0.14"/>
+            <point x="-0.19" y="0.12"/>
+            <point x="-0.2" y="0.11"/>
+        </curve>
+        <curve>
+            <point x="-0.2" y="0.11"/>
+            <point x="-0.18" y="0.1"/>
+            <point x="-0.16" y="0.1"/>
+            <point x="-0.13" y="0.09"/>
+        </curve>
+    </polygon>
+    <polygon>
+        <curve>
+            <point x="-0.13" y="-0.06"/>
+            <point x="-0.13" y="-0.04"/>
+            <point x="-0.13" y="-0.03"/>
+            <point x="-0.12" y="-0.02"/>
+        </curve>
+        <curve>
+            <point x="-0.12" y="-0.02"/>
+            <point x="-0.14" y="-0.01"/>
+            <point x="-0.17" y="-0.01"/>
+            <point x="-0.2" y="0.0"/>
+        </curve>
+        <curve>
+            <point x="-0.2" y="0.0"/>
+            <point x="-0.21" y="-0.02"/>
+            <point x="-0.21" y="-0.03"/>
+            <point x="-0.22" y="-0.04"/>
+        </curve>
+        <curve>
+            <point x="-0.22" y="-0.04"/>
+            <point x="-0.2" y="-0.04"/>
+            <point x="-0.17" y="-0.05"/>
+            <point x="-0.13" y="-0.06"/>
+        </curve>
+    </polygon>
+    <polygon>
+        <curve>
+            <point x="-0.12" y="-0.02"/>
+            <point x="-0.12" y="0.0"/>
+            <point x="-0.11" y="0.01"/>
+            <point x="-0.1" y="0.03"/>
+        </curve>
+        <curve>
+            <point x="-0.1" y="0.03"/>
+            <point x="-0.13" y="0.03"/>
+            <point x="-0.15" y="0.03"/>
+            <point x="-0.17" y="0.04"/>
+        </curve>
+        <curve>
+            <point x="-0.17" y="0.04"/>
+            <point x="-0.18" y="0.02"/>
+            <point x="-0.19" y="0.01"/>
+            <point x="-0.2" y="0.0"/>
+        </curve>
+        <curve>
+            <point x="-0.2" y="0.0"/>
+            <point x="-0.17" y="-0.01"/>
+            <point x="-0.14" y="-0.01"/>
+            <point x="-0.12" y="-0.02"/>
+        </curve>
+    </polygon>
+    <polygon>
+        <curve>
+            <point x="-0.1" y="0.03"/>
+            <point x="-0.09" y="0.05"/>
+            <point x="-0.08" y="0.06"/>
+            <point x="-0.07" y="0.08"/>
+        </curve>
+        <curve>
+            <point x="-0.07" y="0.08"/>
+            <point x="-0.09" y="0.08"/>
+            <point x="-0.11" y="0.09"/>
+            <point x="-0.13" y="0.09"/>
+        </curve>
+        <curve>
+            <point x="-0.13" y="0.09"/>
+            <point x="-0.15" y="0.07"/>
+            <point x="-0.16" y="0.05"/>
+            <point x="-0.17" y="0.04"/>
+        </curve>
+        <curve>
+            <point x="-0.17" y="0.04"/>
+            <point x="-0.15" y="0.03"/>
+            <point x="-0.13" y="0.03"/>
+            <point x="-0.1" y="0.03"/>
+        </curve>
+    </polygon>
+    <polygon>
+        <curve>
+            <point x="-0.07" y="0.08"/>
+            <point x="-0.07" y="0.1"/>
+            <point x="-0.07" y="0.1"/>
+            <point x="-0.06" y="0.12"/>
+        </curve>
+        <curve>
+            <point x="-0.06" y="0.12"/>
+            <point x="-0.07" y="0.13"/>
+            <point x="-0.07" y="0.14"/>
+            <point x="-0.08" y="0.15"/>
+        </curve>
+        <curve>
+            <point x="-0.08" y="0.15"/>
+            <point x="-0.1" y="0.13"/>
+            <point x="-0.12" y="0.1"/>
+            <point x="-0.13" y="0.09"/>
+        </curve>
+        <curve>
+            <point x="-0.13" y="0.09"/>
+            <point x="-0.11" y="0.09"/>
+            <point x="-0.09" y="0.08"/>
+            <point x="-0.07" y="0.08"/>
+        </curve>
+    </polygon>
+    <polygon>
+        <curve>
+            <point x="-0.03" y="0.06"/>
+            <point x="-0.02" y="0.09"/>
+            <point x="-0.01" y="0.1"/>
+            <point x="0.01" y="0.12"/>
+        </curve>
+        <curve>
+            <point x="0.01" y="0.12"/>
+            <point x="-0.02" y="0.12"/>
+            <point x="-0.04" y="0.12"/>
+            <point x="-0.06" y="0.12"/>
+        </curve>
+        <curve>
+            <point x="-0.06" y="0.12"/>
+            <point x="-0.07" y="0.1"/>
+            <point x="-0.07" y="0.1"/>
+            <point x="-0.07" y="0.08"/>
+        </curve>
+        <curve>
+            <point x="-0.07" y="0.08"/>
+            <point x="-0.07" y="0.07"/>
+            <point x="-0.05" y="0.07"/>
+            <point x="-0.03" y="0.06"/>
+        </curve>
+    </polygon>
+    <polygon>
+        <curve>
+            <point x="-0.03" y="0.02"/>
+            <point x="-0.03" y="0.04"/>
+            <point x="-0.03" y="0.05"/>
+            <point x="-0.03" y="0.06"/>
+        </curve>
+        <curve>
+            <point x="-0.03" y="0.06"/>
+            <point x="-0.05" y="0.07"/>
+            <point x="-0.07" y="0.07"/>
+            <point x="-0.07" y="0.08"/>
+        </curve>
+        <curve>
+            <point x="-0.07" y="0.08"/>
+            <point x="-0.08" y="0.06"/>
+            <point x="-0.09" y="0.05"/>
+            <point x="-0.1" y="0.03"/>
+        </curve>
+        <curve>
+            <point x="-0.1" y="0.03"/>
+            <point x="-0.08" y="0.03"/>
+            <point x="-0.06" y="0.03"/>
+            <point x="-0.03" y="0.02"/>
+        </curve>
+    </polygon>
+    <polygon>
+        <curve>
+            <point x="-0.04" y="-0.02"/>
+            <point x="-0.04" y="-0.01"/>
+            <point x="-0.04" y="0.01"/>
+            <point x="-0.03" y="0.02"/>
+        </curve>
+        <curve>
+            <point x="-0.03" y="0.02"/>
+            <point x="-0.06" y="0.03"/>
+            <point x="-0.08" y="0.03"/>
+            <point x="-0.1" y="0.03"/>
+        </curve>
+        <curve>
+            <point x="-0.1" y="0.03"/>
+            <point x="-0.11" y="0.01"/>
+            <point x="-0.12" y="0.0"/>
+            <point x="-0.12" y="-0.02"/>
+        </curve>
+        <curve>
+            <point x="-0.12" y="-0.02"/>
+            <point x="-0.09" y="-0.02"/>
+            <point x="-0.07" y="-0.02"/>
+            <point x="-0.04" y="-0.02"/>
+        </curve>
+    </polygon>
+    <polygon>
+        <curve>
+            <point x="-0.05" y="-0.07"/>
+            <point x="-0.04" y="-0.05"/>
+            <point x="-0.04" y="-0.03"/>
+            <point x="-0.04" y="-0.02"/>
+        </curve>
+        <curve>
+            <point x="-0.04" y="-0.02"/>
+            <point x="-0.07" y="-0.02"/>
+            <point x="-0.09" y="-0.02"/>
+            <point x="-0.12" y="-0.02"/>
+        </curve>
+        <curve>
+            <point x="-0.12" y="-0.02"/>
+            <point x="-0.13" y="-0.03"/>
+            <point x="-0.13" y="-0.04"/>
+            <point x="-0.13" y="-0.06"/>
+        </curve>
+        <curve>
+            <point x="-0.13" y="-0.06"/>
+            <point x="-0.1" y="-0.06"/>
+            <point x="-0.07" y="-0.07"/>
+            <point x="-0.05" y="-0.07"/>
+        </curve>
+    </polygon>
+    <polygon>
+        <curve>
+            <point x="0.05" y="0.06"/>
+            <point x="0.06" y="0.08"/>
+            <point x="0.06" y="0.1"/>
+            <point x="0.07" y="0.11"/>
+        </curve>
+        <curve>
+            <point x="0.07" y="0.11"/>
+            <point x="0.05" y="0.11"/>
+            <point x="0.03" y="0.12"/>
+            <point x="0.01" y="0.12"/>
+        </curve>
+        <curve>
+            <point x="0.01" y="0.12"/>
+            <point x="-0.01" y="0.1"/>
+            <point x="-0.02" y="0.09"/>
+            <point x="-0.03" y="0.06"/>
+        </curve>
+        <curve>
+            <point x="-0.03" y="0.06"/>
+            <point x="0.0" y="0.06"/>
+            <point x="0.02" y="0.06"/>
+            <point x="0.05" y="0.06"/>
+        </curve>
+    </polygon>
+    <polygon>
+        <curve>
+            <point x="0.05" y="0.02"/>
+            <point x="0.05" y="0.04"/>
+            <point x="0.05" y="0.05"/>
+            <point x="0.05" y="0.06"/>
+        </curve>
+        <curve>
+            <point x="0.05" y="0.06"/>
+            <point x="0.02" y="0.06"/>
+            <point x="0.0" y="0.06"/>
+            <point x="-0.03" y="0.06"/>
+        </curve>
+        <curve>
+            <point x="-0.03" y="0.06"/>
+            <point x="-0.03" y="0.05"/>
+            <point x="-0.03" y="0.04"/>
+            <point x="-0.03" y="0.02"/>
+        </curve>
+        <curve>
+            <point x="-0.03" y="0.02"/>
+            <point x="-0.02" y="0.02"/>
+            <point x="0.02" y="0.02"/>
+            <point x="0.05" y="0.02"/>
+        </curve>
+    </polygon>
+    <polygon>
+        <curve>
+            <point x="0.05" y="-0.02"/>
+            <point x="0.05" y="-0.01"/>
+            <point x="0.05" y="0.01"/>
+            <point x="0.05" y="0.02"/>
+        </curve>
+        <curve>
+            <point x="0.05" y="0.02"/>
+            <point x="0.02" y="0.02"/>
+            <point x="-0.02" y="0.02"/>
+            <point x="-0.03" y="0.02"/>
+        </curve>
+        <curve>
+            <point x="-0.03" y="0.02"/>
+            <point x="-0.04" y="0.01"/>
+            <point x="-0.04" y="-0.01"/>
+            <point x="-0.04" y="-0.02"/>
+        </curve>
+        <curve>
+            <point x="-0.04" y="-0.02"/>
+            <point x="-0.02" y="-0.02"/>
+            <point x="0.02" y="-0.02"/>
+            <point x="0.05" y="-0.02"/>
+        </curve>
+    </polygon>
+    <polygon>
+        <curve>
+            <point x="0.04" y="-0.07"/>
+            <point x="0.04" y="-0.05"/>
+            <point x="0.05" y="-0.03"/>
+            <point x="0.05" y="-0.02"/>
+        </curve>
+        <curve>
+            <point x="0.05" y="-0.02"/>
+            <point x="0.02" y="-0.02"/>
+            <point x="-0.02" y="-0.02"/>
+            <point x="-0.04" y="-0.02"/>
+        </curve>
+        <curve>
+            <point x="-0.04" y="-0.02"/>
+            <point x="-0.04" y="-0.03"/>
+            <point x="-0.04" y="-0.05"/>
+            <point x="-0.05" y="-0.07"/>
+        </curve>
+        <curve>
+            <point x="-0.05" y="-0.07"/>
+            <point x="-0.02" y="-0.07"/>
+            <point x="0.01" y="-0.07"/>
+            <point x="0.04" y="-0.07"/>
+        </curve>
+    </polygon>
+    <polygon>
+        <curve>
+            <point x="0.13" y="0.07"/>
+            <point x="0.14" y="0.09"/>
+            <point x="0.15" y="0.1"/>
+            <point x="0.15" y="0.12"/>
+        </curve>
+        <curve>
+            <point x="0.15" y="0.12"/>
+            <point x="0.12" y="0.12"/>
+            <point x="0.09" y="0.11"/>
+            <point x="0.07" y="0.11"/>
+        </curve>
+        <curve>
+            <point x="0.07" y="0.11"/>
+            <point x="0.06" y="0.1"/>
+            <point x="0.06" y="0.08"/>
+            <point x="0.05" y="0.06"/>
+        </curve>
+        <curve>
+            <point x="0.05" y="0.06"/>
+            <point x="0.07" y="0.06"/>
+            <point x="0.1" y="0.06"/>
+            <point x="0.13" y="0.07"/>
+        </curve>
+    </polygon>
+    <polygon>
+        <curve>
+            <point x="0.13" y="0.02"/>
+            <point x="0.13" y="0.04"/>
+            <point x="0.13" y="0.05"/>
+            <point x="0.13" y="0.07"/>
+        </curve>
+        <curve>
+            <point x="0.13" y="0.07"/>
+            <point x="0.1" y="0.06"/>
+            <point x="0.07" y="0.06"/>
+            <point x="0.05" y="0.06"/>
+        </curve>
+        <curve>
+            <point x="0.05" y="0.06"/>
+            <point x="0.05" y="0.05"/>
+            <point x="0.05" y="0.04"/>
+            <point x="0.05" y="0.02"/>
+        </curve>
+        <curve>
+            <point x="0.05" y="0.02"/>
+            <point x="0.07" y="0.02"/>
+            <point x="0.1" y="0.02"/>
+            <point x="0.13" y="0.02"/>
+        </curve>
+    </polygon>
+    <polygon>
+        <curve>
+            <point x="0.14" y="-0.03"/>
+            <point x="0.13" y="-0.02"/>
+            <point x="0.13" y="0.0"/>
+            <point x="0.13" y="0.02"/>
+        </curve>
+        <curve>
+            <point x="0.13" y="0.02"/>
+            <point x="0.1" y="0.02"/>
+            <point x="0.07" y="0.02"/>
+            <point x="0.05" y="0.02"/>
+        </curve>
+        <curve>
+            <point x="0.05" y="0.02"/>
+            <point x="0.05" y="0.01"/>
+            <point x="0.05" y="-0.01"/>
+            <point x="0.05" y="-0.02"/>
+        </curve>
+        <curve>
+            <point x="0.05" y="-0.02"/>
+            <point x="0.07" y="-0.03"/>
+            <point x="0.1" y="-0.03"/>
+            <point x="0.14" y="-0.03"/>
+        </curve>
+    </polygon>
+    <polygon>
+        <curve>
+            <point x="0.11" y="-0.08"/>
+            <point x="0.12" y="-0.06"/>
+            <point x="0.13" y="-0.04"/>
+            <point x="0.14" y="-0.03"/>
+        </curve>
+        <curve>
+            <point x="0.14" y="-0.03"/>
+            <point x="0.1" y="-0.03"/>
+            <point x="0.07" y="-0.03"/>
+            <point x="0.05" y="-0.02"/>
+        </curve>
+        <curve>
+            <point x="0.05" y="-0.02"/>
+            <point x="0.05" y="-0.03"/>
+            <point x="0.04" y="-0.05"/>
+            <point x="0.04" y="-0.07"/>
+        </curve>
+        <curve>
+            <point x="0.04" y="-0.07"/>
+            <point x="0.07" y="-0.07"/>
+            <point x="0.08" y="-0.08"/>
+            <point x="0.11" y="-0.08"/>
+        </curve>
+    </polygon>
+    <polygon>
+        <curve>
+            <point x="0.2" y="0.06"/>
+            <point x="0.21" y="0.08"/>
+            <point x="0.23" y="0.1"/>
+            <point x="0.24" y="0.13"/>
+        </curve>
+        <curve>
+            <point x="0.24" y="0.13"/>
+            <point x="0.21" y="0.12"/>
+            <point x="0.19" y="0.12"/>
+            <point x="0.15" y="0.12"/>
+        </curve>
+        <curve>
+            <point x="0.15" y="0.12"/>
+            <point x="0.15" y="0.1"/>
+            <point x="0.14" y="0.09"/>
+            <point x="0.13" y="0.07"/>
+        </curve>
+        <curve>
+            <point x="0.13" y="0.07"/>
+            <point x="0.16" y="0.06"/>
+            <point x="0.18" y="0.06"/>
+            <point x="0.2" y="0.06"/>
+        </curve>
+    </polygon>
+    <polygon>
+        <curve>
+            <point x="0.2" y="0.02"/>
+            <point x="0.2" y="0.04"/>
+            <point x="0.2" y="0.05"/>
+            <point x="0.2" y="0.06"/>
+        </curve>
+        <curve>
+            <point x="0.2" y="0.06"/>
+            <point x="0.18" y="0.06"/>
+            <point x="0.16" y="0.06"/>
+            <point x="0.13" y="0.07"/>
+        </curve>
+        <curve>
+            <point x="0.13" y="0.07"/>
+            <point x="0.13" y="0.05"/>
+            <point x="0.13" y="0.04"/>
+            <point x="0.13" y="0.02"/>
+        </curve>
+        <curve>
+            <point x="0.13" y="0.02"/>
+            <point x="0.15" y="0.02"/>
+            <point x="0.18" y="0.02"/>
+            <point x="0.2" y="0.02"/>
+        </curve>
+    </polygon>
+    <polygon>
+        <curve>
+            <point x="0.19" y="-0.03"/>
+            <point x="0.19" y="-0.02"/>
+            <point x="0.2" y="0.0"/>
+            <point x="0.2" y="0.02"/>
+        </curve>
+        <curve>
+            <point x="0.2" y="0.02"/>
+            <point x="0.18" y="0.02"/>
+            <point x="0.15" y="0.02"/>
+            <point x="0.13" y="0.02"/>
+        </curve>
+        <curve>
+            <point x="0.13" y="0.02"/>
+            <point x="0.13" y="0.0"/>
+            <point x="0.13" y="-0.02"/>
+            <point x="0.14" y="-0.03"/>
+        </curve>
+        <curve>
+            <point x="0.14" y="-0.03"/>
+            <point x="0.15" y="-0.03"/>
+            <point x="0.17" y="-0.03"/>
+            <point x="0.19" y="-0.03"/>
+        </curve>
+    </polygon>
+    <polygon>
+        <curve>
+            <point x="0.19" y="-0.07"/>
+            <point x="0.2" y="-0.05"/>
+            <point x="0.19" y="-0.06"/>
+            <point x="0.19" y="-0.03"/>
+        </curve>
+        <curve>
+            <point x="0.19" y="-0.03"/>
+            <point x="0.17" y="-0.03"/>
+            <point x="0.15" y="-0.03"/>
+            <point x="0.14" y="-0.03"/>
+        </curve>
+        <curve>
+            <point x="0.14" y="-0.03"/>
+            <point x="0.13" y="-0.04"/>
+            <point x="0.12" y="-0.06"/>
+            <point x="0.11" y="-0.08"/>
+        </curve>
+        <curve>
+            <point x="0.11" y="-0.08"/>
+            <point x="0.14" y="-0.09"/>
+            <point x="0.19" y="-0.07"/>
+            <point x="0.19" y="-0.07"/>
+        </curve>
+    </polygon>
+    <polygon>
+        <curve>
+            <point x="0.19" y="-0.12"/>
+            <point x="0.19" y="-0.1"/>
+            <point x="0.19" y="-0.09"/>
+            <point x="0.19" y="-0.07"/>
+        </curve>
+        <curve>
+            <point x="0.19" y="-0.07"/>
+            <point x="0.19" y="-0.07"/>
+            <point x="0.14" y="-0.09"/>
+            <point x="0.11" y="-0.08"/>
+        </curve>
+        <curve>
+            <point x="0.11" y="-0.08"/>
+            <point x="0.12" y="-0.1"/>
+            <point x="0.12" y="-0.12"/>
+            <point x="0.13" y="-0.15"/>
+        </curve>
+        <curve>
+            <point x="0.13" y="-0.15"/>
+            <point x="0.15" y="-0.15"/>
+            <point x="0.17" y="-0.12"/>
+            <point x="0.19" y="-0.12"/>
+        </curve>
+    </polygon>
+    <polygon>
+        <curve>
+            <point x="0.18" y="-0.17"/>
+            <point x="0.18" y="-0.17"/>
+            <point x="0.19" y="-0.13"/>
+            <point x="0.19" y="-0.12"/>
+        </curve>
+        <curve>
+            <point x="0.19" y="-0.12"/>
+            <point x="0.17" y="-0.12"/>
+            <point x="0.15" y="-0.15"/>
+            <point x="0.13" y="-0.15"/>
+        </curve>
+        <curve>
+            <point x="0.13" y="-0.15"/>
+            <point x="0.13" y="-0.17"/>
+            <point x="0.13" y="-0.18"/>
+            <point x="0.13" y="-0.21"/>
+        </curve>
+        <curve>
+            <point x="0.13" y="-0.21"/>
+            <point x="0.15" y="-0.19"/>
+            <point x="0.16" y="-0.18"/>
+            <point x="0.18" y="-0.17"/>
+        </curve>
+    </polygon>
+    <polygon>
+        <curve>
+            <point x="0.24" y="0.07"/>
+            <point x="0.26" y="0.09"/>
+            <point x="0.28" y="0.1"/>
+            <point x="0.29" y="0.13"/>
+        </curve>
+        <curve>
+            <point x="0.29" y="0.13"/>
+            <point x="0.28" y="0.13"/>
+            <point x="0.26" y="0.13"/>
+            <point x="0.24" y="0.13"/>
+        </curve>
+        <curve>
+            <point x="0.24" y="0.13"/>
+            <point x="0.23" y="0.1"/>
+            <point x="0.21" y="0.08"/>
+            <point x="0.2" y="0.06"/>
+        </curve>
+        <curve>
+            <point x="0.2" y="0.06"/>
+            <point x="0.21" y="0.06"/>
+            <point x="0.23" y="0.06"/>
+            <point x="0.24" y="0.07"/>
+        </curve>
+    </polygon>
+    <polygon>
+        <curve>
+            <point x="0.24" y="0.02"/>
+            <point x="0.24" y="0.04"/>
+            <point x="0.24" y="0.05"/>
+            <point x="0.24" y="0.07"/>
+        </curve>
+        <curve>
+            <point x="0.24" y="0.07"/>
+            <point x="0.23" y="0.06"/>
+            <point x="0.21" y="0.06"/>
+            <point x="0.2" y="0.06"/>
+        </curve>
+        <curve>
+            <point x="0.2" y="0.06"/>
+            <point x="0.2" y="0.05"/>
+            <point x="0.2" y="0.04"/>
+            <point x="0.2" y="0.02"/>
+        </curve>
+        <curve>
+            <point x="0.2" y="0.02"/>
+            <point x="0.21" y="0.02"/>
+            <point x="0.22" y="0.02"/>
+            <point x="0.24" y="0.02"/>
+        </curve>
+    </polygon>
+    <polygon>
+        <curve>
+            <point x="0.24" y="-0.03"/>
+            <point x="0.24" y="-0.02"/>
+            <point x="0.24" y="0.0"/>
+            <point x="0.24" y="0.02"/>
+        </curve>
+        <curve>
+            <point x="0.24" y="0.02"/>
+            <point x="0.22" y="0.02"/>
+            <point x="0.21" y="0.02"/>
+            <point x="0.2" y="0.02"/>
+        </curve>
+        <curve>
+            <point x="0.2" y="0.02"/>
+            <point x="0.2" y="0.0"/>
+            <point x="0.19" y="-0.02"/>
+            <point x="0.19" y="-0.03"/>
+        </curve>
+        <curve>
+            <point x="0.19" y="-0.03"/>
+            <point x="0.21" y="-0.03"/>
+            <point x="0.22" y="-0.03"/>
+            <point x="0.24" y="-0.03"/>
+        </curve>
+    </polygon>
+    <polygon>
+        <curve>
+            <point x="0.24" y="-0.07"/>
+            <point x="0.24" y="-0.05"/>
+            <point x="0.24" y="-0.06"/>
+            <point x="0.24" y="-0.03"/>
+        </curve>
+        <curve>
+            <point x="0.24" y="-0.03"/>
+            <point x="0.22" y="-0.03"/>
+            <point x="0.21" y="-0.03"/>
+            <point x="0.19" y="-0.03"/>
+        </curve>
+        <curve>
+            <point x="0.19" y="-0.03"/>
+            <point x="0.19" y="-0.06"/>
+            <point x="0.2" y="-0.05"/>
+            <point x="0.19" y="-0.07"/>
+        </curve>
+        <curve>
+            <point x="0.19" y="-0.07"/>
+            <point x="0.21" y="-0.07"/>
+            <point x="0.23" y="-0.07"/>
+            <point x="0.24" y="-0.07"/>
+        </curve>
+    </polygon>
+    <polygon>
+        <curve>
+            <point x="0.24" y="-0.11"/>
+            <point x="0.24" y="-0.1"/>
+            <point x="0.24" y="-0.08"/>
+            <point x="0.24" y="-0.07"/>
+        </curve>
+        <curve>
+            <point x="0.24" y="-0.07"/>
+            <point x="0.23" y="-0.07"/>
+            <point x="0.21" y="-0.07"/>
+            <point x="0.19" y="-0.07"/>
+        </curve>
+        <curve>
+            <point x="0.19" y="-0.07"/>
+            <point x="0.19" y="-0.09"/>
+            <point x="0.19" y="-0.1"/>
+            <point x="0.19" y="-0.12"/>
+        </curve>
+        <curve>
+            <point x="0.19" y="-0.12"/>
+            <point x="0.21" y="-0.12"/>
+            <point x="0.22" y="-0.11"/>
+            <point x="0.24" y="-0.11"/>
+        </curve>
+    </polygon>
+    <polygon>
+        <curve>
+            <point x="0.25" y="-0.17"/>
+            <point x="0.24" y="-0.16"/>
+            <point x="0.25" y="-0.12"/>
+            <point x="0.24" y="-0.11"/>
+        </curve>
+        <curve>
+            <point x="0.24" y="-0.11"/>
+            <point x="0.22" y="-0.11"/>
+            <point x="0.21" y="-0.12"/>
+            <point x="0.19" y="-0.12"/>
+        </curve>
+        <curve>
+            <point x="0.19" y="-0.12"/>
+            <point x="0.19" y="-0.13"/>
+            <point x="0.18" y="-0.17"/>
+            <point x="0.18" y="-0.17"/>
+        </curve>
+        <curve>
+            <point x="0.18" y="-0.17"/>
+            <point x="0.2" y="-0.18"/>
+            <point x="0.22" y="-0.18"/>
+            <point x="0.25" y="-0.17"/>
+        </curve>
+    </polygon>
+    <polygon>
+        <curve>
+            <point x="0.3" y="0.08"/>
+            <point x="0.32" y="0.1"/>
+            <point x="0.33" y="0.1"/>
+            <point x="0.34" y="0.12"/>
+        </curve>
+        <curve>
+            <point x="0.34" y="0.12"/>
+            <point x="0.32" y="0.12"/>
+            <point x="0.31" y="0.12"/>
+            <point x="0.29" y="0.13"/>
+        </curve>
+        <curve>
+            <point x="0.29" y="0.13"/>
+            <point x="0.28" y="0.1"/>
+            <point x="0.26" y="0.09"/>
+            <point x="0.24" y="0.07"/>
+        </curve>
+        <curve>
+            <point x="0.24" y="0.07"/>
+            <point x="0.26" y="0.07"/>
+            <point x="0.28" y="0.08"/>
+            <point x="0.3" y="0.08"/>
+        </curve>
+    </polygon>
+    <polygon>
+        <curve>
+            <point x="0.3" y="0.05"/>
+            <point x="0.3" y="0.06"/>
+            <point x="0.3" y="0.07"/>
+            <point x="0.3" y="0.08"/>
+        </curve>
+        <curve>
+            <point x="0.3" y="0.08"/>
+            <point x="0.28" y="0.08"/>
+            <point x="0.26" y="0.07"/>
+            <point x="0.24" y="0.07"/>
+        </curve>
+        <curve>
+            <point x="0.24" y="0.07"/>
+            <point x="0.26" y="0.06"/>
+            <point x="0.28" y="0.06"/>
+            <point x="0.3" y="0.05"/>
+        </curve>
+    </polygon>
+    <polygon>
+        <curve>
+            <point x="0.28" y="0.03"/>
+            <point x="0.28" y="0.04"/>
+            <point x="0.29" y="0.04"/>
+            <point x="0.3" y="0.05"/>
+        </curve>
+        <curve>
+            <point x="0.3" y="0.05"/>
+            <point x="0.28" y="0.06"/>
+            <point x="0.26" y="0.06"/>
+            <point x="0.24" y="0.07"/>
+        </curve>
+        <curve>
+            <point x="0.24" y="0.07"/>
+            <point x="0.24" y="0.05"/>
+            <point x="0.24" y="0.04"/>
+            <point x="0.24" y="0.02"/>
+        </curve>
+        <curve>
+            <point x="0.24" y="0.02"/>
+            <point x="0.25" y="0.03"/>
+            <point x="0.26" y="0.03"/>
+            <point x="0.28" y="0.03"/>
+        </curve>
+    </polygon>
+    <polygon>
+        <curve>
+            <point x="0.29" y="-0.02"/>
+            <point x="0.29" y="0.0"/>
+            <point x="0.28" y="0.01"/>
+            <point x="0.28" y="0.03"/>
+        </curve>
+        <curve>
+            <point x="0.28" y="0.03"/>
+            <point x="0.26" y="0.03"/>
+            <point x="0.25" y="0.03"/>
+            <point x="0.24" y="0.02"/>
+        </curve>
+        <curve>
+            <point x="0.24" y="0.02"/>
+            <point x="0.24" y="0.0"/>
+            <point x="0.24" y="-0.02"/>
+            <point x="0.24" y="-0.03"/>
+        </curve>
+        <curve>
+            <point x="0.24" y="-0.03"/>
+            <point x="0.25" y="-0.03"/>
+            <point x="0.27" y="-0.03"/>
+            <point x="0.29" y="-0.02"/>
+        </curve>
+    </polygon>
+    <polygon>
+        <curve>
+            <point x="0.3" y="-0.07"/>
+            <point x="0.3" y="-0.05"/>
+            <point x="0.29" y="-0.03"/>
+            <point x="0.29" y="-0.02"/>
+        </curve>
+        <curve>
+            <point x="0.29" y="-0.02"/>
+            <point x="0.27" y="-0.03"/>
+            <point x="0.25" y="-0.03"/>
+            <point x="0.24" y="-0.03"/>
+        </curve>
+        <curve>
+            <point x="0.24" y="-0.03"/>
+            <point x="0.24" y="-0.06"/>
+            <point x="0.24" y="-0.05"/>
+            <point x="0.24" y="-0.07"/>
+        </curve>
+        <curve>
+            <point x="0.24" y="-0.07"/>
+            <point x="0.27" y="-0.06"/>
+            <point x="0.28" y="-0.08"/>
+            <point x="0.3" y="-0.07"/>
+        </curve>
+    </polygon>
+    <polygon>
+        <curve>
+            <point x="0.3" y="-0.15"/>
+            <point x="0.3" y="-0.12"/>
+            <point x="0.3" y="-0.1"/>
+            <point x="0.3" y="-0.07"/>
+        </curve>
+        <curve>
+            <point x="0.3" y="-0.07"/>
+            <point x="0.28" y="-0.08"/>
+            <point x="0.27" y="-0.06"/>
+            <point x="0.24" y="-0.07"/>
+        </curve>
+        <curve>
+            <point x="0.24" y="-0.07"/>
+            <point x="0.24" y="-0.08"/>
+            <point x="0.24" y="-0.1"/>
+            <point x="0.24" y="-0.11"/>
+        </curve>
+        <curve>
+            <point x="0.24" y="-0.11"/>
+            <point x="0.27" y="-0.11"/>
+            <point x="0.28" y="-0.14"/>
+            <point x="0.3" y="-0.15"/>
+        </curve>
+    </polygon>
+    <polygon>
+        <curve>
+            <point x="0.3" y="-0.21"/>
+            <point x="0.3" y="-0.17"/>
+            <point x="0.3" y="-0.17"/>
+            <point x="0.3" y="-0.15"/>
+        </curve>
+        <curve>
+            <point x="0.3" y="-0.15"/>
+            <point x="0.28" y="-0.14"/>
+            <point x="0.27" y="-0.11"/>
+            <point x="0.24" y="-0.11"/>
+        </curve>
+        <curve>
+            <point x="0.24" y="-0.11"/>
+            <point x="0.25" y="-0.12"/>
+            <point x="0.24" y="-0.17"/>
+            <point x="0.25" y="-0.17"/>
+        </curve>
+        <curve>
+            <point x="0.25" y="-0.17"/>
+            <point x="0.26" y="-0.18"/>
+            <point x="0.28" y="-0.18"/>
+            <point x="0.3" y="-0.21"/>
+        </curve>
+    </polygon>
+    <polygon>
+        <curve>
+            <point x="0.34" y="0.06"/>
+            <point x="0.35" y="0.07"/>
+            <point x="0.35" y="0.09"/>
+            <point x="0.36" y="0.1"/>
+        </curve>
+        <curve>
+            <point x="0.36" y="0.1"/>
+            <point x="0.35" y="0.09"/>
+            <point x="0.32" y="0.09"/>
+            <point x="0.3" y="0.08"/>
+        </curve>
+        <curve>
+            <point x="0.3" y="0.08"/>
+            <point x="0.3" y="0.07"/>
+            <point x="0.3" y="0.06"/>
+            <point x="0.3" y="0.05"/>
+        </curve>
+        <curve>
+            <point x="0.3" y="0.05"/>
+            <point x="0.31" y="0.06"/>
+            <point x="0.33" y="0.06"/>
+            <point x="0.34" y="0.06"/>
+        </curve>
+    </polygon>
+    <polygon>
+        <curve>
+            <point x="0.34" y="0.06"/>
+            <point x="0.36" y="0.07"/>
+            <point x="0.4" y="0.07"/>
+            <point x="0.43" y="0.08"/>
+        </curve>
+        <curve>
+            <point x="0.43" y="0.08"/>
+            <point x="0.43" y="0.09"/>
+            <point x="0.44" y="0.1"/>
+            <point x="0.44" y="0.1"/>
+        </curve>
+        <curve>
+            <point x="0.44" y="0.1"/>
+            <point x="0.41" y="0.1"/>
+            <point x="0.38" y="0.1"/>
+            <point x="0.36" y="0.1"/>
+        </curve>
+        <curve>
+            <point x="0.36" y="0.1"/>
+            <point x="0.35" y="0.09"/>
+            <point x="0.35" y="0.07"/>
+            <point x="0.34" y="0.06"/>
+        </curve>
+    </polygon>
+    <polygon>
+        <curve>
+            <point x="0.36" y="0.1"/>
+            <point x="0.35" y="0.1"/>
+            <point x="0.35" y="0.11"/>
+            <point x="0.34" y="0.12"/>
+        </curve>
+        <curve>
+            <point x="0.34" y="0.12"/>
+            <point x="0.33" y="0.1"/>
+            <point x="0.32" y="0.1"/>
+            <point x="0.3" y="0.08"/>
+        </curve>
+        <curve>
+            <point x="0.3" y="0.08"/>
+            <point x="0.32" y="0.09"/>
+            <point x="0.35" y="0.09"/>
+            <point x="0.36" y="0.1"/>
+        </curve>
+    </polygon>
+    <scaleX>1.0</scaleX>
+    <scaleY>1.0</scaleY>
+    <rotationAngle>0.0</rotationAngle>
+    <transX>0.0</transX>
+    <transY>0.0</transY>
+</polygonSet>

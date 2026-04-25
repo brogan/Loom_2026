@@ -122,49 +122,49 @@ class ToolbarPanel(QWidget):
         layout.setContentsMargins(6, 3, 6, 3)
         layout.setSpacing(6)
 
-        # ── 1. Selection modes (a s d f) + mesh build (⌃A) ──────────────────
-        self._btn_sel_point = _btn("selectPoint",   "Point Selection (a)",         checkable=True, toggle=True)
-        self._btn_sel_edge  = _btn("selectEdge",    "Edge Selection (s)",          checkable=True, toggle=True)
-        self._btn_sel_open  = _btn("curve",         "Open Curve Selection (d)",    checkable=True, toggle=True)
-        self._btn_sel_poly  = _btn("selectPolygon", "Polygon Selection (f)",       checkable=True, toggle=True)
-        # Mesh build mode: hover points → 'p' to commit polygon faces (⌃A)
-        self._btn_mesh_build = QPushButton("Mesh")
-        self._btn_mesh_build.setFixedSize(_BTN_SIZE, _BTN_SIZE)
-        self._btn_mesh_build.setToolTip(
-            "Mesh Build Mode — hover over points to sequence them,\n"
-            "'p' to commit polygon face, Backspace to undo last,\n"
-            "Space to clear sequence  (⌃A)"
-        )
-        self._btn_mesh_build.setCheckable(True)
-        for _b in (self._btn_sel_point, self._btn_sel_edge, self._btn_sel_open,
-                   self._btn_sel_poly, self._btn_mesh_build):
+        # ── 1. Selection modes (a s d f) ─────────────────────────────────────
+        self._btn_sel_point = _btn("selectPoint",   "Point Selection (a)",      checkable=True, toggle=True)
+        self._btn_sel_edge  = _btn("selectEdge",    "Edge Selection (s)",       checkable=True, toggle=True)
+        self._btn_sel_open  = _btn("curve",         "Open Curve Selection (d)", checkable=True, toggle=True)
+        self._btn_sel_poly  = _btn("selectPolygon", "Polygon Selection (f)",    checkable=True, toggle=True)
+        for _b in (self._btn_sel_point, self._btn_sel_edge,
+                   self._btn_sel_open, self._btn_sel_poly):
             _b.setProperty("btnGroup", "sel")
 
         self._btn_sel_point.toggled.connect(self._on_point_sel_toggled)
         self._btn_sel_edge.toggled.connect(self._on_edge_sel_toggled)
         self._btn_sel_open.toggled.connect(self._on_open_sel_toggled)
         self._btn_sel_poly.toggled.connect(self._on_poly_sel_toggled)
-        self._btn_mesh_build.toggled.connect(self._on_mesh_build_toggled)
 
         layout.addWidget(_group(self._btn_sel_point, self._btn_sel_edge,
-                                self._btn_sel_open, self._btn_sel_poly,
-                                self._btn_mesh_build))
+                                self._btn_sel_open, self._btn_sel_poly))
 
-        # ── 2. Creation modes (h j k l) ──────────────────────────────────────
-        self._btn_point     = _btn("createPoint",   "Point Mode (h)",                 checkable=True, toggle=True)
+        # ── 2. Creation modes (h j k l ;) ────────────────────────────────────
+        self._btn_point     = _btn("createPoint",   "Point Mode (h)",                      checkable=True, toggle=True)
         self._btn_oval      = _btn("oval",          "Oval Mode — click+drag to create (j)", checkable=True, toggle=True)
-        self._btn_draw_poly = _btn("createPolygon", "Drawing Mode — clear all modes (k)", checkable=True, toggle=True)
-        self._btn_freehand  = _btn("draw",          "Freehand Draw Mode (l)",         checkable=True, toggle=True)
-        for _b in (self._btn_point, self._btn_oval, self._btn_draw_poly, self._btn_freehand):
+        self._btn_draw_poly = _btn("createPolygon", "Polygon and Open Curve mode (k)",      checkable=True, toggle=True)
+        # Mesh build mode: hover points → 'p' to commit polygon faces
+        self._btn_mesh_build = _btn(
+            "mesh",
+            "Mesh Build Mode — hover over points to sequence them,\n"
+            "'p' to commit polygon face, Backspace to undo last,\n"
+            "Space to clear sequence  (l / ⌃A)",
+            checkable=True, toggle=True,
+        )
+        self._btn_freehand  = _btn("draw",          "Freehand Draw Mode (;)",              checkable=True, toggle=True)
+        for _b in (self._btn_point, self._btn_oval, self._btn_draw_poly,
+                   self._btn_mesh_build, self._btn_freehand):
             _b.setProperty("btnGroup", "create")
 
         self._btn_point.toggled.connect(self._on_point_mode_toggled)
         self._btn_oval.toggled.connect(self._on_oval_mode_toggled)
         self._btn_draw_poly.toggled.connect(self._on_drawing_mode_toggled)
+        self._btn_mesh_build.toggled.connect(self._on_mesh_build_toggled)
         self._btn_freehand.toggled.connect(self._on_freehand_toggled)
 
         layout.addWidget(_group(self._btn_point, self._btn_oval,
-                                self._btn_draw_poly, self._btn_freehand))
+                                self._btn_draw_poly, self._btn_mesh_build,
+                                self._btn_freehand))
 
         # ── 3. Detail slider (for freehand) ───────────────────────────────────
         lbl_detail = QLabel("Detail:")

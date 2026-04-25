@@ -1,0 +1,27 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<SpriteConfig version="1.0">
+  <SpriteLibrary name="MainLibrary">
+    <SpriteSet name="goodcat_mesh_mesh_sprite">
+      <Sprite name="goodcat_mesh_mesh_sprite_001">
+        <Shape shapeSet="goodcat_mesh_mesh_sprite" name="goodcat_mesh_mesh_sprite_001"/>
+        <RendererSet name="DefaultSet"/>
+        <Position x="0.0" y="0.0"/>
+        <Scale x="1.0" y="1.0"/>
+        <Rotation>0.0</Rotation>
+        <Animation enabled="true" type="random">
+          <TotalDraws>0</TotalDraws>
+          <ScaleRange xMin="0.0" xMax="0.0" yMin="0.0" yMax="0.0"/>
+          <RotationRange min="0.0" max="0.0"/>
+          <TranslationRange xMin="0.0" xMax="0.0" yMin="0.0" yMax="0.0"/>
+        </Animation>
+        <EditorExtensions enabled="true" animator="random">
+          <RotationOffset x="0.0" y="0.0"/>
+          <ScaleFactor x="1.0" y="1.0"/>
+          <RotationFactor value="0.0"/>
+          <SpeedFactor x="0.0" y="0.0"/>
+          <Geometry sourceType="POLYGON_SET" polygonSet="Mesh" openCurveSet="" pointSet="" ovalSet="" sides="4" subdivisionParamsSet="goodcat_mesh_mesh_Subdivide" shape3D="NONE" p1="4" p2="4" p3="4"/>
+        </EditorExtensions>
+      </Sprite>
+    </SpriteSet>
+  </SpriteLibrary>
+</SpriteConfig>

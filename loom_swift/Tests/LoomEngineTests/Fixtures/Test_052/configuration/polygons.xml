@@ -1,0 +1,19 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<PolygonConfig version="1.0">
+  <PolygonSetLibrary name="MainLibrary">
+    <PolygonSet name="saw">
+      <Source type="file">
+        <Folder>polygonSet</Folder>
+        <Filename>saw.xml</Filename>
+        <PolygonType>SPLINE_POLYGON</PolygonType>
+      </Source>
+    </PolygonSet>
+    <PolygonSet name="rect">
+      <Source type="file">
+        <Folder>polygonSet</Folder>
+        <Filename>rect.xml</Filename>
+        <PolygonType>SPLINE_POLYGON</PolygonType>
+      </Source>
+    </PolygonSet>
+  </PolygonSetLibrary>
+</PolygonConfig>

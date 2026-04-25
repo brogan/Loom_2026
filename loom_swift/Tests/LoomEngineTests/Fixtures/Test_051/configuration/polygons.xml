@@ -1,0 +1,19 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<PolygonConfig version="1.0">
+  <PolygonSetLibrary name="MainLibrary">
+    <PolygonSet name="Mesh">
+      <Source type="file">
+        <Folder>polygonSet</Folder>
+        <Filename>goodcat_mesh_mesh.xml</Filename>
+        <PolygonType>SPLINE_POLYGON</PolygonType>
+      </Source>
+    </PolygonSet>
+    <PolygonSet name="goodcat_mesh_meshaa">
+      <Source type="file">
+        <Folder>polygonSet</Folder>
+        <Filename>goodcat_mesh_meshaa.xml</Filename>
+        <PolygonType>SPLINE_POLYGON</PolygonType>
+      </Source>
+    </PolygonSet>
+  </PolygonSetLibrary>
+</PolygonConfig>

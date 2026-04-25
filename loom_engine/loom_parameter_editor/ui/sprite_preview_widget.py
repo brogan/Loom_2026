@@ -13,7 +13,7 @@ from typing import Optional
 
 from PySide6.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QLabel, QComboBox, QCheckBox
 from PySide6.QtCore import Signal, Qt, QPointF, QRectF
-from PySide6.QtGui import QPainter, QPen, QColor, QPainterPath, QBrush
+from PySide6.QtGui import QPainter, QPen, QColor, QPainterPath, QBrush, QPixmap
 
 
 # ── Data class ────────────────────────────────────────────────────────────────
@@ -267,6 +267,9 @@ class SpritePreviewCanvas(QWidget):
         super().__init__(parent)
         self._sprite_set = None
         self._sprite_library = None            # full library for cross-set rendering
+        # Background pixmap cache: redrawn only when scene changes, not every drag frame
+        self._bg_pixmap: Optional[QPixmap] = None
+        self._bg_dirty: bool = True
         self._selected_index: int = -1
         self._polygon_sets_dir: str = ""
         self._curve_sets_dir: str = ""
@@ -289,23 +292,45 @@ class SpritePreviewCanvas(QWidget):
         self.setMouseTracking(True)
         self.setMinimumSize(300, 300)
 
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        self._bg_dirty = True
+
     # ── Public setters ─────────────────────────────────────────────────────
 
     def set_sprite_set(self, sprite_set, selected_index: int):
         self._sprite_set = sprite_set
         self._selected_index = selected_index
+        self._bg_dirty = True
         self.update()
 
     def set_selected_index(self, index: int):
+        if index == self._selected_index:
+            # Same sprite — params may have changed but background sprites are untouched.
+            # Don't mark the pixmap dirty; just schedule a repaint.
+            self.update()
+            return
         self._selected_index = index
+        self._bg_dirty = True
         self.update()
 
     def set_sprite_library(self, lib):
         self._sprite_library = lib
+        self._bg_dirty = True
         self.update()
 
     def set_directories(self, poly_dir: str, curve_dir: str, point_dir: str,
                         oval_dir: str = "", regular_dir: str = ""):
+        # Short-circuit: don't clear the geo cache or invalidate the pixmap
+        # if the directories haven't actually changed.  _notify_tabs_of_project_dir()
+        # is called on every modified event (including every drag frame), so this
+        # guard is critical to prevent clearing the geo cache on every mouse move.
+        if (poly_dir == self._polygon_sets_dir and
+                curve_dir == self._curve_sets_dir and
+                point_dir == self._point_sets_dir and
+                oval_dir == self._oval_sets_dir and
+                regular_dir == self._regular_polygons_dir):
+            return
         self._polygon_sets_dir = poly_dir
         self._curve_sets_dir = curve_dir
         self._point_sets_dir = point_dir
@@ -313,6 +338,7 @@ class SpritePreviewCanvas(QWidget):
         self._regular_polygons_dir = regular_dir
         self._geo_cache.clear()
         self._polygon_registry = None   # reset so it's rebuilt for the new project
+        self._bg_dirty = True
         self.update()
 
     def _get_polygon_registry(self) -> dict:
@@ -350,6 +376,7 @@ class SpritePreviewCanvas(QWidget):
 
     def set_grid_size(self, pct: float):
         self._grid_size_pct = pct
+        self._bg_dirty = True
         self.update()
 
     def set_snap(self, snap: bool):
@@ -358,6 +385,7 @@ class SpritePreviewCanvas(QWidget):
     def set_canvas_size(self, w: int, h: int):
         self._canvas_w = max(1, w)
         self._canvas_h = max(1, h)
+        self._bg_dirty = True
         self.update()
 
     def set_active_state(self, loc_x: float, loc_y: float,
@@ -506,35 +534,78 @@ class SpritePreviewCanvas(QWidget):
     def _build_path(self, geo: ParsedGeo,
                     loc_x: float, loc_y: float,
                     size_x: float, size_y: float,
-                    rotation_deg: float) -> QPainterPath:
-        """Build a QPainterPath from ParsedGeo in screen space."""
+                    rotation_deg: float,
+                    cr: Optional[tuple] = None) -> tuple:
+        """Build QPainterPath + world-space bbox in a single pass.
+
+        Returns (path, world_bbox) where world_bbox = (min_wx, min_wy, max_wx, max_wy)
+        or None if no points were processed.
+
+        Optimisations vs. the previous version:
+        - cos/sin computed ONCE per call (not once per point)
+        - _transform_point inlined — no per-point Python function call overhead
+        - World bbox accumulated here, eliminating the second pass in _sprite_bbox_world
+        - cr passed in so _canvas_rect() is not called per-point
+        """
+        if cr is None:
+            cr = self._canvas_rect()
+        ccx, ccy, ccw, cch = cr
+
+        # Precompute rotation constants once for all points
+        loc_off_x = loc_x / 100.0
+        loc_off_y = loc_y / 100.0
+        if rotation_deg:
+            _rad = math.radians(rotation_deg)
+            cos_r = math.cos(_rad)
+            sin_r = math.sin(_rad)
+            has_rot = True
+        else:
+            cos_r = sin_r = 0.0
+            has_rot = False
+
+        min_wx = min_wy =  1e18
+        max_wx = max_wy = -1e18
+
+        def pt(px, py):
+            nonlocal min_wx, min_wy, max_wx, max_wy
+            # Inline _transform_point
+            wx = px * 2.0 * size_x
+            wy = -(py * 2.0 * size_y)
+            if has_rot:
+                wx, wy = wx * cos_r - wy * sin_r, wx * sin_r + wy * cos_r
+            wx += loc_off_x
+            wy += loc_off_y
+            # Track world bbox
+            if wx < min_wx: min_wx = wx
+            if wx > max_wx: max_wx = wx
+            if wy < min_wy: min_wy = wy
+            if wy > max_wy: max_wy = wy
+            # World → screen (inline _world_to_screen)
+            return (wx + 1) / 2 * ccw + ccx, (1 - wy) / 2 * cch + ccy
+
         path = QPainterPath()
-
-        def pt_screen(px, py):
-            wx, wy = self._transform_point(px, py, loc_x, loc_y, size_x, size_y, rotation_deg)
-            return self._world_to_screen(wx, wy)
-
         for poly_idx, anchors in enumerate(geo.anchor_polys):
             if not anchors:
                 continue
             beziers = geo.ctrl_polys[poly_idx] if poly_idx < len(geo.ctrl_polys) else []
             closed = geo.closed_flags[poly_idx] if poly_idx < len(geo.closed_flags) else True
-            sx, sy = pt_screen(anchors[0][0], anchors[0][1])
+            sx, sy = pt(anchors[0][0], anchors[0][1])
             path.moveTo(sx, sy)
             if beziers:
                 for c1x, c1y, c2x, c2y, a1x, a1y in beziers:
-                    sc1x, sc1y = pt_screen(c1x, c1y)
-                    sc2x, sc2y = pt_screen(c2x, c2y)
-                    sa1x, sa1y = pt_screen(a1x, a1y)
+                    sc1x, sc1y = pt(c1x, c1y)
+                    sc2x, sc2y = pt(c2x, c2y)
+                    sa1x, sa1y = pt(a1x, a1y)
                     path.cubicTo(sc1x, sc1y, sc2x, sc2y, sa1x, sa1y)
             else:
                 for a in anchors[1:]:
-                    sx, sy = pt_screen(a[0], a[1])
+                    sx, sy = pt(a[0], a[1])
                     path.lineTo(sx, sy)
             if closed:
                 path.closeSubpath()
 
-        return path
+        world_bbox = (min_wx, min_wy, max_wx, max_wy) if min_wx < 1e17 else None
+        return path, world_bbox
 
     def _sprite_bbox_world(self, sprite, geo: Optional[ParsedGeo],
                            idx: int = -1) -> Optional[tuple]:
@@ -589,17 +660,16 @@ class SpritePreviewCanvas(QWidget):
 
     # ── Paint ───────────────────────────────────────────────────────────────
 
-    def paintEvent(self, event):
-        painter = QPainter(self)
-        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+    def _rebuild_bg_pixmap(self, cr: tuple):
+        """Render background fill + grid + all non-selected sprites into _bg_pixmap."""
         w, h = self.width(), self.height()
-        painter.fillRect(0, 0, w, h, QColor(28, 28, 28))
-        self._paint_grid(painter)
-
-        # Collect all enabled sprites from the full library (or just current set as fallback).
-        # Each entry: (sprite, local_idx, is_selected, is_same_set)
-        # local_idx is the sprite's position within _sprite_set; -1 for sprites from other sets.
-        to_draw = []
+        if w <= 0 or h <= 0:
+            return
+        self._bg_pixmap = QPixmap(w, h)
+        bp = QPainter(self._bg_pixmap)
+        bp.setRenderHint(QPainter.RenderHint.Antialiasing)
+        bp.fillRect(0, 0, w, h, QColor(28, 28, 28))
+        self._paint_grid(bp, cr)
         source = self._sprite_library.sprite_sets if self._sprite_library is not None else (
             [self._sprite_set] if self._sprite_set is not None else []
         )
@@ -608,23 +678,46 @@ class SpritePreviewCanvas(QWidget):
             for i, sprite in enumerate(sprite_set.sprites):
                 if not sprite.enabled:
                     continue
-                is_selected = same_set and (i == self._selected_index)
+                if same_set and i == self._selected_index:
+                    continue   # drawn separately each frame
                 local_idx = i if same_set else -1
-                to_draw.append((sprite, local_idx, is_selected, same_set))
+                self._paint_sprite(bp, sprite, local_idx, False, same_set, cr)
+        bp.end()
 
-        # Draw background (non-selected) sprites first so the selected sprite renders on top.
-        for sprite, local_idx, is_selected, is_same_set in to_draw:
-            if not is_selected:
-                self._paint_sprite(painter, sprite, local_idx, False, is_same_set)
-        for sprite, local_idx, is_selected, is_same_set in to_draw:
-            if is_selected:
-                self._paint_sprite(painter, sprite, local_idx, True, is_same_set)
+    def paintEvent(self, event):
+        cr = self._canvas_rect()   # compute once for the whole frame
+
+        # Rebuild the background pixmap only when the scene has changed.
+        # During drag only _active_params changes (selected sprite) — background is untouched.
+        if self._bg_dirty or self._bg_pixmap is None:
+            self._rebuild_bg_pixmap(cr)
+            self._bg_dirty = False
+
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+
+        # O(1) blit of cached background
+        if self._bg_pixmap is not None:
+            painter.drawPixmap(0, 0, self._bg_pixmap)
+
+        # Draw only the selected sprite fresh each frame (O(N_points_selected))
+        if (self._sprite_set is not None
+                and 0 <= self._selected_index < len(self._sprite_set.sprites)):
+            sprite = self._sprite_set.sprites[self._selected_index]
+            self._paint_sprite(painter, sprite, self._selected_index, True, True, cr)
 
         painter.end()
 
     def _paint_sprite(self, painter: QPainter, sprite,
-                      local_idx: int, is_selected: bool, is_same_set: bool):
-        """Draw a single sprite with colour determined by its selection/set status."""
+                      local_idx: int, is_selected: bool, is_same_set: bool,
+                      cr: Optional[tuple] = None):
+        """Draw a single sprite with colour determined by its selection/set status.
+
+        Pass a pre-computed cr=(cx,cy,cw,ch) to avoid recomputing _canvas_rect()
+        for every point across every sprite per frame.
+        """
+        if cr is None:
+            cr = self._canvas_rect()
         geo = (self._active_geo if (is_selected and self._active_geo is not None)
                else self._resolve_geometry(sprite))
         loc_x, loc_y, size_x, size_y, rot = self._get_sprite_display_params(sprite, local_idx)
@@ -636,9 +729,11 @@ class SpritePreviewCanvas(QWidget):
         else:
             color = self._COL_OTHER_SET
 
+        ccx, ccy, ccw, cch = cr
+        world_bbox = None
         if geo is not None and (geo.anchor_polys or geo.dot_positions):
             if geo.anchor_polys:
-                path = self._build_path(geo, loc_x, loc_y, size_x, size_y, rot)
+                path, world_bbox = self._build_path(geo, loc_x, loc_y, size_x, size_y, rot, cr)
                 pen = QPen(color)
                 pen.setWidthF(1.5 if is_selected else 1.0)
                 painter.setPen(pen)
@@ -649,18 +744,21 @@ class SpritePreviewCanvas(QWidget):
                 painter.setBrush(QBrush(color))
                 for dpx, dpy in geo.dot_positions:
                     wx, wy = self._transform_point(dpx, dpy, loc_x, loc_y, size_x, size_y, rot)
-                    dsx, dsy = self._world_to_screen(wx, wy)
+                    dsx = (wx + 1) / 2 * ccw + ccx
+                    dsy = (1 - wy) / 2 * cch + ccy
                     painter.drawEllipse(QPointF(dsx, dsy), 4, 4)
         else:
             self._paint_placeholder(painter, self._sprite_bbox_world(sprite, None, local_idx), color)
 
         if is_selected:
-            bbox = self._sprite_bbox_world(sprite, geo, local_idx)
-            if bbox:
-                self._paint_handles(painter, bbox)
+            # Use bbox from path build if available — avoids a second full pass over all points
+            if world_bbox is None:
+                world_bbox = self._sprite_bbox_world(sprite, geo, local_idx)
+            if world_bbox:
+                self._paint_handles(painter, world_bbox)
 
-    def _paint_grid(self, painter: QPainter):
-        cx, cy, cw, ch = self._canvas_rect()
+    def _paint_grid(self, painter: QPainter, cr: Optional[tuple] = None):
+        cx, cy, cw, ch = cr if cr is not None else self._canvas_rect()
         grid_world = self._grid_size_pct / 200.0
         if grid_world <= 0:
             return

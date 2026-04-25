@@ -122,7 +122,8 @@ class Animator2D(var animating: Boolean, var scale: Vector2D, var rotation: Doub
    }
 
    /**
-   Clone the Animator2D.  Produces an independent copy.
+   Clone the Animator2D.  Produces an independent copy with all randomisation
+   configuration preserved (previously randomFeatures and param maps were not copied).
    @return Animator2D
    */
    override def clone(): Animator2D = {
@@ -130,6 +131,12 @@ class Animator2D(var animating: Boolean, var scale: Vector2D, var rotation: Doub
       val sp: Vector2D = speed.clone()
       val cloned = new Animator2D(animating, sc, rotation, sp)
       cloned.jitter = jitter
+      // Copy randomisation feature flags
+      randomFeatures.foreach { case (k, v) => cloned.randomFeatures(k) = v }
+      // Copy random range params (deep-copy the inner arrays)
+      randomScaleParams.foreach    { case (k, v) => cloned.randomScaleParams(k)    = v.clone() }
+      randomRotationParams.foreach { case (k, v) => cloned.randomRotationParams(k) = v.clone() }
+      randomSpeedParams.foreach    { case (k, v) => cloned.randomSpeedParams(k)    = v.clone() }
       cloned
    }
    def cloneAnimator(): SpriteAnimator = clone()

@@ -434,7 +434,7 @@ class RendererEditor(QWidget):
         blur_row = QHBoxLayout()
         blur_row.addWidget(QLabel("Blur Radius:"))
         self.blur_radius_spin = QSpinBox()
-        self.blur_radius_spin.setRange(0, 10)
+        self.blur_radius_spin.setRange(0, 50)
         self.blur_radius_spin.valueChanged.connect(self._on_brush_changed)
         blur_row.addWidget(self.blur_radius_spin)
         blur_row.addStretch()

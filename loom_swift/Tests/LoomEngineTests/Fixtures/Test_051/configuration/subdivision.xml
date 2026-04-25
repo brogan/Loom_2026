@@ -1,0 +1,43 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<SubdivisionConfig version="1.0">
+  <SubdivisionParamsSet name="goodcat_mesh_mesh_Subdivide">
+    <SubdivisionParams name="A">
+      <SubdivisionType>QUAD</SubdivisionType>
+      <VisibilityRule>ALL</VisibilityRule>
+      <RanMiddle>false</RanMiddle>
+      <RanDiv>100.0</RanDiv>
+      <LineRatios x="0.5" y="0.5"/>
+      <ControlPointRatios x="0.25" y="0.75"/>
+      <InsetTransform>
+        <Translation x="0.0" y="0.0"/>
+        <Scale x="0.5" y="0.5"/>
+        <Rotation x="0.0" y="0.0"/>
+      </InsetTransform>
+      <Continuous>true</Continuous>
+      <PolysTransform>true</PolysTransform>
+      <PolysTransformWhole>false</PolysTransformWhole>
+      <PTW_RandomTranslation>false</PTW_RandomTranslation>
+      <PTW_RandomScale>false</PTW_RandomScale>
+      <PTW_RandomRotation>false</PTW_RandomRotation>
+      <PTW_CommonCentre>false</PTW_CommonCentre>
+      <PTW_Probability>100.0</PTW_Probability>
+      <PTW_Transform>
+        <Translation x="0.0" y="0.0"/>
+        <Scale x="1.0" y="1.0"/>
+        <Rotation x="0.0" y="0.0"/>
+      </PTW_Transform>
+      <PTW_RandomCentreDivisor>100.0</PTW_RandomCentreDivisor>
+      <PTW_RandomTranslationRange>
+        <X min="0.0" max="0.0"/>
+        <Y min="0.0" max="0.0"/>
+      </PTW_RandomTranslationRange>
+      <PTW_RandomScaleRange>
+        <X min="1.0" max="1.0"/>
+        <Y min="1.0" max="1.0"/>
+      </PTW_RandomScaleRange>
+      <PTW_RandomRotationRange min="0.0" max="0.0"/>
+      <PolysTransformPoints>false</PolysTransformPoints>
+      <PTP_Probability>100.0</PTP_Probability>
+    </SubdivisionParams>
+  </SubdivisionParamsSet>
+</SubdivisionConfig>

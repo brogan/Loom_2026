@@ -563,9 +563,9 @@ private class RenderTransform(val renderer: Renderer, var changeType: Int) {
         }
       } else {
         if (renderer.pointSize > pointSizeValues.min) {
-          renderer.pointSize = renderer.strokeWidth - pointSizeValues.increment
+          renderer.pointSize = renderer.pointSize - pointSizeValues.increment
         } else {
-          strokeWidthValues.goingUp = true
+          pointSizeValues.goingUp = true
         }
       }
 

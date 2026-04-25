@@ -1,0 +1,29 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<GlobalConfig version="1.0">
+  <!-- Project identification -->
+  <Name>Test_051</Name>
+  <!-- Canvas dimensions -->
+  <Width>1080</Width>
+  <Height>1080</Height>
+  <!-- Quality and rendering -->
+  <QualityMultiple>1</QualityMultiple>
+  <ScaleImage>false</ScaleImage>
+  <!-- Animation -->
+  <Animating>false</Animating>
+  <DrawBackgroundOnce>true</DrawBackgroundOnce>
+  <!-- Display -->
+  <Fullscreen>false</Fullscreen>
+  <BorderColor r="0" g="0" b="0" a="255"/>
+  <BackgroundColor r="255" g="255" b="255" a="255"/>
+  <OverlayColor r="0" g="0" b="0" a="170"/>
+  <!-- 3D settings -->
+  <ThreeD>false</ThreeD>
+  <CameraViewAngle>120</CameraViewAngle>
+  <!-- Subdivision -->
+  <Subdividing>true</Subdividing>
+  <!-- Serial communication (legacy) -->
+  <Serial>false</Serial>
+  <Port>/dev/ttyUSB0</Port>
+  <Mode>bytes</Mode>
+  <Quantity>4</Quantity>
+</GlobalConfig>

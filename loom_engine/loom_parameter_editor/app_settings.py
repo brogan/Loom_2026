@@ -15,6 +15,8 @@ class AppSettings:
     def __init__(self):
         self.default_projects_dir: str = os.path.expanduser("~/.loom_projects")
         self.recent_projects: list = []
+        self.selected_engine: str = "scala"   # "scala" or "swift"
+        self.loom_app_path: str = ""          # path to LoomApp.app bundle
         self._load()
 
     def _load(self) -> None:
@@ -26,6 +28,8 @@ class AppSettings:
                     "default_projects_dir", self.default_projects_dir
                 )
                 self.recent_projects = data.get("recent_projects", [])
+                self.selected_engine = data.get("selected_engine", self.selected_engine)
+                self.loom_app_path   = data.get("loom_app_path", self.loom_app_path)
             except Exception:
                 pass  # use defaults on any error
 
@@ -36,6 +40,8 @@ class AppSettings:
                 json.dump({
                     "default_projects_dir": self.default_projects_dir,
                     "recent_projects": self.recent_projects,
+                    "selected_engine": self.selected_engine,
+                    "loom_app_path": self.loom_app_path,
                 }, f, indent=2)
         except Exception as e:
             print(f"Warning: could not save editor settings: {e}")

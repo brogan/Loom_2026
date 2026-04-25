@@ -14,7 +14,7 @@ from model.layer_manager import LayerManager
 from model.polygon_manager import PolygonManager
 from model.oval_manager import OvalManager
 from model.cubic_curve_manager import CubicCurveManager
-from model.cubic_point import CubicPoint
+from model.cubic_point import CubicPoint, PointType
 from model.geometry_snapshot import GeometrySnapshot
 from canvas.render_engine import RenderEngine
 from canvas.mouse_handler import MouseHandler
@@ -39,6 +39,11 @@ ROTATE_ABSOLUTE = 2   # around the absolute canvas centre
 SCALE_XY = 0
 SCALE_X  = 1
 SCALE_Y  = 2
+
+# Scale target modes — which point types are affected by the scale slider
+SCALE_TARGET_BOTH     = 0   # anchors + control points (default)
+SCALE_TARGET_ANCHORS  = 1   # anchor points only; control points hold world position
+SCALE_TARGET_CONTROLS = 2   # control points only; anchors hold position
 
 
 def _make_linear_bezier_pts(anchors: list[QPointF]) -> list[QPointF]:
@@ -187,6 +192,8 @@ class BezierWidget(QWidget):
         # ── transform state ───────────────────────────────────────────────────
         # One undo snapshot per slider gesture (reset when slider released)
         self._scale_rotate_snapshot_pending: bool = True
+        # Which point types the scale slider affects (SCALE_TARGET_*)
+        self._scale_target: int = SCALE_TARGET_BOTH
 
         # ── sub-systems ───────────────────────────────────────────────────────
         self._renderer = RenderEngine()
@@ -443,6 +450,13 @@ class BezierWidget(QWidget):
                 self.mode_changed.emit()
                 return
             if key == Qt.Key.Key_L:
+                new_val = not self.mesh_build_mode
+                self._clear_all_modes()
+                if new_val:
+                    self.set_mesh_build_mode(True)
+                self.mode_changed.emit()
+                return
+            if key == Qt.Key.Key_Semicolon:
                 new_val = not self.freehand_mode
                 self._clear_all_modes()
                 self.set_freehand_mode(new_val)
@@ -1872,6 +1886,10 @@ class BezierWidget(QWidget):
 
     # ── slider-based scale ────────────────────────────────────────────────────
 
+    def set_scale_target(self, target: int) -> None:
+        """Set which point types are affected by the scale slider (SCALE_TARGET_*)."""
+        self._scale_target = target
+
     def scale_xy(self, scale: float, axis: int = SCALE_XY) -> None:
         """
         scale: [-100, 100] → factor = 1 + scale/100
@@ -1947,11 +1965,19 @@ class BezierWidget(QWidget):
                         if id(cur) in processed:
                             continue
                         processed.add(id(cur))
-                        ox = cur.orig_pos.x() - cx
-                        oy = cur.orig_pos.y() - cy
-                        nx = ox * factor + cx if do_x else cur.orig_pos.x()
-                        ny = oy * factor + cy if do_y else cur.orig_pos.y()
-                        cur.pos = QPointF(nx, ny)
+                        # Respect scale target: skip moving the wrong point type
+                        # but still mark as processed so BFS weld-links work.
+                        is_anchor  = (cur.type == PointType.ANCHOR)
+                        skip = ((self._scale_target == SCALE_TARGET_ANCHORS  and not is_anchor) or
+                                (self._scale_target == SCALE_TARGET_CONTROLS and     is_anchor))
+                        if not skip:
+                            ox = cur.orig_pos.x() - cx
+                            oy = cur.orig_pos.y() - cy
+                            nx = ox * factor + cx if do_x else cur.orig_pos.x()
+                            ny = oy * factor + cy if do_y else cur.orig_pos.y()
+                            cur.pos = QPointF(nx, ny)
+                        else:
+                            cur.pos = QPointF(cur.orig_pos)
                         if wr is not None:
                             for linked in wr.get_linked(cur):
                                 if id(linked) not in processed:
@@ -2064,11 +2090,19 @@ class BezierWidget(QWidget):
     def _scale_selected_points(self, factor: float) -> None:
         if not self.selected_points:
             return
+        # Centroid is always the centre of all selected points, regardless of
+        # target mode, so the pivot stays stable when switching target.
         cx = sum(p.orig_pos.x() for p in self.selected_points) / len(self.selected_points)
         cy = sum(p.orig_pos.y() for p in self.selected_points) / len(self.selected_points)
         for pt in self.selected_points:
-            ox = pt.orig_pos.x() - cx; oy = pt.orig_pos.y() - cy
-            pt.pos = QPointF(ox * factor + cx, oy * factor + cy)
+            is_anchor = (pt.type == PointType.ANCHOR)
+            skip = ((self._scale_target == SCALE_TARGET_ANCHORS  and not is_anchor) or
+                    (self._scale_target == SCALE_TARGET_CONTROLS and     is_anchor))
+            if skip:
+                pt.pos = QPointF(pt.orig_pos)
+            else:
+                ox = pt.orig_pos.x() - cx; oy = pt.orig_pos.y() - cy
+                pt.pos = QPointF(ox * factor + cx, oy * factor + cy)
 
     def _rotate_selected_points(self, degrees: float, axis_mode: int) -> None:
         abs_c = QPointF(EDGE_OFFSET + GRIDWIDTH / 2.0, EDGE_OFFSET + GRIDHEIGHT / 2.0)
@@ -2106,10 +2140,16 @@ class BezierWidget(QWidget):
                 if pt is None or id(pt) in processed:
                     continue
                 processed.add(id(pt))
-                ox = pt.orig_pos.x() - cx; oy = pt.orig_pos.y() - cy
-                nx = ox * factor + cx if do_x else pt.orig_pos.x()
-                ny = oy * factor + cy if do_y else pt.orig_pos.y()
-                pt.pos = QPointF(nx, ny)
+                is_anchor = (pt.type == PointType.ANCHOR)
+                skip = ((self._scale_target == SCALE_TARGET_ANCHORS  and not is_anchor) or
+                        (self._scale_target == SCALE_TARGET_CONTROLS and     is_anchor))
+                if skip:
+                    pt.pos = QPointF(pt.orig_pos)
+                else:
+                    ox = pt.orig_pos.x() - cx; oy = pt.orig_pos.y() - cy
+                    nx = ox * factor + cx if do_x else pt.orig_pos.x()
+                    ny = oy * factor + cy if do_y else pt.orig_pos.y()
+                    pt.pos = QPointF(nx, ny)
 
     def _rotate_selected_edges(self, degrees: float, axis_mode: int) -> None:
         abs_c = QPointF(EDGE_OFFSET + GRIDWIDTH / 2.0, EDGE_OFFSET + GRIDHEIGHT / 2.0)

@@ -23,8 +23,8 @@ class SplineTri(subdivObj: Subdivision, middle: Vector2D, subP: SubdivisionParam
 
     	val polyArray: Array[Polygon2D] = makePolys(oldSides, internalSides)
 
-        //the centre index is 8 for each of the new quad polys
-    	val centreIndex: Int = 8//the centre in a TRI subdivision (SURELY THIS SHOULD BE 4!!!!!!! - 15 MAY 2022)
+        // centreIndex = 8: centre anchors sit at points[7] and points[8] in both QUAD and TRI layouts
+    	val centreIndex: Int = 8
 
     	if (subP.polysTransform) {//If we are transforming subdivided polygons
     		if (subP.polysTransformPoints) {//transform sets of points in new polys

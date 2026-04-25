@@ -9,6 +9,9 @@ import scala.util.Random
 
 object Randomise {
 
+   // Single shared instance — avoids creating a new Random on every call,
+   // which was wasteful and prevented reproducible seeding.
+   private val rng = new Random()
 
    /**
     Calculate a random Double between an inclusive minimum and a maximum. Can handle any mixture of positive and negative numbers, , as long is min is less than max
@@ -16,11 +19,10 @@ object Randomise {
    @param max
    */
    def range(min: Int, max: Int): Int = {
-      val ranGen = new Random()
       val lo = math.min(min, max)
       val hi = math.max(min, max)
       val diff: Int = hi - lo
-      val ran = (ranGen.nextInt(diff + 1)) + lo
+      val ran = (rng.nextInt(diff + 1)) + lo
       //testRandomRange(min, max, ran)//see internal test method below
       ran
    }
@@ -31,11 +33,10 @@ object Randomise {
    @param max
    */
    def range(min: Double, max: Double): Double = {
-      val ranGen = new Random()//get an instance of Random
       val lo = math.min(min, max)
       val hi = math.max(min, max)
-      val diff: Double = hi - lo//calculate difference between max and min
-      val ran = (ranGen.nextDouble()*diff) + lo//get a random Double, multiply by difference, then add minimum to bring value within specified range
+      val diff: Double = hi - lo
+      val ran = (rng.nextDouble() * diff) + lo
       //testRandomRange(min, max, ran)//see internal test method below
       ran
    }
@@ -86,7 +87,7 @@ object Randomise {
    def arrayOfInts(a: Array[Int]): Array[Int] = {
       var oldArray: Array[Int] = a.clone()
       val newArray: Array[Int] = oldArray.clone()
-      val ranGen = new Random()
+      val ranGen = rng
       for (i <- 0 until a.length) {
          val ran: Int = ranGen.nextInt(oldArray.length)
          newArray(i) = oldArray(ran)
@@ -104,7 +105,7 @@ object Randomise {
    def listOfInts(list: List[Int]): List[Int] = {
       var oldArray: Array[Int] = list.toArray
       val newArray: Array[Int] = list.toArray
-      val ranGen = new Random()
+      val ranGen = rng
       for (i <- 0 until list.length) {
          val ran: Int = ranGen.nextInt(oldArray.length)
          newArray(i) = oldArray(ran)
@@ -122,7 +123,7 @@ object Randomise {
    def arrayOfDoubles(a: Array[Double]): Array[Double] = {
       var oldArray: Array[Double] = a.clone()
       val newArray: Array[Double] = oldArray.clone()
-      val ranGen = new Random()
+      val ranGen = rng
       for (i <- 0 until a.length) {
          val ran: Int = ranGen.nextInt(oldArray.length)
          newArray(i) = oldArray(ran)
@@ -140,7 +141,7 @@ object Randomise {
    def listOfDoubles(list: List[Double]): List[Double] = {
       var oldArray: Array[Double] = list.toArray
       val newArray: Array[Double] = list.toArray
-      val ranGen = new Random()
+      val ranGen = rng
       for (i <- 0 until list.length) {
          val ran: Int = ranGen.nextInt(oldArray.length)
          newArray(i) = oldArray(ran)
@@ -158,7 +159,7 @@ object Randomise {
    def arrayOfStrings(a: Array[String]): Array[String] = {
       var oldArray: Array[String] = a.clone()
       val newArray: Array[String] = oldArray.clone()
-      val ranGen = new Random()
+      val ranGen = rng
       for (i <- 0 until a.length) {
          val ran: Int = ranGen.nextInt(oldArray.length)
          newArray(i) = oldArray(ran)
@@ -176,7 +177,7 @@ object Randomise {
    def listOfStrings(list: List[String]): List[String] = {
       var oldArray: Array[String] = list.toArray
       val newArray: Array[String] = list.toArray
-      val ranGen = new Random()
+      val ranGen = rng
       for (i <- 0 until list.length) {
          val ran: Int = ranGen.nextInt(oldArray.length)
          newArray(i) = oldArray(ran)

@@ -2003,7 +2003,7 @@ class SpriteTab(QWidget):
                 project_dir, 'curveSets', bezier_name + '.xml')
         else:
             self._edit_morph_bezier_saved = os.path.join(
-                morph_dir, bezier_name + '_layer_1.xml')
+                morph_dir, bezier_name + '.xml')
 
         args = [BEZIER_PY,
                 "--save-dir", morph_dir,

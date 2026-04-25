@@ -1,0 +1,11 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<ShapeConfig version="1.0">
+  <ShapeLibrary name="MainLibrary">
+    <ShapeSet name="goodcat_mesh_mesh_sprite">
+      <Shape name="goodcat_mesh_mesh_sprite_001">
+        <Source type="POLYGON_SET" polygonSet="Mesh"/>
+        <SubdivisionParamsSet name="goodcat_mesh_mesh_Subdivide"/>
+      </Shape>
+    </ShapeSet>
+  </ShapeLibrary>
+</ShapeConfig>
