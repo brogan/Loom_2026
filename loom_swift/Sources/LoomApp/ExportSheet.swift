@@ -168,42 +168,51 @@ struct ExportSheet: View {
             savePanel.directoryURL = dir
         }
 
-        guard savePanel.runModal() == .OK, let url = savePanel.url else { return }
+        let fps           = self.fps
+        let duration      = self.duration
+        let codec         = self.codec
+        let shouldRestart = self.restartFromZero
+        let engine        = self.engine
 
-        isExporting = true
-        exportError = nil
-        controller.beginExport()
+        let beginExportTask: (URL) -> Void = { url in
+            isExporting = true
+            exportError = nil
+            controller.beginExport()
 
-        let settings = VideoExporter.Settings(
-            fps:       fps,
-            duration:  duration,
-            codec:     codec,
-            outputURL: url
-        )
+            let settings = VideoExporter.Settings(
+                fps:       fps,
+                duration:  duration,
+                codec:     codec,
+                outputURL: url
+            )
 
-        let progressCallback: @Sendable (Double) -> Void = { [weak controller] p in
-            Task { @MainActor in controller?.exportProgress = p }
+            let progressCallback: @Sendable (Double) -> Void = { [weak controller] p in
+                Task { @MainActor in controller?.exportProgress = p }
+            }
+
+            Task {
+                do {
+                    if shouldRestart { try engine.reset() }
+                    let exporter = VideoExporter()
+                    try await exporter.export(engine: engine,
+                                              settings: settings,
+                                              progress: progressCallback)
+                    controller.endExport()
+                    isExporting = false
+                    dismiss()
+                } catch {
+                    exportError = error.localizedDescription
+                    controller.endExport(error: error)
+                    isExporting = false
+                }
+            }
         }
 
-        let shouldRestart = restartFromZero
-
-        Task {
-            do {
-                if shouldRestart {
-                    try engine.reset()
-                }
-                let exporter = VideoExporter()
-                try await exporter.export(engine: engine,
-                                          settings: settings,
-                                          progress: progressCallback)
-                controller.endExport()
-                isExporting = false
-                dismiss()
-            } catch {
-                exportError = error.localizedDescription
-                controller.endExport(error: error)
-                isExporting = false
-            }
+        // Use begin() rather than runModal() to avoid blocking the SwiftUI
+        // event loop (runModal() causes the filename field to lose focus).
+        savePanel.begin { response in
+            guard response == .OK, let url = savePanel.url else { return }
+            beginExportTask(url)
         }
     }
 

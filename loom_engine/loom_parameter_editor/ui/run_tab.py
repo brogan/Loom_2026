@@ -8,6 +8,7 @@ from PySide6.QtWidgets import (
     QPlainTextEdit, QCheckBox, QLineEdit, QFileDialog, QGroupBox, QSpinBox
 )
 from PySide6.QtCore import Signal, QProcess, QProcessEnvironment
+from PySide6.QtGui import QShortcut, QKeySequence
 
 
 class RunTab(QWidget):
@@ -118,13 +119,16 @@ class RunTab(QWidget):
         capture_layout = QVBoxLayout(capture_group)
 
         btn_row = QHBoxLayout()
-        self._still_btn = QPushButton("Save Still")
+        self._still_btn = QPushButton("Save Still  [F9]")
         self._still_btn.clicked.connect(self._on_capture_still)
         btn_row.addWidget(self._still_btn)
 
-        self._video_btn = QPushButton("Save Animation")
+        self._video_btn = QPushButton("Save Animation  [F10]")
         self._video_btn.clicked.connect(self._on_capture_video)
         btn_row.addWidget(self._video_btn)
+
+        QShortcut(QKeySequence("F9"),  self, activated=self._on_capture_still)
+        QShortcut(QKeySequence("F10"), self, activated=self._on_capture_video)
 
         btn_row.addStretch()
         capture_layout.addLayout(btn_row)

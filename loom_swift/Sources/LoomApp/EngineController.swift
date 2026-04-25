@@ -17,14 +17,17 @@ final class EngineController: ObservableObject, @unchecked Sendable {
 
     // MARK: - Published state
 
-    @Published private(set) var engine:         Engine?
-    @Published private(set) var projectURL:     URL?
-    @Published private(set) var loadError:      String?
-    @Published private(set) var isExporting:    Bool           = false
-    @Published          var    exportProgress:  Double         = 0
-    @Published          var    exportError:     String?
-    @Published private(set) var recentProjects: [URL]          = []
-    @Published private(set) var playbackState:  PlaybackState  = .playing
+    @Published private(set) var engine:              Engine?
+    @Published private(set) var projectURL:          URL?
+    @Published private(set) var loadError:           String?
+    @Published private(set) var isExporting:         Bool           = false
+    @Published          var    exportProgress:       Double         = 0
+    @Published          var    exportError:          String?
+    @Published private(set) var recentProjects:      [URL]          = []
+    @Published private(set) var playbackState:       PlaybackState  = .playing
+    /// Set to `true` by the sentinel timer when `.capture_video` is detected;
+    /// ContentView observes this to present the ExportSheet.
+    @Published          var    requestingExportSheet: Bool           = false
 
     // MARK: - Constants
 
@@ -43,7 +46,10 @@ final class EngineController: ObservableObject, @unchecked Sendable {
 
     // MARK: - Private
 
-    private var sentinelTimer: Timer?
+    private var sentinelTimer:    Timer?
+    /// True only when the `.pause` sentinel file caused the current pause.
+    /// Prevents the sentinel timer from overriding a pause initiated by the user.
+    private var pausedBySentinel: Bool = false
 
     // MARK: - Init
 
@@ -81,12 +87,14 @@ final class EngineController: ObservableObject, @unchecked Sendable {
 
     func play() {
         guard engine != nil else { return }
-        playbackState = .playing
+        pausedBySentinel = false
+        playbackState    = .playing
     }
 
     func pause() {
         guard engine != nil else { return }
-        playbackState = .paused
+        pausedBySentinel = false
+        playbackState    = .paused
     }
 
     /// Stop and reset to frame 0.  The `RenderSurfaceNSView` observes the state
@@ -207,13 +215,45 @@ final class EngineController: ObservableObject, @unchecked Sendable {
             reload()
         }
 
-        // .pause — presence means paused; absence means playing
-        let pauseURL = dir.appendingPathComponent(".pause")
+        // .pause — presence means paused; absence means playing.
+        // Only the sentinel resumes a sentinel-driven pause; user-initiated
+        // pauses are left alone so the Play/Pause button works correctly.
+        let pauseURL   = dir.appendingPathComponent(".pause")
         let shouldPause = fm.fileExists(atPath: pauseURL.path)
         if shouldPause && playbackState == .playing {
-            playbackState = .paused
-        } else if !shouldPause && playbackState == .paused {
-            playbackState = .playing
+            pausedBySentinel = true
+            playbackState    = .paused
+        } else if !shouldPause && playbackState == .paused && pausedBySentinel {
+            pausedBySentinel = false
+            playbackState    = .playing
         }
+
+        // .capture_still — delete then save a PNG to renders/stills/
+        let stillURL = dir.appendingPathComponent(".capture_still")
+        if fm.fileExists(atPath: stillURL.path) {
+            try? fm.removeItem(at: stillURL)
+            saveSentinelStill()
+        }
+
+        // .capture_video — delete then ask ContentView to show ExportSheet
+        let videoURL = dir.appendingPathComponent(".capture_video")
+        if fm.fileExists(atPath: videoURL.path) {
+            try? fm.removeItem(at: videoURL)
+            requestingExportSheet = true
+        }
+    }
+
+    private func saveSentinelStill() {
+        guard let eng = engine else { return }
+        let dir = stillRendersDirectory()
+            ?? projectURL
+            ?? FileManager.default.homeDirectoryForCurrentUser
+        let name = eng.globalConfig.name.isEmpty
+            ? (projectURL?.lastPathComponent ?? "loom")
+            : eng.globalConfig.name
+        let f = DateFormatter()
+        f.dateFormat = "yyyyMMdd_HHmmss"
+        let url = dir.appendingPathComponent("\(name)_\(f.string(from: Date())).png")
+        try? StillExporter.exportPNG(engine: eng, to: url)
     }
 }

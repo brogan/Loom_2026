@@ -379,6 +379,12 @@ public struct SpriteScene: Sendable {
     ) {
         guard !instance.basePolygons.isEmpty else { return }
 
+        // Stop drawing once the per-sprite draw-cycle limit is reached —
+        // matching Scala's Sprite2D.draw() check on spriteTotalDraws.
+        // totalDraws == 0 means draw indefinitely.
+        let anim = instance.def.animation
+        guard anim.totalDraws == 0 || instance.state.drawCycle < anim.totalDraws else { return }
+
         // 1. Morph interpolation
         let morphed = MorphInterpolator.interpolate(
             base:        instance.basePolygons,

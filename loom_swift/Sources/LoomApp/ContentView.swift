@@ -28,6 +28,13 @@ struct ContentView: View {
         }
         // Reset frame counter when a new project is loaded.
         .onChange(of: controller.projectURL) { _, _ in currentFrame = 0 }
+        // Python editor ".capture_video" sentinel → present export sheet.
+        .onChange(of: controller.requestingExportSheet) { _, requested in
+            if requested {
+                showExportSheet = true
+                controller.requestingExportSheet = false
+            }
+        }
     }
 
     // MARK: - Landing view (no project loaded)
@@ -200,15 +207,25 @@ struct ContentView: View {
         panel.prompt               = "Save Frame"
         panel.directoryURL         = controller.stillRendersDirectory()
 
-        guard panel.runModal() == .OK, let url = panel.url else { return }
-
-        do {
-            try StillExporter.exportPNG(engine: engine, to: url)
-        } catch {
-            let alert = NSAlert()
-            alert.messageText     = "Still export failed"
-            alert.informativeText = error.localizedDescription
-            alert.runModal()
+        // Use beginSheetModal so the panel attaches to the app window as a
+        // proper sheet — runModal() creates a blocking nested event loop that
+        // fights SwiftUI's focus system and causes the filename field to lose
+        // focus immediately after clicking it.
+        let handler: (NSApplication.ModalResponse) -> Void = { response in
+            guard response == .OK, let url = panel.url else { return }
+            do {
+                try StillExporter.exportPNG(engine: engine, to: url)
+            } catch {
+                let alert = NSAlert()
+                alert.messageText     = "Still export failed"
+                alert.informativeText = error.localizedDescription
+                alert.runModal()
+            }
+        }
+        if let window = NSApplication.shared.keyWindow {
+            panel.beginSheetModal(for: window, completionHandler: handler)
+        } else {
+            panel.begin(completionHandler: handler)
         }
     }
 
