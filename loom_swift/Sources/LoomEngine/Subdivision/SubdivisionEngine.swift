@@ -22,11 +22,20 @@ public enum SubdivisionEngine {
     ) -> [Polygon2D] {
         guard !polygon.isBypassType else { return [polygon] }
 
-        let pts = polygon.points
-        let n   = pts.count / 4
-        guard n > 0 else { return [polygon] }
+        // LINE polygons: sidesTotal = vertex count; convert to spline for algorithm reuse.
+        // Mirrors Scala: LINE_POLYGON → sidesTotal = points.length; getCenter = average of all pts.
+        let pts: [Vector2D]
+        let n: Int
+        if polygon.type == .line {
+            n = polygon.points.count
+            guard n > 0 else { return [polygon] }
+            pts = BezierMath.lineToSplinePoints(polygon.points)
+        } else {
+            pts = polygon.points
+            n = pts.count / 4
+            guard n > 0 else { return [polygon] }
+        }
 
-        // Optionally jitter the polygon centre
         // Optionally jitter the polygon centre (affects QUAD and TRI internal edges)
         let centre = jitteredCentre(
             pts: pts, enabled: params.ranMiddle, div: params.ranDiv, rng: &rng

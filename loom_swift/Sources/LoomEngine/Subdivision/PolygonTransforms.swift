@@ -124,7 +124,17 @@ enum PolygonTransforms {
         params: SubdivisionParams,
         rng: inout G
     ) -> [Polygon2D] {
-        polygons.map { poly in
+        if let ts = params.ptpTransformSet, ts.hasAnyEnabled {
+            return polygons.map { poly in
+                guard poly.visible else { return poly }
+                guard Double.random(in: 0..<100, using: &rng) < params.pTP_probability
+                else { return poly }
+                return applyPTPTransformSet(poly, transformSet: ts)
+            }
+        }
+
+        // Legacy: simple random-translation path.
+        return polygons.map { poly in
             guard poly.visible else { return poly }
             guard Double.random(in: 0..<100, using: &rng) < params.pTP_probability else { return poly }
 
@@ -135,6 +145,188 @@ enum PolygonTransforms {
             }
             return Polygon2D(points: pts, type: poly.type,
                              pressures: poly.pressures, visible: poly.visible)
+        }
+    }
+
+    // MARK: - Structured PTP (ExteriorAnchors + CentralAnchors)
+
+    /// Apply structured anchor transforms to a single polygon.
+    ///
+    /// Replicates Scala's `PointsTransform.transformPoints` which calls
+    /// `ExteriorAnchors.transform` and `CentralAnchors.transform` on the child
+    /// polygon array, each using a shared `centreIndex`.
+    ///
+    /// `centreIndex` is derived from point count:
+    ///  - 12 pts (3-sided TRI_STAR): index 4  (Scala: `val centreIndex = 4`)
+    ///  - 16 pts (4-sided QUAD/TRI): index 8  (Scala: `val centreIndex = points.length/2`)
+    private static func applyPTPTransformSet(_ poly: Polygon2D,
+                                              transformSet ts: PTPTransformSet) -> Polygon2D {
+        let n = poly.points.count
+        guard n >= 12 else { return poly }
+        let centreIndex = n == 12 ? 4 : n / 2
+        guard centreIndex < n else { return poly }
+
+        var pts = poly.points
+
+        if ts.exteriorAnchors.enabled {
+            applyExteriorAnchors(&pts, centreIndex: centreIndex, config: ts.exteriorAnchors)
+        }
+        if ts.centralAnchors.enabled {
+            guard centreIndex >= 1 && centreIndex + 1 < n else { return poly }
+            applyCentralAnchors(&pts, centreIndex: centreIndex, config: ts.centralAnchors,
+                                numSidesPerPoly: n / 4)
+        }
+
+        return Polygon2D(points: pts, type: poly.type,
+                         pressures: poly.pressures, visible: poly.visible)
+    }
+
+    /// Spike exterior anchor pairs away from the centre reference point.
+    ///
+    /// Mirrors Scala `ExteriorAnchors.spike`:
+    ///  - Collects all anchor endpoints (i%4==0 or i%4==3) into pairs.
+    ///  - For each pair: `spikePos = lerp(pair[0], pts[centreIndex], spikeFactor)`.
+    ///  - Negative spikeFactor → anchor moves away from centrePoint (outward spike).
+    ///  - SYMMETRICAL type: both pair members set to spikePos.
+    private static func applyExteriorAnchors(_ pts: inout [Vector2D],
+                                              centreIndex: Int,
+                                              config ea: ExteriorAnchorsTransform) {
+        let n = pts.count
+        let centre = pts[centreIndex]
+
+        // Collect anchor indices (i%4==0 or i%4==3).
+        var anchorIdx = [Int]()
+        for i in 0..<n where i % 4 == 0 || i % 4 == 3 { anchorIdx.append(i) }
+        guard !anchorIdx.isEmpty else { return }
+
+        // Build pairs: [last, first] then [1,2], [3,4], ...
+        var pairs = [(Int, Int)]()
+        pairs.append((anchorIdx.last!, anchorIdx.first!))
+        var k = 1
+        while k < anchorIdx.count - 1 {
+            pairs.append((anchorIdx[k], anchorIdx[k + 1]))
+            k += 2
+        }
+
+        // Optionally filter by whichSpike setting.
+        // CORNERS = only the first pair (the corner anchor); MIDDLES = all others.
+        let activePairs: [(Int, Int)]
+        switch ea.whichSpike {
+        case "CORNERS":
+            activePairs = pairs.isEmpty ? [] : [pairs[0]]
+        case "MIDDLES":
+            activePairs = pairs.count > 1 ? Array(pairs.dropFirst()) : []
+        default: // "ALL"
+            activePairs = pairs
+        }
+
+        for (i0, i1) in activePairs {
+            let spikeFactor = ea.spikeFactor
+            let spikePos    = Vector2D.lerp(pts[i0], centre, t: spikeFactor)
+            let diff        = spikePos - pts[i0]
+
+            switch ea.spikeAxis {
+            case "X":
+                let sp = Vector2D(x: spikePos.x, y: pts[i0].y)
+                let d  = Vector2D(x: diff.x, y: 0)
+                applySpike(&pts, i0: i0, i1: i1, spikePos: sp, diff: d, type: ea.spikeType)
+            case "Y":
+                let sp = Vector2D(x: pts[i0].x, y: spikePos.y)
+                let d  = Vector2D(x: 0, y: diff.y)
+                applySpike(&pts, i0: i0, i1: i1, spikePos: sp, diff: d, type: ea.spikeType)
+            default: // "XY"
+                applySpike(&pts, i0: i0, i1: i1, spikePos: spikePos, diff: diff,
+                           type: ea.spikeType)
+            }
+        }
+    }
+
+    private static func applySpike(_ pts: inout [Vector2D],
+                                    i0: Int, i1: Int,
+                                    spikePos: Vector2D, diff: Vector2D,
+                                    type spikeType: String) {
+        switch spikeType {
+        case "RIGHT":
+            pts[i0] = spikePos
+        case "LEFT":
+            pts[i1] = spikePos
+        default: // "SYMMETRICAL"
+            pts[i0] = spikePos
+            pts[i1] = spikePos
+        }
+        _ = diff  // used only when cpsFollow is true (not yet needed)
+    }
+
+    /// Tear central anchor pairs toward an outside reference point.
+    ///
+    /// Mirrors Scala `CentralAnchors.tearCentre`:
+    ///  - Centre anchors: pts[centreIndex-1] and pts[centreIndex].
+    ///  - Outside reference for TRI+DIAGONAL: midpoint(pts[0], pts[3]).
+    ///  - `tearPos = lerp(centreAnchor, outsideRef, tearFactor)`.
+    ///  - XY mode: both centre anchors set to tearPos.
+    private static func applyCentralAnchors(_ pts: inout [Vector2D],
+                                             centreIndex: Int,
+                                             config ca: CentralAnchorsTransform,
+                                             numSidesPerPoly: Int) {
+        let a0 = pts[centreIndex - 1]  // first centre anchor
+        let n  = pts.count
+
+        // Compute outside reference (matches Scala's getOutsideRefs).
+        let outsideRef: Vector2D
+        if numSidesPerPoly == 3 {
+            // TRI_STAR: diagonal = midpoint of pts[0] (outerAnch) and pts[3] (prevMid).
+            switch ca.tearDirection {
+            case "LEFT":
+                outsideRef = pts[0]
+            case "RIGHT":
+                outsideRef = pts[3]
+            default: // "DIAGONAL"
+                outsideRef = Vector2D.lerp(pts[0], pts[3], t: 0.5)
+            }
+        } else {
+            // QUAD: diagonal = pts[0]; left/right = adjacent split points.
+            switch ca.tearDirection {
+            case "LEFT":
+                let nextIdx = min(centreIndex + 4, n - 1)
+                outsideRef = pts[nextIdx]
+            case "RIGHT":
+                let prevIdx = max(centreIndex - 4, 0)
+                outsideRef = pts[prevIdx]
+            default: // "DIAGONAL"
+                outsideRef = pts[0]
+            }
+        }
+
+        let tearPos = Vector2D.lerp(a0, outsideRef, t: ca.tearFactor)
+        let diff    = tearPos - a0
+
+        switch ca.tearAxis {
+        case "X":
+            let tp = Vector2D(x: tearPos.x, y: a0.y)
+            pts[centreIndex - 1] = tp
+            pts[centreIndex]     = tp
+        case "Y":
+            let tp = Vector2D(x: a0.x, y: tearPos.y)
+            pts[centreIndex - 1] = tp
+            pts[centreIndex]     = tp
+        default: // "XY"
+            pts[centreIndex - 1] = tearPos
+            pts[centreIndex]     = tearPos
+        }
+
+        if ca.cpsFollow {
+            // Move control points flanking the centre: centreIndex-2 and centreIndex+1
+            let ci2 = centreIndex - 2
+            let ci1 = centreIndex + 1
+            let mult = ca.cpsFollowMultiplier
+            if ci2 >= 0 {
+                pts[ci2] = pts[ci2].translated(by: Vector2D(x: diff.x * mult,
+                                                             y: diff.y * mult))
+            }
+            if ci1 < n {
+                pts[ci1] = pts[ci1].translated(by: Vector2D(x: diff.x * mult,
+                                                             y: diff.y * mult))
+            }
         }
     }
 

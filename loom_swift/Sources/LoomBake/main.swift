@@ -2,9 +2,27 @@ import Foundation
 import LoomEngine
 
 // Usage: LoomBake <input_path> <subdiv_xml> <set_name> <output_path>
+//    or: LoomBake --project <project_dir> <output_png>
 let args = CommandLine.arguments
+
+// Project-render mode: render a full Loom project to a PNG still.
+if args.count == 4 && args[1] == "--project" {
+    let projectDir = URL(fileURLWithPath: args[2])
+    let outputURL  = URL(fileURLWithPath: args[3])
+    do {
+        let engine = try Engine(projectDirectory: projectDir)
+        try StillExporter.exportPNG(engine: engine, to: outputURL)
+        print("[LoomBake] Rendered \(outputURL.path)")
+    } catch {
+        fputs("[LoomBake] Error: \(error)\n", stderr)
+        exit(1)
+    }
+    exit(0)
+}
+
 guard args.count == 5 else {
     fputs("Usage: LoomBake <input_path> <subdiv_xml> <set_name> <output_path>\n", stderr)
+    fputs("   or: LoomBake --project <project_dir> <output_png>\n", stderr)
     exit(1)
 }
 

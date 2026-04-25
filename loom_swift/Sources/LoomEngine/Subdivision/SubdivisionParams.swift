@@ -68,6 +68,9 @@ public struct SubdivisionParams: Equatable, Codable, Sendable {
     public var polysTransformPoints: Bool
     /// % chance any given polygon has its points transformed.
     public var pTP_probability: Double
+    /// Structured anchor transforms (ExteriorAnchors + CentralAnchors).
+    /// When non-nil, used in place of the legacy random-translation PTP path.
+    public var ptpTransformSet: PTPTransformSet?
 
     // MARK: - Init
 
@@ -94,7 +97,8 @@ public struct SubdivisionParams: Equatable, Codable, Sendable {
         pTW_randomScaleRange: VectorRange     = .one,
         pTW_randomRotationRange: FloatRange   = .zero,
         polysTransformPoints: Bool            = false,
-        pTP_probability: Double               = 100
+        pTP_probability: Double               = 100,
+        ptpTransformSet: PTPTransformSet?     = nil
     ) {
         self.name                       = name
         self.subdivisionType            = subdivisionType
@@ -119,6 +123,7 @@ public struct SubdivisionParams: Equatable, Codable, Sendable {
         self.pTW_randomRotationRange    = pTW_randomRotationRange
         self.polysTransformPoints       = polysTransformPoints
         self.pTP_probability            = pTP_probability
+        self.ptpTransformSet            = ptpTransformSet
     }
 
     // MARK: - Convenience

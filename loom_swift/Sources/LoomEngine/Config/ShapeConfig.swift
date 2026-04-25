@@ -36,6 +36,8 @@ public struct ShapeDef: Codable, Sendable {
     public var pointSetName: String
     /// Non-empty when `sourceType == .ovalSet`.
     public var ovalSetName: String
+    /// Number of sides when `sourceType == .regularPolygon`.
+    public var regularPolygonSides: Int
     /// Optional name of the `SubdivisionParamsSet` applied to this shape.
     public var subdivisionParamsSetName: String
 
@@ -46,6 +48,7 @@ public struct ShapeDef: Codable, Sendable {
         openCurveSetName: String      = "",
         pointSetName: String          = "",
         ovalSetName: String           = "",
+        regularPolygonSides: Int      = 0,
         subdivisionParamsSetName: String = ""
     ) {
         self.name                    = name
@@ -54,6 +57,7 @@ public struct ShapeDef: Codable, Sendable {
         self.openCurveSetName        = openCurveSetName
         self.pointSetName            = pointSetName
         self.ovalSetName             = ovalSetName
+        self.regularPolygonSides     = regularPolygonSides
         self.subdivisionParamsSetName = subdivisionParamsSetName
     }
 }

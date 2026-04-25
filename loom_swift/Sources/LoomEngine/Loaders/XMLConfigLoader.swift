@@ -137,6 +137,9 @@ public enum XMLConfigLoader {
                 // or <Source type="POLYGON_SET"><PolygonSet>Name</PolygonSet></Source>
                 def.polygonSetName = src.attr("polygonSet")
                     ?? src.childText("PolygonSet")
+            case .regularPolygon:
+                // <Source type="REGULAR_POLYGON" sides="7"/>
+                def.regularPolygonSides = Int(src.attr("sides") ?? "0") ?? 0
             case .openCurveSet:
                 def.openCurveSetName = src.attr("openCurveSet")
                     ?? src.childText("OpenCurveSet")
@@ -347,7 +350,76 @@ public enum XMLConfigLoader {
             )
         }
 
+        // PTP structured transforms: <TransformSet><ExteriorAnchors .../><CentralAnchors .../></TransformSet>
+        if let tsNode = node.child(named: "TransformSet") {
+            p.ptpTransformSet = parseTransformSet(tsNode)
+        }
+
         return p
+    }
+
+    private static func parseTransformSet(_ node: XMLNode) -> PTPTransformSet {
+        var ts = PTPTransformSet()
+        if let eaNode = node.child(named: "ExteriorAnchors") {
+            ts.exteriorAnchors = parseExteriorAnchors(eaNode)
+        }
+        if let caNode = node.child(named: "CentralAnchors") {
+            ts.centralAnchors = parseCentralAnchors(caNode)
+        }
+        return ts
+    }
+
+    private static func parseExteriorAnchors(_ node: XMLNode) -> ExteriorAnchorsTransform {
+        return ExteriorAnchorsTransform(
+            enabled:              (node.attr("enabled") ?? "false") == "true",
+            probability:          node.childDouble("Probability",          default: 100),
+            spikeFactor:          node.childDouble("SpikeFactor",          default: -0.3),
+            whichSpike:           node.childText("WhichSpike",             default: "ALL"),
+            spikeType:            node.childText("SpikeType",              default: "SYMMETRICAL"),
+            spikeAxis:            node.childText("SpikeAxis",              default: "XY"),
+            randomSpike:          node.childBool("RandomSpike",            default: false),
+            randomSpikeFactor:    parseFloatRangeAttr(node, name: "RandomSpikeFactor",
+                                                      defMin: -0.2, defMax: 0.2),
+            cpsFollow:            node.childBool("CpsFollow",              default: false),
+            cpsFollowMultiplier:  node.childDouble("CpsFollowMultiplier",  default: 2.0),
+            randomCpsFollow:      node.childBool("RandomCpsFollow",        default: false),
+            randomCpsFollowRange: parseFloatRangeAttr(node, name: "RandomCpsFollowRange",
+                                                      defMin: -1.5, defMax: 1.5),
+            cpsSqueeze:           node.childBool("CpsSqueeze",             default: false),
+            cpsSqueezeFactor:     node.childDouble("CpsSqueezeFactor",     default: -0.2),
+            randomCpsSqueeze:     node.childBool("RandomCpsSqueeze",       default: false),
+            randomCpsSqueezeRange: parseFloatRangeAttr(node, name: "RandomCpsSqueezeRange",
+                                                       defMin: -0.5, defMax: 0.5)
+        )
+    }
+
+    private static func parseCentralAnchors(_ node: XMLNode) -> CentralAnchorsTransform {
+        return CentralAnchorsTransform(
+            enabled:              (node.attr("enabled") ?? "false") == "true",
+            probability:          node.childDouble("Probability",          default: 100),
+            tearFactor:           node.childDouble("TearFactor",           default: 0.2),
+            tearAxis:             node.childText("TearAxis",               default: "XY"),
+            tearDirection:        node.childText("TearDirection",          default: "DIAGONAL"),
+            randomTear:           node.childBool("RandomTear",             default: false),
+            randomTearFactor:     parseFloatRangeAttr(node, name: "RandomTearFactor",
+                                                      defMin: -0.2, defMax: 0.2),
+            cpsFollow:            node.childBool("CpsFollow",              default: false),
+            cpsFollowMultiplier:  node.childDouble("CpsFollowMultiplier",  default: -7.0),
+            randomCpsFollow:      node.childBool("RandomCpsFollow",        default: false),
+            randomCpsFollowRange: parseFloatRangeAttr(node, name: "RandomCpsFollowRange",
+                                                      defMin: -1.5, defMax: 1.5),
+            allPointsFollow:      node.childBool("AllPointsFollow",        default: false),
+            invertedFollow:       node.childBool("InvertedFollow",         default: false)
+        )
+    }
+
+    private static func parseFloatRangeAttr(_ node: XMLNode, name: String,
+                                             defMin: Double, defMax: Double) -> FloatRange {
+        guard let child = node.child(named: name) else {
+            return FloatRange(min: defMin, max: defMax)
+        }
+        return FloatRange(min: child.doubleAttr("min", default: defMin),
+                          max: child.doubleAttr("max", default: defMax))
     }
 
     // MARK: - Range helpers

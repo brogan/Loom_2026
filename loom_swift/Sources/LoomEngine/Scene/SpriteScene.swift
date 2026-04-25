@@ -140,6 +140,21 @@ public struct SpriteScene: Sendable {
 
         switch sd.sourceType {
 
+        case .regularPolygon:
+            // Matches Scala MySketch: PolygonCreator.makePolygon2D(sides, 1.0, 1.0)
+            // — simple convex N-gon at radius 0.5, starting at top (0, -0.5).
+            let sides = sd.regularPolygonSides
+            guard sides >= 3 else { return [] }
+            let radius  = 0.5
+            let angInc  = 2.0 * .pi / Double(sides)
+            var pts = [Vector2D]()
+            pts.reserveCapacity(sides)
+            for i in 0..<sides {
+                let angle = Double(i) * angInc - .pi / 2   // start at 12 o'clock
+                pts.append(Vector2D(x: radius * cos(angle), y: radius * sin(angle)))
+            }
+            return [Polygon2D(points: pts, type: .line)]
+
         case .polygonSet:
             guard !sd.polygonSetName.isEmpty,
                   let polyDef = config.polygonConfig.library.polygonSets

@@ -73,6 +73,33 @@ public enum BezierMath {
         (0..<sidesTotal).map { i in Array(pts[(i * 4)..<(i * 4 + 4)]) }
     }
 
+    /// Average of all vertices in a line polygon (mirrors Scala `getCenter`).
+    public static func centreLine(_ pts: [Vector2D]) -> Vector2D {
+        guard !pts.isEmpty else { return .zero }
+        let sum = pts.reduce(Vector2D.zero) { $0 + $1 }
+        return sum.scaled(by: 1.0 / Double(pts.count))
+    }
+
+    /// Convert a flat vertex list (line polygon) to spline-encoding:
+    /// each edge [V_i → V_{i+1}] becomes the degenerate bezier
+    /// [V_i, lerp(V_i,V_{i+1},⅓), lerp(V_i,V_{i+1},⅔), V_{i+1}].
+    /// The returned array has `vertices.count * 4` points and can be passed
+    /// directly to any spline-based subdivision algorithm.
+    public static func lineToSplinePoints(_ vertices: [Vector2D]) -> [Vector2D] {
+        let n = vertices.count
+        var pts = [Vector2D]()
+        pts.reserveCapacity(n * 4)
+        for i in 0..<n {
+            let a = vertices[i]
+            let b = vertices[(i + 1) % n]
+            pts.append(a)
+            pts.append(Vector2D.lerp(a, b, t: 1.0 / 3.0))
+            pts.append(Vector2D.lerp(a, b, t: 2.0 / 3.0))
+            pts.append(b)
+        }
+        return pts
+    }
+
     /// Straight-line Bézier connector from `from` to `to` with control points
     /// at `cpRatios.x` and `cpRatios.y` along the line.
     public static func connector(
