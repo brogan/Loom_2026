@@ -19,7 +19,8 @@ from ui.name_panel import NamePanel
 from ui.layer_panel import LayerPanel
 from ui.slider_panel import SliderPanel
 from bezier_io.polygon_set_xml import write_polygon_set, read_polygon_set
-from bezier_io.open_curve_set_xml import read_open_curve_set, write_open_curve_set
+from bezier_io.open_curve_set_xml import (read_open_curve_set, write_open_curve_set,
+                                           write_open_curve_layer_set)
 from bezier_io.oval_set_xml import write_oval_set, read_oval_set
 from bezier_io.point_set_xml import write_point_set, read_point_set
 from bezier_io.layer_set_xml import (write_layer_set, read_layer_set,
@@ -266,11 +267,22 @@ class BezierApp(QMainWindow):
         name = name or self._name_panel.name
         save_dir = save_dir or self._save_dir
         os.makedirs(save_dir, exist_ok=True)
-        path = os.path.join(save_dir, f"{name}.xml")
-        try:
-            write_open_curve_set(path, name, self._bezier.polygon_manager)
-        except Exception as e:
-            QMessageBox.critical(self, "Save Error", str(e))
+        lm = self._bezier.layer_manager
+        pm = self._bezier.polygon_manager
+
+        if len(lm.layers) > 1:
+            # Multi-layer: save per-layer openCurveSet files + manifest
+            try:
+                write_open_curve_layer_set(save_dir, name, lm, pm)
+            except Exception as e:
+                QMessageBox.critical(self, "Save Error", str(e))
+        else:
+            # Single layer: plain openCurveSet XML
+            path = os.path.join(save_dir, f"{name}.xml")
+            try:
+                write_open_curve_set(path, name, pm)
+            except Exception as e:
+                QMessageBox.critical(self, "Save Error", str(e))
 
     def _export_svg(self) -> None:
         """Explicitly export the current geometry as SVG (no XML save)."""
