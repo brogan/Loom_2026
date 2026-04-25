@@ -248,6 +248,23 @@
   <li>After completing a mesh, use <strong>Weld All Adjacent</strong> to catch any near-coincident anchors that fall just outside the 5 px auto-weld threshold.</li>
   <li>For clean subdivision results, build quads (4-point faces) wherever possible.</li>
 </ul>
+
+<h3>Methods of Use</h3>
+
+<h4>Tracing a Reference Image into a Subdivision Mesh</h4>
+<p>Load a photograph or illustration as a trace image (<em>File → Load Trace Image…</em>). Scatter points over its key structural features — corners of buildings, leaf vein junctions, facial landmarks — then use Mesh Build Mode to connect them face by face. The result is a polygon mesh whose topology matches the structural logic of your reference, not just a rectangular grid imposed over it. When this mesh is used as a Loom polygon with QUAD subdivision, each generated child polygon follows the same structural logic, producing subdivision patterns that are anchored to the original image's geometry.</p>
+
+<h4>Custom Tesselation from Organic Shapes</h4>
+<p>Scatter points by hand across a blank canvas to plan an irregular tiling. Because Mesh Build Mode lets you choose which points to connect and in what order, you have full control over cell size, cell shape, and density. Build large cells in some regions and small ones in others to create a tiling that feels hand-crafted rather than mechanical. Use mixed face sizes (triangles, quads, pentagons) for Penrose-style or Islamic-geometry-inspired patterns that no regular grid could produce.</p>
+
+<h4>Topological Variants from One Point Set</h4>
+<p>Save your source points, then build two or more different Mesh layers by connecting the same points in different topologies — a fine-grain triangulation and a coarse quad version, for example. Because the point set is shared, the two meshes have identical vertex positions but different connectivity. Both can be used as separate polygon sets in Loom, producing different subdivision geometries from the same spatial structure.</p>
+
+<h4>Character and Figure Mesh Rigs</h4>
+<p>Place source points at anatomical landmarks — joints, extremities, face features — and build a low-poly mesh over a figure trace. After welding in RELATIONAL mode, you can drag limbs and features to pose the mesh. Save different poses as separate XML files. In Loom, assign each as a different morph target for the same shape to animate between poses.</p>
+
+<h4>Combining Mesh Build with the Loom Editor's Bitmap Polygon Tool</h4>
+<p>The <a href="#saveload">Bitmap Polygon dialog</a> in the Loom Editor can generate a Grid or Shell mesh automatically from an image silhouette. Use that as a starting grid, then load it in Bezier Draw, add extra hand-placed points, and use Mesh Build Mode to supplement the auto-generated cells with custom faces at complex regions (corners, concavities, fine details). The two approaches are complementary: bitmap generation handles the bulk of the interior; Mesh Build handles structural specificity.</p>
 </section>
 
 <!-- ═══════════════════════════════════════════════════════════ -->

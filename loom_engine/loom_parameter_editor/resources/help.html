@@ -148,6 +148,7 @@
         <li><a href="#open-curves">↳ Open Curves</a></li>
         <li><a href="#point-sets">↳ Point Sets</a></li>
         <li><a href="#ovals">↳ Ovals</a></li>
+        <li><a href="#bitmap-polygons">↳ Bitmap Polygons</a></li>
         <li><a href="#quick-setup">↳ Quick Setup</a></li>
         <li><a href="#subdivision">Subdivision</a></li>
         <li><a href="#shapes">Shapes</a></li>
@@ -964,6 +965,114 @@ YourProject/
 <p>The <strong>Duplicate</strong> button copies the selected oval set as a fully independent entry, physically copying the <code>.xml</code> file to <code>{original}_clone_001</code> etc. Layer bundles (<code>.layers.xml</code>) cannot be duplicated. <strong>Rename</strong> renames the entry and its file on disk.</p>
 
 <div class="tip">See the <a href="#quick-setup">Quick Setup</a> section below for the fastest way to wire an oval set through to a sprite and renderer.</div>
+
+<a href="#" class="back-to-top">Back to top</a>
+</section>
+
+<!-- ============================================================ BITMAP POLYGONS -->
+<section id="bitmap-polygons">
+<h2>Geometry Tab — Bitmap Polygons Sub-tab</h2>
+<p>The Bitmap Polygons sub-tab lets you trace any image (PNG, JPEG, BMP, TIFF, GIF, WebP) and convert its silhouette into a polygon set. It produces two independent output types — a traced <strong>outline</strong> set and a <strong>quad mesh</strong> — each saved as a standard XML polygon set that appears immediately in the Spline Polygons sub-tab and can be used for subdivision, sprites, and rendering exactly like any hand-drawn polygon.</p>
+
+<p>Click <strong>Create from Bitmap…</strong> to open the dialog. The dialog is modeless so you can switch back to the editor while it is open.</p>
+
+<h3>Loading and Thresholding</h3>
+<p>Click <strong>Load Image…</strong> to open a file. The left preview shows the original in colour; the right preview reflects the current binary mask. The dialog auto-populates the output name from the image filename.</p>
+
+<p>The binary mask is built by converting the image to greyscale and applying a threshold: pixels at or above the threshold become white (foreground), those below become black (background).</p>
+
+<table>
+    <tr><th>Control</th><th>Description</th></tr>
+    <tr><td><strong>Threshold slider (0–255)</strong></td><td>Lower values include more of the image in the foreground; higher values restrict to the brightest areas. The numeric label updates live.</td></tr>
+    <tr><td><strong>Auto (Median)</strong></td><td>Sets the threshold to the median pixel brightness — a reliable starting point for most images.</td></tr>
+    <tr><td><strong>Eyedropper</strong></td><td>Click anywhere in the left (original) preview to sample the greyscale value at that pixel and use it as the threshold. Useful when you know exactly which tone you want as the boundary.</td></tr>
+    <tr><td><strong>Invert</strong></td><td>Flips foreground and background. Use when your subject is dark on a light background — logos, line drawings, scanned sketches.</td></tr>
+</table>
+
+<h3>Outline Set</h3>
+<p>An outline set traces the boundary of the white regions in the binary mask and writes a single XML file named <code>{name}.xml</code>. Each detected contour becomes one polygon in the set.</p>
+
+<table>
+    <tr><th>Parameter</th><th>Description</th></tr>
+    <tr><td><strong>Simplify</strong></td><td>Douglas-Peucker epsilon in pixels. Higher values reduce vertex count and smooth away fine notches. Lower values follow the boundary more closely. Start around 2.0 and adjust to taste — the right preview updates live.</td></tr>
+    <tr><td><strong>Segment len</strong></td><td>Maximum edge length (pixels) after subdivision. Lower values insert extra vertices along long straight stretches, giving more evenly-spaced points that deform uniformly under Loom transforms. Raise it to keep vertex counts down on large smooth areas.</td></tr>
+    <tr><td><strong>Min area</strong></td><td>Contours whose pixel area is below this value are ignored. Raise it to discard noise, small holes, and tiny ink specks in scanned images.</td></tr>
+</table>
+
+<p>The wireframe in the right preview draws the final polygon boundary in <span style="color:#19ff2e; font-weight:bold;">green</span>. When you are satisfied, click <strong>Create Outline Set</strong>. The file is saved to <code>polygonSets/</code> and the dialog closes, returning focus to the editor. The new entry appears in the Spline Polygons sub-tab immediately.</p>
+
+<h3>Quad Mesh Set</h3>
+<p>A quad mesh fills the white interior with a grid of small polygons (quads or triangles) and writes a separate XML file named <code>{name}_mesh.xml</code>. Mesh sets are designed to be loaded in <strong>Bezier Draw</strong> and linked together with <strong>Edit → Weld All Adjacent</strong>, after which <strong>RELATIONAL polygon mode</strong> lets you deform the entire mesh by dragging any single cell.</p>
+
+<p>Toggle <strong>Preview Mesh</strong> to switch the right preview from outline mode to mesh mode. The mesh is drawn in <span style="color:#00dcff; font-weight:bold;">cyan</span>.</p>
+
+<h4>Mesh Modes</h4>
+<table>
+    <tr><th>Mode</th><th>Structure</th><th>Best for</th></tr>
+    <tr>
+        <td><strong>Grid</strong></td>
+        <td>Regular rectangular cells aligned to image axes. Interior cells are exact rectangles; cells on the boundary are clipped to the shape outline. Adjacent interior cells share exact vertex coordinates, so Weld All Adjacent registers every shared edge immediately.</td>
+        <td>Dense uniform coverage; cartographic or circuit-board aesthetics; controlled grid deformation.</td>
+    </tr>
+    <tr>
+        <td><strong>Shell</strong></td>
+        <td>Concentric rings following shape curvature, derived from distance-transform level sets. The outermost ring follows the contour exactly; inner rings step inward by one spacing unit each. Rings are stitched as quads. The boundary transition uses a zipper triangulation.</td>
+        <td>Organic, ripple, or growth-ring aesthetics; shapes where radial structure from the centre to the edge is desirable.</td>
+    </tr>
+    <tr>
+        <td><strong>Tessellated</strong></td>
+        <td>Same concentric-ring structure as Shell but stitched as triangles rather than quads. The innermost shell collapses to a triangle fan from the centroid.</td>
+        <td>Triangular lattice patterns; stained-glass or geological crack aesthetics.</td>
+    </tr>
+    <tr>
+        <td><strong>Convex Decomp</strong></td>
+        <td>Decomposes the outline into convex sub-regions by iterative diagonal cutting. Each convex piece gets its own set of concentric inset rings stitched as quads.</td>
+        <td>Complex or highly concave shapes where Shell would produce narrow or degenerate triangles near concavities; irregular blob shapes; letter forms.</td>
+    </tr>
+</table>
+
+<h4>Mesh Parameters</h4>
+<table>
+    <tr><th>Parameter</th><th>Description</th></tr>
+    <tr><td><strong>Grid size</strong></td><td>Cell width/height in pixels (Grid mode) or ring spacing (Shell/Tessellated/Convex Decomp). Smaller values produce more cells and finer detail but increase processing time and file size.</td></tr>
+    <tr><td><strong>Margin</strong></td><td>Inset the mesh boundary inward by this many pixels before tiling. 0 = mesh extends to the detected outline; larger values pull the mesh interior away from the edge, useful when the outline is rough or when you want a visible gap between the mesh and the silhouette.</td></tr>
+</table>
+
+<p>Click <strong>Create Mesh Set</strong> to write the file and close the dialog. The new <code>{name}_mesh</code> entry appears in the Spline Polygons sub-tab.</p>
+
+<h4>Using the Mesh in Bezier Draw</h4>
+<ol class="step-list">
+    <li>Select the mesh entry in the Spline Polygons sub-tab and click <strong>Edit Polygon Set</strong>. Bezier Draw opens with all mesh cells visible.</li>
+    <li>Go to <strong>Edit → Weld All Adjacent</strong>. Bezier scans every pair of polygons; where two cells share an edge at zero distance the edge is registered as a weld. This links the full mesh so that dragging one cell moves connected cells.</li>
+    <li>Switch to <strong>RELATIONAL polygon mode</strong> (<kbd>r</kbd>). Now clicking and dragging any cell deforms the connected mesh. Drag from near the boundary to push edge cells; drag from the interior to create a smooth bulge.</li>
+    <li>Save the edited mesh in Bezier Draw. The changes are written back to <code>polygonSets/{name}_mesh.xml</code>. Return to the editor; the mesh entry reflects the edited shape.</li>
+</ol>
+
+<h3>Output Options</h3>
+<table>
+    <tr><th>Control</th><th>Description</th></tr>
+    <tr><td><strong>Name</strong></td><td>The polygon set name and output filename base. Auto-populated from the loaded image filename; edit freely. The outline file is saved as <code>{name}.xml</code>; the mesh as <code>{name}_mesh.xml</code>.</td></tr>
+    <tr><td><strong>Curved edges</strong></td><td>When checked, each polygon edge is written as a Catmull-Rom smooth Bézier — control points follow the natural spline tangent at each vertex rather than lying on the straight chord. Use with <strong>SPLINE_POLYGON</strong> type in the Loom Editor for organic, smooth contours. Leave unchecked for faceted, angular shapes.</td></tr>
+</table>
+
+<h3>Methods of Use</h3>
+
+<h4>Silhouette Subdivision</h4>
+<p>Trace a logo, leaf, or any clean silhouette to get an outline polygon set. In the Loom Editor, assign it to a shape with a QUAD subdivision and watch the interior fill with recursive geometry that strictly respects the original image boundary. Works best with high-contrast source images (white subject on black, or vice versa). Use <strong>Invert</strong> and adjust <strong>Min area</strong> to clean up scan noise before tracing.</p>
+
+<h4>Multi-region Compositions</h4>
+<p>An image with multiple separated regions (islands of white on black) produces one polygon per contour — all saved in the same XML file. This lets you trace a complex illustration and have each shape element (face, hand, leaf, letter) become a separate polygon, all subdivided simultaneously within a single shape definition.</p>
+
+<h4>Mesh-based Deformation</h4>
+<p>Generate a Grid or Shell mesh from a photo silhouette. Use Bezier's Weld All Adjacent + RELATIONAL mode to manually deform the mesh into a distorted version of the original shape — dragging cells to create perspective, bulge, or ripple effects. Save the distorted mesh back to the editor and use it as a Loom polygon for subdivision. The mesh structure transfers the deformation uniformly to every subdivided child polygon.</p>
+
+<h4>Texture-guided Organic Forms</h4>
+<p>Load a photograph of organic texture — bark, stone, water — threshold at a mid-tone to isolate a roughly 50/50 black-white pattern, then trace at low Simplify values to capture fine granular detail. The resulting polygon set has an irregular, organic character that subdivision amplifies into complex, naturally-textured visual patterns that would be impractical to draw by hand.</p>
+
+<h4>Iterative Refinement</h4>
+<p>Create an outline set from a source image, load it in Bezier Draw for manual edits (adding or removing vertices, adjusting curves), then reload it in the Loom Editor. The Bitmap Polygons dialog creates the initial approximation; Bezier Draw is the tool for fine-tuning. The <strong>Curved edges</strong> option gives you smooth starting geometry; unchecking it gives sharp polygons you can selectively round later in Bezier.</p>
+
+<div class="tip">The <strong>Curved edges</strong> checkbox is a one-time decision at export time. You can always re-run the dialog on the same image with different settings and overwrite the file. The Loom Editor will reload it automatically on next project open (or via <em>Refresh File List</em>).</div>
 
 <a href="#" class="back-to-top">Back to top</a>
 </section>
