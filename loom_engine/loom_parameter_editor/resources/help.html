@@ -147,6 +147,8 @@
         <li><a href="#polygons">↳ Polygons</a></li>
         <li><a href="#open-curves">↳ Open Curves</a></li>
         <li><a href="#point-sets">↳ Point Sets</a></li>
+        <li><a href="#ovals">↳ Ovals</a></li>
+        <li><a href="#quick-setup">↳ Quick Setup</a></li>
         <li><a href="#subdivision">Subdivision</a></li>
         <li><a href="#shapes">Shapes</a></li>
         <li><a href="#sprites">Sprites</a></li>
@@ -738,8 +740,8 @@ YourProject/
 <!-- ============================================================ GEOMETRY TAB -->
 <section id="geometry">
 <h2>Geometry Tab</h2>
-<p>The Geometry tab consolidates all base geometry into one place with three sub-tabs: <strong>Polygons</strong>, <strong>Curves</strong>, and <strong>Points</strong>. Each sub-tab manages a different geometry type. Only polygon types support subdivision; open curves and point sets are rendered directly without subdivision.</p>
-<div class="info">Geometry types at a glance: <strong>Polygons</strong> — closed splines, subdivided and morphable. <strong>Open Curves</strong> — non-closed splines, rendered as stroked paths or brush stamps, no subdivision. <strong>Points</strong> — discrete anchor positions, rendered as dot or brush stamps, no subdivision.</div>
+<p>The Geometry tab consolidates all base geometry into one place with six sub-tabs: <strong>Spline Polygons</strong>, <strong>Regular Polygons</strong>, <strong>Curves</strong>, <strong>Points</strong>, <strong>Ovals</strong>, and <strong>Bitmap Polygons</strong>. Each sub-tab manages a different geometry type. Only polygon types (spline, regular, bitmap) support subdivision; open curves, point sets, and oval sets are rendered directly without subdivision.</p>
+<div class="info">Geometry types at a glance: <strong>Spline Polygons</strong> — closed Bézier-curve polygons drawn in Bezier Draw; subdivided and morphable. <strong>Regular Polygons</strong> — mathematically-generated star/polygon shapes; subdivided and morphable. <strong>Open Curves</strong> — non-closed splines; rendered as stroked paths or brush stamps, no subdivision. <strong>Points</strong> — discrete anchor positions; rendered as dot or brush stamps, no subdivision. <strong>Ovals</strong> — ellipse sets drawn in Bezier Draw; rendered directly. <strong>Bitmap Polygons</strong> — polygon sets loaded from bitmap trace, for image-based workflows.</div>
 <a href="#" class="back-to-top">Back to top</a>
 </section>
 
@@ -749,8 +751,15 @@ YourProject/
 <p>The Polygons sub-tab defines the base polygon shapes used throughout the system. These are the raw geometric forms that subdivision acts upon. Two types are supported: <strong>spline polygon sets</strong> (drawn in Bezier Draw) and <strong>regular polygons</strong> generated mathematically.</p>
 
 <h3>Panel Layout</h3>
-<p>The tab is split into a left panel (list + buttons) and a right panel (properties + preview).</p>
-<p>The left panel has three labelled button sections:</p>
+<p>The tab is split into a left panel (list + buttons) and a right panel (properties + preview + Quick Setup).</p>
+<p>Above the list, three per-entry action buttons operate on the currently selected row:</p>
+<table>
+    <tr><th>Button</th><th>Action</th></tr>
+    <tr><td><strong>Delete</strong></td><td>Removes the selected entry from the library. A confirmation dialog asks whether to also delete the file from disk.</td></tr>
+    <tr><td><strong>Duplicate</strong></td><td>Copies the selected geometry set as a new independent entry. The underlying XML file is physically copied to a new file; the copy is named <code>{original}_clone_001</code>, <code>_clone_002</code>, etc. Not available for layer bundles (<code>.layers.xml</code>).</td></tr>
+    <tr><td><strong>Rename</strong></td><td>Renames the selected entry and its associated file(s) on disk. Layer bundles have all constituent files renamed in one step.</td></tr>
+</table>
+<p>Below the list, three labelled button sections provide further management:</p>
 <ul>
     <li><strong>Spline Polygon Sets</strong> — <em>Create</em> launches Bezier Draw to draw a new spline polygon and saves it to the project's <code>polygonSets/</code> directory. <em>Import</em> copies an existing XML file from elsewhere into <code>polygonSets/</code>.</li>
     <li><strong>Regular Polygons</strong> — <em>Create</em> opens the built-in regular polygon editor with live preview. <em>Import</em> loads a previously saved regular polygon definition.</li>
@@ -817,6 +826,8 @@ YourProject/
 <p>As with Delete, if a file is shared with another unchecked entry, it is not moved — only the library entry is removed.</p>
 <div class="tip">Use <em>Move</em> to build a personal polygon library across projects: move shapes you want to reuse out of a project folder and into <code>~/.loom_projects/polygons_library/</code>. You can then <em>Import</em> them into future projects.</div>
 
+<div class="tip">See the <a href="#quick-setup">Quick Setup</a> section below for the fastest way to wire a polygon set through to a sprite and renderer in one place.</div>
+
 <a href="#" class="back-to-top">Back to top</a>
 </section>
 
@@ -876,6 +887,14 @@ YourProject/
 </ol>
 <div class="warning"><strong>Mouse input has no pressure variation.</strong> Drawing with a mouse always records pressure=1.0 at every anchor. To get pressure variation, you must use a pressure-sensitive tablet. If you see no size variation despite Pressure → Size being non-zero, verify the curve XML contains <code>pressure</code> attributes (values other than 1.0) on its anchor points.</div>
 
+<h3>Duplicate and Rename</h3>
+<p>The <strong>Duplicate</strong> button above the list copies the selected curve set as a fully independent entry. The underlying <code>.xml</code> file is physically copied to a new file named <code>{original}_clone_001</code>, <code>_clone_002</code>, etc. Layer bundles (<code>.layers.xml</code>) cannot be duplicated this way. <strong>Rename</strong> renames the entry and its file on disk.</p>
+
+<h3>Multi-layer Open Curve Sets</h3>
+<p>If a Bezier Draw session contains open curves on two or more layers, clicking Save in Bezier Draw produces per-layer files plus a <code>.layers.xml</code> manifest — matching the behaviour of multi-layer polygon sets. Each layer's curves are saved as a separate <code>{name}_{layerName}.xml</code> file; the manifest lists them all. The Curves sub-tab loads the bundle and shows the manifest entry in the dropdown.</p>
+
+<div class="tip">See the <a href="#quick-setup">Quick Setup</a> section below for the fastest way to wire a curve set through to a sprite and renderer.</div>
+
 <a href="#" class="back-to-top">Back to top</a>
 </section>
 
@@ -912,6 +931,96 @@ YourProject/
 </table>
 
 <div class="tip">Combine a point set (POINTS mode) with animated random jitter to create particle-like scatter effects. Use BRUSHED stamps at point positions for distributed texture marks across the canvas.</div>
+
+<h3>Duplicate and Rename</h3>
+<p>The <strong>Duplicate</strong> button above the list copies the selected point set as a fully independent entry, physically copying the <code>.xml</code> file to <code>{original}_clone_001</code> etc. <strong>Rename</strong> renames the entry and its file on disk.</p>
+
+<div class="tip">See the <a href="#quick-setup">Quick Setup</a> section below for the fastest way to wire a point set through to a sprite and renderer.</div>
+
+<a href="#" class="back-to-top">Back to top</a>
+</section>
+
+<!-- ============================================================ OVALS -->
+<section id="ovals">
+<h2>Geometry Tab — Ovals Sub-tab</h2>
+<p>The Ovals sub-tab manages <strong>oval sets</strong> — collections of ellipses drawn in Bezier Draw using the Create Oval tool. Like point sets, oval sets are rendered directly without subdivision. They support STROKED, FILLED, FILLED_STROKED, and BRUSHED renderer modes.</p>
+
+<h3>Creating Oval Sets</h3>
+<ol class="step-list">
+    <li>In the Ovals sub-tab, click <strong>Create in Bezier</strong> to launch Bezier Draw. Select the <strong>Create Oval</strong> tool (<kbd>j</kbd>) and click on the canvas to place ellipses.</li>
+    <li>Save in Bezier Draw. The file is written to <code>ovalSets/</code>. The Ovals sub-tab detects the new file on Bezier close and selects it automatically.</li>
+    <li>Use <strong>Edit in Bezier</strong> to reopen an existing oval set for editing.</li>
+</ol>
+
+<h3>Oval Set Properties</h3>
+<table>
+    <tr><th>Field</th><th>Description</th></tr>
+    <tr><td><code>Name</code></td><td>Display label for this oval set.</td></tr>
+    <tr><td><code>Folder</code></td><td>Sub-directory within the project (default: <code>ovalSets</code>).</td></tr>
+    <tr><td><code>Filename</code></td><td>The oval set XML file. The dropdown lists all XML files in the project's <code>ovalSets/</code> directory.</td></tr>
+</table>
+
+<h3>Duplicate and Rename</h3>
+<p>The <strong>Duplicate</strong> button copies the selected oval set as a fully independent entry, physically copying the <code>.xml</code> file to <code>{original}_clone_001</code> etc. Layer bundles (<code>.layers.xml</code>) cannot be duplicated. <strong>Rename</strong> renames the entry and its file on disk.</p>
+
+<div class="tip">See the <a href="#quick-setup">Quick Setup</a> section below for the fastest way to wire an oval set through to a sprite and renderer.</div>
+
+<a href="#" class="back-to-top">Back to top</a>
+</section>
+
+<!-- ============================================================ QUICK SETUP -->
+<section id="quick-setup">
+<h2>Geometry Tab — Quick Setup Panel</h2>
+<p>Every geometry sub-tab (Spline Polygons, Regular Polygons, Curves, Points, Ovals) has a <strong>Quick Setup</strong> panel at the bottom of the right panel. It provides one-click creation of the subdivision set, sprite, and renderer typically needed for a new geometry, and shows at a glance which setup steps have already been completed.</p>
+
+<h3>How It Works</h3>
+<p>When you select a geometry set in the list, the Quick Setup combos automatically update to reflect what has already been set up for <em>that specific geometry</em>:</p>
+<ul>
+    <li>If a sprite already exists that references this geometry, the <strong>Sprites → Set</strong> combo shows the sprite set it belongs to, and <strong>Rendering → Set</strong> shows its renderer set.</li>
+    <li>If no sprite exists for this geometry yet, both combos are blank.</li>
+    <li>All available sprite sets and renderer sets from across the project remain available in the dropdowns — you can freely choose an existing set from another geometry rather than creating a new one.</li>
+</ul>
+
+<h3>Panel Sections</h3>
+<table>
+    <tr><th>Section</th><th>Controls</th><th>What it creates</th></tr>
+    <tr>
+        <td><strong>Subdivision</strong><br><em>(polygon tabs only)</em></td>
+        <td><strong>Make Subdivision Set</strong></td>
+        <td>Creates a <code>SubdivisionParamsSet</code> named <code>{geometryName}_Subdivide</code> with a single default QUAD stage. Appears in the Subdivision tab ready to configure.</td>
+    </tr>
+    <tr>
+        <td><strong>Sprites</strong></td>
+        <td><strong>Set</strong> combo · <strong>+ Set</strong> · <strong>Make Sprite</strong></td>
+        <td><strong>+ Set</strong> creates a new <code>SpriteSet</code>. <strong>Make Sprite</strong> adds a <code>SpriteDef</code> to the selected sprite set, referencing the current geometry and (if created) the <code>_Subdivide</code> subdivision set. The new sprite is immediately selected in the Sprites tab.</td>
+    </tr>
+    <tr>
+        <td><strong>Rendering</strong></td>
+        <td><strong>Set</strong> combo · <strong>+ Set</strong> · <strong>Mode</strong> combo · <strong>Make Renderer</strong></td>
+        <td><strong>+ Set</strong> creates a new <code>RendererSet</code>. <strong>Make Renderer</strong> adds a <code>Renderer</code> named <code>{geometryName}_renderer</code> with the selected render mode to the chosen renderer set. The sprite created by Make Sprite will reference this renderer set.</td>
+    </tr>
+</table>
+
+<h3>Green Border Indicators</h3>
+<p>Each Quick Setup group shows a <strong>green border</strong> when its corresponding setup step is already complete for the selected geometry:</p>
+<ul>
+    <li><strong>Subdivision</strong> border turns green when a params set named <code>{name}_Subdivide</code> exists in the Subdivision tab.</li>
+    <li><strong>Sprites</strong> border turns green when any sprite in the library references the current geometry by name.</li>
+    <li><strong>Rendering</strong> border turns green when a renderer named <code>{name}_renderer</code> exists in any renderer set.</li>
+</ul>
+
+<h3>Typical Workflow</h3>
+<ol class="step-list">
+    <li>Select a geometry set in the list.</li>
+    <li>Click <strong>Make Subdivision Set</strong> (polygon tabs only). The Subdivision group border turns green.</li>
+    <li>Click <strong>+ Set</strong> in the Sprites section to name a new sprite set (suggestion defaults to <code>{name}_sprite</code>).</li>
+    <li>Click <strong>Make Sprite</strong>. A sprite is created in the sprite set and immediately selected in the Sprites tab. The Sprites group border turns green.</li>
+    <li>Click <strong>+ Set</strong> in the Rendering section to name a new renderer set. Choose a render <strong>Mode</strong>.</li>
+    <li>Click <strong>Make Renderer</strong>. A renderer is added to the set; the Rendering group border turns green. The sprite's renderer set field is set to this renderer set.</li>
+    <li>Switch to the Sprites tab to verify the sprite is configured correctly, then press <kbd>Cmd+L</kbd> to run.</li>
+</ol>
+
+<div class="tip">Quick Setup is designed for first-time wiring. For variations and refinements — adding more subdivisions, additional sprites, or different render modes — use the dedicated Subdivision, Sprites, and Rendering tabs directly.</div>
 
 <a href="#" class="back-to-top">Back to top</a>
 </section>
@@ -1883,9 +1992,9 @@ stampOpacity = baseOpacity × (1 − pressureAlphaInfluence  + pressure × press
 
 <h3>Capture Controls</h3>
 <table>
-    <tr><th>Button</th><th>Description</th></tr>
-    <tr><td><strong>Save Still</strong></td><td>Captures the current frame as a PNG. Saved to <code>&lt;project&gt;/renders/stills/</code> with an auto-incremented filename. When the quality multiple is greater than 1, the on-screen display shows a scaled-down preview; the saved PNG always contains the full-resolution image.</td></tr>
-    <tr><td><strong>Save Animation</strong></td><td>Toggles frame recording on/off. While recording, each animation frame is saved as a sequential PNG to <code>&lt;project&gt;/renders/animations/</code>. Stop recording to finish the sequence. Use external tools (ffmpeg, Premiere, etc.) to combine frames into video.</td></tr>
+    <tr><th>Button / Shortcut</th><th>Description</th></tr>
+    <tr><td><strong>Save Still</strong> <kbd>F9</kbd></td><td>Captures the current frame as a PNG. Saved to <code>&lt;project&gt;/renders/stills/</code> with an auto-incremented timestamp filename. When the quality multiple is greater than 1, the on-screen display shows a scaled-down preview; the saved PNG always contains the full-resolution image.</td></tr>
+    <tr><td><strong>Save Animation</strong> <kbd>F10</kbd></td><td>Toggles frame recording on/off. While recording, each animation frame is saved as a sequential PNG to <code>&lt;project&gt;/renders/animations/</code>. Stop recording to finish the sequence. Use external tools (ffmpeg, Premiere, etc.) to combine frames into video.</td></tr>
 </table>
 
 <h3>Render Destination</h3>
