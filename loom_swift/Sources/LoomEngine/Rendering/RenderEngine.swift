@@ -35,23 +35,27 @@ public enum RenderEngine {
         _ polygon: Polygon2D,
         renderer: Renderer,
         into context: CGContext,
-        transform: ViewTransform
+        transform: ViewTransform,
+        qualityMultiple: Int = 1
     ) {
         guard polygon.visible, !polygon.points.isEmpty else { return }
 
         switch renderer.mode {
         case .points:
-            drawPoints(polygon, renderer: renderer, context: context, transform: transform)
+            drawPoints(polygon, renderer: renderer, context: context, transform: transform,
+                       qualityMultiple: qualityMultiple)
         case .stroked:
             let path = buildPath(polygon, transform: transform)
-            applyStroke(path, renderer: renderer, context: context)
+            applyStroke(path, renderer: renderer, context: context,
+                        qualityMultiple: qualityMultiple)
         case .filled:
             let path = buildPath(polygon, transform: transform)
             applyFill(path, renderer: renderer, context: context)
         case .filledStroked:
             let path = buildPath(polygon, transform: transform)
             applyFill(path, renderer: renderer, context: context)
-            applyStroke(path, renderer: renderer, context: context)
+            applyStroke(path, renderer: renderer, context: context,
+                        qualityMultiple: qualityMultiple)
         case .brushed, .stenciled, .stamped:
             break  // Handled upstream in SpriteScene.renderInstance
         }
@@ -143,12 +147,13 @@ public enum RenderEngine {
     private static func applyStroke(
         _ path: CGPath,
         renderer: Renderer,
-        context: CGContext
+        context: CGContext,
+        qualityMultiple: Int = 1
     ) {
         context.saveGState()
         context.addPath(path)
         context.setStrokeColor(renderer.strokeColor.cgColor)
-        context.setLineWidth(CGFloat(renderer.strokeWidth))
+        context.setLineWidth(CGFloat(renderer.strokeWidth) * CGFloat(qualityMultiple))
         context.strokePath()
         context.restoreGState()
     }
@@ -173,10 +178,11 @@ public enum RenderEngine {
         _ polygon: Polygon2D,
         renderer: Renderer,
         context: CGContext,
-        transform: ViewTransform
+        transform: ViewTransform,
+        qualityMultiple: Int = 1
     ) {
         let pts = polygon.points
-        let r   = CGFloat(renderer.pointSize) / 2.0
+        let r   = CGFloat(renderer.pointSize) * CGFloat(qualityMultiple) / 2.0
 
         let anchors: [Vector2D]
         switch polygon.type {

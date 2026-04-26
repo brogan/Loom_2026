@@ -468,9 +468,10 @@ public struct SpriteScene: Sendable {
             } else {
                 for polygon in transformed {
                     RenderEngine.draw(polygon,
-                                      renderer:  resolved,
-                                      into:      context,
-                                      transform: viewTransform)
+                                      renderer:        resolved,
+                                      into:            context,
+                                      transform:       viewTransform,
+                                      qualityMultiple: qualityMultiple)
                 }
             }
         }

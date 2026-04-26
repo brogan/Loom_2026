@@ -28,6 +28,9 @@ struct RenderSurfaceView: NSViewRepresentable {
 
     func updateNSView(_ nsView: RenderSurfaceNSView, context: Context) {
         nsView.onFrameTick = onFrameTick
+        if nsView.engine !== engine {
+            nsView.replaceEngine(engine)
+        }
         applyState(playbackState, to: nsView, isInitial: false)
     }
 
@@ -52,8 +55,8 @@ final class RenderSurfaceNSView: NSView {
 
     // MARK: - Properties
 
-    private let engine:    Engine
-    private var lastTick:  CFTimeInterval = 0
+    fileprivate var engine: Engine
+    private var lastTick:   CFTimeInterval = 0
     private var latestFrame: CGImage?
 
     /// Called each tick with the engine's current frame index.
@@ -97,11 +100,31 @@ final class RenderSurfaceNSView: NSView {
         renderTimer = nil
     }
 
+    /// Replace the engine with a newly loaded one, blank the display, and show frame 0.
+    /// Called from `RenderSurfaceView.updateNSView` when the engine identity changes.
+    func replaceEngine(_ newEngine: Engine) {
+        stopRendering()
+        engine = newEngine
+        clearDisplay()
+        renderFrame()
+    }
+
     /// Reset the engine to frame 0 and display the initial frame.
     /// Called when playback state transitions to `.stopped`.
     func resetAndRenderFirstFrame() {
         try? engine.reset()
+        clearDisplay()
         renderFrame()
+    }
+
+    private func clearDisplay() {
+        latestFrame = nil
+        if let l = layer {
+            CATransaction.begin()
+            CATransaction.setDisableActions(true)
+            l.contents = nil
+            CATransaction.commit()
+        }
     }
 
     // MARK: - Frame tick
