@@ -40,14 +40,21 @@ public struct SpriteScene: Sendable {
     /// Pixel-space multiplier; all per-instance pixel distances are scaled by this factor.
     private let qualityMultiple: Int
 
+    /// When false, pixel-based style values (stroke width, point size, brush/stencil sizes)
+    /// are used at their raw logical-pixel values regardless of `qualityMultiple`.
+    /// When true (the default), they are scaled by `qualityMultiple` so the rendered output
+    /// looks the same after a `qualityMultiple`-fold downscale.
+    private let scaleImage: Bool
+
     // MARK: - Convenience (testing)
 
     /// Directly construct a scene from pre-built instances.
     ///
     /// Intended for unit tests that want to bypass file loading.
     internal init(instances: [SpriteInstance]) {
-        self.instances      = instances
+        self.instances       = instances
         self.qualityMultiple = 1
+        self.scaleImage      = true
     }
 
     // MARK: - Assembly
@@ -71,6 +78,7 @@ public struct SpriteScene: Sendable {
         }
         self.instances       = result
         self.qualityMultiple = max(1, config.globalConfig.qualityMultiple)
+        self.scaleImage      = config.globalConfig.scaleImage
     }
 
     private static func makeInstance(
@@ -243,22 +251,31 @@ public struct SpriteScene: Sendable {
     /// 2. Advances the active renderer index according to the playback mode.
     /// 3. Steps the active renderer's palette states when `modifyInternalParameters` is `true`.
     /// 4. Increments `drawCycle`.
+    /// Returns `true` if at least one sprite crossed a virtual-frame boundary this call.
+    /// The caller uses this to gate accumulation-canvas sprite renders, preventing
+    /// the 60 fps display timer from writing more layers than the virtual frame rate.
+    @discardableResult
     public mutating func advance<RNG: RandomNumberGenerator>(
         deltaTime: Double,
         targetFPS: Double,
         using rng: inout RNG
-    ) {
+    ) -> Bool {
+        var anyAdvanced = false
         for i in instances.indices {
-            SpriteScene.advanceInstance(&instances[i], deltaTime: deltaTime, targetFPS: targetFPS, using: &rng)
+            if SpriteScene.advanceInstance(&instances[i], deltaTime: deltaTime, targetFPS: targetFPS, using: &rng) {
+                anyAdvanced = true
+            }
         }
+        return anyAdvanced
     }
 
+    /// Returns `true` if this instance crossed at least one virtual-frame boundary.
     private static func advanceInstance<RNG: RandomNumberGenerator>(
         _ instance: inout SpriteInstance,
         deltaTime: Double,
         targetFPS: Double,
         using rng: inout RNG
-    ) {
+    ) -> Bool {
         // ── Continuous: update elapsed time and recompute the transform ────────
         // Gate on the per-sprite draw-cycle limit (totalDraws > 0 = hard stop after
         // that many virtual frames).  When the limit is reached the transform is frozen
@@ -285,7 +302,7 @@ public struct SpriteScene: Sendable {
         let frameStep = 1.0 / max(1.0, targetFPS)
         instance.state.frameTimeAccumulator += deltaTime
         let framesToAdvance = Int(instance.state.frameTimeAccumulator / frameStep)
-        guard framesToAdvance > 0 else { return }
+        guard framesToAdvance > 0 else { return false }
         instance.state.frameTimeAccumulator -= Double(framesToAdvance) * frameStep
 
         let renderers = instance.rendererSet.renderers
@@ -318,6 +335,7 @@ public struct SpriteScene: Sendable {
             // 3. Increment the virtual frame counter.
             instance.state.drawCycle += 1
         }
+        return true
     }
 
     private static func advanceRendererIndex<RNG: RandomNumberGenerator>(
@@ -426,13 +444,18 @@ public struct SpriteScene: Sendable {
         let activeRenderers = resolveActiveRenderers(for: instance)
 
         // 5. Draw
+        // When scaleImage is false, pixel-valued style properties (stroke widths,
+        // point sizes, brush/stencil pixel metrics) are kept at their logical-pixel
+        // values rather than being scaled up by the quality multiple.
+        let effectiveQuality = scaleImage ? qualityMultiple : 1
+
         for renderer in activeRenderers {
             let resolved = resolveRendererChanges(renderer, instance: instance)
 
             if resolved.mode == .brushed, let brushCfg = resolved.brushConfig {
                 // Brush mode: stamp images along perturbed edge paths.
-                let scaledBrush = qualityMultiple > 1
-                    ? brushCfg.scaled(by: Double(qualityMultiple)) : brushCfg
+                let scaledBrush = effectiveQuality > 1
+                    ? brushCfg.scaled(by: Double(effectiveQuality)) : brushCfg
                 let edges = BrushEdge.extractEdges(from: transformed, viewTransform: viewTransform)
                 BrushStampEngine.drawFullPath(
                     edges:         edges,
@@ -447,8 +470,8 @@ public struct SpriteScene: Sendable {
                 // Stamp mode: place stamp images at each discrete point position.
                 // Look up the per-renderer stencil opacity animation state so
                 // StampEngine can use the stepped palette index for SEQ/PING_PONG.
-                let scaledStencil = qualityMultiple > 1
-                    ? stencilCfg.scaled(by: Double(qualityMultiple)) : stencilCfg
+                let scaledStencil = effectiveQuality > 1
+                    ? stencilCfg.scaled(by: Double(effectiveQuality)) : stencilCfg
                 let activeIdx    = min(instance.state.activeRendererIndex,
                                        instance.rendererSet.renderers.count - 1)
                 let opacityState = activeIdx < instance.state.rendererAnimationStates.count
@@ -471,7 +494,7 @@ public struct SpriteScene: Sendable {
                                       renderer:        resolved,
                                       into:            context,
                                       transform:       viewTransform,
-                                      qualityMultiple: qualityMultiple)
+                                      qualityMultiple: effectiveQuality)
                 }
             }
         }

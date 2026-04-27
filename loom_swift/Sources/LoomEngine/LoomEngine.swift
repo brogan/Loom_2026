@@ -45,6 +45,14 @@ public struct LoomEngine: @unchecked Sendable {
     /// Used as the meander-phase clock so brush animation is frame-rate independent.
     private var elapsedFrames:  Double
 
+    /// Set to `true` by `advance` when at least one sprite crossed a virtual-frame boundary.
+    ///
+    /// `makeAccumulatedFrame` gates sprite rendering on this flag so that the 60 fps
+    /// display timer doesn't accumulate more sprite layers per second than the virtual
+    /// frame rate (typically 30 fps).  This ensures animated-still output is identical
+    /// for fast (small) and slow (large) canvases.
+    private var sceneAdvancedThisFrame: Bool = true
+
     /// Persistent canvas for accumulation-mode rendering (`drawBackgroundOnce = true`).
     ///
     /// In accumulation mode each `makeFrame()` call renders onto the same canvas,
@@ -93,6 +101,15 @@ public struct LoomEngine: @unchecked Sendable {
     /// Number of times `advance()` has been called.
     public var currentFrame: Int { frameCount }
 
+    /// The maximum `totalDraws` value across all sprites (0 if every sprite is unlimited).
+    ///
+    /// Use this to determine how many virtual frames a synchronous animated-still render
+    /// needs to run.  A result of 0 means at least one sprite animates indefinitely and
+    /// no fixed end-frame can be derived from the project config alone.
+    public var maxAnimationFrames: Int {
+        scene.instances.reduce(0) { max($0, $1.def.animation.totalDraws) }
+    }
+
     // MARK: - Advance
 
     /// Step all sprite animations one frame forward and increment `currentFrame`.
@@ -106,7 +123,9 @@ public struct LoomEngine: @unchecked Sendable {
         // Global animating flag is the master switch: when false, all sprite animation
         // is suppressed and the scene is held at its initial (frame-0) state.
         if config.globalConfig.animating {
-            scene.advance(deltaTime: dt, targetFPS: fps, using: &rng)
+            sceneAdvancedThisFrame = scene.advance(deltaTime: dt, targetFPS: fps, using: &rng)
+        } else {
+            sceneAdvancedThisFrame = false
         }
         elapsedFrames += dt * max(1.0, fps)
         frameCount    += 1
@@ -204,25 +223,25 @@ public struct LoomEngine: @unchecked Sendable {
     // MARK: - makeFrame helpers
 
     /// Renders onto a persistent canvas (accumulation / trail mode).
+    ///
+    /// Sprite rendering is gated on `sceneAdvancedThisFrame` so that the 60 fps display
+    /// timer does not accumulate more sprite layers per second than the virtual frame rate.
+    /// Without this gate, a fast (small) canvas would show many more accumulated draw
+    /// cycles than a slow (large) canvas over the same wall-clock duration.
     private mutating func makeAccumulatedFrame(width w: Int, height h: Int) -> CGImage? {
         let isFirstFrame = accumulationCanvas == nil
         if isFirstFrame {
-            print("[LoomEngine] creating AccumulationCanvas \(w)×\(h) drawBackgroundOnce=\(config.globalConfig.drawBackgroundOnce)")
-            guard let canvas = AccumulationCanvas(width: w, height: h) else {
-                print("[LoomEngine] AccumulationCanvas init FAILED")
-                return nil
-            }
+            guard let canvas = AccumulationCanvas(width: w, height: h) else { return nil }
             accumulationCanvas = canvas
         }
         guard let canvas = accumulationCanvas else { return nil }
-        // First frame: draw background so the canvas starts opaque.
-        // Subsequent frames: skip background to accumulate on previous content.
-        renderImpl(into: canvas.ctx, drawBackground: isFirstFrame)
-        let img = canvas.ctx.makeImage()
-        if isFirstFrame {
-            print("[LoomEngine] first frame makeImage() → \(img != nil ? "\(img!.width)×\(img!.height)" : "nil")")
+        // Draw background on the first frame.  On subsequent frames, render sprites
+        // only when the scene has actually advanced a virtual frame this tick.
+        if isFirstFrame || sceneAdvancedThisFrame {
+            renderImpl(into: canvas.ctx, drawBackground: isFirstFrame)
+            sceneAdvancedThisFrame = false
         }
-        return img
+        return canvas.ctx.makeImage()
     }
 
     /// Creates and renders to a fresh canvas each call (independent-frame mode).

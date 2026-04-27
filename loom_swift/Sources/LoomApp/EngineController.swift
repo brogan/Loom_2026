@@ -241,16 +241,36 @@ final class EngineController: ObservableObject, @unchecked Sendable {
     }
 
     private func saveSentinelStill() {
-        guard let eng = engine else { return }
-        let dir = stillRendersDirectory()
-            ?? projectURL
-            ?? FileManager.default.homeDirectoryForCurrentUser
+        guard let eng = engine, let projURL = projectURL else { return }
+        let dir = stillRendersDirectory() ?? projURL
         let name = eng.globalConfig.name.isEmpty
-            ? (projectURL?.lastPathComponent ?? "loom")
+            ? (projURL.lastPathComponent)
             : eng.globalConfig.name
         let f = DateFormatter()
         f.dateFormat = "yyyyMMdd_HHmmss"
         let url = dir.appendingPathComponent("\(name)_\(f.string(from: Date())).png")
-        try? StillExporter.exportPNG(engine: eng, to: url)
+
+        if eng.globalConfig.animating {
+            // For animated projects, create a fresh engine and run it synchronously
+            // to the end of the animation.  This produces a deterministic accumulated
+            // still that is independent of canvas size and display-timer speed, so
+            // large and small renders look identical after the same number of draw cycles.
+            guard let exportEngine = try? Engine(projectDirectory: projURL) else {
+                try? StillExporter.exportPNG(engine: eng, to: url)
+                return
+            }
+            let maxFrames = exportEngine.maxAnimationFrames
+            if maxFrames > 0 {
+                let fps = exportEngine.globalConfig.targetFPS
+                let dt  = 1.0 / max(1.0, fps)
+                for _ in 0..<maxFrames {
+                    exportEngine.update(deltaTime: dt)
+                    _ = exportEngine.makeFrame()
+                }
+            }
+            try? StillExporter.exportPNG(engine: exportEngine, to: url)
+        } else {
+            try? StillExporter.exportPNG(engine: eng, to: url)
+        }
     }
 }

@@ -134,4 +134,8 @@ public final class Engine: @unchecked Sendable {
 
     /// The project's global configuration.
     public var globalConfig: GlobalConfig { loomEngine.globalConfig }
+
+    /// Maximum `totalDraws` across all sprites; 0 when every sprite is unlimited.
+    /// Use this to determine how many virtual frames a synchronous animated-still export needs.
+    public var maxAnimationFrames: Int { loomEngine.maxAnimationFrames }
 }
