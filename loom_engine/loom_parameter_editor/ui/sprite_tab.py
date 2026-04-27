@@ -777,7 +777,8 @@ class SpriteTab(QWidget):
             self.geo_source_combo.setCurrentIndex(0)
             self.geo_name_combo.setCurrentText("")
             self.geo_sides_spin.setValue(4)
-            self.geo_subdiv_combo.setCurrentText("")
+            self._refresh_subdiv_combo()
+            self.geo_subdiv_combo.setCurrentIndex(0)
             self.geo_3d_combo.setCurrentIndex(0)
             self.geo_p1_spin.setValue(4)
             self.geo_p2_spin.setValue(4)
@@ -834,7 +835,12 @@ class SpriteTab(QWidget):
             }.get(sprite.geo_source_type, "")
             self.geo_name_combo.setCurrentText(geo_name)
             self.geo_sides_spin.setValue(sprite.geo_regular_polygon_sides)
-            self.geo_subdiv_combo.setCurrentText(sprite.geo_subdivision_params_set_name)
+            self._refresh_subdiv_combo()
+            _subdiv_name = sprite.geo_subdivision_params_set_name
+            if _subdiv_name:
+                self.geo_subdiv_combo.setCurrentText(_subdiv_name)
+            else:
+                self.geo_subdiv_combo.setCurrentIndex(0)
             _3d_idx = {
                 GeoShape3DType.NONE: 0,
                 GeoShape3DType.CRYSTAL: 1,
@@ -940,7 +946,10 @@ class SpriteTab(QWidget):
         elif stype == GeoSourceType.OVAL_SET:
             self._current_sprite.geo_oval_set_name = geo_name
         self._current_sprite.geo_regular_polygon_sides = self.geo_sides_spin.value()
-        self._current_sprite.geo_subdivision_params_set_name = self.geo_subdiv_combo.currentText()
+        _subdiv_text = self.geo_subdiv_combo.currentText()
+        self._current_sprite.geo_subdivision_params_set_name = (
+            "" if _subdiv_text in ("None", "None (N/A)") else _subdiv_text
+        )
         _idx_3d = [
             GeoShape3DType.NONE,
             GeoShape3DType.CRYSTAL,
@@ -1310,6 +1319,7 @@ class SpriteTab(QWidget):
     def _on_geo_source_changed(self, idx: int) -> None:
         """Handle source type combo change — refresh geo name combo."""
         self._refresh_geo_name_combo()
+        self._refresh_subdiv_combo()
         self._update_geo_visibility()
         if not self._updating:
             self._save_ui_to_sprite()
@@ -1363,23 +1373,42 @@ class SpriteTab(QWidget):
             self._updating = was
 
     def _refresh_subdiv_combo(self) -> None:
-        """Populate subdivision set combo from collection."""
+        """Populate subdivision set combo based on geometry source type.
+
+        Polygon Set (0) and Regular Polygon (4) support subdivision — the combo
+        shows 'None' followed by available set names and is enabled.  All other
+        source types do not support subdivision — the combo shows 'None (N/A)'
+        and is disabled.
+        """
+        _SUBDIV_SUPPORTED = {0, 4}  # Polygon Set, Regular Polygon
         was = self._updating
         self._updating = True
         try:
+            geo_idx = self.geo_source_combo.currentIndex()
+            supported = geo_idx in _SUBDIV_SUPPORTED
             current = self.geo_subdiv_combo.currentText()
             self.geo_subdiv_combo.clear()
-            if self._subdivision_coll is not None:
-                items = getattr(self._subdivision_coll, 'params_sets', None)
-                if items:
-                    names = sorted(ps.name for ps in items)
-                    self.geo_subdiv_combo.addItems(names)
-            if current:
-                i = self.geo_subdiv_combo.findText(current)
+            if not supported:
+                self.geo_subdiv_combo.addItem("None (N/A)")
+                self.geo_subdiv_combo.setCurrentIndex(0)
+                self.geo_subdiv_combo.setEnabled(False)
+                self.geo_subdiv_combo.setEditable(False)
+            else:
+                self.geo_subdiv_combo.setEnabled(True)
+                self.geo_subdiv_combo.setEditable(True)
+                self.geo_subdiv_combo.addItem("None")
+                if self._subdivision_coll is not None:
+                    items = getattr(self._subdivision_coll, 'params_sets', None)
+                    if items:
+                        self.geo_subdiv_combo.addItems(sorted(ps.name for ps in items))
+                restore = current if current not in ("None (N/A)", "") else "None"
+                i = self.geo_subdiv_combo.findText(restore)
                 if i >= 0:
                     self.geo_subdiv_combo.setCurrentIndex(i)
+                elif restore and restore != "None":
+                    self.geo_subdiv_combo.setCurrentText(restore)
                 else:
-                    self.geo_subdiv_combo.setCurrentText(current)
+                    self.geo_subdiv_combo.setCurrentIndex(0)
         finally:
             self._updating = was
 
