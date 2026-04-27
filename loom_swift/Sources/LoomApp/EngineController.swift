@@ -75,12 +75,9 @@ final class EngineController: ObservableObject, @unchecked Sendable {
         guard let url = projectURL else { return }
         loadError = nil
         loadEngine(from: url)
-        // On reload, snap a non-animating project back to stopped if it's
-        // currently playing (e.g. the user pressed play manually before the
-        // sentinel timer triggered a reload).
-        if engine?.globalConfig.animating == false, playbackState == .playing {
-            playbackState = .stopped
-        }
+        // Mirror open(): honour the freshly-loaded animating flag so that
+        // toggling animation mode in the editor and reloading takes effect.
+        playbackState = (engine?.globalConfig.animating == true) ? .playing : .stopped
     }
 
     // MARK: - Playback controls

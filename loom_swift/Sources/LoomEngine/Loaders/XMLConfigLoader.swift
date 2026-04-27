@@ -360,12 +360,11 @@ public enum XMLConfigLoader {
 
     private static func parseTransformSet(_ node: XMLNode) -> PTPTransformSet {
         var ts = PTPTransformSet()
-        if let eaNode = node.child(named: "ExteriorAnchors") {
-            ts.exteriorAnchors = parseExteriorAnchors(eaNode)
-        }
-        if let caNode = node.child(named: "CentralAnchors") {
-            ts.centralAnchors = parseCentralAnchors(caNode)
-        }
+        if let eaNode  = node.child(named: "ExteriorAnchors")      { ts.exteriorAnchors       = parseExteriorAnchors(eaNode) }
+        if let caNode  = node.child(named: "CentralAnchors")        { ts.centralAnchors        = parseCentralAnchors(caNode) }
+        if let ocpNode = node.child(named: "OuterControlPoints")    { ts.outerControlPoints    = parseOuterControlPoints(ocpNode) }
+        if let alcNode = node.child(named: "AnchorsLinkedToCentre") { ts.anchorsLinkedToCentre = parseAnchorsLinkedToCentre(alcNode) }
+        if let icpNode = node.child(named: "InnerControlPoints")    { ts.innerControlPoints    = parseInnerControlPoints(icpNode) }
         return ts
     }
 
@@ -410,6 +409,71 @@ public enum XMLConfigLoader {
                                                       defMin: -1.5, defMax: 1.5),
             allPointsFollow:      node.childBool("AllPointsFollow",        default: false),
             invertedFollow:       node.childBool("InvertedFollow",         default: false)
+        )
+    }
+
+    private static func parseOuterControlPoints(_ node: XMLNode) -> OuterControlPointsTransform {
+        return OuterControlPointsTransform(
+            enabled:               (node.attr("enabled") ?? "false") == "true",
+            probability:           node.childDouble("Probability",           default: 100),
+            lineRatioX:            node.childDouble("LineRatioX",            default: 0.33),
+            lineRatioY:            node.childDouble("LineRatioY",            default: 0.66),
+            randomLineRatio:       node.childBool("RandomLineRatio",         default: false),
+            randomLineRatioInner:  parseFloatRangeAttr(node, name: "RandomLineRatioInner",
+                                                       defMin: 0.1, defMax: 0.5),
+            randomLineRatioOuter:  parseFloatRangeAttr(node, name: "RandomLineRatioOuter",
+                                                       defMin: 0.5, defMax: 0.9),
+            curveMode:             node.childText("CurveMode",               default: "PERPENDICULAR"),
+            curveType:             node.childText("CurveType",               default: "PUFF"),
+            curveMultiplierMin:    node.childDouble("CurveMultiplierMin",    default: 1.0),
+            curveMultiplierMax:    node.childDouble("CurveMultiplierMax",    default: 3.0),
+            randomMultiplier:      node.childBool("RandomMultiplier",        default: false),
+            randomCurveMultiplier: parseFloatRangeAttr(node, name: "RandomCurveMultiplier",
+                                                       defMin: 0.5, defMax: 3.0),
+            curveFromCentreRatioX: node.childDouble("CurveFromCentreRatioX", default: 0.2),
+            curveFromCentreRatioY: node.childDouble("CurveFromCentreRatioY", default: -0.5),
+            randomFromCentre:      node.childBool("RandomFromCentre",        default: false),
+            randomFromCentreA:     parseFloatRangeAttr(node, name: "RandomFromCentreA",
+                                                       defMin: -1.0, defMax: 1.0),
+            randomFromCentreB:     parseFloatRangeAttr(node, name: "RandomFromCentreB",
+                                                       defMin: -1.0, defMax: 1.0)
+        )
+    }
+
+    private static func parseAnchorsLinkedToCentre(_ node: XMLNode) -> AnchorsLinkedToCentreTransform {
+        return AnchorsLinkedToCentreTransform(
+            enabled:              (node.attr("enabled") ?? "false") == "true",
+            probability:          node.childDouble("Probability",           default: 100),
+            tearFactor:           node.childDouble("TearFactor",            default: 0.45),
+            tearType:             node.childText("TearType",                default: "TOWARDS_OUTSIDE_CORNER"),
+            randomTear:           node.childBool("RandomTear",              default: false),
+            randomTearFactor:     parseFloatRangeAttr(node, name: "RandomTearFactor",
+                                                      defMin: -0.2, defMax: 0.2),
+            cpsFollow:            node.childBool("CpsFollow",               default: true),
+            cpsFollowMultiplier:  node.childDouble("CpsFollowMultiplier",   default: 1.0),
+            randomCpsFollow:      node.childBool("RandomCpsFollow",         default: false),
+            randomCpsFollowRange: parseFloatRangeAttr(node, name: "RandomCpsFollowRange",
+                                                      defMin: -1.5, defMax: 1.5)
+        )
+    }
+
+    private static func parseInnerControlPoints(_ node: XMLNode) -> InnerControlPointsTransform {
+        return InnerControlPointsTransform(
+            enabled:          (node.attr("enabled") ?? "false") == "true",
+            probability:      node.childDouble("Probability",      default: 100),
+            referToOuter:     node.childText("ReferToOuter",       default: "NONE"),
+            innerMultiplierX: node.childDouble("InnerMultiplierX", default: 1.0),
+            innerMultiplierY: node.childDouble("InnerMultiplierY", default: 1.0),
+            outerMultiplierX: node.childDouble("OuterMultiplierX", default: 1.0),
+            outerMultiplierY: node.childDouble("OuterMultiplierY", default: 1.0),
+            innerRatio:       node.childDouble("InnerRatio",       default: -0.15),
+            outerRatio:       node.childDouble("OuterRatio",       default: 1.1),
+            randomRatio:      node.childBool("RandomRatio",        default: false),
+            randomInnerRatio: parseFloatRangeAttr(node, name: "RandomInnerRatio",
+                                                  defMin: -0.5, defMax: 0.5),
+            randomOuterRatio: parseFloatRangeAttr(node, name: "RandomOuterRatio",
+                                                  defMin: -0.5, defMax: 0.5),
+            commonLine:       node.childText("CommonLine",         default: "EVEN")
         )
     }
 

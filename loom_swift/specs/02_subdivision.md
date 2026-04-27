@@ -1,6 +1,6 @@
 # Loom Engine — Subdivision System
-**Specification 02**  
-**Date:** 2026-04-18  
+**Specification 02**
+**Date:** 2026-04-27
 **Depends on:** `01_technical_overview.md`
 
 ---
@@ -40,35 +40,35 @@ One `SubdivisionParams` object configures one generation of subdivision. It is i
 
 #### Algorithm selection
 
-| Field | Type | Default | Description |
-|-------|------|---------|-------------|
-| `subdivisionType` | `Int` | `QUAD` | Selects the algorithm (see §5) |
+| Field | Swift type | Default | Description |
+|-------|-----------|---------|-------------|
+| `subdivisionType` | `SubdivisionType` | `.quad` | Selects the algorithm (see §5) |
 | `lineRatios` | `Vector2D` | `(0.5, 0.5)` | Edge interpolation positions. x = ratio on even-indexed edges; y = ratio on odd-indexed edges |
 | `controlPointRatios` | `Vector2D` | `(0.25, 0.75)` | Bézier control point positions along new internal lines |
-| `continuous` | `Boolean` | `true` | When `lineRatios.x ≠ lineRatios.y`, ensures matching mid-points on adjacent edges to produce a seamless mesh |
-| `insetTransform` | `Transform2D` | scale `(0.5, 0.5)` | Translation, scale, rotation applied to echo and BORD insets |
+| `continuous` | `Bool` | `true` | When `lineRatios.x ≠ lineRatios.y`, ensures matching mid-points on adjacent edges to produce a seamless mesh |
+| `insetTransform` | `InsetTransform` | scale `(0.5, 0.5)` | Translation, scale, rotation applied to echo and BORD insets |
 
 #### Randomisation
 
-| Field | Type | Default | Description |
-|-------|------|---------|-------------|
-| `ranMiddle` | `Boolean` | `false` | Randomise the centre point before subdivision |
+| Field | Swift type | Default | Description |
+|-------|-----------|---------|-------------|
+| `ranMiddle` | `Bool` | `false` | Randomise the centre point before subdivision |
 | `ranDiv` | `Double` | `100` | Divisor controlling centre-point jitter magnitude. Lower = more randomisation |
 
 #### Visibility
 
-| Field | Type | Default | Description |
-|-------|------|---------|-------------|
-| `visibilityRule` | `Int` | `ALL` | Which child polygons are made visible after subdivision (see §7) |
+| Field | Swift type | Default | Description |
+|-------|-----------|---------|-------------|
+| `visibilityRule` | `VisibilityRule` | `.all` | Which child polygons are made visible after subdivision (see §7) |
 
 #### Whole-polygon transform
 
 Applied to entire child polygons (translate/scale/rotate each polygon as a unit):
 
-| Field | Type | Default | Description |
-|-------|------|---------|-------------|
-| `polysTransform` | `Boolean` | `true` | Master enable for any polygon transforms |
-| `polysTranformWhole` | `Boolean` | `false` | Enable whole-polygon transform |
+| Field | Swift type | Default | Description |
+|-------|-----------|---------|-------------|
+| `polysTransform` | `Bool` | `true` | Master enable for any polygon transforms |
+| `polysTranformWhole` | `Bool` | `false` | Enable whole-polygon transform (typo preserved for XML compatibility) |
 | `pTW_probability` | `Double` | `100` | % chance any given polygon is transformed |
 | `pTW_commonCentre` | `Boolean` | `false` | All polygons share one pivot; if false each uses its own centroid |
 | `pTW_randomCentreDivisor` | `Double` | `100` | Randomises pivot between polygon centroid and this divisor |
@@ -92,51 +92,51 @@ Applied to selected point categories within child polygons:
 
 ---
 
-### 3.2 SubdivisionParamsSet
+### 3.2 SubdivisionParamsSet (Swift: `SubdivisionParamsSetDef`)
 
 A named, ordered list of `SubdivisionParams` — one entry per subdivision generation.
 
 ```
-SubdivisionParamsSet("mySet")
-  [0] SubdivisionParams("gen1")  → QUAD, lineRatios(0.5, 0.5)
-  [1] SubdivisionParams("gen2")  → TRI, visibilityRule ALTERNATE_ODD
-  [2] SubdivisionParams("gen3")  → ECHO, insetTransform scale(0.7, 0.7)
+SubdivisionParamsSetDef(name: "mySet", params: [
+  SubdivisionParams("gen1")  → .quad, lineRatios(0.5, 0.5)
+  SubdivisionParams("gen2")  → .tri, visibilityRule .alternateOdd
+  SubdivisionParams("gen3")  → .echo, insetTransform scale(0.7, 0.7)
+])
 ```
 
-The set is associated with a `Shape2D`. When `Shape2D.recursiveSubdivide()` is called, it iterates this list and applies each params object in order.
+`SubdivisionConfig.paramsSet(named:)` looks up by name and returns `[SubdivisionParams]`.
 
 ---
 
-### 3.3 SubdivisionParamsSetCollection
+### 3.3 SubdivisionConfig
 
-A `ListBuffer[SubdivisionParamsSet]` — the full library of subdivision configurations for a sketch, loaded from XML. Accessed by name.
+`SubdivisionConfig` holds `paramsSetCollection: [SubdivisionParamsSetDef]` — the full library loaded from XML. `ProjectConfig.subdivisionConfig` holds the single instance per project.
 
 ---
 
 ## 4. Execution Pipeline
 
+In Swift, subdivision is driven by `SubdivisionEngine.process(polygons:paramSet:rng:)`:
+
 ```
-Shape2D.recursiveSubdivide(params: List[SubdivisionParams])
+SubdivisionEngine.process(polygons: [Polygon2D], paramSet: [SubdivisionParams], rng:)
 │
-├── Separate bypass polygons (open curves, points, ovals) — not subdivided
+├── Separate bypass polygons (.openSpline, .point, .oval) — not subdivided
 │
-├── for each SubdivisionParams in list:
+├── for each SubdivisionParams in paramSet:
 │   │
-│   ├── Shape2D.subdivide(subP)
-│   │   └── for each Polygon2D:
-│   │       └── Polygon2D.subdivide(subP)
-│   │           └── Subdivision.subdivide(subP, polyType)
-│   │               ├── Calculate centre (with optional ranMiddle jitter)
-│   │               ├── Dispatch to algorithm (QUAD/TRI/ECHO/etc.)
-│   │               │   └── Returns List[Polygon2D]
-│   │               ├── Apply visibility rule
-│   │               ├── Apply whole-polygon transform (if enabled)
-│   │               └── Apply per-point transforms (if enabled)
+│   ├── for each Polygon2D:
+│   │   └── SubdivisionEngine.subdivide(polygon:params:rng:)
+│   │       ├── Calculate centre (with optional ranMiddle jitter)
+│   │       ├── Dispatch to algorithm via SubdivisionType
+│   │       │   └── Returns [Polygon2D]
+│   │       ├── Apply visibility rule
+│   │       ├── Apply whole-polygon transform (PTPTransformSet, if enabled)
+│   │       └── Apply per-point transforms (PolygonTransforms, if enabled)
 │   │
 │   └── Filter: keep only visible polygons → feed into next generation
 │
-└── Recombine subdivided polygons with bypass polygons
-    → new Shape2D
+└── Recombine subdivided polygons with bypass polygons → [Polygon2D]
 ```
 
 **Key invariant:** Each generation receives only the *visible* polygons from the previous generation as its input. Invisible polygons are pruned from the pipeline at each step. This is what makes visibility rules compositionally powerful — `ALTERNATE_ODD` in generation 1 followed by `ALTERNATE_ODD` in generation 2 produces a quarter-density result.
@@ -317,17 +317,16 @@ Each `ECHO` variant adds the central inset polygon to the output.
 
 After subdivision produces child polygons, five categories of per-point transform can be applied. Each is independently enabled, parameterised, and gated by a probability value. They are applied in the order they appear in `transformSet`.
 
-All transforms share the same interface:
+In Swift, transforms are implemented in `PolygonTransforms.swift` and `PTPTransformSet.swift`. They operate on `[Polygon2D]` and return modified copies. All five transforms (6.1–6.5) are fully implemented.
 
-```scala
-abstract class Transform(val transforming: Boolean) {
-  def transform(polys: Array[Polygon2D], centreIndex: Int,
-                subdivisionType: Int, sidesTotal: Int,
-                numSidesPerPoly: Int): Unit
-}
-```
+The `centreIndex` concept (index of centre-adjacent anchors) is an internal detail of each algorithm. For QUAD polygons (16 points) centre anchors are at indices 7 and 8; for TRI (12 points) also at indices 7 and 8.
 
-The `centreIndex` parameter is the index within the flat point array where the centre-adjacent anchor points are located. Its value depends on the polygon type (16/2 = 8 for QUAD; nominally 4 for TRI — see bug note in §5.3).
+Application order within `applyPTPTransformSet`:
+1. `ExteriorAnchors` (per-polygon)
+2. `CentralAnchors` (per-polygon)
+3. `OuterControlPoints` (per-polygon)
+4. `AnchorsLinkedToCentre` (per-polygon)
+5. `InnerControlPoints` (full-array — applied after the per-polygon pass)
 
 ---
 
@@ -383,12 +382,13 @@ The `centreIndex` parameter is the index within the flat point array where the c
 
 | Parameter | Description |
 |-----------|-------------|
-| `tearTowardsOutsideCorner` | Anchors bow toward the nearest outer corner |
-| `tearTowardsOppositeCorner` | Anchors bow toward the diametrically opposite corner |
-| `tearTowardsCentre` | Anchors bow inward toward the polygon's own centre |
-| `randomTearType` | Choose tear direction randomly |
+| `tearType` | `TOWARDS_OUTSIDE_CORNER` \| `TOWARDS_OPPOSITE_CORNER` \| `TOWARDS_CENTRE` \| `RANDOM` |
 | `tearFactor` | Displacement magnitude (default 0.45) |
-| `cpsFollow` | Adjacent control points follow |
+| `randomTear` | Replace fixed factor with value from `randomTearFactor` range |
+| `cpsFollow` | Adjacent control points follow the anchor displacement |
+| `cpsFollowMultiplier` | Amplify following (default 1) |
+
+**Swift implementation:** `applyAnchorsLinkedToCentre` in `PolygonTransforms.swift`. For QUAD (16-pt, `centreIndex=8`): side anchors at `pts[3,4]` and `pts[11,12]`; adjacent controls at `pts[2,5]` and `pts[10,13]`. Both anchors in a pair are set to the same `tearPos = lerp(anchor0, ref, tearFactor)`; controls are offset by `(tearPos − anchor0) × cpsFollowMultiplier`.
 
 ---
 
@@ -396,19 +396,26 @@ The `centreIndex` parameter is the index within the flat point array where the c
 
 **Target:** The Bézier control points on the outer edges of the child polygons.
 
-**What it does:** Bows the outer edges inward or outward by displacing their control points along a perpendicular vector.
+**What it does:** Bows the outer edges inward (pinch) or outward (puff) by displacing their control points along a perpendicular to the edge.
 
 **Key parameters:**
 
 | Parameter | Description |
 |-----------|-------------|
-| `curveType` | PUFF (outward), PINCH (inward), PUFF_PINCH_* (alternating patterns) |
-| `curveMultiplier` | Range controlling the magnitude of the bow |
-| `lineSideRatio` | Position of each control point along the outer edge (default 0.33, 0.66) |
-| `probability` | % chance any polygon gets this transform applied (default 7%) |
-| `curveFromCentre` | Calculate perpendicular vector relative to all-polygon shared centre vs per-polygon centre |
+| `curveType` | `PUFF` \| `PINCH` \| `PUFF_PINCH_PUFF_PINCH` \| `PUFF_PINCH_PINCH_PUFF` \| `PINCH_PUFF_PUFF_PINCH` \| `PINCH_PUFF_PINCH_PUFF` |
+| `curveMultiplierMin/Max` | Magnitude applied to first/second control point of each pair |
+| `lineRatioX/Y` | Position of each control point along the outer edge (default 0.33, 0.66) |
+| `curveMode` | `PERPENDICULAR` (default) or `FROM_CENTRE` |
+| `randomMultiplier` | Sample multiplier from `randomCurveMultiplier` range |
 
-**Core calculation:** The midpoint of the outer edge is found; the vector from the polygon's centre to this midpoint is rotated 90° to obtain the perpendicular displacement direction. Control points are positioned at `lineSideRatio` positions and then offset by `perpendicularVector × curveMultiplier`.
+**Swift implementation:** `applyOuterControlPoints` in `PolygonTransforms.swift`. For QUAD (16-pt): processes control point pairs at indices `[1,2]` and `[13,14]`. For each pair:
+1. `mid = lerp(pts[idx0−1], pts[idx1+1], 0.5)` — midpoint of the outer edge
+2. `centreToMid = mid − pts[centreIndex]`; orientation quadrant from this vector
+3. `diffVect = controlA − mid`; `matchPerp = perpendicularMatchOrientation(diffVect, quadrant)` — swaps x/y and forces signs to match quadrant
+4. `reversePerp = −matchPerp`
+5. `curveType` selects PUFF (matchPerp) or PINCH (reversePerp) per control point; alternating types use `i%2` to vary between the two pairs
+
+`FROM_CENTRE` mode lerps between the average of all exterior anchors and the edge midpoint.
 
 ---
 
@@ -418,52 +425,49 @@ The `centreIndex` parameter is the index within the flat point array where the c
 
 **What it does:** Curves the internal lines, affecting how the polygon bulges between its outer boundary and its centre.
 
-Two modes depending on subdivision type:
-
-**QUAD mode:**
+**Key parameters:**
 
 | Parameter | Description |
 |-----------|-------------|
-| `referToOuter` | Reference to outer control point positions |
-| `followOuter` | Inner CPs mirror the outer curvature (opposite vectors — creates consistent bulge) |
-| `exaggerateOuter` | 45° exaggeration relative to outer |
-| `counterOuter` | Counter-direction to outer (pinch where outer puffs) |
-| `outerMultiplier / innerMultiplier` | Amplification factors |
-
-**TRI mode:**
-
-| Parameter | Description |
-|-----------|-------------|
-| `outerRatio` | Position of outer control points (±0.5 from the internal line, default 1.1) |
-| `innerRatio` | Position of inner control points (default −0.15) |
-| `commonLine` | Both CPs lie on the same line (true = straight internal edges, false = S-curves) |
+| `referToOuter` | `NONE` \| `FOLLOW` \| `EXAGGERATE` \| `COUNTER` — relationship to outer control points |
+| `outerMultiplierX/Y` / `innerMultiplierX/Y` | Amplification for outer/inner inner control points (`referToOuter` modes) |
+| `innerRatio` / `outerRatio` | Lerp ratio placement (TRI mode, `referToOuter=NONE`) |
 | `randomRatio` | Randomise placement |
-| `evenCommon / oddCommon / ranCommon` | Apply commonLine selectively |
+| `commonLine` | `EVEN` \| `ODD` \| `RANDOM` \| `NONE` — alignment of adjoining CPs on shared internal lines |
+
+**Swift implementation:** `applyInnerControlPointsToArray` in `PolygonTransforms.swift`. Uniquely operates on the **full polygon array** — this transform is applied in a separate pass after the per-polygon transforms because adjacent polygons share internal lines. Currently implements the QUAD `referToOuter=NONE` path (Scala's hardcoded `curveMultiplier = Range(-2, 2)`):
+
+1. Build a flat `buffer` of inner CPs: for each polygon → `[pts[5], pts[6], pts[9], pts[10]]`
+2. For each internal line `i`, use the cross-polygon pairing from Scala's `getInnerControlPoints`: `buf[i*4]` is paired with `buf[circularIndex(i*4+7, total)]` (i.e. the adjacent polygon's `pts[10]`), and `buf[i*4+1]` with `buf[circularIndex(i*4+6, total)]` (adjacent `pts[9]`)
+3. For each paired point: `diff = mid − pt`; `inv = Vector2D(diff.y, diff.x)` (swap x/y); `pt += inv × multiplier`
+4. Write buffer back to polygon copies
+
+The cross-polygon pairing ensures the EVEN `commonLine` behaviour: both polygons sharing an internal line are adjusted using the same notional midpoint.
 
 ---
 
 ## 7. Visibility Rules
 
-After subdivision produces child polygons, a visibility rule determines which ones are passed forward to the next generation (and ultimately to the renderer).
+After subdivision produces child polygons, a visibility rule determines which ones are passed forward to the next generation (and ultimately to the renderer). In Swift these are `VisibilityRule` enum cases with `Int` raw values matching the Scala constants exactly.
 
-| Constant | Value | Behaviour |
-|----------|-------|-----------|
-| `ALL` | 0 | All polygons visible |
-| `QUADS` | 1 | Only polygons with `sidesTotal = 4` |
-| `TRIS` | 2 | Only polygons with `sidesTotal = 3` |
-| `ALL_BUT_LAST` | 3 | All except the final polygon |
-| `ALTERNATE_ODD` | 4 | Every odd-indexed polygon (1, 3, 5, …) |
-| `ALTERNATE_EVEN` | 5 | Every even-indexed polygon (0, 2, 4, …) |
-| `FIRST_HALF` | 6 | First ⌊N/2⌋ polygons |
-| `SECOND_HALF` | 7 | Last ⌈N/2⌉ polygons |
-| `EVERY_THIRD` | 8 | Indices divisible by 3 |
-| `EVERY_FOURTH` | 9 | Indices divisible by 4 |
-| `EVERY_FIFTH` | 10 | Indices divisible by 5 |
-| `RANDOM_1_2` | 11 | 1-in-2 probability |
-| `RANDOM_1_3` | 12 | 1-in-3 probability |
-| `RANDOM_1_5` | 13 | 1-in-5 probability |
-| `RANDOM_1_7` | 14 | 1-in-7 probability |
-| `RANDOM_1_10` | 15 | 1-in-10 probability |
+| Swift case | Raw value | Behaviour |
+|-----------|-----------|-----------|
+| `.all` | 0 | All polygons visible |
+| `.quads` | 1 | Only polygons with `sidesTotal = 4` |
+| `.tris` | 2 | Only polygons with `sidesTotal = 3` |
+| `.allButLast` | 3 | All except the final polygon |
+| `.alternateOdd` | 4 | Every odd-indexed polygon (1, 3, 5, …) |
+| `.alternateEven` | 5 | Every even-indexed polygon (0, 2, 4, …) |
+| `.firstHalf` | 6 | First ⌊N/2⌋ polygons |
+| `.secondHalf` | 7 | Last ⌈N/2⌉ polygons |
+| `.everyThird` | 8 | Indices divisible by 3 |
+| `.everyFourth` | 9 | Indices divisible by 4 |
+| `.everyFifth` | 10 | Indices divisible by 5 |
+| `.random1in2` | 11 | 1-in-2 probability |
+| `.random1in3` | 12 | 1-in-3 probability |
+| `.random1in5` | 13 | 1-in-5 probability |
+| `.random1in7` | 14 | 1-in-7 probability |
+| `.random1in10` | 15 | 1-in-10 probability |
 
 **Compositional effect:** The pruning happens *between* generations. Applying `ALTERNATE_ODD` at generation 1 and `ALTERNATE_ODD` again at generation 2 leaves approximately 25% of the generation-2 polygons. Applying `RANDOM_1_3` three generations in a row leaves approximately 1 in 27 polygons — this is the primary mechanism for producing sparse, cloud-like distributions.
 
@@ -690,24 +694,29 @@ var isContinuous: Bool { lineRatios.x != lineRatios.y && continuous }
 
 ## 12. Algorithm Reference Summary
 
-| Constant | Output count | Output type | Centre used |
-|----------|-------------|-------------|-------------|
-| `QUAD` | N | 4-sided (16 pts) | Yes |
-| `QUAD_BORD` | N | 4-sided border | No (inset) |
-| `QUAD_BORD_ECHO` | N + 1 | N border + 1 inset | No |
-| `QUAD_BORD_DOUBLE` | 2N | Two border rings | No |
-| `QUAD_BORD_DOUBLE_ECHO` | 2N + 1 | Two rings + inset | No |
-| `TRI` | N | 3-sided (12 pts) | Yes |
-| `TRI_BORD_A` | N | 3-sided border A | No (inset) |
-| `TRI_BORD_A_ECHO` | N + 1 | Border A + inset | No |
-| `TRI_BORD_B` | N | 3-sided border B | No (inset) |
-| `TRI_BORD_B_ECHO` | N + 1 | Border B + inset | No |
-| `TRI_BORD_C` | N | 3-sided border C | No (inset) |
-| `TRI_BORD_C_ECHO` | N + 1 | Border C + inset | No |
-| `TRI_STAR` | N | Star triangles | Yes |
-| `TRI_STAR_FILL` | N + 1 | Star + inset | Yes |
-| `SPLIT_VERT` | 2 | Two halves | No |
-| `SPLIT_HORIZ` | 2 | Two halves | No |
-| `SPLIT_DIAG` | 2 | Two halves | No |
-| `ECHO` | 1 | Inset (relative) | Yes |
-| `ECHO_ABS_CENTER` | 1 | Inset (absolute) | No |
+Swift enum raw values and the `outputCount(sidesTotal:)` method are built into `SubdivisionType`. Algorithms are implemented in `Subdivision/Algorithms/`.
+
+| Swift case | Raw value | Output count | Output type | Centre used |
+|-----------|-----------|-------------|-------------|-------------|
+| `.quad` | 0 | N | 4-sided (16 pts) | Yes |
+| `.quadBord` | 1 | N | 4-sided border quads | No (inset) |
+| `.quadBordEcho` | 2 | N + 1 | N border + 1 inset | No |
+| `.quadBordDouble` | 3 | 2N | Two border rings | No |
+| `.quadBordDoubleEcho` | 4 | 2N + 1 | Two rings + inset | No |
+| `.tri` | 5 | N | 3-sided (12 pts) | Yes |
+| `.triBordA` | 6 | N | 3-sided border A | No (inset) |
+| `.triBordAEcho` | 7 | N + 1 | Border A + inset | No |
+| `.triBordB` | 8 | N | 3-sided border B | No (inset) |
+| `.triStar` | 9 | N + 1 | N star triangles + 1 inset centre | Yes |
+| `.triBordC` | 10 | N × 3 | 3× tri decomposition per side | No |
+| `.triBordCEcho` | 11 | N × 3 + 1 | triBordC + inset | No |
+| `.splitVert` | 12 | 2 | Two vertical halves | No |
+| `.splitHoriz` | 13 | 2 | Two horizontal halves | No |
+| `.splitDiag` | 14 | 2 | Two diagonal halves | No |
+| *(gap)* | 15 | — | Reserved | — |
+| `.echo` | 16 | 1 | Inset (relative to polygon centre) | Yes |
+| `.echoAbsCenter` | 17 | 1 | Inset (relative to canvas origin) | No |
+| `.triBordBEcho` | 18 | N + 1 | Border B + inset | No |
+| `.triStarFill` | 19 | N × 2 + 1 | N star triangles + N inset tris + 1 fill | Yes |
+
+**Note on `triStar` vs `triBordC`:** Earlier Scala documentation described `TRI_STAR` output as N and `TRI_BORD_C` as N. The Swift `SubdivisionType.outputCount(sidesTotal:)` method confirms the corrected values above. `triBordC` decomposes each side into 3 triangles (N × 3 total); `triStar` adds an inset centre polygon (N + 1 total); `triStarFill` adds both N inset triangles and a fill centre (N × 2 + 1).
