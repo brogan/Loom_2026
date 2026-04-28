@@ -265,8 +265,8 @@ YourProject/
     <li><strong>Define renderers</strong> (Rendering tab) — Set stroke, fill, colour, and dynamic change behaviour. For brush textures, choose the BRUSHED mode and configure the brush library.</li>
     <li><strong>Create sprites</strong> (Sprites tab) — Position shapes on the canvas, set size, assign a renderer set, and configure animation.</li>
     <li><strong>Configure drawing settings</strong> (Run tab) — Set quality multiple, animating toggle, draw background once.</li>
-    <li><strong>Run Loom</strong> (<code>Cmd+L</code>) — The engine launches and renders. Use <code>Cmd+R</code> to reload after parameter changes.</li>
-    <li><strong>Capture output</strong> — Use the Run tab's Save Still / Save Animation buttons.</li>
+    <li><strong>▶ or <code>Cmd+R</code></strong> — Launches the engine the first time; reloads configuration on all subsequent presses. One button, two modes.</li>
+    <li><strong>Capture output</strong> — Use <kbd>F9</kbd> (Save Still) or <kbd>F10</kbd> (Save Animation) from the Run tab's Capture Controls.</li>
 </ol>
 
 <div class="tip">Start with a single square polygon, 2–3 stages of QUAD subdivision, and a basic stroked renderer. This gives immediate visible output. Add transforms and complexity incrementally.</div>
@@ -1464,7 +1464,19 @@ Params Set Collection
 <p>Animation mode is selected in the Sprites tab Animation panel. Three modes are available; only one can be active per sprite. See the <a href="#animation">Animation</a> and <a href="#morph">Morph Animation</a> sections for full details.</p>
 
 <h3>Preview Panel</h3>
-<p>The preview canvas on the right side of the Sprites tab shows all sprites at their current positions. You can drag sprites directly in the preview to set their location, scale (drag from a corner), and rotation — the corresponding fields update live.</p>
+<p>The preview canvas on the right side of the Sprites tab renders all sprites at their current positions using the actual geometry outlines (bezier curves and polygon edges). You can drag sprites directly in the preview to set their location, scale, and rotation — the corresponding fields update live.</p>
+
+<h4>Transform handles</h4>
+<p>When a sprite is selected, a dashed bounding box appears with eight square handles. Dragging different handles has different effects:</p>
+<table>
+    <tr><th>Handle</th><th>Action</th></tr>
+    <tr><td>Top-left / Bottom-right corners</td><td>Uniform scale — drag outward to enlarge, inward to shrink</td></tr>
+    <tr><td>Top / Bottom edge midpoints</td><td>Scale Y only (height)</td></tr>
+    <tr><td>Left / Right edge midpoints</td><td>Scale X only (width)</td></tr>
+    <tr><td>Top-right / Bottom-left corners</td><td>Rotation — drag in an arc around the sprite centre</td></tr>
+    <tr><td>Inside the bounding box (no handle)</td><td>Move — drag to reposition</td></tr>
+</table>
+<p>The bounding box encompasses the full bezier curve extent, including control points, so handles appear at the outermost reach of the curves rather than just at the anchor vertices.</p>
 
 <h4>Canvas aspect ratio</h4>
 <p>The preview respects the canvas dimensions set in the Global Config tab. The grey buffer area around the canvas shows the correct aspect ratio — an 800×600 canvas appears wider than tall in the preview. Change the Global Config width or height spinboxes and the preview aspect updates immediately.</p>
@@ -2077,52 +2089,62 @@ stampOpacity = baseOpacity × (1 − pressureAlphaInfluence  + pressure × press
 <!-- ============================================================ RUN TAB -->
 <section id="run-tab">
 <h2>Run Tab</h2>
-<p>The Run tab controls launching the Loom Scala engine, capturing output, and configuring runtime drawing settings. It is the primary interface for the edit-render-iterate workflow.</p>
+<p>The Run tab provides drawing settings, capture controls, engine path configuration, and a live output console. The primary engine controls (launch, pause, stop) have moved to the <strong>media control bar</strong> at the top-right of the window.</p>
+
+<h3>Media Control Bar</h3>
+<p>Three compact buttons and two status displays sit in the top-right corner of the window, level with the tab labels:</p>
+<table>
+    <tr><th>Control</th><th>Description</th></tr>
+    <tr><td><strong>▶ Play</strong></td><td>When the engine is <em>not</em> running: auto-saves the project and launches the engine (Scala via SBT, or Swift via <code>swift run</code>). When the engine <em>is</em> running: auto-saves and sends a reload signal so the engine reloads all configuration without restarting. A single button covers both the old <em>Run</em> and <em>Reload</em> actions.</td></tr>
+    <tr><td><strong>⏸ Pause</strong> (toggle)</td><td>Pauses or resumes animation in the running engine. The button stays highlighted while paused. Only active when the engine is running.</td></tr>
+    <tr><td><strong>⏹ Stop</strong></td><td>Terminates the running engine process. Only active when the engine is running.</td></tr>
+    <tr><td>Frame counter</td><td>Shows the current frame count in the form <code>N / M</code>. Populated from engine output when available; resets to <code>— / —</code> when the engine stops.</td></tr>
+    <tr><td>Status label</td><td><strong>Stopped</strong> (grey) · <strong>Running</strong> (green/blue) · <strong>Paused</strong> (amber) · <strong>Reloading…</strong> (amber)</td></tr>
+</table>
+
+<div class="tip"><strong>▶ is context-sensitive.</strong> If no Loom window is open, clicking ▶ launches the engine from scratch. If a Loom window is already showing, clicking ▶ reloads the configuration — the same as pressing <kbd>Cmd+R</kbd>. This means you never need to think about whether to use Run or Reload: just press ▶ (or <kbd>Cmd+R</kbd>) after any change.</div>
+
+<div class="tip"><kbd>Cmd+R</kbd> is your primary iteration shortcut. It is <strong>application-wide</strong> — it fires from any window, including the Edit Point Transforms dialog, the Brush Editor, or any floating panel. You never need to click back to the main editor window first.</div>
 
 <h3>Drawing Settings</h3>
 <p>These settings affect the quality and animation behaviour of the Loom render. They are saved as part of the project's global configuration.</p>
 <table>
     <tr><th>Parameter</th><th>Unit</th><th>Description</th></tr>
-    <tr><td><code>Quality Multiple</code></td><td>Integer (1–12)</td><td>Multiplies the canvas pixel dimensions. <em>1</em>: screen-resolution (e.g. 1080×1080 px). <em>4</em>: 4320×4320 px — suitable for A2 print at 150 dpi. <em>8</em>: very high resolution for large format. When the quality multiple is greater than 1, the on-screen window shows a scaled-down preview of the full high-resolution canvas; use Save Still to capture the full image.</td></tr>
-    <tr><td><code>Scale Image</code></td><td>Boolean</td><td>When enabled, stroke widths and point sizes are scaled by the Quality Multiple so they remain proportionally consistent at high resolution. Always enable this for print-quality renders. When disabled, lines appear thinner relative to the canvas at higher quality multiples.</td></tr>
+    <tr><td><code>Quality Multiple</code></td><td>Integer (1–8)</td><td>Multiplies the canvas pixel dimensions. <em>1</em>: screen-resolution (e.g. 1080×1080 px). <em>4</em>: 4320×4320 px — suitable for A2 print at 150 dpi. <em>8</em>: very high resolution for large format. When the quality multiple is greater than 1, the on-screen window shows a scaled-down preview of the full high-resolution canvas; use Save Still to capture the full image.</td></tr>
+    <tr><td><code>Scale Image</code></td><td>Boolean</td><td>When enabled, stroke widths, point sizes, animation translation ranges, speed factors, and keyframe positions are scaled by the Quality Multiple so they remain proportionally consistent at high resolution. Always enable this for print-quality renders.</td></tr>
     <tr><td><code>Animating</code></td><td>Boolean</td><td>Master animation switch. When off, Loom draws a single frame and holds — suitable for still capture. When on, the update/draw loop runs continuously. All per-sprite animation (random, keyframe, morph) requires this to be enabled.</td></tr>
-    <tr><td><code>Draw Background Once</code></td><td>Boolean</td><td>Only relevant when Animating is on. <em>Enabled</em>: background is painted only on frame 1; subsequent frames draw on top, accumulating a layered trail effect. <em>Disabled</em>: background is cleared and repainted every frame for clean, crisp animation. The overlay colour (Global Config) is drawn every frame in either mode — use semi-transparent overlay with Draw Background Once enabled for a fading-trail effect.</td></tr>
+    <tr><td><code>Draw Background Once</code></td><td>Boolean</td><td>Only relevant when Animating is on. <em>Enabled</em>: background is painted only on frame 1; subsequent frames accumulate on top for a layered trail effect. <em>Disabled</em>: background is cleared and repainted every frame for clean animation.</td></tr>
 </table>
-
-<h3>Process Controls</h3>
-<table>
-    <tr><th>Button / Shortcut</th><th>Action</th></tr>
-    <tr><td><strong>Run Loom</strong> (<code>Cmd+L</code>)</td><td>Auto-saves the project, then launches the Loom Scala engine via SBT. A window opens with the rendered output. SBT compilation may take 10–30 seconds on first run; subsequent runs are faster (incremental compilation).</td></tr>
-    <tr><td><strong>Reload</strong> (<code>Cmd+R</code>)</td><td>Auto-saves the project, then signals the running Loom engine to reload all configuration files and reinitialise. No restart needed. This is the fastest way to see parameter changes.</td></tr>
-    <tr><td><strong>Stop</strong> (<code>Cmd+H</code>)</td><td>Terminates the running Loom process.</td></tr>
-</table>
-
-<div class="tip">The <em>Reload</em> command (<code>Cmd+R</code>) is your primary iteration tool. Edit any parameter, press Cmd+R, and the Loom window updates within a second. The shortcut is <strong>application-wide</strong> — it fires from any window, including the Edit Point Transforms dialog, the Brush Editor, or any other floating panel. You never need to click back to the main editor window first. You can also press F5 in the Loom window itself to trigger a reload.</div>
 
 <h3>Capture Controls</h3>
 <table>
     <tr><th>Button / Shortcut</th><th>Description</th></tr>
-    <tr><td><strong>Save Still</strong> <kbd>F9</kbd></td><td>Captures the current frame as a PNG. Saved to <code>&lt;project&gt;/renders/stills/</code> with an auto-incremented timestamp filename. When the quality multiple is greater than 1, the on-screen display shows a scaled-down preview; the saved PNG always contains the full-resolution image.</td></tr>
-    <tr><td><strong>Save Animation</strong> <kbd>F10</kbd></td><td>Toggles frame recording on/off. While recording, each animation frame is saved as a sequential PNG to <code>&lt;project&gt;/renders/animations/</code>. Stop recording to finish the sequence. Use external tools (ffmpeg, Premiere, etc.) to combine frames into video.</td></tr>
+    <tr><td><strong>Save Still</strong> <kbd>F9</kbd></td><td>Captures the current frame as a PNG to <code>&lt;project&gt;/renders/stills/</code> with an auto-incremented timestamp filename. The saved PNG always contains the full-resolution image regardless of the on-screen preview scale.</td></tr>
+    <tr><td><strong>Renders</strong></td><td>Opens the renders folder (stills or animations, whichever was last used) in Finder.</td></tr>
+    <tr><td><strong>Save Animation</strong> <kbd>F10</kbd></td><td>Toggles frame recording on/off. While recording, each animation frame is saved as a sequential PNG to <code>&lt;project&gt;/renders/animations/</code>. Use external tools (ffmpeg, Premiere) to combine frames into video.</td></tr>
 </table>
 
-<h3>Render Destination</h3>
-<p>By default, captures go to <code>&lt;project_dir&gt;/renders/</code>. You can specify a custom path using the <em>Render Path</em> field or the Browse button. The custom path is communicated to Loom via a sentinel file mechanism.</p>
+<h4>Render Destination</h4>
+<p>By default, captures go to <code>&lt;project_dir&gt;/renders/</code>. Enter a custom path in the <em>Render destination</em> field or use <em>Browse…</em> to choose a folder. The custom path is written to a <code>.render_path</code> sentinel file so the engine picks it up without a reload.</p>
 
-<h3>Loom SBT Path</h3>
-<p>The file system path to the root of the Loom Scala project (the directory containing <code>build.sbt</code>). SBT is launched from here. Adjust this if your Loom installation is in a non-standard location.</p>
+<h4>Auto-Save</h4>
+<p>The <em>Auto-save before run/reload</em> checkbox (below the Render Destination row) controls whether the editor saves all configuration files before ▶ or a reload. It is checked by default, ensuring the engine always reads your latest changes. Uncheck only when you want to run with the last saved state while keeping unsaved edits in the editor.</p>
 
-<h3>Auto-Save</h3>
-<p>When <em>Auto-save before run/reload</em> is checked (default), the editor saves all configuration files to disk before launching or reloading Loom. This guarantees the engine reads your latest changes. Uncheck only if you want to run with previously saved parameters while leaving unsaved edits in the editor.</p>
+<h3>Engine Path Configuration</h3>
+<p>Two path fields appear here, only one visible at a time depending on which engine is selected (Global tab):</p>
+<ul>
+    <li><strong>Loom SBT path</strong> (Scala) — path to the <code>loom_engine</code> directory containing <code>build.sbt</code>. SBT is launched from here.</li>
+    <li><strong>Loom Swift path</strong> (Swift) — path to the <code>loom_swift</code> source directory. <code>swift run LoomApp</code> is executed from here. The first run triggers compilation (up to a minute); subsequent runs use the cached build.</li>
+</ul>
 
 <h3>Output Console</h3>
-<p>The scrolling text panel shows SBT compilation output, Loom startup messages, and any runtime warnings or diagnostics. Key messages to look for:</p>
+<p>The scrolling text panel shows engine stdout and stderr — SBT compilation output, startup messages, and runtime diagnostics. Key messages:</p>
 <ul>
-    <li><code>[Loom] Project loaded</code> — Successful startup</li>
-    <li><code>[Loom] Warning: ...</code> — Configuration issue (missing file, name mismatch, etc.)</li>
-    <li><code>[error]</code> — Scala compilation error; the engine will not start</li>
-    <li><code>[Loom] Animation thread started</code> — Animation loop is running</li>
-    <li><code>[Loom] Reloading...</code> — Reload signal received</li>
+    <li><code>[Loom] Project loaded</code> — successful startup</li>
+    <li><code>[Loom] Warning: ...</code> — configuration issue (missing file, name mismatch)</li>
+    <li><code>[error]</code> — Scala compilation error; engine will not start</li>
+    <li><code>[Loom] Reloading...</code> — reload signal received</li>
+    <li><code>[Editor] Reload signal sent.</code> — ▶ / Cmd+R acknowledged by the editor</li>
 </ul>
 
 <a href="#" class="back-to-top">Back to top</a>
