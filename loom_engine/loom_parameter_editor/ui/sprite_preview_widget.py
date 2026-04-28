@@ -609,7 +609,11 @@ class SpritePreviewCanvas(QWidget):
 
     def _sprite_bbox_world(self, sprite, geo: Optional[ParsedGeo],
                            idx: int = -1) -> Optional[tuple]:
-        """Compute bounding box (min_wx, min_wy, max_wx, max_wy) in world coords."""
+        """Compute bounding box (min_wx, min_wy, max_wx, max_wy) in world coords.
+
+        Includes bezier control points so the result matches _build_path's world_bbox
+        and handle positions are consistent between painting and hit-testing.
+        """
         loc_x, loc_y, size_x, size_y, rot = self._get_sprite_display_params(sprite, idx)
 
         if geo is None or (not geo.anchor_polys and not geo.dot_positions):
@@ -623,6 +627,14 @@ class SpritePreviewCanvas(QWidget):
                 wx, wy = self._transform_point(ax, ay, loc_x, loc_y, size_x, size_y, rot)
                 all_wx.append(wx)
                 all_wy.append(wy)
+            # Include control points — _build_path does the same so handles are
+            # drawn and hit-tested at identical positions.
+            beziers = geo.ctrl_polys[poly_idx] if poly_idx < len(geo.ctrl_polys) else []
+            for c1x, c1y, c2x, c2y, _a1x, _a1y in beziers:
+                for cpx, cpy in ((c1x, c1y), (c2x, c2y)):
+                    wx, wy = self._transform_point(cpx, cpy, loc_x, loc_y, size_x, size_y, rot)
+                    all_wx.append(wx)
+                    all_wy.append(wy)
         for px, py in geo.dot_positions:
             wx, wy = self._transform_point(px, py, loc_x, loc_y, size_x, size_y, rot)
             all_wx.append(wx)

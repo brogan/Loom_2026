@@ -157,18 +157,27 @@ class GeometryTab(QWidget):
                 tab.set_shape_library(lib)
 
     def set_sprite_library(self, lib):
+        if lib is getattr(self, '_sprite_library_ref', None):
+            return
+        self._sprite_library_ref = lib
         for tab in (self.spline_tab, self.regular_tab,
                     self.open_curve_tab, self.point_tab, self.oval_tab):
             if hasattr(tab, 'set_sprite_library'):
                 tab.set_sprite_library(lib)
 
     def set_subdivision_collection(self, coll):
+        if coll is getattr(self, '_subdivision_coll_ref', None):
+            return
+        self._subdivision_coll_ref = coll
         for tab in (self.spline_tab, self.regular_tab,
                     self.open_curve_tab, self.point_tab, self.oval_tab):
             if hasattr(tab, 'set_subdivision_collection'):
                 tab.set_subdivision_collection(coll)
 
     def set_renderer_library(self, lib):
+        if lib is getattr(self, '_renderer_lib_ref', None):
+            return
+        self._renderer_lib_ref = lib
         for tab in (self.spline_tab, self.regular_tab,
                     self.open_curve_tab, self.point_tab, self.oval_tab):
             if hasattr(tab, 'set_renderer_library'):

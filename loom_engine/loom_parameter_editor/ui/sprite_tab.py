@@ -1289,22 +1289,32 @@ class SpriteTab(QWidget):
         return SpriteLibrary(name="MainLibrary")
 
     def set_polygon_library(self, lib) -> None:
+        if lib is self._polygon_lib:
+            return
         self._polygon_lib = lib
         self._refresh_geo_name_combo()
 
     def set_open_curve_library(self, lib) -> None:
+        if lib is self._curve_lib:
+            return
         self._curve_lib = lib
         self._refresh_geo_name_combo()
 
     def set_point_set_library(self, lib) -> None:
+        if lib is self._point_lib:
+            return
         self._point_lib = lib
         self._refresh_geo_name_combo()
 
     def set_oval_set_library(self, lib) -> None:
+        if lib is self._oval_lib:
+            return
         self._oval_lib = lib
         self._refresh_geo_name_combo()
 
     def set_subdivision_collection(self, coll) -> None:
+        if coll is self._subdivision_coll:
+            return
         self._subdivision_coll = coll
         self._refresh_subdiv_combo()
 
@@ -1313,6 +1323,8 @@ class SpriteTab(QWidget):
 
     def set_renderer_library(self, library) -> None:
         """Set the renderer library for populating renderer set dropdown."""
+        if library is self._renderer_library:
+            return
         self._renderer_library = library
         self._refresh_renderer_set_dropdown()
 
