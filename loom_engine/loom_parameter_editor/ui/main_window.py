@@ -347,6 +347,12 @@ class MainWindow(QMainWindow):
         self.run_tab = RunTab(save_callback=self._save_project)
         self.tab_widget.addTab(self.run_tab, "Run")
 
+        # Place the media process controls in the top-right corner of the tab
+        # bar, level with the tab labels.
+        self.tab_widget.setCornerWidget(
+            self.run_tab.control_bar, Qt.Corner.TopRightCorner
+        )
+
         # Initialise global tab with persisted projects directory and engine selection
         self.global_tab.set_projects_dir(self._app_settings.default_projects_dir)
         self.global_tab.set_selected_engine(self._app_settings.selected_engine)
