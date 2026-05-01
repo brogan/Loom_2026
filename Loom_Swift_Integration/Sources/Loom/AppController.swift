@@ -19,10 +19,12 @@ final class AppController: ObservableObject, @unchecked Sendable {
 
     // MARK: - Published: per-tab selection
 
-    @Published var selectedGeometryKey:      String? = nil
-    @Published var selectedSubdivisionIndex: Int?    = nil
-    @Published var selectedSpriteID:         String? = nil
-    @Published var selectedRendererIndex:    Int?    = nil
+    @Published var selectedGeometryKey:           String? = nil
+    @Published var selectedSubdivisionIndex:      Int?    = nil
+    @Published var selectedSubdivisionParamIndex: Int?    = nil   // within selected set
+    @Published var selectedSpriteID:              String? = nil
+    @Published var selectedRendererIndex:         Int?    = nil
+    @Published var selectedRendererItemIndex:     Int?    = nil   // within selected set
 
     // MARK: - Published: export
 
@@ -54,6 +56,21 @@ final class AppController: ObservableObject, @unchecked Sendable {
     init() {
         loadRecentProjectsFromDefaults()
         openFromCommandLineIfPresent()
+    }
+
+    // MARK: - Config mutation (parameter editor)
+
+    /// Mutate the in-memory `projectConfig` and auto-save to `project_config.json`.
+    ///
+    /// The engine does NOT reload automatically; the saved JSON is picked up on the
+    /// next engine reload (manual or via `.reload` sentinel).
+    func updateProjectConfig(_ fn: (inout ProjectConfig) -> Void) {
+        guard var config = projectConfig else { return }
+        fn(&config)
+        projectConfig = config
+        if let url = projectURL {
+            try? ProjectLoader.save(config, to: url)
+        }
     }
 
     // MARK: - Project management
@@ -134,10 +151,12 @@ final class AppController: ObservableObject, @unchecked Sendable {
     }
 
     private func clearSelections() {
-        selectedGeometryKey      = nil
-        selectedSubdivisionIndex = nil
-        selectedSpriteID         = nil
-        selectedRendererIndex    = nil
+        selectedGeometryKey           = nil
+        selectedSubdivisionIndex      = nil
+        selectedSubdivisionParamIndex = nil
+        selectedSpriteID              = nil
+        selectedRendererIndex         = nil
+        selectedRendererItemIndex     = nil
     }
 
     // MARK: - Private: renders dir

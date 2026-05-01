@@ -1,5 +1,13 @@
 import Foundation
 
+// MARK: - JSON config filename
+
+/// Filename written by `ProjectLoader.save(_:to:)` inside the project directory.
+///
+/// When this file exists it takes precedence over the XML config files on next load,
+/// allowing the Swift parameter editor to persist edits without rewriting XML.
+public let projectConfigFilename = "project_config.json"
+
 /// Errors thrown by `ProjectLoader`.
 public enum ProjectLoaderError: Error, LocalizedError {
     case projectDirectoryNotFound(URL)
@@ -30,13 +38,36 @@ public enum ProjectLoaderError: Error, LocalizedError {
 /// ```
 ///
 /// All six config files are required; missing files throw `ProjectLoaderError.missingFile`.
+/// When `project_config.json` exists inside the project directory it takes precedence
+/// over all XML files, allowing Swift-native edits to round-trip without modifying XML.
 public enum ProjectLoader {
+
+    // MARK: - Save
+
+    /// Write `config` as `project_config.json` inside `projectDirectory`.
+    ///
+    /// Subsequent calls to `load(projectDirectory:)` will prefer this file over the XML
+    /// configuration files, so edits made via the Swift parameter editor persist across
+    /// engine reloads.
+    public static func save(_ config: ProjectConfig, to projectDirectory: URL) throws {
+        let url = projectDirectory.appendingPathComponent(projectConfigFilename)
+        try JSONConfigLoader.save(config, to: url)
+    }
+
+    // MARK: - Load
 
     public static func load(projectDirectory: URL) throws -> ProjectConfig {
         let fm   = FileManager.default
         var isDir: ObjCBool = false
         guard fm.fileExists(atPath: projectDirectory.path, isDirectory: &isDir), isDir.boolValue else {
             throw ProjectLoaderError.projectDirectoryNotFound(projectDirectory)
+        }
+
+        // JSON override: prefer project_config.json when present (written by Swift editor).
+        let jsonURL = projectDirectory.appendingPathComponent(projectConfigFilename)
+        if fm.fileExists(atPath: jsonURL.path),
+           let config = try? JSONConfigLoader.load(url: jsonURL) {
+            return config
         }
 
         let configDir = projectDirectory.appendingPathComponent("configuration")
