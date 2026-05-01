@@ -1,7 +1,9 @@
 # Loom Engine — XML Schema and Serialization
-**Specification 06**  
-**Date:** 2026-04-19  
+**Specification 06**
+**Date:** 2026-04-27
 **Depends on:** `01_technical_overview.md`, `05_configuration.md`
+
+> **Note:** This document describes the XML file formats consumed by `XMLConfigLoader` and `XMLPolygonLoader`. These formats are produced by the Python tools (`loom_parameter_editor`, `bezier_py`) and must be read without modification. For the Swift loading code, see `05_configuration.md`. For the JSON write path, see `JSONConfigLoader`.
 
 ---
 
@@ -924,15 +926,33 @@ The earlier schema in §9.2 showed attributes on the `<Renderer>` element — th
 
 ---
 
-## 14. Swift Migration Notes
+## 14. Swift Implementation Status
 
-| Concern | Scala approach | Recommended Swift approach |
-|---------|---------------|--------------------------|
-| XML parsing | `scala.xml`, custom SAX factory | `XMLParser` (SAX) or `XMLDocument` (DOM); or convert to JSON/property list at project save time |
-| DTD problem | Disable DTD resolution in SAX factory | Same fix needed; or strip DOCTYPE on load |
-| Color format | Three incompatible formats | Single `Color` struct with `Codable`; unify in one format |
-| Schema validation | None | `XMLSchema` validation, or `Codable` with throwing decoders |
-| Save-back | Only `GlobalConfig` | All config types need `Encodable` for a proper editor |
-| Typo compatibility | Must match Scala spelling | Provide migration reader that accepts both spellings with a one-time migration |
-| Path resolution | Ad-hoc string concat | `URL`-based path construction throughout; single `ProjectPaths` struct |
-| Animation state | Not persisted | Decide: persist animation time-position, or always start fresh |
+The Swift serialization layer is fully implemented. Key decisions made:
+
+| Concern | Swift solution |
+|---------|---------------|
+| XML parsing | `XMLParser` (SAX) via `XMLNode` helper in `Loaders/XMLNode.swift` |
+| DTD problem | `XMLConfigLoader` disables DTD resolution; `XMLPolygonLoader` strips DOCTYPE via regex before parsing |
+| Color format | `LoomColor` struct handles all three input formats; stored internally as RGBA Double |
+| Schema validation | Safe defaults throughout; missing fields silently use struct defaults |
+| Save-back | `JSONConfigLoader.save(_:to:)` writes full `ProjectConfig` as JSON — complete roundtrip |
+| Typo compatibility | `XMLConfigLoader` reads `CpsSqueezeFacto` and `polysTranformWhole` as written; JSON uses correct spelling |
+| Path resolution | `URL`-based throughout `ProjectLoader` and `SpriteScene` |
+| Animation state | Not persisted; always starts from `SpriteState.initial(for:)` at load time |
+
+**Roundtrip status (updated from Scala baseline):**
+
+| Data type | XML Load | JSON Save | Notes |
+|-----------|----------|-----------|-------|
+| `GlobalConfig` | ✓ | ✓ | Complete |
+| `ShapeConfig` | ✓ | ✓ | Complete |
+| `PolygonConfig` | ✓ | ✓ | Complete |
+| `SubdivisionConfig` | ✓ | ✓ | Complete |
+| `RenderingConfig` | ✓ | ✓ | Complete |
+| `SpriteConfig` | ✓ | ✓ | Complete |
+| `CurveConfig` | ✓ | ✓ | Optional file |
+| `OvalConfig` | ✓ | ✓ | Optional file |
+| `PointConfig` | ✓ | ✓ | Optional file |
+| `PolygonSet` (polygon files) | ✓ | — | Written by bezier_py; no write path in engine |
+| Runtime animation state | — | — | Not persisted by design |

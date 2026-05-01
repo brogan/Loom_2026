@@ -1,548 +1,350 @@
 # Loom Engine — Technical Overview
-**Version:** 1.0  
-**Date:** 2026-04-18  
-**Scope:** Scala 3 implementation (current); intended to inform Swift migration
+**Version:** 2.0
+**Date:** 2026-04-27
+**Scope:** Swift implementation (current); Scala 3 documented as legacy reference
 
 ---
 
 ## 1. Purpose and Scope
 
-This document is the first in a series of technical specifications for the Loom engine. It provides an architectural overview of the current Scala 3 implementation, identifies structural strengths and weaknesses, and establishes the vocabulary and component model for subsequent detailed specifications covering:
+This document provides an architectural overview of the current Swift implementation of the Loom engine, identifies the legacy Scala foundation it replaces, and establishes the vocabulary and component model for the accompanying specification series:
 
 - Subdivision system
 - Animation and sprite system
 - Rendering pipeline
 - Configuration and parameter loading
-- I/O and media
-- Scene and camera management
-
-A migration assessment for Swift is included at the end.
+- Serialization / I/O
+- Interaction model
 
 ---
 
-## 2. Build and Infrastructure
+## 2. Implementation Status
 
-**Language:** Scala 3.7.3  
-**Build tool:** SBT  
-**Runtime:** JVM (2 GB – 12 GB heap, G1GC, 32 MB regions)  
+**The Swift implementation (`loom_swift/`) is the active engine.** The Scala 3 codebase (`loom_engine/`) remains as a reference but is under light maintenance only — no new features.
 
-**Key dependencies:**
-
-| Library | Version | Role |
-|---------|---------|------|
-| scala-swing | 3.0.0 | Display (JFrame / JPanel) |
-| scala-xml | 2.2.0 | Configuration and shape loading |
-
-No external geometry or graphics libraries are used. All rendering is through Java 2D (AWT Graphics2D).
-
-The JVM is configured for large buffer allocations (up to ~277 MB for 8320×8320 @ quality ×8) with pre-touched heap pages and GCLocker retry logic for JNI critical sections.
-
-**Compiler options:** `-Wunused:all`, `-deprecation`, `-feature`
+All 11 phases of the migration plan have been substantially implemented. The Swift engine reads the same `.loom_projects` XML format as the Scala engine and is visually compatible with it.
 
 ---
 
-## 3. Package Structure
+## 3. Build and Infrastructure
 
-```
-org.loom
-├── scaffold/     (10 files)  Application frame, rendering loop, lifecycle
-├── geometry/     (29 files)  Coordinate primitives, polygons, shapes, subdivision dispatch
-├── subdivide/    (20 files)  Concrete subdivision algorithm implementations
-├── scene/        (20 files)  Sprites, renderers, animation, camera
-├── transform/    ( 9 files)  Pluggable point-transform strategies
-├── media/        (18 files)  XML loaders, image I/O, sound, text I/O
-├── config/       ( 4 files)  Global and project configuration
-├── interaction/  ( 6 files)  Keyboard, mouse, serial port input
-├── utility/      (13 files)  Math helpers, ranges, colour palettes, easing
-├── mysketch/     ( 1 file)   User sketch — concrete drawing implementation
-├── ui/           ( 1 file)   Project selector dialog
-└── tools/        ( 1 file)   CLI subdivision baking utility
-```
+**Language:** Swift 6.0
+**Build tool:** Swift Package Manager
+**Minimum targets:** macOS 14 (Sonoma), iOS 17+
 
-Total: ~135 Scala source files.
+**Package targets:**
+
+| Target | Kind | Description |
+|--------|------|-------------|
+| `LoomEngine` | Library | Platform-agnostic engine; no AppKit/UIKit imports |
+| `LoomApp` | Executable | macOS SwiftUI application |
+| `LoomBake` | Executable | Headless CLI for batch frame export |
+
+`LoomApp` and `LoomBake` both depend on `LoomEngine`. `LoomEngine` imports only `Foundation`, `CoreGraphics`, `CoreImage`, and `AVFoundation` — it compiles for macOS and iOS without conditional compilation.
+
+**Current platform status:** `LoomApp` currently imports `AppKit` (macOS only). The iOS / `UIViewRepresentable` path has not yet been implemented; the architecture keeps it cleanly separable.
 
 ---
 
-## 4. Layered Architecture
-
-The engine is organised in clear layers, each building on the one below:
+## 4. Source Layout
 
 ```
-┌─────────────────────────────────────────────────┐
-│  MySketch (user drawing logic)                  │
-├─────────────────────────────────────────────────┤
-│  Scene / Sprite2D / Sprite3D                    │  Scene management
-│  Animator2D / Animator3D / Camera               │
-├─────────────────────────────────────────────────┤
-│  Renderer / RendererSet / RendererSetLibrary    │  Rendering pipeline
-│  RenderTransform                               │
-├─────────────────────────────────────────────────┤
-│  Subdivision / SubdivisionParams               │  Geometry processing
-│  Transform plugins                             │
-├─────────────────────────────────────────────────┤
-│  Shape2D/3D / Polygon2D/3D / Vector2D/3D       │  Geometry primitives
-│  PolygonSet / PolygonSetCollection             │
-├─────────────────────────────────────────────────┤
-│  XML Loaders / ImageWriter / SerialListener    │  I/O
-├─────────────────────────────────────────────────┤
-│  Sketch / DrawManager / DrawPanel / DrawFrame  │  Application scaffold
-│  Config / GlobalConfig / ProjectConfigManager  │
-└─────────────────────────────────────────────────┘
-```
+loom_swift/Sources/
+  LoomEngine/
+    Geometry/
+      Vector2D.swift
+      Vector3D.swift
+      PolygonType.swift
+      Polygon2D.swift
+      Polygon3D.swift
+      ViewTransform.swift
+      RegularPolygonGenerator.swift
+    Subdivision/
+      SubdivisionType.swift         (enum, 20 cases, raw values 0–19 with gap at 15)
+      SubdivisionType+XML.swift
+      VisibilityRule.swift          (enum, 16 cases, raw values 0–15)
+      VisibilityRule+XML.swift
+      SubdivisionParams.swift
+      SubdivisionEngine.swift
+      BezierMath.swift
+      InsetTransform.swift
+      PTPTransformSet.swift         (PTW/PTP plug-in transforms)
+      PolygonTransforms.swift
+      Algorithms/
+        QuadAlgorithm.swift
+        QuadBordAlgorithm.swift
+        TriAlgorithm.swift
+        TriBordAlgorithm.swift
+        TriStarAlgorithm.swift
+        SplitAlgorithm.swift
+        EchoAlgorithm.swift
+    Animation/
+      TransformAnimator.swift       (pure function: animation → SpriteTransform)
+      SpriteTransform.swift         (value: position, scale, rotation, morphAmount)
+      RenderStateEngine.swift       (advances RendererAnimationState each frame)
+      RendererAnimationState.swift  (per-renderer animation cursor state)
+      MorphInterpolator.swift       (blends base polygons toward morph targets)
+      EasingMath.swift              (easing curve implementations)
+    Rendering/
+      RenderEngine.swift            (CGContext drawing; pure functions)
+      BrushConfig.swift
+      BrushEdge.swift
+      BrushStampEngine.swift        (brush-along-path stamping)
+      StampEngine.swift             (stencil/stamp mode)
+      PathPerturbation.swift
+      SmoothNoise.swift
+      LoomColor+CoreGraphics.swift
+    Scene/
+      SpriteScene.swift             (assembly + advance + render)
+      SpriteInstance.swift
+      SpriteState.swift
+    Config/
+      GlobalConfig.swift
+      ProjectConfig.swift
+      ShapeConfig.swift
+      PolygonConfig.swift
+      SubdivisionConfig.swift
+      RenderingConfig.swift
+      SpriteConfig.swift
+      SpriteAnimation.swift
+      CurveConfig.swift
+      OvalConfig.swift
+      PointConfig.swift
+      StencilConfig.swift
+      FloatRange.swift
+      LoomColor.swift
+    Loaders/
+      ProjectLoader.swift
+      XMLConfigLoader.swift
+      XMLPolygonLoader.swift
+      XMLNode.swift
+      JSONConfigLoader.swift
+    Engine/
+      Engine.swift                  (class: wraps LoomEngine, drives FrameLoop)
+      FrameLoop.swift               (protocol)
+    Export/
+      StillExporter.swift
+      VideoExporter.swift
+    LoomEngine.swift                (struct: core scene state)
 
-Data flows from the bottom (configuration and shapes loaded from disk), upward through geometry processing (subdivision) and scene assembly, before being rendered each frame top-to-bottom back through the rendering pipeline.
+  LoomApp/
+    LoomApp.swift
+    ContentView.swift
+    EngineController.swift
+    RenderSurface.swift
+    ExportSheet.swift
+
+  LoomBake/
+    main.swift
+```
 
 ---
 
-## 5. Geometry Layer
+## 5. Core Architecture
 
-### 5.1 Coordinate Types
-
-| Class | Dimensions | Mutability |
-|-------|-----------|-----------|
-| `Vector2D` | 2D (x, y) | Mutable — coordinates modified in-place by all transforms |
-| `Vector3D` | 3D (x, y, z) + scale factors | Mutable |
-
-`Vector2D` is used for three semantically distinct things — position, velocity, and scale — with no type-level distinction. This is a source of confusion and a candidate for Swift's type aliases or opaque types.
-
-### 5.2 Polygon Types
+### 5.1 Two-Layer Engine Design
 
 ```
-PolygonType constants (Int — not enum):
-  0 = LINE_POLYGON       — explicit points joined by straight lines
-  1 = SPLINE_POLYGON     — closed cubic Bézier (4 points per segment)
-  2 = OPEN_SPLINE_POLYGON — open cubic Bézier
+┌─────────────────────────────────────────────────────┐
+│  Engine (final class)                               │
+│  Wraps LoomEngine struct + drives FrameLoop         │
+│  Exposes: start(with:), stop(), update(deltaTime:), │
+│           draw(into:), makeFrame(), reset()         │
+│  Properties: currentFrame, canvasSize, globalConfig │
+└────────────────────────┬────────────────────────────┘
+                         │ owns
+┌────────────────────────▼────────────────────────────┐
+│  LoomEngine (public struct, @unchecked Sendable)    │
+│  Fields:                                            │
+│    scene: SpriteScene                               │
+│    config: ProjectConfig                            │
+│    viewTransform: ViewTransform                     │
+│    backgroundImage: CGImage?                        │
+│    brushImages: [String: CGImage]  (pre-blurred)    │
+│    stampImages: [String: CGImage]  (from stamps/)   │
+│    rng: SystemRandomNumberGenerator                 │
+│    frameCount: Int                                  │
+│    elapsedFrames: Double                            │
+│    accumulationCanvas: AccumulationCanvas           │
+└─────────────────────────────────────────────────────┘
 ```
 
-`Polygon2D` holds a `List[Vector2D]` (immutable list reference, mutable contents) plus a `polyType` Int and a `visible` flag. Pressure data for stylus input is stored as `Option[Array[Float]]`.
+`LoomEngine` is a `struct` — value-type semantics, no reference sharing. `Engine` is a `final class` that provides the external API and manages object lifetime (FrameLoop ownership, notification hooks).
 
-`Polygon3D` mirrors Polygon2D in 3D. It performs shallow cloning by default — polygon lists are shallow-copied but point references are shared — which is a latent correctness risk when points are mutated.
+`AccumulationCanvas` is a heap-backed `CGContext` (class) that persists across frames when `globalConfig.drawBackgroundOnce = true`, enabling accumulation/trails rendering.
 
-### 5.3 Shape and Collection Types
+### 5.2 Scene
 
-`Shape2D` wraps a `List[Polygon2D]` with an associated `SubdivisionParamsSet`. It is the central unit of geometry: everything that gets subdivided and rendered is a Shape2D.
+`SpriteScene` (`struct, Sendable`) is the assembled, runnable scene. It is both the product of loading a project and the runtime scene state.
 
-`PolygonSet` is a named `List[Polygon2D]` as loaded from XML. `PolygonSetCollection` is a mutable `ListBuffer[PolygonSet]` searched by name. The `ListBuffer.find()` lookup is O(n) — acceptable at small collection sizes but worth noting.
+```
+SpriteScene
+├── instances: [SpriteInstance]
+│   └── each SpriteInstance:
+│       ├── def:                SpriteDef           (config; immutable)
+│       ├── basePolygons:       [Polygon2D]         (loaded geometry)
+│       ├── morphTargetPolygons:[[Polygon2D]]        (morph targets)
+│       ├── rendererSet:        RendererSet          (resolved at assembly)
+│       ├── subdivisionParams:  [SubdivisionParams]  (resolved at assembly)
+│       └── state:              SpriteState          (mutable frame state)
+└── qualityMultiple: Int
+```
 
-### 5.4 Mutability Model
+### 5.3 Value Types
 
-All transforms (translate, scale, rotate) modify point coordinates in-place. Clone operations create deep copies of the point array but the polygon list is shallow. This mutation-heavy model is fast but complicates debugging and makes parallelisation difficult.
+All engine types — `Vector2D`, `Polygon2D`, `SubdivisionParams`, `Renderer`, `SpriteTransform`, `GlobalConfig` — are `struct`. The engine has no shared mutable state. Mutation of animation state is explicit: `SpriteScene.advance(deltaTime:targetFPS:using:)` mutates the scene in-place (structs copied on assignment).
 
 ---
 
-## 6. Subdivision System
+## 6. Geometry Layer
 
-### 6.1 Overview
+### 6.1 Coordinate Types
 
-Subdivision is the computational heart of Loom. A `Polygon2D` is recursively decomposed into finer polygons by applying a chosen algorithm at each generation. The result is a `List[Polygon2D]` that replaces the original.
+| Type | Semantics |
+|------|-----------|
+| `Vector2D(x: Double, y: Double)` | Position, offset, scale |
+| `Vector3D(x: Double, y: Double, z: Double)` | 3D geometry (not yet fully used) |
 
-### 6.2 Algorithm Dispatch
+`Vector2D` is `Codable`, `Equatable`, `Sendable`. Transforms return new values.
 
-`SubdivisionParams` holds an integer `subdivisionType` constant. The dispatch happens in `Subdivision.subdivide()` via a `match` expression with 15+ cases:
+### 6.2 Polygon Types
 
+```swift
+enum PolygonType: Int, Codable, Sendable {
+    case line         = 0   // straight-edged polygon
+    case spline       = 1   // closed cubic Bézier (groups of 4)
+    case openSpline   = 2   // open cubic Bézier
+    case point        = 3   // single-vertex (discrete point)
+    case oval         = 4   // 2-point ellipse encoding
+}
 ```
-QUAD          → SplineQuad
-TRI           → SplineTri
-QUAD_BORD     → SplineQuadBord
-TRI_STAR      → SplineTriStar
-ECHO          → SplineEcho
-SPLIT_VERT    → SplineSplitVert
-... (15+ total)
-```
 
-Each case maps to a separate class. This is clean and extensible but means adding a new algorithm requires changes in both the constants object and the dispatch match.
+`Polygon2D` holds `points: [Vector2D]`, `type: PolygonType`, `pressures: [Double]` (per-anchor, defaults empty), and `visible: Bool`.
 
-### 6.3 SubdivisionParams Structure
+Spline encoding: groups of 4 — `[anchor₀, controlOut₀, controlIn₁, anchor₁]`. `points.count` is always a multiple of 4 for `.spline` and `.openSpline`.
 
-A single `SubdivisionParams` configures one level of subdivision:
+### 6.3 Coordinate Convention
 
-- **Algorithm selection:** `subdivisionType`, `lineRatios`, `controlPointRatios`
-- **Randomisation:** `ranMiddle`, `ranDiv` (random centre point offset)
-- **Visibility rules:** `visibilityRule` (ALL, ALTERNATE, RANDOM_1_3, etc.)
-- **Whole-polygon transforms:** `polysTranformWhole`, probability, `Transform2D`
-- **Per-point transforms:** `polysTransformPoints`, `transformSet: ArrayBuffer[Transform]`
-- **Continuity:** `continuous` (link adjacent midpoints across edges)
+Y-up, origin at canvas centre (Loom world space). The `ViewTransform` converts world coordinates to screen pixels. `RenderEngine` expects the caller to have applied a Y-flip transform to the `CGContext` before drawing.
 
-`SubdivisionParamsSet` is a named list of `SubdivisionParams` — one per subdivision generation. `SubdivisionParamsSetCollection` is the full library of sets for a sketch.
-
-### 6.4 Transform Plugins
-
-Five transform classes modify polygon points after subdivision:
-
-| Class | Target points |
-|-------|--------------|
-| `ExteriorAnchors` | Outer corner points |
-| `CentralAnchors` | Central anchor points |
-| `AnchorsLinkedToCentre` | Anchors scaled relative to centre |
-| `OuterControlPoints` | Outer Bézier control points |
-| `InnerControlPoints` | Inner Bézier control points |
-
-All transforms implement the same `transform(polys, centreIndex, subdivisionType, ...)` interface and modify their target array in-place. A probability field controls whether each polygon is transformed.
-
-### 6.5 Design Notes
-
-- `Subdivision.subdivide()` is stateless — a pure dispatch function.
-- Algorithm classes are also stateless — they take inputs and return `List[Polygon2D]`.
-- The mutation happens in the transform layer, not the algorithm layer. This is a good separation.
-- The transform `ArrayBuffer` is iterated unconditionally; inactive transforms are gated by `t.transforming` inside the loop.
+**Sprite coordinate pipeline:**
+1. Polygon points in normalised geometry space (≈ ±0.5)
+2. Scale by `2.0 × sprite.scale` → world range ≈ ±1
+3. Rotate in world space
+4. Multiply by canvas half-size → pixel offsets from canvas centre
+5. Add pixel-space position (raw_pos / 100 × canvas_half)
+6. `ViewTransform.worldToScreen` adds canvas-centre offset → final screen pixels
 
 ---
 
-## 7. Rendering Pipeline
+## 7. Subdivision System
 
-### 7.1 Renderer
+See `02_subdivision.md` for full detail.
 
-A `Renderer` holds one complete set of drawing instructions:
+`SubdivisionEngine` is a pure-function enum namespace. `SubdivisionEngine.process(polygons:paramSet:rng:)` applies each `SubdivisionParams` in the set in sequence. The result of each generation is the input to the next.
 
-| Field | Type | Role |
-|-------|------|------|
-| `mode` | Int | POINTS / STROKED / FILLED / FILLED_STROKED / BRUSHED / STENCILED |
-| `strokeWidth` | Float | Line weight |
-| `strokeColor` | Color | Line colour |
-| `fillColor` | Color | Fill colour |
-| `pointSize` | Float | Vertex dot size |
-| `holdLength` | Int | Frames before switching to next renderer |
-| `brushConfig` | BrushConfig | Texture stamp configuration (BRUSHED mode) |
-| `stencilConfig` | StencilConfig | Image mask configuration (STENCILED mode) |
-| `changeSet` | Array[RenderTransform] | Per-frame parameter animation |
-
-Renderer modes as raw Int constants is the main code smell here; Scala 3 enums would improve safety and readability.
-
-### 7.2 RenderTransform
-
-`RenderTransform` animates a single renderer parameter over time. It is the engine of dynamic rendering behaviour.
-
-**What it animates:** stroke width, stroke colour, fill colour, point size, opacity, alpha.
-
-**How it animates:**
-
-| Dimension | Values |
-|-----------|--------|
-| Kind | NUM_SEQ, NUM_RAN, SEQ (palette), RAN (palette random) |
-| Motion | UP, DOWN, PING_PONG |
-| Cycle | CONSTANT, ONCE, ONCE_REVERT, PAUSING, PAUSING_RANDOM |
-| Scale | SPRITE (once per sprite), POLY (once per polygon), POINT (once per point) |
-
-Each `RenderTransform` maintains stateful indices and direction flags that are updated on every call to `update()`. This state is what drives animated colour sequences, oscillating stroke widths, etc.
-
-### 7.3 RendererSet and RendererSetLibrary
-
-`RendererSet` holds a list of `Renderer` objects and a selection policy:
-
-| Policy | Behaviour |
-|--------|-----------|
-| `staticRendering = true` | Always use the same renderer |
-| `sequenceIndexChange = true` | Step through renderers in order |
-| `randomIndexChange = true` | Pick a random renderer |
-| `allRenderersActive = true` | Apply all renderers to every polygon |
-
-`RendererSetLibrary` is a named collection of `RendererSet` objects, loaded from XML configuration. It supports a `scalePixelValuesForQuality(factor)` method that scales all stroke widths and point sizes when rendering at a quality multiple.
-
-### 7.4 Sprite2D Rendering Dispatch
-
-For each frame, `Sprite2D.draw(g2D)` iterates over `shape.polys` and dispatches each polygon to the appropriate rendering method based on `ren.mode`:
-
-```
-POINTS        → drawPoints()     — vertex dots
-STROKED       → drawLines()      — polygon edges
-FILLED        → drawFilled()     — filled polygon
-FILLED_STROKED → drawFilledStroked() — both
-BRUSHED       → drawBrushed()    — returns early (operates on all polys)
-STENCILED     → drawStenciled()  — returns early (operates on all polys)
-```
-
-Within each drawing method, a coordinate transform step (`coordinateCorrect()`) applies the sprite's current location, size, and rotation before converting to AWT integer screen coordinates.
-
-`RendererSet.updateRenderer(scale)` is called at the POLY level (after each polygon) and at the SPRITE level (after all polygons), advancing `RenderTransform` state accordingly.
+`SubdivisionType` is a 20-case enum (raw Int values 0–19, gap at 15). Seven concrete algorithm files cover all cases.
 
 ---
 
-## 8. Scene and Sprite Management
+## 8. Animation System
 
-### 8.1 Scene
+See `03_animation.md` for full detail.
 
-`Scene` is a `ListBuffer[Drawable]` with `draw()` and `update()` methods that iterate and delegate. It also provides bulk transform methods (`translate`, `scale`, `rotate`) that apply to all sprites simultaneously.
+Animation is a pure transform — `TransformAnimator.transform(for:elapsedFrames:using:)` returns a `SpriteTransform` with no side effects. `SpriteScene.advance(deltaTime:targetFPS:using:)` accumulates `elapsedTime`, updates `SpriteTransform`, advances renderer index, and steps `RendererAnimationState` palettes.
 
-The `Drawable` trait is the common interface for `Sprite2D` and `Sprite3D`.
-
-### 8.2 Sprite2D
-
-```
-Sprite2D
-├── shape: Shape2D              — geometry (polygons + subdivision params)
-├── spriteParams: Sprite2DParams — initial location, size, rotation
-├── animator: SpriteAnimator    — per-frame movement strategy
-├── rendererSet: RendererSet    — how to draw it
-└── location, size: Vector2D    — current transform state
-```
-
-`Sprite2D.update()` delegates to `animator.update(this)`, which mutates `location`, `size`, and rotation in-place. `Sprite2D.draw()` uses the current transform state to position the polygon geometry on screen.
-
-### 8.3 Animation System
-
-`SpriteAnimator` is a trait with `update(sprite)` and `cloneAnimator()`.
-
-`Animator2D` is the primary implementation. It applies translation, scaling, and rotation each frame. Two modes:
-
-- **Cumulative (`jitter = false`):** Transforms accumulate frame to frame (sprite drifts/grows/rotates continuously)
-- **Jitter (`jitter = true`):** Each frame undoes the previous frame's transform and applies a new random offset. The sprite oscillates around its home position rather than drifting.
-
-Per-axis randomisation flags (`random.scale`, `random.rotation`, `random.speed`) can make each frame's transform value be drawn from a range rather than a fixed value.
-
-`Animator3D` extends this for 3D sprites, adding camera interaction.
+**Delta-time-based:** All timing is wall-clock seconds converted to virtual frames via `targetFPS`. Frame-count-based XML values (keyframe `drawCycle`, hold lengths, `pauseMax`) are integer virtual frame numbers compared against `elapsedFrames = elapsedTime × targetFPS`.
 
 ---
 
-## 9. Application Scaffold and Rendering Loop
+## 9. Rendering Pipeline
 
-### 9.1 Component Responsibilities
+See `04_rendering.md` for full detail.
 
-| Class | Role |
-|-------|------|
-| `Main` | Entry point; selects mode (GUI / CLI / bake); connects components |
-| `DrawFrame` | Swing JFrame; fullscreen management |
-| `DrawPanel` | Swing JPanel; owns the double buffer; starts AnimationRunnable |
-| `DrawManager` | Owns the `Sketch` instance; drives `update()` / `draw()` lifecycle |
-| `AnimationRunnable` | Background thread; drives the frame loop |
-| `Sketch` | Abstract base for all drawing sketches |
-| `MySketch` | Concrete sketch; loads assets, builds scene, implements logic |
+`RenderEngine` is a pure-function enum namespace drawing to a `CGContext`. `SpriteScene.render(into:viewTransform:brushImages:stampImages:elapsedFrames:using:)` iterates instances and dispatches to `RenderEngine.draw`, `BrushStampEngine.drawFullPath`, or `StampEngine.draw` depending on `renderer.mode`.
 
-### 9.2 Frame Loop
+Brush images are pre-blurred using `CIBoxBlur` at `LoomEngine` init time, keyed by `"<filename>@<scaledRadius>"`. Stamp images are loaded from `<project>/stamps/`.
 
-```
-AnimationRunnable.run()  [background thread, ~10 FPS]
-│
-├── drawPanel.animationUpdate()
-│   └── DrawManager.update()
-│       └── sketch.update()
-│           └── scene.update()
-│               └── sprite.update()  [for each sprite]
-│                   └── animator.update(sprite)
-│
-├── drawPanel.animationRender()
-│   └── DrawManager.draw()
-│       └── sketch.draw()
-│           └── scene.draw(g2D)
-│               └── sprite.draw(g2D)  [for each sprite]
-│                   ├── rendererSet.getRenderer()
-│                   ├── for each polygon: dispatch to draw method
-│                   └── rendererSet.updateRenderer()
-│
-└── drawPanel.repaint()  [schedules paintComponent on EDT]
-    └── EDT: scale dBuffer → panel
+---
+
+## 10. Configuration and Loading
+
+See `05_configuration.md` for full detail.
+
+**`ProjectConfig`** (`struct, Codable`) is the root config type holding nine sub-configs.
+
+**`ProjectLoader`** orchestrates loading from `<project>/configuration/`. Six files are required; curves/ovals/points XML is optional.
+
+**Two load paths:**
+- `XMLConfigLoader` — reads existing `.loom_projects` XML
+- `JSONConfigLoader` — reads/writes `ProjectConfig` as JSON via `Codable`
+
+---
+
+## 11. Frame Loop
+
+`FrameLoop` is a protocol:
+```swift
+protocol FrameLoop: AnyObject {
+    func start(onTick: @escaping (_ deltaTime: Double) -> Void)
+    func stop()
+}
 ```
 
-**Frame rate:** Fixed at 10 FPS (`Thread.sleep(100)`). There is no delta-time calculation; all animation assumes a constant 100 ms tick. This is a significant limitation for smooth animation.
+`Engine.start(with: any FrameLoop)` connects the loop. `LoomBake/main.swift` drives export without a display loop, passing `1.0 / targetFPS` as a fixed delta time.
 
-**Double buffer:** All rendering goes to a `BufferedImage dBuffer`. On repaint, the EDT scales `dBuffer` to the panel dimensions (supporting quality multiples).
+---
 
-### 9.3 Sentinel File Control
+## 12. Application Shell (LoomApp)
 
-Every 500 ms a timer fires on the EDT and checks for control files in the project directory:
+`LoomApp` is currently macOS-only (`import AppKit`). Entry point:
+```swift
+@main struct LoomApp: App {
+    @NSApplicationDelegateAdaptor var appDelegate: AppDelegate
+    var body: some Scene { ... }
+}
+```
+`AppDelegate.applicationShouldTerminateAfterLastWindowClosed` returns `true`. `LoomCommands` suppresses the `NewItem` menu group.
+
+---
+
+## 13. Sentinel File Control
+
+The Swift engine preserves the Scala sentinel file protocol for compatibility with `loom_parameter_editor`:
 
 | File | Action |
 |------|--------|
-| `.reload` | Reload configuration, re-create sketch |
+| `.reload` | Reload configuration and rebuild scene |
 | `.pause` | Toggle animation pause |
-| `.capture_still` | Save current buffer as image |
-| `.capture_video` | Begin/end video frame capture |
-
-This mechanism allows external tools (including the parameter editor) to control the engine without a direct inter-process API. It is pragmatic but carries up to 500 ms latency and is fragile under rapid repeated signals.
+| `.capture_still` | Save one PNG frame |
+| `.capture_video` | Toggle video capture |
 
 ---
 
-## 10. Configuration System
+## 14. Legacy Scala Reference
 
-### 10.1 Dual Configuration Layer
+The Scala 3 codebase (`loom_engine/`) is retained as a reference. Key differences from Swift:
 
-The engine has two parallel configuration systems:
-
-| System | Type | Status |
-|--------|------|--------|
-| `Config` object | Mutable global singleton | Legacy — still used throughout |
-| `GlobalConfig` | Immutable case class | Modern — loaded from `global.xml` |
-
-`Main.applyGlobalConfigToLegacy()` bridges them at startup by copying `GlobalConfig` fields into `Config`. This bridge is a temporary measure that introduces the risk of the two getting out of sync.
-
-### 10.2 Configuration Pipeline
-
-```
-~/.loom_projects/MyProject/
-├── global.xml                     → GlobalConfig (width, height, fps, quality, etc.)
-├── config/subdivisions.xml        → SubdivisionParamsSetCollection
-├── config/renderers.xml           → RendererSetLibrary
-├── config/sprites.xml             → Sprite placement and assignment
-└── polygonSets/*.xml              → PolygonSet geometry
-         ↓
-ProjectConfigManager.loadProject()
-         ↓
-MySketch.__init__()
-   ├── loadPolygonCollection()      → PolygonSetCollection
-   ├── makeRendererSetLibrary()     → RendererSetLibrary
-   ├── createSubdivisionParamsSetCollection()
-   ├── make2DShapes()               → List[Shape2D]
-   └── populate Scene with Sprite2D
-```
-
-### 10.3 XML Loading Pattern
-
-All loaders follow the same pattern:
-1. Locate XML file relative to project path
-2. Parse with `scala-xml`
-3. Construct domain objects, assigning defaults for missing attributes
-4. Return collection
-
-Error handling is minimal — missing files throw, malformed values may silently produce defaults. There is no schema validation.
+| Concern | Scala | Swift |
+|---------|-------|-------|
+| Core engine type | Multiple classes, mutable | `LoomEngine` struct, value semantics |
+| Frame rate | Fixed 10 FPS (`Thread.sleep(100)`) | Delta-time via `FrameLoop` protocol |
+| Geometry mutation | In-place on `Vector2D` | Returns new values |
+| Config system | Dual: `Config` singleton + `GlobalConfig` | Single `ProjectConfig` struct |
+| Rendering | Java 2D (`Graphics2D`) | Core Graphics (`CGContext`) |
+| Serial input | RXTX library | Not yet implemented |
 
 ---
 
-## 11. I/O Layer
+## 15. Specification Series
 
-### 11.1 Shape Loading
-
-`PolygonSetLoader` reads polygon XML into `List[Polygon2D]`. It handles all three polygon types (line, spline, open spline) and 3D shapes.
-
-Companion loaders cover: open curves, point sets, oval sets.
-
-### 11.2 Output and Capture
-
-`ImageWriter` writes `BufferedImage` to PNG or JPEG. `Capture` tracks frame counts and filenames for both still and video (sequential frame) capture.
-
-Capture is triggered either via sentinel file or keyboard shortcut (Ctrl+S / Ctrl+V) handled by `KeyPressListener`.
-
-### 11.3 Sound and Serial
-
-`SoundManager` plays audio files. `SerialListener` reads bytes from a serial port (used for physical controller input, RFID, etc.).
-
----
-
-## 12. Threading Model
-
-Three threads are active at runtime:
-
-| Thread | Responsibility |
-|--------|---------------|
-| Main / EDT | Swing event processing, repaint, sentinel timer |
-| AnimationRunnable | Frame loop — update + render to dBuffer |
-| SerialListener | Serial port byte reading (when enabled) |
-
-### 12.1 Thread Safety Issues
-
-**Critical:**
-
-1. **dBuffer race condition:** `AnimationRunnable` writes to `dBuffer`; the EDT reads it in `paintComponent()`. There is no synchronisation. Under normal operation this is benign (the EDT only scales and blits), but it is formally a data race.
-
-2. **Sketch reassignment during reload:** `DrawManager.reload()` re-instantiates `sketch` while `AnimationRunnable` may be mid-update. There is no fence or lock around the reassignment.
-
-**Lower priority:**
-
-3. **Config singleton writes:** `applyGlobalConfigToLegacy()` writes to `Config` fields at startup before the animation thread is running, so in practice this is safe — but it is not enforced.
-
-4. **Serial data flow:** `SerialListener` calls `interactionManager.passToSprite()` from its own thread. If this modifies shared scene state directly, it is a data race. Whether it is safe depends on what `passToSprite()` does internally.
-
----
-
-## 13. Code Quality Assessment
-
-### 13.1 Strengths
-
-- Clear layer separation with well-defined responsibilities
-- Pluggable subdivision algorithms (easy to add new types)
-- Pluggable renderers and render transforms (rich, composable animation)
-- Pragmatic use of Scala — no over-engineered abstractions
-- Good use of companion objects for constants and utilities
-
-### 13.2 Weaknesses
-
-**Magic number constants:**  
-Polygon types, renderer modes, subdivision types, and rotation modes are all bare `Int` constants. Scala 3 enums would provide type safety and improved readability at no performance cost.
-
-**Legacy Config singleton:**  
-The `Config` global object coexists with the `GlobalConfig` case class. All new code should use `GlobalConfig`; the bridge should be eliminated.
-
-**Null returns:**  
-Several loader methods can return null (e.g. `RendererSet.getRenderer()`). All should return `Option[T]`.
-
-**Print debugging:**  
-~50 `println()` calls throughout the codebase. A logging framework (e.g. slf4j + logback) should replace these.
-
-**Mutation in hot paths:**  
-All per-frame geometry transforms mutate coordinates in-place. This is fast but precludes parallelisation and makes debugging difficult. An immutable geometry option (copy-on-write) would improve debuggability at the cost of allocation.
-
-**Fixed 10 FPS frame cap:**  
-`Thread.sleep(100)` gives a fixed 10 FPS with no delta-time compensation. This limits animation smoothness. A proper frame timer using `System.nanoTime()` with configurable target FPS would be a straightforward improvement.
-
-**Sentinel file polling:**  
-500 ms timer + `File.exists()` checks. Should use `java.nio.file.WatchService` for lower latency and less overhead.
-
-**No input validation on XML:**  
-Malformed coordinates or out-of-range parameter values can silently corrupt rendering. A validation pass after XML loading would improve robustness.
-
----
-
-## 14. Swift Migration Assessment
-
-### 14.1 What Maps Cleanly
-
-| Scala concept | Swift equivalent | Effort |
-|---------------|-----------------|--------|
-| Case class | Codable struct | Low |
-| Companion object | Static methods / enum namespace | Low |
-| Pattern matching | switch with exhaustive cases | Low |
-| Trait (single) | Protocol | Low |
-| `Option[T]` | `Optional<T>` | Trivial |
-| `ArrayBuffer[T]` | `[T]` (copy-on-write array) or `NSMutableArray` | Low |
-| Animation thread | DispatchQueue / CADisplayLink | Low–Medium |
-
-### 14.2 What Requires Significant Work
-
-| Area | Challenge | Effort |
-|------|-----------|--------|
-| Java 2D rendering | Core Graphics or Metal backend | High |
-| Swing UI (DrawFrame/DrawPanel) | SwiftUI Window + Canvas / CALayer | High |
-| scala-xml parsing | Foundation XMLParser or Codable | Medium |
-| In-place mutation model | Decision: struct (copy) vs class (reference) for Vector2D | Medium |
-| Serial port | ORSSerialPort library | Medium |
-| Capture / ImageWriter | Core Image / UIImage / PhotoKit | Medium |
-
-### 14.3 Migration Risks
-
-1. **Rendering fidelity:** Java 2D's polygon fill/stroke model may differ subtly from Core Graphics. Visual regression testing against reference renders will be essential.
-2. **Floating-point behaviour:** JVM double vs Swift Double are both IEEE 754 but may produce different results for trigonometric subdivision at extreme parameter values. Keep reference outputs.
-3. **Coordinate system:** Java 2D is top-left origin, y-down. Core Graphics is bottom-left, y-up (in some contexts). This must be resolved consistently.
-4. **Performance target:** The current 10 FPS loop is forgiving. A Swift version targeting 60 FPS will expose any O(n²) subdivision or rendering paths that the slow loop currently hides.
-
-### 14.4 Recommended Migration Approach
-
-Rather than a big-bang rewrite, a phased approach by layer is lower risk:
-
-1. **Phase 1 — Geometry and subdivision** (Swift package, no UI)  
-   Translate Vector2D/3D, Polygon2D/3D, Shape2D/3D, and all subdivision algorithm classes. Validate output geometry against Scala reference output.
-
-2. **Phase 2 — Rendering pipeline** (Swift + Core Graphics)  
-   Implement Renderer, RendererSet, RenderTransform, and the Sprite2D draw dispatch using Core Graphics. Validate visually against Scala renders.
-
-3. **Phase 3 — Scene and animation** (complete loop)  
-   Scene, Sprite2D, Animator2D, and the frame loop via CADisplayLink. Confirm animation behaviour matches.
-
-4. **Phase 4 — Configuration and I/O**  
-   XML loaders (Codable or XMLParser), project management, image capture.
-
-5. **Phase 5 — Application shell**  
-   SwiftUI app, window management, project selector, keyboard/mouse input.
-
----
-
-## 15. Subsequent Specification Areas
-
-The following detailed specifications are planned, each covering one functional area in depth:
-
-| Document | Working title |
-|----------|--------------|
-| `02_subdivision.md` | Subdivision system — algorithms, params, transforms |
-| `03_rendering.md` | Rendering pipeline — Renderer, RendererSet, RenderTransform |
-| `04_animation.md` | Animation system — Animator2D/3D, jitter model, 3D camera |
-| `05_configuration.md` | Configuration and parameter loading — XML format, data model |
-| `06_scene.md` | Scene, Sprite, and Shape management |
-| `07_io_media.md` | I/O, image capture, video export, serial, sound |
-| `08_scaffold.md` | Application scaffold, rendering loop, threading model |
+| Document | Title |
+|----------|-------|
+| `01_technical_overview.md` | This document |
+| `02_subdivision.md` | Subdivision algorithms, params, transforms |
+| `03_animation.md` | Animation system — TransformAnimator, RenderStateEngine |
+| `04_rendering.md` | Rendering pipeline — RenderEngine, brush/stencil |
+| `05_configuration.md` | Configuration structs and loading |
+| `06_serialization.md` | XML/JSON serialization; file format reference |
+| `07_interaction.md` | LoomApp interaction model |
+| `08_swift_migration_plan.md` | Phase plan and implementation status |

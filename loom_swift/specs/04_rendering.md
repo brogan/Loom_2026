@@ -1,6 +1,6 @@
 # Loom Engine — Rendering System
-**Specification 04**  
-**Date:** 2026-04-15  
+**Specification 04**
+**Date:** 2026-04-27
 **Depends on:** `01_technical_overview.md`, `03_animation.md`
 
 ---
@@ -9,701 +9,384 @@
 
 This document specifies the rendering system — the mechanism by which Loom's geometric data is converted to screen pixels each frame. It covers:
 
-- The three-level renderer hierarchy (`Renderer` → `RendererSet` → `RendererSetLibrary`)
-- All six rendering modes and their dispatch logic
-- `RenderTransform`: dynamic per-frame parameter animation
-- `Sprite2D` and `Sprite3D` draw pipelines
-- Coordinate systems and the `View` / `Camera` model
-- `Scene` — the top-level container and render loop
-- Brush and stencil stamping subsystems
-- Design assessment and improvement recommendations
+- The renderer hierarchy (`Renderer` → `RendererSet`) and all six rendering modes
+- `RenderEngine` — the Core Graphics drawing implementation
+- `BrushStampEngine` and `StampEngine` — brush and stencil subsystems
+- Coordinate systems and `ViewTransform`
+- How `SpriteScene.render` orchestrates the pipeline
+- Design notes and comparisons to the Scala implementation
 
 ---
 
 ## 2. Conceptual Overview
 
-Loom rendering is a **three-layer pipeline**:
+Loom rendering is a three-layer pipeline:
 
 ```
-1. WHAT to draw       — geometry (Shape2D, Polygon2D, Vector2D points)
-2. HOW to draw it     — renderer configuration (Renderer, RendererSet)
-3. HOW it changes     — parameter animation (RenderTransform)
+1. WHAT to draw   — subdivided, morph-blended, transform-applied polygon arrays
+2. HOW to draw it — Renderer config (mode, colors, stroke width, brush/stencil config)
+3. HOW it changes — RendererAnimationState (stepped each frame by RenderStateEngine)
 ```
 
-Layer 1 is the product of the subdivision and animation systems. Layers 2 and 3 are the exclusive concern of this document.
-
-The `RendererSetLibrary` is a global library of `RendererSet` objects. Each `RendererSet` holds one or more `Renderer` objects and applies a selection policy — static, sequential, random, or "all active". Each `Renderer` holds the styling state (stroke color, fill color, stroke width, point size, brush config) for one rendering style. Inside each `Renderer`, up to five `RenderTransform` objects continuously animate the renderer's parameters over time.
-
-A `Sprite2D` holds a reference to a `RendererSet`. On every frame its `draw()` method asks the `RendererSet` which renderer to use for each polygon, dispatches to the appropriate low-level drawing routine, then tells the `RendererSet` to advance its parameter animation.
+`SpriteScene.render(into:viewTransform:brushImages:stampImages:elapsedFrames:using:)` iterates every `SpriteInstance` and:
+1. Applies morph interpolation (`MorphInterpolator`)
+2. Applies subdivision (`SubdivisionEngine`)
+3. Applies the sprite transform (world → pixels)
+4. Resolves the active renderer(s) for this frame
+5. Dispatches to `RenderEngine.draw`, `BrushStampEngine.drawFullPath`, or `StampEngine.draw`
 
 ---
 
-## 3. Renderer
+## 3. RendererMode
 
-**File:** `src/main/scala/org/loom/scene/Renderer.scala`
-
-### 3.1 Constructor
-
-```scala
-class Renderer(
-  val name: String,         // unique identifier
-  var mode: Int,            // rendering mode constant (see §3.3)
-  var strokeWidth: Float,
-  var strokeColor: Color,   // java.awt.Color
-  var fillColor: Color,
-  var pointSize: Float,
-  val holdLength: Int       // frames to hold this renderer before cycling to next
-)
-```
-
-### 3.2 Key Fields
-
-| Field | Type | Description |
-|-------|------|-------------|
-| `brushConfig` | `BrushConfig` | Configuration for `BRUSHED` mode; `null` otherwise |
-| `stencilConfig` | `StencilConfig` | Configuration for `STENCILED` mode; `null` otherwise |
-| `changing` | `Boolean` | Whether any `RenderTransform` is active |
-| `pointStroked` | `Boolean` | Render points as stroked ellipses |
-| `pointFilled` | `Boolean` | Render points as filled ellipses |
-| `changeSet` | `Array[RenderTransform]` (5) | One transform slot per change type (see §5) |
-
-### 3.3 Rendering Modes
-
-| Constant | Value | Description |
-|----------|-------|-------------|
-| `Renderer.POINTS` | 0 | Individual dots at every polygon vertex |
-| `Renderer.STROKED` | 1 | Outlined geometry (stroke only) |
-| `Renderer.FILLED` | 2 | Solid filled geometry |
-| `Renderer.FILLED_STROKED` | 3 | Fill then stroke on top |
-| `Renderer.BRUSHED` | 4 | Brush-stamp images along polygon edges |
-| `Renderer.STENCILED` | 5 | Full-RGBA image stamps along polygon edges |
-
-### 3.4 Dynamic Parameter Configuration
-
-Callers configure which renderer parameters will animate at runtime by calling one of a family of `setChanging*` convenience methods. Each method configures a slot in `changeSet`:
-
-```
-changeSet(0)  →  STROKE_WIDTH changes
-changeSet(1)  →  STROKE_COLOR changes
-changeSet(2)  →  FILL_COLOR changes
-changeSet(3)  →  POINT_SIZE changes
-changeSet(4)  →  STENCIL_OPACITY changes
-```
-
-Methods:
-
-| Method | Configures |
-|--------|-----------|
-| `setChangingStrokeWidth(params, min, max, increment, pauseMax)` | Numeric stroke width animation |
-| `setChangingStrokeColor(params, min, max, increment, pauseMax, pauseChan, ...)` | Numeric RGBA stroke color animation |
-| `setChangingFillColor(params, min, max, increment, pauseMax, pauseChan, ...)` | Numeric RGBA fill color animation |
-| `setChangingStrokeColorPalette(params, palette, pauseMax)` | Palette-based stroke color selection |
-| `setChangingFillColorPalette(params, palette, pauseMax)` | Palette-based fill color selection |
-| `setChangingStrokeWidthPalette(params, palette, pauseMax)` | Palette-based stroke width selection |
-| `setChangingPointSizePalette(params, palette, pauseMax)` | Palette-based point size selection |
-| `setChangingPointSize(params, min, max, increment, pauseMax)` | Numeric point size animation |
-| `setChangingStencilOpacity(params, min, max, increment, pauseMax)` | Numeric stencil opacity animation |
-
-### 3.5 update()
-
-```scala
-def update(scale: Int): Unit
-```
-
-Called by `RendererSet.updateRenderer()` on every frame. If `changing` is true, iterates over `changeSet` and calls `renderTransform.update(changeType, scale)` for each active slot. The `scale` parameter (`SPRITE`, `POLY`, or `POINT`) lets each transform opt in or out depending on which update granularity it was configured for.
-
-### 3.6 scalePixelValues()
-
-```scala
-def scalePixelValues(factor: Float): Unit
-```
-
-Multiplies `strokeWidth`, `pointSize`, and all palette float values by `factor`. Delegates to `brushConfig.scalePixelValues()` and `stencilConfig.scalePixelValues()` if present. Used to adapt pixel sizes for high-DPI or high-quality export.
-
-### 3.7 Predefined Colors
-
-`Renderer` companion object defines 17 named `Color` constants (BLACK, WHITE, GREY, YELLOW, ORANGE, RED, GREEN, CYAN, BLUE, PURPLE, MAGENTA, etc.) plus faint variants.
-
----
-
-## 4. RendererSet
-
-**File:** `src/main/scala/org/loom/scene/RendererSet.scala`
-
-### 4.1 Constructor
-
-```scala
-class RendererSet(val name: String)
-```
-
-### 4.2 Key Fields
-
-| Field | Type | Default | Description |
-|-------|------|---------|-------------|
-| `rendererSet` | `ArrayBuffer[Renderer]` | empty | All renderers in this set |
-| `currentRenderer` | `Renderer` | first added | The renderer returned by `getRenderer()` |
-| `selectedIndex` | `Int` | 0 | Index of the currently selected renderer |
-| `preferredRendererIndex` | `Int` | 0 | For random selection: preferred renderer |
-| `preferredProbability` | `Double` | 0.0 | Probability (0–100) of selecting preferred renderer |
-| `staticRendering` | `Boolean` | `true` | No renderer switching |
-| `modifyInternalParameters` | `Boolean` | `false` | Allow `RenderTransform` updates |
-| `frozen` | `Boolean` | `false` | Suspend parameter updates globally |
-| `sequenceIndexChange` | `Boolean` | `false` | Cycle renderers in order |
-| `randomIndexChange` | `Boolean` | `false` | Select renderers at random |
-| `allRenderersActive` | `Boolean` | `false` | Use every renderer on every draw cycle |
-
-### 4.3 Selection Policy
-
-`getRenderer()` applies the following priority:
-
-1. If only 1 renderer in the set → always return it.
-2. If `staticRendering` → return `rendererSet(selectedIndex)`.
-3. If `sequenceIndexChange` → advance index and return next renderer.
-4. If `randomIndexChange` → call `getRandomRendererConsideringPreferredRenderer()`.
-5. Otherwise → return `rendererSet(selectedIndex)`.
-
-`getRandomRendererConsideringPreferredRenderer()` gives the preferred renderer an additional weighted chance using `Randomise.probabilityResult(preferredProbability)`.
-
-### 4.4 Configuration Helpers
-
-| Method | Effect |
-|--------|--------|
-| `modifyRenderers()` | Sets `modifyInternalParameters = true` |
-| `sequenceRendererSet(preferred, prob)` | Sets sequential cycling; configures preferred/probability |
-| `randomRendererSet(preferred, prob)` | Sets random selection; configures preferred/probability |
-| `allRenderersMode()` | Sets `allRenderersActive = true` |
-
-### 4.5 updateRenderer()
-
-```scala
-def updateRenderer(scale: Int): Unit
-```
-
-Called by `Sprite2D.draw()` at three points in the frame — `Renderer.SPRITE`, `Renderer.POLY`, and `Renderer.POINT` — passing the appropriate scale constant. Only executes if `!staticRendering && modifyInternalParameters && !frozen`. Delegates to `currentRenderer.update(scale)`.
-
----
-
-## 5. RenderTransform
-
-**File:** `src/main/scala/org/loom/scene/RenderTransform.scala`
-
-`RenderTransform` is a `private` class — it is only accessible through `Renderer.changeSet`. It handles the continuous per-frame animation of a single renderer parameter (stroke width, fill color, etc.).
-
-### 5.1 Change Kind
-
-| Constant | Value | Behaviour |
-|----------|-------|-----------|
-| `NUM_SEQ` | 0 | Numeric value increments/decrements each frame |
-| `NUM_RAN` | 1 | New random value picked each frame (or every N frames for colors) |
-| `SEQ` | 2 | Palette index advances sequentially |
-| `RAN` | 3 | Palette index chosen at random |
-
-### 5.2 Motion Direction
-
-| Constant | Value | Effect |
-|----------|-------|--------|
-| `UP` | 1 | Value moves from min toward max |
-| `DOWN` | -1 | Value moves from max toward min |
-| `PING_PONG` | 0 | Value bounces between min and max |
-
-### 5.3 Cycle Mode
-
-| Constant | Value | Effect |
-|----------|-------|--------|
-| `CONSTANT` | 0 | Runs indefinitely |
-| `ONCE` | 1 | Stops after reaching the far limit |
-| `ONCE_REVERT` | 2 | Returns to start value after reaching the far limit, then stops |
-| `PAUSING` | 3 | Pauses at the limits for a fixed number of frames |
-| `PAUSING_RANDOM` | 4 | Pause duration is randomised each cycle |
-
-### 5.4 Pausing
-
-For size parameters (`strokeWidth`, `pointSize`, `opacity`), pausing simply freezes the value for `pauseMax` frames.
-
-For color parameters, pausing is richer. A *pause channel* (`pauseChan` — one of R, G, B, A) acts as the trigger. When that channel reaches its boundary, the renderer is set to a distinct *pause color* (`pauseColMin` / `pauseColMax`) for the pause duration, after which normal cycling resumes.
-
-Additional color channel roles during pause:
-
-| Role | Effect |
-|------|--------|
-| `EVAL` | Channel that triggers/controls pause timing |
-| `FREE` | Channel that continues cycling regardless of pause |
-| `TIED` | Channel that follows EVAL's pause timing |
-| `FIXED` | Channel held at its `max` value during pause |
-| `SWITCH` | Channel alternates between min and max |
-| `RANDOM` | Channel takes random values during pause |
-
-### 5.5 Palette-Based Changes
-
-When `kind == SEQ` or `kind == RAN`, a pre-set array of discrete values (colors or float sizes) replaces the numeric min/max/increment model. Palette cycling respects the same `motion` and `cycle` semantics as numeric changes.
-
-### 5.6 update() Execution Flow
-
-```
-RenderTransform.update(changeType, scale):
-  if scale doesn't match configured scale → return early
-
-  if pausing enabled:
-    if currently paused:
-      increment pauseCount
-      apply pause color (color changes) or hold value (size changes)
-      if pauseCount >= pauseMax → resume
-    else:
-      updateTransform()
-  else:
-    updateTransform()
-
-updateTransform():
-  dispatch by kind:
-    NUM_SEQ → updateStrokeWidth() / updateStrokeColor() / updateFillColor() / updatePointSize() / updateOpacity()
-    NUM_RAN → pick new random value immediately
-    SEQ     → updateStrokeColorPalette() / updateFillColorPalette() / updateStrokeWidthPalette() / updatePointSizePalette()
-    RAN     → pick random palette index
-```
-
-### 5.7 SizeValues Inner Class
-
-```scala
-private class SizeValues {
-  var min, max, increment, half: Float
-  var incrementCount, totalIncrements: Int
-  var goingUp: Boolean
-  
-  def getSizeUp(size: Float): Float   // add increment, clamp at max
-  def getSizeDown(size: Float): Float // subtract increment, clamp at min
-  def checkPingPongEnd(): Unit        // toggle goingUp at boundary
-  def setSizeValues(min, max, inc): Unit
-  def scaleBy(factor: Float): Unit
-}
-```
-
-### 5.8 ColorValues Inner Class
-
-```scala
-private class ColorValues {
-  var min, max, increments: Array[Int]  // 4 elements (RGBA)
-  val half: Array[Int]                  // computed midpoint per channel
-  var goingUp: Boolean
-  
-  def getChanUp(chan: Int, dex: Int): Int   // increment channel value
-  def getChanDown(chan: Int, dex: Int): Int // decrement channel value
-  def setColorValues(min, max, inc): Unit
+```swift
+public enum RendererMode: Int, Codable, Sendable {
+    case points        = 0   // individual dots at every polygon vertex
+    case stroked       = 1   // outlined geometry (stroke only)
+    case filled        = 2   // solid filled geometry
+    case filledStroked = 3   // fill then stroke on top
+    case brushed       = 4   // brush-stamp images along polygon edges
+    case stamped       = 5   // full-RGBA image stamps at discrete point positions
+    case stenciled     = 5   // alias for stamped
 }
 ```
 
 ---
 
-## 6. RendererSetLibrary
+## 4. Renderer
 
-**File:** `src/main/scala/org/loom/scene/RendererSetLibrary.scala`
+**File:** `Rendering/` (via `Config/RenderingConfig.swift`)
 
-`RendererSetLibrary` is a thin container that mirrors the `RendererSet` API at one level of abstraction higher. It holds a collection of `RendererSet` objects and provides `add`, `remove`, `setCurrentRendererSet`, `getRendererSet`, `getRandomRendererSet`, `getNextRendererSet`, and `hasRendererSet` methods.
-
-In practice it acts as a global palette of named renderer configurations. In `MySketch` implementations the library is typically constructed once at startup and individual sets are retrieved by name.
-
----
-
-## 7. Coordinate Systems
-
-Loom uses three distinct coordinate spaces:
-
-### 7.1 World Space
-
-The natural coordinate system of polygon geometry. Points are stored as `Vector2D` with the origin at the center of the conceptual canvas. Positive Y is up (mathematical convention).
-
-### 7.2 View Space
-
-A camera-adjusted space produced by `View.viewToScreenVertex()`. The camera can be translated and rotated in 3D; `Sprite3D` applies a perspective divide at this stage.
-
-### 7.3 Screen Space
-
-Pixel coordinates used by AWT/Java2D. Origin is top-left; Y increases downward. `coordinateCorrect()` in `Sprite2D` converts all polygon points from world to screen space immediately before drawing.
-
-### 7.4 View Class
-
-```scala
-class View(var width: Int, var height: Int, var offset: Vector2D)
-```
-
-Provides `viewToScreenVertex(v: Vector2D): Vector2D` which maps from world to screen coordinates, accounting for canvas dimensions and the camera offset.
-
-### 7.5 Camera Class
-
-```scala
-class Camera(var location: Vector3D, var rotOffset: Vector3D,
-             var focalLength: Double, val view: View)
-```
-
-Holds the 3D perspective parameters for `Sprite3D` rendering:
-
-- `location` — camera world position
-- `focalLength` — projection distance for perspective divide
-- `rotOffset` — camera rotation state
-- `view` — the `View` used for final 2D screen mapping
-
-Provides `rotateX/Y/Z(angle)` and `translate(speed: Vector3D)` for camera animation.
-
----
-
-## 8. Sprite2D Draw Pipeline
-
-**File:** `src/main/scala/org/loom/scene/Sprite2D.scala`
-
-### 8.1 Class Definition
-
-```scala
-class Sprite2D(
-  val shape: Shape2D,
-  val spriteParams: Sprite2DParams,
-  var animator: SpriteAnimator,
-  var rendererSet: RendererSet
-) extends Drawable
-```
-
-Constructor applies transforms in this order: rotation offset → initial rotation → translation to `spriteParams.location` → scale to `spriteParams.size`.
-
-### 8.2 Frame Loop
-
-```scala
-def update(): Unit
-  if drawLimit not exceeded:
-    animator.update(this)
-
-def draw(g2D: Graphics2D): Unit
-  // See §8.3
-```
-
-### 8.3 draw() Dispatch
-
-```
-if draw limit exceeded → return
-
-if rendererSet.allRenderersActive:
-  for each renderer in set:
-    for each polygon in shape (filtered visible):
-      if BRUSHED → drawBrushed(g2D, view)
-      if STENCILED → drawStenciled(g2D, view)
-      else → dispatch by mode (see §8.4)
-      updateRenderer(POLY)
-
-else (normal mode):
-  ren = rendererSet.getRenderer()
-  for each polygon in shape (filtered visible):
-    check holdLength → advance renderer if hold exceeded
-    dispatch by mode
-    updateRenderer(POLY)
-  updateRenderer(SPRITE)
-```
-
-### 8.4 Per-Mode Dispatch
-
-| Renderer mode | Method called | AWT primitives used |
-|---------------|---------------|---------------------|
-| `POINTS` | `drawPoints(g2D, pol, view)` | `Ellipse2D` per point |
-| `STROKED` | `drawLines(g2D, pol, view)` | `Polygon` (LINE) or `GeneralPath` cubic Bézier (SPLINE) |
-| `FILLED` | `drawFilled(g2D, pol, view)` | `Polygon` or `GeneralPath` fill |
-| `FILLED_STROKED` | `drawFilledStroked(g2D, pol, view)` | Fill pass then stroke pass |
-| `BRUSHED` | `drawBrushed(g2D, view)` | `BufferedImage` stamps (see §9) |
-| `STENCILED` | `drawStenciled(g2D, view)` | `BufferedImage` stamps (see §9) |
-
-### 8.5 Special Polygon Type Handling
-
-Before the generic rendering path, `draw*` methods check `polygon.polyType`:
-
-| PolyType | Override behaviour |
-|----------|--------------------|
-| `POINT_POLYGON` | Single dot or filled circle at `points.head` |
-| `OVAL_POLYGON` | Axis-aligned ellipse via `drawOval()`; for brush/stencil converted to polyline via `ovalToPolyline()` |
-| `OPEN_SPLINE_POLYGON` | In `drawFilled()`: rendered as stroked (cannot meaningfully fill an open path) |
-
-### 8.6 Spline Point Encoding
-
-For `SPLINE_POLYGON` types, points are stored in groups of 4 per segment:
-
-```
-segment i = [anchor_i, control_out_i, control_in_{i+1}, anchor_{i+1}]
-```
-
-`drawLines()` and `drawFilled()` iterate in steps of 4, constructing a `GeneralPath` with `moveTo` / `curveTo` calls.
-
-### 8.7 coordinateCorrect()
-
-```scala
-def coordinateCorrect(pol: Polygon2D, view: View): Polygon2D
-```
-
-Copies all points through `view.viewToScreenVertex()`, returning a new `Polygon2D` in screen space. The original geometry is not modified.
-
-### 8.8 Brush and Stencil State
-
-Brush/stencil rendering maintains per-renderer state keyed by renderer name:
-
-```scala
-private val brushStates:   mutable.Map[String, BrushState]
-private val stencilStates: mutable.Map[String, BrushState]
-```
-
-This allows multiple `BRUSHED` or `STENCILED` renderers in the same `RendererSet` to each maintain independent progressive-reveal agents.
-
----
-
-## 9. Brush and Stencil Subsystems
-
-### 9.1 BrushConfig / StencilConfig
-
-`BrushConfig` holds:
-
-| Field | Description |
-|-------|-------------|
-| `brushNames: Array[String]` | Names of brush images to load |
-| `blurRadius: Float` | Gaussian blur radius applied to brush on load |
-| `stampSpacing: Float` | Minimum pixel distance between stamps along an edge |
-| `stampsPerFrame: Int` | Stamps advanced per frame in PROGRESSIVE mode |
-| `agentCount: Int` | Number of independent progressive agents |
-| `drawMode: Int` | `FULL_PATH` (0) or `PROGRESSIVE` (1) |
-| `postCompletionMode: Int` | What to do after all agents complete |
-
-`StencilConfig` is similar but additionally carries `currentOpacity: Float` (animated via `RenderTransform` slot 4).
-
-### 9.2 BrushState / BrushAgent
-
-`BrushState` manages the edge data derived from a set of polygons:
-
-```scala
-class BrushState {
-  var edges: List[Edge]
-  var agents: List[BrushAgent]
-  var initialized: Boolean
-  
-  def initializeFromPolys(polys: List[Polygon2D]): Unit
-  def createAgents(n: Int): Unit
-  def checkCompletion(postMode: Int): Unit
+```swift
+public struct Renderer: Codable, Sendable {
+    public var name: String
+    public var mode: RendererMode
+    public var strokeWidth: Double
+    public var strokeColor: LoomColor
+    public var fillColor: LoomColor
+    public var pointSize: Double
+    public var holdLength: Int              // virtual frames before cycling to next renderer
+    public var pointStyle: PointStyle       // stroked, filled, or both
+    public var brushConfig: BrushConfig?    // non-nil for .brushed mode
+    public var stencilConfig: StencilConfig? // non-nil for .stamped/.stenciled mode
+    public var changes: RendererChanges     // parameter animation specifications
 }
 ```
 
-Edges are deduplicated using canonical string keys to prevent double-stamping on shared polygon boundaries.
+`LoomColor` is a `Codable` RGBA struct. `LoomColor+CoreGraphics.swift` provides `toCGColor()` and `toCGColorComponents()`.
 
-`BrushAgent` tracks the position of one progressive agent along the edge list.
+### 4.1 RendererChanges
 
-### 9.3 Draw Modes
+`RendererChanges` holds the animation specifications for each animatable parameter. Each slot is an optional `ParameterAnimation`:
 
-**FULL_PATH**: A fresh `BrushState` is created every frame. All edges are stamped in their entirety. `meanderFrame` counter is advanced to animate any time-based perturbation in the brush config.
-
-**PROGRESSIVE**: `BrushState` is lazily initialised on first draw and retained across frames. Each `BrushAgent` advances by `stampsPerFrame` stamps per frame, producing a reveal effect. Once all agents complete, `checkCompletion()` applies the `postCompletionMode` policy (e.g., reset, freeze).
-
-### 9.4 Stamp Engines
-
-`BrushStampEngine` and `StencilStampEngine` are the low-level stamp appliers. They walk the edge, apply spacing logic, composite the brush/stencil image onto `g2D` with the appropriate color tint (BRUSHED) or raw opacity (STENCILED), and report progress back to the agent.
-
----
-
-## 10. Sprite3D Draw Pipeline
-
-**File:** `src/main/scala/org/loom/scene/Sprite3D.scala`
-
-### 10.1 Class Definition
-
-```scala
-class Sprite3D(
-  var shape: Shape3D,
-  var location: Vector3D,
-  var size: Vector3D,
-  val startRotation: Vector3D,
-  val rotOffset: Vector3D,
-  var animator: Animator3D,
-  var rendererSet: RendererSet
-) extends Drawable
-```
-
-### 10.2 3D Perspective Pipeline
-
-For each polygon, `Sprite3D` applies:
-
-1. Check near-clip: skip polygon if closer than `Camera.nearClipDistance`.
-2. Project each point: `point_screen = getPerspective(point_world + sprite.location, viewDistance)`.
-3. Apply view correction: `view.viewToScreenVertex(projected)`.
-4. Render using AWT primitives identical to `Sprite2D`.
-
-`getPerspective()` implements a simple central projection:
-
-```
-screenX = worldX * focalLength / worldZ
-screenY = worldY * focalLength / worldZ
-```
-
-### 10.3 Limitations
-
-- `Sprite3D` supports only `POINTS`, `STROKED`, `FILLED`, and `FILLED_STROKED` modes.
-- `BRUSHED` and `STENCILED` modes are not available for 3D sprites.
-- There is no z-sorting of individual polygons; painter's order is determined by polygon list order in `Shape3D`.
-
----
-
-## 11. Scene
-
-**File:** `src/main/scala/org/loom/scene/Scene.scala`
-
-### 11.1 Structure
-
-```scala
-class Scene {
-  private val sprites: ListBuffer[Drawable]
+```swift
+public struct RendererChanges: Codable, Sendable {
+    public var strokeWidth:    ParameterAnimation?
+    public var strokeColor:    ColorAnimation?
+    public var fillColor:      ColorAnimation?
+    public var pointSize:      ParameterAnimation?
+    public var opacity:        ParameterAnimation?
+    public var stencilOpacity: ParameterAnimation?
 }
 ```
 
-A flat list of `Drawable` objects (mix of `Sprite2D` and `Sprite3D`).
-
-### 11.2 Public API
-
-| Method | Description |
-|--------|-------------|
-| `addSprite(sprite)` | Append to end of list |
-| `addSprite(sprite, zIndex)` | Insert at specific z-order position |
-| `removeSprite(sprite/zIndex)` | Remove by reference or index |
-| `changeZIndex(sprite, zIndex)` | Move to new position |
-| `getSprite(zIndex)` | Return sprite at index |
-| `getIndex(sprite)` | Return index of sprite |
-| `getSize()` | Number of sprites |
-| `update()` | Call `update()` on every sprite |
-| `draw(g2D)` | Call `draw(g2D)` on every sprite in order |
-| `drawSprite(g2D, index)` | Draw one specific sprite |
-| `drawSpritePoly(g2D, spriteIndex, polyIndex)` | Draw one polygon of one sprite |
-
-### 11.3 Transform Delegation
-
-`Scene` provides bulk transform methods (`translate`, `scale`, `rotate`, `rotateX/Y/Z`, `rotateAroundParent`) that iterate over all sprites and delegate to the appropriate `Sprite2D` or `Sprite3D` method. These assume a homogeneous scene (all 2D or all 3D); mixing types requires the caller to manage the list directly.
-
 ---
 
-## 12. Design Assessment
+## 5. RendererSet and Playback Policy
 
-### R1 — Renderer.clone() and toString() are commented out
+```swift
+public struct RendererSet: Codable, Sendable {
+    public var name: String
+    public var renderers: [Renderer]
+    public var playbackConfig: PlaybackConfig
+}
 
-`Renderer.scala` contains commented-out `clone()` and `toString()` methods marked "FIX: Needs updating to reflect new fields". This means cloning a `RendererSet` is not possible without manually reconstructing each `Renderer`, and logging is degraded.
+public struct PlaybackConfig: Codable, Sendable {
+    public var mode: PlaybackMode           // .static | .sequential | .random | .all
+    public var preferredRenderer: String    // name of preferred renderer for .random
+    public var preferredProbability: Double // 0–100 probability of using preferred
+    public var modifyInternalParameters: Bool
+}
 
-**Recommended fix:** Implement `clone()` following the same pattern as `Animator2D.clone()` (spec §03). Generate a fresh `Renderer`, copy all fields, deep-copy `changeSet` array.
-
----
-
-### R2 — RenderTransform: two wrong field references in POINT_SIZE PING_PONG (bug)
-
-**Location:** `RenderTransform.scala` lines 566–568
-
-```scala
-// Current (wrong):
-renderer.pointSize = renderer.strokeWidth - pointSizeValues.increment
-strokeWidthValues.goingUp = true
-
-// Should be:
-renderer.pointSize = renderer.pointSize - pointSizeValues.increment
-pointSizeValues.goingUp = true
+public enum PlaybackMode: String, Codable, Sendable {
+    case `static`, sequential, random, all
+}
 ```
 
-When `pointSize` animates in PING_PONG DOWN mode, the code accidentally reads `strokeWidth` as the current value and flags `strokeWidthValues.goingUp` instead of `pointSizeValues.goingUp`. Net effect: `pointSize` is corrupted and `strokeWidth` direction state may flicker whenever point-size ping-pong is used.
+**Active renderer selection** (in `SpriteScene.resolveActiveRenderers`):
 
-**Fix:** see §13.
+- `.all` → all renderers in the set are applied to every polygon
+- `.static` → always `renderers[activeRendererIndex]` (index never changes)
+- `.sequential` → advance index when `holdFramesRemaining` reaches 0
+- `.random` → pick a random index; apply `preferredProbability` weight when `preferredRenderer` is set
 
----
-
-### R3 — No delta-time: all animation is frame-rate dependent
-
-`RenderTransform` increments by a fixed value per frame. On faster hardware the rendering runs visually faster; on slower hardware it runs visually slower. There is no concept of elapsed wall-clock time.
-
-**Swift migration consideration:** Introduce a `deltaTime: Double` parameter to both the scene update loop and the parameter animation loop.
+The `activeRendererIndex` and `holdFramesRemaining` are stored in `SpriteState`, not in `RendererSet` — so the set itself is immutable.
 
 ---
 
-### R4 — Direct mutation of renderer properties
+## 6. RenderEngine
 
-`RenderTransform.update()` writes directly to `renderer.strokeColor`, `renderer.fillColor`, `renderer.strokeWidth`, `renderer.pointSize`, and `renderer.stencilConfig.currentOpacity`. There is no change-notification system and no snapshot of previous state.
+**File:** `Rendering/RenderEngine.swift`
 
----
+`RenderEngine` is a pure-function `enum` namespace. It draws one polygon into a `CGContext`. No side effects outside the context.
 
-### R5 — Edge deduplication uses string keys (performance)
-
-`BrushState.initializeFromPolys()` constructs a canonical string for each edge to prevent double-stamping. This is O(n²) in the number of edges and allocates a string per edge per frame in `FULL_PATH` mode.
-
-**Swift migration fix:** Use integer point indices and a hash set of `(min(i,j), max(i,j))` tuples for O(n) deduplication without string allocation.
-
----
-
-### R6 — RendererSet has no bounds check on selectedIndex
-
-If `selectedIndex` is set to a value ≥ `rendererSet.length` (e.g., after removing a renderer), `rendererSet(selectedIndex)` will throw `IndexOutOfBoundsException`.
-
----
-
-### R7 — Debug println in Sprite2D constructor
-
-Lines 42–45 of `Sprite2D.scala` print sprite creation diagnostics to stdout unconditionally. Should be guarded by a debug flag.
-
----
-
-### R8 — Sprite3D constructor transform order differs from Sprite2D
-
-`Sprite2D`: rotation offset → rotation → translate → scale.
-`Sprite3D`: rotation offset → scale → rotation (no constructor translate; location applied at draw time).
-
-Not a bug, but a maintenance hazard. The convention should be explicitly documented in the constructor of each class.
-
----
-
-### R9 — Renderer.update() scale filtering is effectively inert
-
-`Renderer.update(scale: Int)` passes the scale level to each `RenderTransform` to allow per-granularity opt-in. In practice all renderer configurations tested use `SPRITE` level or leave scale unset, so the filtering mechanism exists but is never meaningfully exercised. This is dead complexity.
-
----
-
-## 13. Shape2D and Shape3D: The Geometry Container
-
-**Files:** `src/main/scala/org/loom/geometry/Shape2D.scala`, `Shape3D.scala`
-
-`Shape2D` and `Shape3D` are thin containers that sit between the subdivision system (spec 02) and the sprite/render system. They exist in the Scala codebase for historical reasons; in the Swift rewrite they should be eliminated — the sprite will hold its polygon list directly (see §13.3).
-
-### 13.1 Shape2D
-
-```scala
-class Shape2D(
-  val polys: List[Polygon2D],
-  val subdivisionParamsSet: SubdivisionParamsSet  // may be null
-)
+```swift
+public enum RenderEngine {
+    public static func draw(
+        _ polygon: Polygon2D,
+        renderer: Renderer,
+        into context: CGContext,
+        transform: ViewTransform,
+        qualityMultiple: Int = 1
+    )
+}
 ```
 
-Adds to a bare polygon list:
+### 6.1 Coordinate Convention
 
-- `translate`, `scale`, `rotate` — delegate to every polygon in `polys`
-- `clone()` — deep-copies all polygons
-- `recursiveSubdivide(subs: List[SubdivisionParams]): Shape2D` — produces final render geometry (see §13.2)
-- `subdivide(subP: SubdivisionParams): Shape2D` — single subdivision pass across all 19 algorithm variants
-- `alignPolys()` — shifts even-indexed quad-subdivided polygons to correct vertical alignment
+The caller must have applied a Y-flip transform to the `CGContext` before calling `draw`. This converts Core Graphics' bottom-left Y-up coordinates to Loom's screen-space convention (origin top-left, Y-down). `LoomEngine.advance` applies this flip when drawing to the accumulation canvas.
 
-### 13.2 recursiveSubdivide()
+### 6.2 Dispatch by Mode
 
-For each `SubdivisionParams` in the list in order:
+| Mode | Drawing approach |
+|------|----------------|
+| `.points` | `CGContext.fillEllipse` at each polygon vertex |
+| `.stroked` | `CGMutablePath` with `strokePath()` |
+| `.filled` | `CGMutablePath` with `fillPath()` |
+| `.filledStroked` | Fill path then stroke path |
+| `.brushed` | Returns immediately — handled by `BrushStampEngine` |
+| `.stamped` / `.stenciled` | Returns immediately — handled by `StampEngine` |
 
-1. Separate polygons into **bypass** (`OPEN_SPLINE`, `POINT`, `OVAL`) and **closed** (eligible for subdivision).
-2. Apply `subdivide(subP)` to the closed polygons.
-3. Filter out `visible == false` polygons before the next pass.
-4. Recombine with bypass polygons.
+### 6.3 Bézier Path Construction
 
-The final `Shape2D` may have many times more polygons than the original. Bypass polygons pass through every pass unchanged — they appear alongside subdivided geometry in the final shape.
+For `.spline` polygons (groups of 4 points):
 
-### 13.3 Shape3D
-
-```scala
-class Shape3D(val points: List[Vector3D], val polys: List[Polygon3D])
+```swift
+let path = CGMutablePath()
+path.move(to: transform.worldToScreen(points[0]))
+stride(from: 0, to: points.count, by: 4).forEach { i in
+    path.addCurve(
+        to:       transform.worldToScreen(points[i+3]),
+        control1: transform.worldToScreen(points[i+1]),
+        control2: transform.worldToScreen(points[i+2])
+    )
+}
+if polygon.type == .spline { path.closeSubpath() }
 ```
 
-Uses a **shared point list**: all polygons reference shared `Vector3D` instances by index via `vertexOrders: Array[Array[Int]]`. A transform updates each point once regardless of how many polygons share it. Cloning must reconstruct `vertexOrders` mappings carefully.
+For `.line` polygons: `addLine(to:)` between consecutive points, closed with `closeSubpath()`.
 
-### 13.4 Swift Migration: Eliminate Both Classes
+For `.point` polygons: each point becomes a filled ellipse of `pointSize` diameter.
 
-`Sprite2D` should hold `[Polygon2D]` directly (as the Loom Editor already does). The `recursiveSubdivide()` logic moves to a free function or a `SubdivisionEngine` that takes `([Polygon2D], [SubdivisionParams]) → [Polygon2D]`.
+For `.oval` polygons: two-point encoding — point[0] is the centre, point[1] is `(cx+rx, cy+ry)`. The radii are extracted and drawn with `addEllipse(in:)`.
 
-The shared-point pattern in `Shape3D` is worth reconsidering for 3D meshes; if retained, encapsulate it behind a proper mesh type with safe mutation semantics.
+### 6.4 Quality Scaling
+
+`qualityMultiple` (from `GlobalConfig`) scales all pixel-size values: `strokeWidth`, `pointSize`, brush stamp parameters. This enables high-resolution export without rescaling existing projects.
 
 ---
 
-## 14. Bug Fix: RenderTransform POINT_SIZE PING_PONG
+## 7. ViewTransform
 
-Two wrong field references in `updatePointSize()`. The DOWN branch of the PING_PONG case reads `renderer.strokeWidth` as the current value (should be `renderer.pointSize`) and sets `strokeWidthValues.goingUp` (should be `pointSizeValues.goingUp`).
+**File:** `Geometry/ViewTransform.swift`
+
+```swift
+public struct ViewTransform: Sendable {
+    public var canvasSize: CGSize
+
+    public func worldToScreen(_ v: Vector2D) -> CGPoint {
+        CGPoint(
+            x: canvasSize.width  / 2 + v.x,
+            y: canvasSize.height / 2 - v.y   // Y-flip for screen space
+        )
+    }
+}
+```
+
+The Y-flip (`- v.y`) converts from Loom world space (Y-up) to Core Graphics screen space (Y-down, origin top-left). After the sprite transform pipeline, polygon points are in pixel-space offsets from canvas centre — `worldToScreen` adds the canvas-centre offset.
+
+---
+
+## 8. Brush Rendering
+
+**Files:** `Rendering/BrushConfig.swift`, `Rendering/BrushEdge.swift`, `Rendering/BrushStampEngine.swift`, `Rendering/PathPerturbation.swift`, `Rendering/SmoothNoise.swift`
+
+### 8.1 Overview
+
+Brush rendering stamps pre-blurred images along polygon edge paths at configurable spacing. It replaces the Scala `drawBrushed()` approach with a Swift implementation that uses `CGContext` drawing and Core Image pre-blurring.
+
+### 8.2 Brush Image Pre-blur
+
+Brush images are pre-blurred at `LoomEngine` init time:
+
+```swift
+let blurredKey = "\(filename)@\(scaledRadius)"
+let blurred = applyCIBoxBlur(image: rawImage, radius: scaledRadius)
+brushImages[blurredKey] = blurred
+```
+
+`CIBoxBlur` (Core Image) is used — GPU-accelerated. The blur radius is `blurRadius × qualityMultiple`. Multiple blur radii for the same file are cached independently.
+
+At render time, `BrushStampEngine` looks up the pre-blurred image by key.
+
+### 8.3 BrushEdge
+
+`BrushEdge.extractEdges(from:viewTransform:)` converts transformed polygons into a flat list of screen-space edges, each carrying the associated pressure values for pressure-sensitive stamp sizing/opacity.
+
+### 8.4 BrushStampEngine
+
+```swift
+public enum BrushStampEngine {
+    public static func drawFullPath(
+        edges:         [BrushEdge],
+        config:        BrushConfig,
+        color:         LoomColor,
+        context:       CGContext,
+        elapsedFrames: Double,
+        brushImages:   [String: CGImage]
+    )
+}
+```
+
+**Full-path mode:** The entire edge path is traversed in one pass, placing stamps at intervals of `config.stampSpacing`. For each stamp:
+1. Position along the edge at the current arc-length
+2. Apply perpendicular jitter (`perpendicularJitterMin..Max`)
+3. Apply random scale (`scaleMin..Max`)
+4. Apply random opacity (`opacityMin..Max`)
+5. Modulate size/opacity by pressure (controlled by `pressureSizeInfluence`, `pressureAlphaInfluence`)
+6. Draw the CGImage at the stamp position
+
+`PathPerturbation` and `SmoothNoise` provide meander animation — a sinusoidal perturbation applied to the path that can be animated by `elapsedFrames`.
+
+### 8.5 BrushConfig
+
+```swift
+public struct BrushConfig: Codable, Sendable {
+    public var brushNames: [String]
+    public var stampSpacing: Double
+    public var followTangent: Bool
+    public var perpendicularJitterMin: Double
+    public var perpendicularJitterMax: Double
+    public var scaleMin: Double
+    public var scaleMax: Double
+    public var opacityMin: Double
+    public var opacityMax: Double
+    public var blurRadius: Int
+    public var pressureSizeInfluence: Double
+    public var pressureAlphaInfluence: Double
+    public var meanderConfig: MeanderConfig
+    public var stampsPerFrame: Int
+    public var agentCount: Int
+    public var postCompletionMode: PostCompletionMode  // .hold | .loop | .pingPong
+
+    public func scaled(by factor: Double) -> BrushConfig  // scales pixel values for qualityMultiple
+}
+```
+
+---
+
+## 9. Stamp / Stencil Rendering
+
+**Files:** `Rendering/StampEngine.swift`, `Config/StencilConfig.swift`
+
+### 9.1 Overview
+
+Stamp mode places full-RGBA images at each discrete point position in the polygon. Where brush mode distributes stamps along edges at arc-length intervals, stamp mode places one stamp per polygon point.
+
+### 9.2 StampEngine
+
+```swift
+public enum StampEngine {
+    public static func draw(
+        polygon:       Polygon2D,
+        config:        StencilConfig,
+        context:       CGContext,
+        viewTransform: ViewTransform,
+        stampImages:   [String: CGImage],
+        opacityState:  FloatAnimState?,
+        using rng:     inout some RandomNumberGenerator
+    )
+}
+```
+
+Stamp images are loaded from `<project>/stamps/` at `LoomEngine` init time into `LoomEngine.stampImages`. They are **not pre-blurred** (unlike brush images).
+
+The `opacityState` from `RendererAnimationState.stencilOpacityState` provides the current stepped palette index for `SEQ`/`PING_PONG` opacity animation.
+
+### 9.3 StencilConfig
+
+```swift
+public struct StencilConfig: Codable, Sendable {
+    public var stencilNames: [String]
+    public var drawMode: DrawMode          // .progressive | .fullPath
+    public var stampSpacing: Double
+    public var stampsPerFrame: Int
+    public var agentCount: Int
+    public var postCompletionMode: PostCompletionMode
+    public var opacityAnimation: ParameterAnimation?
+
+    public func scaled(by factor: Double) -> StencilConfig
+}
+```
+
+---
+
+## 10. Accumulation Mode
+
+When `globalConfig.drawBackgroundOnce = true`, the background is drawn once and subsequent frames accumulate on top without clearing. This produces trails / accumulation effects.
+
+`LoomEngine.accumulationCanvas` is a heap-backed `CGContext` (class type `AccumulationCanvas`) that persists across frames. The engine draws into this context rather than a fresh context each frame.
+
+`LoomEngine` initialises `AccumulationCanvas` at startup with the full canvas dimensions. The pointer to the underlying bitmap data is stable (heap-allocated, not moved by Swift ARC) — this is why `@unchecked Sendable` is used on `LoomEngine`.
+
+---
+
+## 11. Overlay Color
+
+`globalConfig.overlayColor` is loaded and stored in `LoomEngine` but **never applied** to the canvas. This matches the Scala engine's behaviour (where the overlay color was similarly defined but unused). The field is preserved for future use.
+
+---
+
+## 12. SpriteScene Render Dispatch
+
+The full per-instance render path in `SpriteScene.renderInstance`:
+
+```
+1. Guard: basePolygons not empty; drawCycle < totalDraws (unless totalDraws == 0)
+
+2. MorphInterpolator.interpolate(base, targets, morphAmount)
+   → morphed: [Polygon2D]
+
+3. SubdivisionEngine.process(morphed, subdivisionParams, &rng)
+   → subdivided: [Polygon2D]
+
+4. applyTransform(each polygon, instance, canvasSize)
+   → transformed: [Polygon2D]  (pixel-space offsets from canvas centre)
+
+5. resolveActiveRenderers(instance)
+   → [Renderer] (1 renderer unless playback mode is .all)
+
+6. for each renderer:
+   resolveRendererChanges(renderer, instance)
+   → resolved: Renderer (animated values applied from RendererAnimationState)
+
+   dispatch by resolved.mode:
+     .brushed → BrushStampEngine.drawFullPath(edges, config, color, context, elapsedFrames, brushImages)
+     .stamped / .stenciled → for each polygon: StampEngine.draw(polygon, ...)
+     otherwise → for each polygon: RenderEngine.draw(polygon, renderer, context, viewTransform, qualityMultiple)
+```
+
+---
+
+## 13. Scala Comparison
+
+| Concern | Scala | Swift |
+|---------|-------|-------|
+| Drawing API | Java 2D `Graphics2D` | Core Graphics `CGContext` |
+| Renderer | Mutable class | Immutable `struct` |
+| RendererSet selection | Method calls on mutable object | Pure function in `SpriteScene` |
+| Brush blur | Realtime per-frame | Pre-blurred at init with `CIBoxBlur` |
+| Stamp images | `stencilConfig.stencilImages` map | `LoomEngine.stampImages` from `stamps/` dir |
+| Coordinate system | AWT: origin top-left, Y-down | Core Graphics + Y-flip transform |
+| Quality scaling | `scalePixelValues(factor)` mutates renderer | `BrushConfig.scaled(by:)` returns new value |
+| Overlay color | Defined but unused | Same — loaded but not applied |
