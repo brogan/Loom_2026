@@ -29,23 +29,17 @@ struct SpritesInspector: View {
                     .font(.system(size: 12))
                     .frame(maxWidth: 110)
             }
-            InspectorField("Shape set") {
-                TextField("", text: bindS(setIdx, spriteIdx, \.shapeSetName))
-                    .textFieldStyle(.squareBorder)
-                    .font(.system(size: 12))
-                    .frame(maxWidth: 110)
-            }
-            InspectorField("Shape") {
-                TextField("", text: bindS(setIdx, spriteIdx, \.shapeName))
-                    .textFieldStyle(.squareBorder)
-                    .font(.system(size: 12))
-                    .frame(maxWidth: 110)
-            }
-            InspectorField("Renderer") {
-                TextField("", text: bindS(setIdx, spriteIdx, \.rendererSetName))
-                    .textFieldStyle(.squareBorder)
-                    .font(.system(size: 12))
-                    .frame(maxWidth: 110)
+            let rendererSets = controller.projectConfig?.renderingConfig.library.rendererSets ?? []
+            InspectorField("Renderer Set") {
+                Picker("", selection: bindS(setIdx, spriteIdx, \.rendererSetName)) {
+                    Text("None").tag("")
+                    ForEach(rendererSets, id: \.name) { set in
+                        Text(set.name).tag(set.name)
+                    }
+                }
+                .labelsHidden()
+                .font(.system(size: 12))
+                .frame(maxWidth: 120)
             }
             let subdivSets = controller.projectConfig?.subdivisionConfig.paramsSets ?? []
             if !subdivSets.isEmpty {
@@ -99,11 +93,7 @@ struct SpritesInspector: View {
                       xKP: \.scale.x, yKP: \.scale.y,
                       setIdx: setIdx, spriteIdx: spriteIdx)
             InspectorField("Rotation") {
-                TextField("", value: bindS(setIdx, spriteIdx, \.rotation),
-                          format: .number.precision(.fractionLength(2)))
-                    .textFieldStyle(.squareBorder)
-                    .font(.system(size: 12, design: .monospaced))
-                    .frame(width: 65)
+                FloatEntryField(value: bindS(setIdx, spriteIdx, \.rotation), width: 65, fractionDigits: 2)
                 Text("°").font(.system(size: 11)).foregroundStyle(.secondary)
             }
         }
@@ -162,17 +152,11 @@ struct SpritesInspector: View {
                 if anim.type == .jitterMorph {
                     InspectorField("Morph range") {
                         HStack(spacing: 3) {
-                            TextField("", value: bindA(setIdx, spriteIdx, \.morphMin),
-                                      format: .number.precision(.fractionLength(2)))
-                                .textFieldStyle(.squareBorder)
-                                .font(.system(size: 11, design: .monospaced))
-                                .frame(width: 54)
+                            FloatEntryField(value: bindA(setIdx, spriteIdx, \.morphMin),
+                                            width: 54, fractionDigits: 2, fontSize: 11)
                             Text("–").font(.system(size: 10)).foregroundStyle(.tertiary)
-                            TextField("", value: bindA(setIdx, spriteIdx, \.morphMax),
-                                      format: .number.precision(.fractionLength(2)))
-                                .textFieldStyle(.squareBorder)
-                                .font(.system(size: 11, design: .monospaced))
-                                .frame(width: 54)
+                            FloatEntryField(value: bindA(setIdx, spriteIdx, \.morphMax),
+                                            width: 54, fractionDigits: 2, fontSize: 11)
                         }
                     }
                 }
@@ -191,17 +175,9 @@ struct SpritesInspector: View {
         InspectorField(label) {
             HStack(spacing: 3) {
                 Text("X").font(.system(size: 10)).foregroundStyle(.tertiary).frame(width: 10)
-                TextField("", value: bindS(setIdx, spriteIdx, xKP),
-                          format: .number.precision(.fractionLength(2)))
-                    .textFieldStyle(.squareBorder)
-                    .font(.system(size: 11, design: .monospaced))
-                    .frame(width: 54)
+                FloatEntryField(value: bindS(setIdx, spriteIdx, xKP), width: 54, fractionDigits: 2, fontSize: 11)
                 Text("Y").font(.system(size: 10)).foregroundStyle(.tertiary).frame(width: 10)
-                TextField("", value: bindS(setIdx, spriteIdx, yKP),
-                          format: .number.precision(.fractionLength(2)))
-                    .textFieldStyle(.squareBorder)
-                    .font(.system(size: 11, design: .monospaced))
-                    .frame(width: 54)
+                FloatEntryField(value: bindS(setIdx, spriteIdx, yKP), width: 54, fractionDigits: 2, fontSize: 11)
             }
         }
     }
@@ -214,17 +190,9 @@ struct SpritesInspector: View {
     ) -> some View {
         InspectorField(label) {
             HStack(spacing: 3) {
-                TextField("", value: bindA(setIdx, spriteIdx, minKP),
-                          format: .number.precision(.fractionLength(2)))
-                    .textFieldStyle(.squareBorder)
-                    .font(.system(size: 11, design: .monospaced))
-                    .frame(width: 54)
+                FloatEntryField(value: bindA(setIdx, spriteIdx, minKP), width: 54, fractionDigits: 2, fontSize: 11)
                 Text("–").font(.system(size: 10)).foregroundStyle(.tertiary)
-                TextField("", value: bindA(setIdx, spriteIdx, maxKP),
-                          format: .number.precision(.fractionLength(2)))
-                    .textFieldStyle(.squareBorder)
-                    .font(.system(size: 11, design: .monospaced))
-                    .frame(width: 54)
+                FloatEntryField(value: bindA(setIdx, spriteIdx, maxKP), width: 54, fractionDigits: 2, fontSize: 11)
             }
         }
     }

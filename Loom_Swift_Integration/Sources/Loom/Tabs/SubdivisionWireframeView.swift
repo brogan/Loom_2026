@@ -187,17 +187,19 @@ struct SubdivisionWireframeView: View {
         var p = Path()
         switch type {
         case .spline:
+            guard pts.count >= 4 else { return p }
             p.move(to: pts[0])
-            var i = 0
-            while i + 3 < pts.count {
-                p.addCurve(to: pts[i + 3], control1: pts[i + 1], control2: pts[i + 2]); i += 3
+            for i in 0..<(pts.count / 4) {
+                let b = i * 4
+                p.addCurve(to: pts[b + 3], control1: pts[b + 1], control2: pts[b + 2])
             }
             p.closeSubpath()
         case .openSpline:
+            guard pts.count >= 4 else { return p }
             p.move(to: pts[0])
-            var i = 0
-            while i + 3 < pts.count {
-                p.addCurve(to: pts[i + 3], control1: pts[i + 1], control2: pts[i + 2]); i += 3
+            for i in 0..<(pts.count / 4) {
+                let b = i * 4
+                p.addCurve(to: pts[b + 3], control1: pts[b + 1], control2: pts[b + 2])
             }
         case .point:
             for pt in pts { p.addEllipse(in: CGRect(x: pt.x - 2, y: pt.y - 2, width: 4, height: 4)) }

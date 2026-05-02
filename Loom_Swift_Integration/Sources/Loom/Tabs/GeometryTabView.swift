@@ -35,7 +35,7 @@ struct GeometryTabView: View {
     // MARK: - Action bar
 
     private var actionBar: some View {
-        HStack(spacing: 2) {
+        HStack {
             Button("Rename") {
                 if let key = controller.selectedGeometryKey {
                     renameText = String(key.split(separator: "/", maxSplits: 1).last ?? "")
@@ -44,12 +44,16 @@ struct GeometryTabView: View {
             }
             .disabled(controller.selectedGeometryKey == nil)
 
+            Spacer()
+
             Button("Duplicate") {
                 if let key = controller.selectedGeometryKey {
                     controller.duplicateGeometry(key: key)
                 }
             }
             .disabled(controller.selectedGeometryKey == nil)
+
+            Spacer()
 
             Button("Delete") {
                 if let key = controller.selectedGeometryKey {
@@ -58,8 +62,6 @@ struct GeometryTabView: View {
             }
             .disabled(controller.selectedGeometryKey == nil)
             .foregroundStyle(controller.selectedGeometryKey != nil ? Color.red : Color.secondary)
-
-            Spacer()
         }
         .buttonStyle(.plain)
         .font(.system(size: 11))
@@ -183,12 +185,18 @@ struct GeometryMainView: View {
                         .foregroundStyle(.tertiary)
                 }
             } else {
-                if let engine = controller.engine {
-                    RenderSurfaceView(
-                        engine:        engine,
-                        playbackState: controller.playbackState,
-                        onFrameTick:   { _ in }
-                    )
+                ZStack {
+                    Color.black
+                    if let engine = controller.engine {
+                        let size   = engine.canvasSize
+                        let aspect = size.width / max(size.height, 1)
+                        RenderSurfaceView(
+                            engine:        engine,
+                            playbackState: controller.playbackState,
+                            onFrameTick:   { _ in }
+                        )
+                        .aspectRatio(aspect, contentMode: .fit)
+                    }
                 }
             }
         }
@@ -307,6 +315,13 @@ private struct WireframeCanvas: View {
         }
     }
 
+    // MARK: Colors
+
+    private static let wireGreen     = Color(red: 0.31, green: 0.78, blue: 0.47)
+    private static let wireGreenDark = Color(red: 0.18, green: 0.50, blue: 0.28)
+    private static let wireAnchor    = Color.yellow
+    private static let wireCP        = Color(red: 0.35, green: 0.55, blue: 1.0)
+
     // MARK: Spline
 
     private func drawSpline(ctx: GraphicsContext, poly: Polygon2D,
@@ -324,12 +339,12 @@ private struct WireframeCanvas: View {
             var h  = Path()
             h.move(to: a0); h.addLine(to: c0)
             h.move(to: a1); h.addLine(to: c1)
-            ctx.stroke(h, with: .color(white: 1, opacity: 0.28), lineWidth: 0.75)
+            ctx.stroke(h, with: .color(Self.wireGreenDark.opacity(0.7)), lineWidth: 0.75)
             for cp in [c0, c1] {
-                let r: CGFloat = 2
-                ctx.stroke(
+                let r: CGFloat = 2.5
+                ctx.fill(
                     Path(ellipseIn: CGRect(x: cp.x - r, y: cp.y - r, width: r * 2, height: r * 2)),
-                    with: .color(white: 1, opacity: 0.28), lineWidth: 0.75
+                    with: .color(Self.wireCP.opacity(0.85))
                 )
             }
         }
@@ -346,7 +361,7 @@ private struct WireframeCanvas: View {
             )
         }
         if closed { path.closeSubpath() }
-        ctx.stroke(path, with: .color(white: 1, opacity: 0.9), lineWidth: 1.5)
+        ctx.stroke(path, with: .color(Self.wireGreen.opacity(0.9)), lineWidth: 1.5)
 
         // Anchor circles (one per segment start)
         for i in 0..<segCount {
@@ -354,7 +369,7 @@ private struct WireframeCanvas: View {
             let r: CGFloat = 3.5
             ctx.fill(
                 Path(ellipseIn: CGRect(x: a.x - r, y: a.y - r, width: r * 2, height: r * 2)),
-                with: .color(.white)
+                with: .color(Self.wireAnchor)
             )
         }
     }
@@ -368,12 +383,12 @@ private struct WireframeCanvas: View {
         path.move(to: pts[0])
         pts.dropFirst().forEach { path.addLine(to: $0) }
         path.closeSubpath()
-        ctx.stroke(path, with: .color(white: 1, opacity: 0.9), lineWidth: 1.5)
+        ctx.stroke(path, with: .color(Self.wireGreen.opacity(0.9)), lineWidth: 1.5)
         for pt in pts {
             let r: CGFloat = 3.5
             ctx.fill(
                 Path(ellipseIn: CGRect(x: pt.x - r, y: pt.y - r, width: r * 2, height: r * 2)),
-                with: .color(.white)
+                with: .color(Self.wireAnchor)
             )
         }
     }
@@ -400,12 +415,12 @@ private struct WireframeCanvas: View {
         let rx = abs(rp.x - c.x), ry = abs(rp.y - c.y)
         ctx.stroke(
             Path(ellipseIn: CGRect(x: c.x - rx, y: c.y - ry, width: rx * 2, height: ry * 2)),
-            with: .color(white: 1, opacity: 0.9), lineWidth: 1.5
+            with: .color(Self.wireGreen.opacity(0.9)), lineWidth: 1.5
         )
         let r: CGFloat = 3.5
         ctx.fill(
             Path(ellipseIn: CGRect(x: c.x - r, y: c.y - r, width: r * 2, height: r * 2)),
-            with: .color(.white)
+            with: .color(Self.wireAnchor)
         )
     }
 }

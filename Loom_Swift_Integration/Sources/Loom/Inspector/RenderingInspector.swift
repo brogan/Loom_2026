@@ -99,18 +99,10 @@ struct RenderingInspector: View {
             LoomColorField(label: "Fill color",
                            color: bindR(setIdx, itemIdx, \.fillColor))
             InspectorField("Stroke w") {
-                TextField("", value: bindR(setIdx, itemIdx, \.strokeWidth),
-                          format: .number.precision(.fractionLength(2)))
-                    .textFieldStyle(.squareBorder)
-                    .font(.system(size: 12, design: .monospaced))
-                    .frame(width: 60)
+                FloatEntryField(value: bindR(setIdx, itemIdx, \.strokeWidth), width: 60, fractionDigits: 2)
             }
             InspectorField("Point size") {
-                TextField("", value: bindR(setIdx, itemIdx, \.pointSize),
-                          format: .number.precision(.fractionLength(2)))
-                    .textFieldStyle(.squareBorder)
-                    .font(.system(size: 12, design: .monospaced))
-                    .frame(width: 60)
+                FloatEntryField(value: bindR(setIdx, itemIdx, \.pointSize), width: 60, fractionDigits: 2)
             }
             InspectorField("Hold") {
                 TextField("", value: bindR(setIdx, itemIdx, \.holdLength), format: .number)
@@ -145,12 +137,9 @@ struct RenderingInspector: View {
                 .frame(maxWidth: 130)
             }
             InspectorField("Spacing") {
-                TextField("", value: bindBrushKP(setIdx, itemIdx, \.stampSpacing,
-                                                 fallback: cfg.stampSpacing),
-                          format: .number.precision(.fractionLength(1)))
-                    .textFieldStyle(.squareBorder)
-                    .font(.system(size: 12, design: .monospaced))
-                    .frame(width: 55)
+                FloatEntryField(value: bindBrushKP(setIdx, itemIdx, \.stampSpacing,
+                                                   fallback: cfg.stampSpacing),
+                                width: 55, fractionDigits: 1)
             }
             InspectorField("Follow tang.") {
                 Toggle("", isOn: bindBrushKP(setIdx, itemIdx, \.followTangent,
@@ -208,20 +197,14 @@ struct RenderingInspector: View {
             }
             if cfg.meander.enabled {
                 InspectorField("Amplitude") {
-                    TextField("", value: bindBrushKP(setIdx, itemIdx, \.meander.amplitude,
-                                                     fallback: cfg.meander.amplitude),
-                              format: .number.precision(.fractionLength(1)))
-                        .textFieldStyle(.squareBorder)
-                        .font(.system(size: 12, design: .monospaced))
-                        .frame(width: 60)
+                    FloatEntryField(value: bindBrushKP(setIdx, itemIdx, \.meander.amplitude,
+                                                       fallback: cfg.meander.amplitude),
+                                    width: 60, fractionDigits: 1)
                 }
                 InspectorField("Frequency") {
-                    TextField("", value: bindBrushKP(setIdx, itemIdx, \.meander.frequency,
-                                                     fallback: cfg.meander.frequency),
-                              format: .number.precision(.fractionLength(4)))
-                        .textFieldStyle(.squareBorder)
-                        .font(.system(size: 12, design: .monospaced))
-                        .frame(width: 60)
+                    FloatEntryField(value: bindBrushKP(setIdx, itemIdx, \.meander.frequency,
+                                                       fallback: cfg.meander.frequency),
+                                    width: 60, fractionDigits: 4)
                 }
                 InspectorField("Animated") {
                     Toggle("", isOn: bindBrushKP(setIdx, itemIdx, \.meander.animated,
@@ -230,12 +213,9 @@ struct RenderingInspector: View {
                 }
                 if cfg.meander.animated {
                     InspectorField("Anim speed") {
-                        TextField("", value: bindBrushKP(setIdx, itemIdx, \.meander.animSpeed,
-                                                         fallback: cfg.meander.animSpeed),
-                                  format: .number.precision(.fractionLength(4)))
-                            .textFieldStyle(.squareBorder)
-                            .font(.system(size: 12, design: .monospaced))
-                            .frame(width: 60)
+                        FloatEntryField(value: bindBrushKP(setIdx, itemIdx, \.meander.animSpeed,
+                                                           fallback: cfg.meander.animSpeed),
+                                        width: 60, fractionDigits: 4)
                     }
                 }
             }
@@ -265,12 +245,9 @@ struct RenderingInspector: View {
                 .frame(maxWidth: 130)
             }
             InspectorField("Spacing") {
-                TextField("", value: bindStencilKP(setIdx, itemIdx, \.stampSpacing,
-                                                   fallback: cfg.stampSpacing),
-                          format: .number.precision(.fractionLength(1)))
-                    .textFieldStyle(.squareBorder)
-                    .font(.system(size: 12, design: .monospaced))
-                    .frame(width: 55)
+                FloatEntryField(value: bindStencilKP(setIdx, itemIdx, \.stampSpacing,
+                                                     fallback: cfg.stampSpacing),
+                                width: 55, fractionDigits: 1)
             }
             InspectorField("Follow tang.") {
                 Toggle("", isOn: bindStencilKP(setIdx, itemIdx, \.followTangent,
@@ -318,15 +295,9 @@ struct RenderingInspector: View {
                               v1: Binding<Double>, v2: Binding<Double>) -> some View {
         InspectorField(label) {
             HStack(spacing: 3) {
-                TextField("", value: v1, format: .number.precision(.fractionLength(2)))
-                    .textFieldStyle(.squareBorder)
-                    .font(.system(size: 11, design: .monospaced))
-                    .frame(width: 54)
+                FloatEntryField(value: v1, width: 54, fractionDigits: 2, fontSize: 11)
                 Text("–").font(.system(size: 10)).foregroundStyle(.tertiary)
-                TextField("", value: v2, format: .number.precision(.fractionLength(2)))
-                    .textFieldStyle(.squareBorder)
-                    .font(.system(size: 11, design: .monospaced))
-                    .frame(width: 54)
+                FloatEntryField(value: v2, width: 54, fractionDigits: 2, fontSize: 11)
             }
         }
     }

@@ -142,18 +142,21 @@ struct ContentView: View {
     }
 
     private var liveCanvas: some View {
-        Group {
+        ZStack {
+            Color.black
             if let engine = controller.engine {
+                let size   = engine.canvasSize
+                let aspect = size.width / max(size.height, 1)
                 RenderSurfaceView(
-                    engine:        engine,
-                    playbackState: controller.isExporting ? .paused : controller.playbackState,
-                    onFrameTick:   { currentFrame = $0 }
+                    engine:              engine,
+                    playbackState:       controller.isExporting ? .paused : controller.playbackState,
+                    onFrameTick:         { currentFrame = $0 },
+                    onAnimationComplete: { controller.animationDidComplete() }
                 )
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-            } else {
-                Color.black.frame(maxWidth: .infinity, maxHeight: .infinity)
+                .aspectRatio(aspect, contentMode: .fit)
             }
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
     // MARK: - Landing view (no project open)

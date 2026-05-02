@@ -161,7 +161,7 @@ struct SubdivisionTabView: View {
 
     private var setsTree: some View {
         ScrollView {
-            LazyVStack(alignment: .leading, spacing: 0) {
+            VStack(alignment: .leading, spacing: 0) {
                 let sets = controller.projectConfig?.subdivisionConfig.paramsSets ?? []
                 if sets.isEmpty {
                     emptyText("No subdivision sets")
@@ -450,7 +450,7 @@ struct SubdivisionTabView: View {
         controller.selectedSubdivisionParamIndex = nil
         expandedSets.insert(newIdx)
         if controller.subdivSelectedSpriteID != nil {
-            controller.subdivPreviewSetName = copy.name
+            controller.subdivPreviewSetName = copyName
         }
     }
 

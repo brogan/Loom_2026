@@ -100,11 +100,7 @@ struct GlobalInspector: View {
     private var playbackSection: some View {
         InspectorSection("Playback") {
             InspectorField("FPS") {
-                TextField("", value: bind(\.targetFPS),
-                          format: .number.precision(.fractionLength(1)))
-                    .textFieldStyle(.squareBorder)
-                    .font(.system(size: 12, design: .monospaced))
-                    .frame(width: 50)
+                FloatEntryField(value: bind(\.targetFPS), width: 50, fractionDigits: 1)
             }
             InspectorField("Animating") {
                 Toggle("", isOn: bind(\.animating)).labelsHidden()

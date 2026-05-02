@@ -6,18 +6,21 @@ import LoomEngine
 
 struct RenderSurfaceView: NSViewRepresentable {
 
-    let engine:        Engine
-    var playbackState: PlaybackState
-    var onFrameTick:   (Int) -> Void = { _ in }
+    let engine:               Engine
+    var playbackState:        PlaybackState
+    var onFrameTick:          (Int) -> Void    = { _ in }
+    var onAnimationComplete:  (() -> Void)?    = nil
 
     func makeNSView(context: Context) -> RenderSurfaceNSView {
         let view = RenderSurfaceNSView(engine: engine, onFrameTick: onFrameTick)
+        view.onAnimationComplete = onAnimationComplete
         applyState(playbackState, to: view, isInitial: true)
         return view
     }
 
     func updateNSView(_ nsView: RenderSurfaceNSView, context: Context) {
-        nsView.onFrameTick = onFrameTick
+        nsView.onFrameTick          = onFrameTick
+        nsView.onAnimationComplete  = onAnimationComplete
         if nsView.engine !== engine { nsView.replaceEngine(engine) }
         applyState(playbackState, to: nsView, isInitial: false)
     }
@@ -39,7 +42,8 @@ final class RenderSurfaceNSView: NSView {
     private var lastTick:   CFTimeInterval = 0
     private var latestFrame: CGImage?
 
-    var onFrameTick: (Int) -> Void
+    var onFrameTick:         (Int) -> Void
+    var onAnimationComplete: (() -> Void)?
 
     nonisolated(unsafe) private var renderTimer: Timer?
 
@@ -105,6 +109,19 @@ final class RenderSurfaceNSView: NSView {
         engine.update(deltaTime: dt)
         onFrameTick(engine.currentFrame)
         renderFrame()
+        checkAnimationComplete()
+    }
+
+    private func checkAnimationComplete() {
+        let maxFrames = engine.maxAnimationFrames
+        guard maxFrames > 0 else { return }
+        let allDone = engine.spriteInstances.allSatisfy { inst in
+            let td = inst.def.animation.totalDraws
+            return td == 0 || inst.state.drawCycle >= td
+        }
+        guard allDone else { return }
+        stopRendering()
+        onAnimationComplete?()
     }
 
     private func renderFrame() {

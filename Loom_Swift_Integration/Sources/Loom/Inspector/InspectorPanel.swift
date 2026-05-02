@@ -72,22 +72,53 @@ struct InspectorPanel: View {
 struct InspectorSection<Content: View>: View {
     let title: String
     private let content: Content
+    private let collapseState: Binding<Bool>?
 
     init(_ title: String, @ViewBuilder content: () -> Content) {
-        self.title   = title
-        self.content = content()
+        self.title        = title
+        self.content      = content()
+        self.collapseState = nil
     }
+
+    init(_ title: String, isCollapsed: Binding<Bool>, @ViewBuilder content: () -> Content) {
+        self.title        = title
+        self.content      = content()
+        self.collapseState = isCollapsed
+    }
+
+    private var collapsed: Bool { collapseState?.wrappedValue ?? false }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            Text(title)
-                .font(.system(size: 11, weight: .semibold))
-                .foregroundStyle(.secondary)
-                .padding(.horizontal, 12)
-                .padding(.top, 12)
-                .padding(.bottom, 4)
-            content
-            Divider().padding(.top, 4)
+            if let binding = collapseState {
+                Button { binding.wrappedValue.toggle() } label: {
+                    HStack(spacing: 5) {
+                        Image(systemName: binding.wrappedValue ? "chevron.right" : "chevron.down")
+                            .font(.system(size: 9, weight: .semibold))
+                            .foregroundStyle(.secondary)
+                            .frame(width: 10)
+                        Text(title)
+                            .font(.system(size: 11, weight: .semibold))
+                            .foregroundStyle(.secondary)
+                        Spacer()
+                    }
+                    .padding(.horizontal, 12)
+                    .padding(.top, 10)
+                    .padding(.bottom, 4)
+                }
+                .buttonStyle(.plain)
+            } else {
+                Text(title)
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(.secondary)
+                    .padding(.horizontal, 12)
+                    .padding(.top, 12)
+                    .padding(.bottom, 4)
+            }
+            if !collapsed {
+                content
+            }
+            Divider().padding(.top, collapsed ? 0 : 4)
         }
     }
 }
@@ -238,7 +269,8 @@ private struct GeometryInspector: View {
             default:
                 EmptyView()
             }
-            quickSetupSection(folder: folder, name: name)
+            QuickSetupSection(folder: folder, geoName: name)
+                .environmentObject(controller)
         }
     }
 
@@ -323,26 +355,6 @@ private struct GeometryInspector: View {
         }
     }
 
-    @ViewBuilder
-    private func quickSetupSection(folder: String, name: String) -> some View {
-        let subSets = controller.projectConfig?.subdivisionConfig.paramsSets ?? []
-        if !subSets.isEmpty {
-            InspectorSection("Quick Setup") {
-                InspectorField("Subdiv set") {
-                    Picker("", selection: subdivBinding(folder: folder, name: name)) {
-                        Text("None").tag("")
-                        ForEach(subSets, id: \.name) { set in
-                            Text(set.name).tag(set.name)
-                        }
-                    }
-                    .labelsHidden()
-                    .font(.system(size: 12))
-                    .frame(maxWidth: 120)
-                }
-            }
-        }
-    }
-
     // MARK: Binding helpers
 
     private func bindRegular(_ kp: WritableKeyPath<RegularPolygonParams, Double>, name: String) -> Binding<Double> {
@@ -377,39 +389,203 @@ private struct GeometryInspector: View {
         )
     }
 
-    private func subdivBinding(folder: String, name: String) -> Binding<String> {
-        let ctl = controller
-        return Binding(
-            get: {
-                guard let cfg = ctl.projectConfig else { return "" }
-                return cfg.shapeConfig.library.shapeSets.flatMap { $0.shapes }.first { shape in
-                    switch folder {
-                    case "polygonSets", "regularPolygons": return shape.polygonSetName == name
-                    case "curveSets":   return shape.openCurveSetName == name
-                    case "pointSets":   return shape.pointSetName == name
-                    default:            return false
-                    }
-                }?.subdivisionParamsSetName ?? ""
-            },
-            set: { newValue in
-                ctl.updateProjectConfig { cfg in
-                    for ssIdx in cfg.shapeConfig.library.shapeSets.indices {
-                        for sIdx in cfg.shapeConfig.library.shapeSets[ssIdx].shapes.indices {
-                            let shape = cfg.shapeConfig.library.shapeSets[ssIdx].shapes[sIdx]
-                            let matches: Bool
-                            switch folder {
-                            case "polygonSets", "regularPolygons": matches = shape.polygonSetName == name
-                            case "curveSets":   matches = shape.openCurveSetName == name
-                            case "pointSets":   matches = shape.pointSetName == name
-                            default:            matches = false
-                            }
-                            if matches {
-                                cfg.shapeConfig.library.shapeSets[ssIdx].shapes[sIdx].subdivisionParamsSetName = newValue
-                            }
-                        }
+}
+
+// MARK: - Quick Setup section
+
+private struct QuickSetupSection: View {
+    @EnvironmentObject private var controller: AppController
+    let folder:  String
+    let geoName: String
+
+    @State private var qsSubdivSetName:   String      = ""
+    @State private var qsSpriteSetName:   String      = ""
+    @State private var qsRendererSetName: String      = ""
+    @State private var qsRendererMode:    RendererMode = .filled
+
+    @State private var showNewSpriteSetAlert   = false
+    @State private var showNewRendererSetAlert = false
+    @State private var newSpriteSetName:   String = ""
+    @State private var newRendererSetName: String = ""
+
+    var body: some View {
+        let cfg          = controller.projectConfig
+        let subdivSets   = cfg?.subdivisionConfig.paramsSets ?? []
+        let spriteSets   = cfg?.spriteConfig.library.spriteSets ?? []
+        let rendererSets = cfg?.renderingConfig.library.rendererSets ?? []
+
+        InspectorSection("Quick Setup") {
+            // ── Subdivision ──────────────────────────────
+            InspectorField("Subdiv set") {
+                Picker("", selection: $qsSubdivSetName) {
+                    Text("None").tag("")
+                    ForEach(subdivSets, id: \.name) { Text($0.name).tag($0.name) }
+                }
+                .labelsHidden()
+                .font(.system(size: 11))
+                .frame(maxWidth: .infinity)
+                Button("Make") { makeSubdivSet() }
+                    .font(.system(size: 11))
+                    .disabled(geoName.isEmpty)
+            }
+
+            // ── Sprites ───────────────────────────────────
+            InspectorField("Sprite set") {
+                Picker("", selection: $qsSpriteSetName) {
+                    Text("None").tag("")
+                    ForEach(spriteSets, id: \.name) { Text($0.name).tag($0.name) }
+                }
+                .labelsHidden()
+                .font(.system(size: 11))
+                .frame(maxWidth: .infinity)
+                Button("+ Set") {
+                    newSpriteSetName = ""
+                    showNewSpriteSetAlert = true
+                }
+                .font(.system(size: 11))
+            }
+            actionButton("Make Sprite") { makeSprite() }
+                .disabled(qsSpriteSetName.isEmpty)
+
+            // ── Rendering ─────────────────────────────────
+            InspectorField("Renderer set") {
+                Picker("", selection: $qsRendererSetName) {
+                    Text("None").tag("")
+                    ForEach(rendererSets, id: \.name) { Text($0.name).tag($0.name) }
+                }
+                .labelsHidden()
+                .font(.system(size: 11))
+                .frame(maxWidth: .infinity)
+                Button("+ Set") {
+                    newRendererSetName = ""
+                    showNewRendererSetAlert = true
+                }
+                .font(.system(size: 11))
+            }
+            InspectorField("Mode") {
+                Picker("", selection: $qsRendererMode) {
+                    ForEach(RendererMode.allCases, id: \.self) { m in
+                        Text(m.displayName).tag(m)
                     }
                 }
+                .labelsHidden()
+                .font(.system(size: 11))
+                .frame(maxWidth: .infinity)
             }
-        )
+            actionButton("Make Renderer") { makeRenderer() }
+                .disabled(qsRendererSetName.isEmpty)
+        }
+        .onChange(of: geoName) { _, _ in
+            qsSubdivSetName = ""; qsSpriteSetName = ""; qsRendererSetName = ""
+        }
+        .alert("New Sprite Set", isPresented: $showNewSpriteSetAlert) {
+            TextField("Name", text: $newSpriteSetName)
+            Button("Create") { addSpriteSet() }
+            Button("Cancel", role: .cancel) {}
+        }
+        .alert("New Renderer Set", isPresented: $showNewRendererSetAlert) {
+            TextField("Name", text: $newRendererSetName)
+            Button("Create") { addRendererSet() }
+            Button("Cancel", role: .cancel) {}
+        }
+    }
+
+    // MARK: - Layout helper
+
+    private func actionButton(_ label: String, action: @escaping () -> Void) -> some View {
+        Button(label, action: action)
+            .frame(maxWidth: .infinity)
+            .font(.system(size: 11))
+            .padding(.horizontal, 12)
+            .padding(.vertical, 3)
+    }
+
+    // MARK: - Actions
+
+    private func makeSubdivSet() {
+        let setName = "\(geoName)_Subdivide"
+        guard controller.projectConfig?.subdivisionConfig.paramsSets
+                .contains(where: { $0.name == setName }) == false
+        else { return }
+        let param = SubdivisionParams(name: "A", subdivisionType: .quad)
+        let ps    = SubdivisionParamsSet(name: setName, params: [param])
+        controller.updateProjectConfig { cfg in
+            cfg.subdivisionConfig.paramsSets.append(ps)
+        }
+        qsSubdivSetName = setName
+    }
+
+    private func addSpriteSet() {
+        let name = newSpriteSetName.trimmingCharacters(in: .whitespaces)
+        guard !name.isEmpty,
+              controller.projectConfig?.spriteConfig.library.spriteSets
+                .contains(where: { $0.name == name }) == false
+        else { return }
+        controller.updateProjectConfig { cfg in
+            cfg.spriteConfig.library.spriteSets.append(SpriteSet(name: name))
+        }
+        qsSpriteSetName = name
+    }
+
+    private func makeSprite() {
+        guard !qsSpriteSetName.isEmpty,
+              let setIdx = controller.projectConfig?.spriteConfig.library.spriteSets
+                .firstIndex(where: { $0.name == qsSpriteSetName })
+        else { return }
+        let count = (controller.projectConfig?.spriteConfig.library
+            .spriteSets[setIdx].sprites.count ?? 0) + 1
+        let spriteName = "\(qsSpriteSetName)_\(String(format: "%03d", count))"
+        var sprite = SpriteDef()
+        sprite.name            = spriteName
+        sprite.rendererSetName = qsRendererSetName
+        controller.updateProjectConfig { cfg in
+            cfg.spriteConfig.library.spriteSets[setIdx].sprites.append(sprite)
+        }
+    }
+
+    private func addRendererSet() {
+        let name = newRendererSetName.trimmingCharacters(in: .whitespaces)
+        guard !name.isEmpty,
+              controller.projectConfig?.renderingConfig.library.rendererSets
+                .contains(where: { $0.name == name }) == false
+        else { return }
+        controller.updateProjectConfig { cfg in
+            cfg.renderingConfig.library.rendererSets.append(RendererSet(name: name))
+        }
+        qsRendererSetName = name
+    }
+
+    private func makeRenderer() {
+        guard !qsRendererSetName.isEmpty,
+              let setIdx = controller.projectConfig?.renderingConfig.library.rendererSets
+                .firstIndex(where: { $0.name == qsRendererSetName })
+        else { return }
+        let rendererName = "\(geoName)_renderer"
+        guard controller.projectConfig?.renderingConfig.library
+                .rendererSets[setIdx].renderers
+                .contains(where: { $0.name == rendererName }) == false
+        else { return }
+        var renderer = Renderer()
+        renderer.name = rendererName
+        renderer.mode = qsRendererMode
+        controller.updateProjectConfig { cfg in
+            cfg.renderingConfig.library.rendererSets[setIdx].renderers.append(renderer)
+        }
+    }
+}
+
+// MARK: - RendererMode display names (Quick Setup)
+
+private extension RendererMode {
+    var displayName: String {
+        switch self {
+        case .points:        return "Points"
+        case .stroked:       return "Stroked"
+        case .filled:        return "Filled"
+        case .filledStroked: return "Filled+Stroked"
+        case .brushed:       return "Brushed"
+        case .stenciled:     return "Stenciled"
+        case .stamped:       return "Stamped"
+        }
     }
 }

@@ -51,9 +51,10 @@ final class AppController: ObservableObject, @unchecked Sendable {
 
     // MARK: - Private
 
-    private var sentinelTimer:    Timer?
-    private var pausedBySentinel: Bool = false
-    private var reloadDebounce:   DispatchWorkItem?
+    private var sentinelTimer:      Timer?
+    private var pausedBySentinel:   Bool = false
+    private var reloadDebounce:     DispatchWorkItem?
+    private var animationCompleted: Bool = false
 
     // MARK: - Init
 
@@ -81,7 +82,8 @@ final class AppController: ObservableObject, @unchecked Sendable {
         let wasPlaying = playbackState == .playing
         let work = DispatchWorkItem { [weak self] in
             guard let self, let url = self.projectURL else { return }
-            self.loadError = nil
+            self.loadError          = nil
+            self.animationCompleted = false
             self.loadEngine(from: url)
             self.playbackState = wasPlaying ? .playing : .stopped
         }
@@ -126,8 +128,9 @@ final class AppController: ObservableObject, @unchecked Sendable {
     }
 
     func open(projectDirectory: URL) {
-        projectURL = projectDirectory
-        loadError  = nil
+        projectURL         = projectDirectory
+        loadError          = nil
+        animationCompleted = false
         loadEngine(from: projectDirectory)
         playbackState = (engine?.globalConfig.animating == true) ? .playing : .stopped
         addToRecent(projectDirectory)
@@ -137,7 +140,8 @@ final class AppController: ObservableObject, @unchecked Sendable {
 
     func reload() {
         guard let url = projectURL else { return }
-        loadError = nil
+        loadError          = nil
+        animationCompleted = false
         loadEngine(from: url)
         playbackState = (engine?.globalConfig.animating == true) ? .playing : .stopped
     }
@@ -147,18 +151,36 @@ final class AppController: ObservableObject, @unchecked Sendable {
     func play() {
         guard engine != nil else { return }
         pausedBySentinel = false
-        playbackState    = .playing
+        if animationCompleted {
+            animationCompleted = false
+            // Transition through .stopped so the view resets the engine and clears
+            // the canvas before the new play pass starts.
+            playbackState = .stopped
+            DispatchQueue.main.async { [weak self] in
+                self?.playbackState = .playing
+            }
+        } else {
+            playbackState = .playing
+        }
     }
 
     func pause() {
         guard engine != nil else { return }
-        pausedBySentinel = false
-        playbackState    = .paused
+        pausedBySentinel   = false
+        animationCompleted = false
+        playbackState      = .paused
     }
 
     func stop() {
         guard engine != nil else { return }
-        playbackState = .stopped
+        animationCompleted = false
+        playbackState      = .stopped
+    }
+
+    func animationDidComplete() {
+        animationCompleted = true
+        // Use .paused so the timer stops but the canvas is preserved for the user to see.
+        playbackState      = .paused
     }
 
     // MARK: - Export coordination
