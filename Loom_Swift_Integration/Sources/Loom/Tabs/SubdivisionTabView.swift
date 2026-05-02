@@ -329,8 +329,13 @@ struct SubdivisionTabView: View {
     private func handleSetSelected(_ setIdx: Int) {
         guard let cfg = controller.projectConfig,
               setIdx < cfg.subdivisionConfig.paramsSets.count else { return }
-        let setName = cfg.subdivisionConfig.paramsSets[setIdx].name
 
+        // Already selected with no param — any further published update would rebuild
+        // the view and steal focus from the inline TextField. Return early to preserve it.
+        if controller.selectedSubdivisionIndex == setIdx,
+           controller.selectedSubdivisionParamIndex == nil { return }
+
+        let setName = cfg.subdivisionConfig.paramsSets[setIdx].name
         controller.selectedSubdivisionIndex      = setIdx
         controller.selectedSubdivisionParamIndex = nil
         expandedSets.insert(setIdx)
@@ -341,6 +346,10 @@ struct SubdivisionTabView: View {
     }
 
     private func handleParamSelected(setIdx: Int, paramIdx: Int) {
+        // Already selected — preserve TextField focus.
+        if controller.selectedSubdivisionIndex == setIdx,
+           controller.selectedSubdivisionParamIndex == paramIdx { return }
+
         controller.selectedSubdivisionIndex      = setIdx
         controller.selectedSubdivisionParamIndex = paramIdx
         guard let cfg = controller.projectConfig,
