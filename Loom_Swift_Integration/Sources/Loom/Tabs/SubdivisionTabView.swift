@@ -205,17 +205,9 @@ struct SubdivisionTabView: View {
             }
             .buttonStyle(.plain)
 
-            // Name: editable TextField when selected, plain Text otherwise
-            if isSelected {
-                TextField("name…", text: setNameBinding(setIdx))
-                    .textFieldStyle(.plain)
-                    .font(.system(size: 12, weight: .semibold))
-                    .lineLimit(1)
-            } else {
-                Text(set.name.isEmpty ? "(unnamed)" : set.name)
-                    .font(.system(size: 12))
-                    .lineLimit(1)
-            }
+            Text(set.name.isEmpty ? "(unnamed)" : set.name)
+                .font(.system(size: 12, weight: isSelected ? .semibold : .regular))
+                .lineLimit(1)
 
             Spacer(minLength: 2)
 
@@ -246,17 +238,9 @@ struct SubdivisionTabView: View {
                 .font(.system(size: 10, design: .monospaced))
                 .foregroundStyle(.tertiary)
                 .frame(width: 14, alignment: .trailing)
-            // Name: editable TextField when selected, plain Text otherwise
-            if isSelected {
-                TextField("name…", text: paramNameBinding(setIdx: setIdx, paramIdx: paramIdx))
-                    .textFieldStyle(.plain)
-                    .font(.system(size: 11))
-                    .lineLimit(1)
-            } else {
-                Text(param.name.isEmpty ? param.subdivisionType.shortLabel : param.name)
-                    .font(.system(size: 11))
-                    .lineLimit(1)
-            }
+            Text(param.name.isEmpty ? param.subdivisionType.shortLabel : param.name)
+                .font(.system(size: 11))
+                .lineLimit(1)
             Spacer()
             Text(param.subdivisionType.shortLabel)
                 .font(.system(size: 10))
@@ -562,44 +546,6 @@ struct SubdivisionTabView: View {
         var i = 2
         while sets.contains(where: { $0.name == "\(base)_\(i)" }) { i += 1 }
         return "\(base)_\(i)"
-    }
-
-    // MARK: - Inline-rename bindings
-
-    private func setNameBinding(_ setIdx: Int) -> Binding<String> {
-        let ctl = controller
-        return Binding(
-            get: {
-                ctl.projectConfig?.subdivisionConfig.paramsSets[safe: setIdx]?.name ?? ""
-            },
-            set: { newName in
-                let oldName = ctl.projectConfig?.subdivisionConfig.paramsSets[safe: setIdx]?.name ?? ""
-                ctl.updateProjectConfig { config in
-                    guard setIdx < config.subdivisionConfig.paramsSets.count else { return }
-                    config.subdivisionConfig.paramsSets[setIdx].name = newName
-                }
-                if ctl.subdivPreviewSetName == oldName {
-                    ctl.subdivPreviewSetName = newName
-                }
-            }
-        )
-    }
-
-    private func paramNameBinding(setIdx: Int, paramIdx: Int) -> Binding<String> {
-        let ctl = controller
-        return Binding(
-            get: {
-                ctl.projectConfig?.subdivisionConfig
-                    .paramsSets[safe: setIdx]?.params[safe: paramIdx]?.name ?? ""
-            },
-            set: { newName in
-                ctl.updateProjectConfig { config in
-                    guard setIdx < config.subdivisionConfig.paramsSets.count,
-                          paramIdx < config.subdivisionConfig.paramsSets[setIdx].params.count else { return }
-                    config.subdivisionConfig.paramsSets[setIdx].params[paramIdx].name = newName
-                }
-            }
-        )
     }
 
     private func sectionLabel(_ title: String) -> some View {
