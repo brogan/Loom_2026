@@ -30,4 +30,10 @@ struct LoomIntegrationApp: App {
 
 final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { true }
+
+    func applicationDidFinishLaunching(_ notification: Notification) {
+        // When launched via `swift run` the app doesn't steal keyboard focus from the
+        // terminal process that spawned it. Force-activate so TextFields work immediately.
+        NSApp.activate(ignoringOtherApps: true)
+    }
 }
