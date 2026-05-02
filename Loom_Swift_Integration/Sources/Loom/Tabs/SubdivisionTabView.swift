@@ -5,8 +5,8 @@ struct SubdivisionTabView: View {
 
     @EnvironmentObject private var controller: AppController
 
-    // Expansion state for the subdivision sets tree
-    @State private var expandedSets: Set<String> = []
+    // Expansion state for the subdivision sets tree (index-based so renames don't lose state)
+    @State private var expandedSets: Set<Int> = []
 
     var body: some View {
         GeometryReader { geo in
@@ -169,7 +169,7 @@ struct SubdivisionTabView: View {
                     ForEach(sets.indices, id: \.self) { setIdx in
                         let set = sets[setIdx]
                         setDisclosureRow(set: set, setIdx: setIdx)
-                        if expandedSets.contains(set.name) {
+                        if expandedSets.contains(setIdx) {
                             ForEach(set.params.indices, id: \.self) { paramIdx in
                                 paramRow(param: set.params[paramIdx],
                                          setIdx: setIdx, paramIdx: paramIdx)
@@ -191,12 +191,12 @@ struct SubdivisionTabView: View {
 
     private func setDisclosureRow(set: SubdivisionParamsSet, setIdx: Int) -> some View {
         let isSelected  = controller.selectedSubdivisionIndex == setIdx
-        let isExpanded  = expandedSets.contains(set.name)
+        let isExpanded  = expandedSets.contains(setIdx)
         let isPreviewed = controller.subdivPreviewSetName == set.name
 
         return HStack(spacing: 5) {
             Button {
-                toggleExpansion(set.name)
+                toggleExpansion(setIdx)
             } label: {
                 Image(systemName: isExpanded ? "chevron.down" : "chevron.right")
                     .font(.system(size: 9, weight: .semibold))
@@ -205,9 +205,17 @@ struct SubdivisionTabView: View {
             }
             .buttonStyle(.plain)
 
-            Text(set.name.isEmpty ? "(unnamed)" : set.name)
-                .font(.system(size: 12, weight: isSelected ? .semibold : .regular))
-                .lineLimit(1)
+            // Name: editable TextField when selected, plain Text otherwise
+            if isSelected {
+                TextField("name…", text: setNameBinding(setIdx))
+                    .textFieldStyle(.plain)
+                    .font(.system(size: 12, weight: .semibold))
+                    .lineLimit(1)
+            } else {
+                Text(set.name.isEmpty ? "(unnamed)" : set.name)
+                    .font(.system(size: 12))
+                    .lineLimit(1)
+            }
 
             Spacer(minLength: 2)
 
@@ -238,9 +246,17 @@ struct SubdivisionTabView: View {
                 .font(.system(size: 10, design: .monospaced))
                 .foregroundStyle(.tertiary)
                 .frame(width: 14, alignment: .trailing)
-            Text(param.name.isEmpty ? param.subdivisionType.shortLabel : param.name)
-                .font(.system(size: 11))
-                .lineLimit(1)
+            // Name: editable TextField when selected, plain Text otherwise
+            if isSelected {
+                TextField("name…", text: paramNameBinding(setIdx: setIdx, paramIdx: paramIdx))
+                    .textFieldStyle(.plain)
+                    .font(.system(size: 11))
+                    .lineLimit(1)
+            } else {
+                Text(param.name.isEmpty ? param.subdivisionType.shortLabel : param.name)
+                    .font(.system(size: 11))
+                    .lineLimit(1)
+            }
             Spacer()
             Text(param.subdivisionType.shortLabel)
                 .font(.system(size: 10))
@@ -304,7 +320,7 @@ struct SubdivisionTabView: View {
         if let assigned,
            let idx = cfg.subdivisionConfig.paramsSets.firstIndex(where: { $0.name == assigned }) {
             controller.selectedSubdivisionIndex = idx
-            expandedSets.insert(assigned)
+            expandedSets.insert(idx)
         } else {
             controller.selectedSubdivisionIndex = nil
         }
@@ -313,14 +329,12 @@ struct SubdivisionTabView: View {
     private func handleSetSelected(_ setIdx: Int) {
         guard let cfg = controller.projectConfig,
               setIdx < cfg.subdivisionConfig.paramsSets.count else { return }
-        let set     = cfg.subdivisionConfig.paramsSets[setIdx]
-        let setName = set.name
+        let setName = cfg.subdivisionConfig.paramsSets[setIdx].name
 
         controller.selectedSubdivisionIndex      = setIdx
         controller.selectedSubdivisionParamIndex = nil
-        expandedSets.insert(setName)
+        expandedSets.insert(setIdx)
 
-        // Update preview for the selected sprite
         if controller.subdivSelectedSpriteID != nil {
             controller.subdivPreviewSetName = setName
         }
@@ -332,7 +346,7 @@ struct SubdivisionTabView: View {
         guard let cfg = controller.projectConfig,
               setIdx < cfg.subdivisionConfig.paramsSets.count else { return }
         let setName = cfg.subdivisionConfig.paramsSets[setIdx].name
-        expandedSets.insert(setName)
+        expandedSets.insert(setIdx)
         if controller.subdivSelectedSpriteID != nil {
             controller.subdivPreviewSetName = setName
         }
@@ -388,7 +402,7 @@ struct SubdivisionTabView: View {
         let newIdx = updatedCfg.subdivisionConfig.paramsSets.count - 1
         controller.selectedSubdivisionIndex      = newIdx
         controller.selectedSubdivisionParamIndex = nil
-        expandedSets.insert(name)
+        expandedSets.insert(newIdx)
 
         // If sprite selected with no assigned set, auto-apply the new set
         if let spriteID = controller.subdivSelectedSpriteID,
@@ -416,9 +430,11 @@ struct SubdivisionTabView: View {
                 }
             }
         }
-        expandedSets.remove(deletedName)
+        expandedSets.removeAll()
         let remaining = controller.projectConfig?.subdivisionConfig.paramsSets.count ?? 0
-        controller.selectedSubdivisionIndex = remaining > 0 ? min(idx, remaining - 1) : nil
+        let newIdx = remaining > 0 ? min(idx, remaining - 1) : nil
+        controller.selectedSubdivisionIndex = newIdx
+        if let newIdx { expandedSets.insert(newIdx) }
         controller.selectedSubdivisionParamIndex = nil
         // If the deleted set was being previewed, revert
         if controller.subdivPreviewSetName == deletedName {
@@ -439,9 +455,9 @@ struct SubdivisionTabView: View {
         let newIdx = idx + 1
         controller.selectedSubdivisionIndex      = newIdx
         controller.selectedSubdivisionParamIndex = nil
-        expandedSets.insert(copyName)
+        expandedSets.insert(newIdx)
         if controller.subdivSelectedSpriteID != nil {
-            controller.subdivPreviewSetName = copyName
+            controller.subdivPreviewSetName = copy.name
         }
     }
 
@@ -492,7 +508,11 @@ struct SubdivisionTabView: View {
               let cfg = controller.projectConfig
         else {
             // Restore expansion for already-selected sprite's set
-            if let setName = controller.subdivPreviewSetName { expandedSets.insert(setName) }
+            if let setName = controller.subdivPreviewSetName,
+               let idx = controller.projectConfig?.subdivisionConfig.paramsSets
+                   .firstIndex(where: { $0.name == setName }) {
+                expandedSets.insert(idx)
+            }
             return
         }
         if let first = polygonSetSprites(in: cfg).first {
@@ -502,9 +522,9 @@ struct SubdivisionTabView: View {
 
     // MARK: - Expansion toggle
 
-    private func toggleExpansion(_ setName: String) {
-        if expandedSets.contains(setName) { expandedSets.remove(setName) }
-        else { expandedSets.insert(setName) }
+    private func toggleExpansion(_ setIdx: Int) {
+        if expandedSets.contains(setIdx) { expandedSets.remove(setIdx) }
+        else { expandedSets.insert(setIdx) }
     }
 
     // MARK: - Helpers
@@ -533,6 +553,44 @@ struct SubdivisionTabView: View {
         var i = 2
         while sets.contains(where: { $0.name == "\(base)_\(i)" }) { i += 1 }
         return "\(base)_\(i)"
+    }
+
+    // MARK: - Inline-rename bindings
+
+    private func setNameBinding(_ setIdx: Int) -> Binding<String> {
+        let ctl = controller
+        return Binding(
+            get: {
+                ctl.projectConfig?.subdivisionConfig.paramsSets[safe: setIdx]?.name ?? ""
+            },
+            set: { newName in
+                let oldName = ctl.projectConfig?.subdivisionConfig.paramsSets[safe: setIdx]?.name ?? ""
+                ctl.updateProjectConfig { config in
+                    guard setIdx < config.subdivisionConfig.paramsSets.count else { return }
+                    config.subdivisionConfig.paramsSets[setIdx].name = newName
+                }
+                if ctl.subdivPreviewSetName == oldName {
+                    ctl.subdivPreviewSetName = newName
+                }
+            }
+        )
+    }
+
+    private func paramNameBinding(setIdx: Int, paramIdx: Int) -> Binding<String> {
+        let ctl = controller
+        return Binding(
+            get: {
+                ctl.projectConfig?.subdivisionConfig
+                    .paramsSets[safe: setIdx]?.params[safe: paramIdx]?.name ?? ""
+            },
+            set: { newName in
+                ctl.updateProjectConfig { config in
+                    guard setIdx < config.subdivisionConfig.paramsSets.count,
+                          paramIdx < config.subdivisionConfig.paramsSets[setIdx].params.count else { return }
+                    config.subdivisionConfig.paramsSets[setIdx].params[paramIdx].name = newName
+                }
+            }
+        )
     }
 
     private func sectionLabel(_ title: String) -> some View {
