@@ -47,7 +47,45 @@ struct SpritesInspector: View {
                     .font(.system(size: 12))
                     .frame(maxWidth: 110)
             }
+            let subdivSets = controller.projectConfig?.subdivisionConfig.paramsSets ?? []
+            if !subdivSets.isEmpty {
+                InspectorField("Subdiv set") {
+                    Picker("", selection: subdivBinding(setIdx: setIdx, spriteIdx: spriteIdx)) {
+                        Text("None").tag("")
+                        ForEach(subdivSets, id: \.name) { set in
+                            Text(set.name).tag(set.name)
+                        }
+                    }
+                    .labelsHidden()
+                    .font(.system(size: 12))
+                    .frame(maxWidth: 120)
+                }
+            }
         }
+    }
+
+    private func subdivBinding(setIdx: Int, spriteIdx: Int) -> Binding<String> {
+        let ctl = controller
+        return Binding(
+            get: {
+                guard let cfg = ctl.projectConfig,
+                      let sprite = cfg.spriteConfig.library.spriteSets[safe: setIdx]?.sprites[safe: spriteIdx]
+                else { return "" }
+                return cfg.shapeConfig.library.shapeSets
+                    .first(where: { $0.name == sprite.shapeSetName })?
+                    .shapes.first(where: { $0.name == sprite.shapeName })?
+                    .subdivisionParamsSetName ?? ""
+            },
+            set: { newValue in
+                ctl.updateProjectConfig { cfg in
+                    guard let sprite = cfg.spriteConfig.library.spriteSets[safe: setIdx]?.sprites[safe: spriteIdx],
+                          let ssIdx = cfg.shapeConfig.library.shapeSets.firstIndex(where: { $0.name == sprite.shapeSetName }),
+                          let sIdx  = cfg.shapeConfig.library.shapeSets[ssIdx].shapes.firstIndex(where: { $0.name == sprite.shapeName })
+                    else { return }
+                    cfg.shapeConfig.library.shapeSets[ssIdx].shapes[sIdx].subdivisionParamsSetName = newValue
+                }
+            }
+        )
     }
 
     // MARK: - Transform
@@ -121,6 +159,23 @@ struct SpritesInspector: View {
                 rangeField("Rotation",
                            minKP: \.rotationRange.min, maxKP: \.rotationRange.max,
                            setIdx: setIdx, spriteIdx: spriteIdx)
+                if anim.type == .jitterMorph {
+                    InspectorField("Morph range") {
+                        HStack(spacing: 3) {
+                            TextField("", value: bindA(setIdx, spriteIdx, \.morphMin),
+                                      format: .number.precision(.fractionLength(2)))
+                                .textFieldStyle(.squareBorder)
+                                .font(.system(size: 11, design: .monospaced))
+                                .frame(width: 54)
+                            Text("–").font(.system(size: 10)).foregroundStyle(.tertiary)
+                            TextField("", value: bindA(setIdx, spriteIdx, \.morphMax),
+                                      format: .number.precision(.fractionLength(2)))
+                                .textFieldStyle(.squareBorder)
+                                .font(.system(size: 11, design: .monospaced))
+                                .frame(width: 54)
+                        }
+                    }
+                }
             }
         }
     }

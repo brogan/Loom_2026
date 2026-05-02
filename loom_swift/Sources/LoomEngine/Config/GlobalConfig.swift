@@ -22,6 +22,7 @@ public struct GlobalConfig: Equatable, Codable, Sendable {
     /// Keyframe times in XML are frame numbers; dividing by `targetFPS` gives seconds.
     /// Default 30 matches the typical Scala Loom frame rate.
     public var targetFPS: Double          = 30.0
+    public var note: String               = ""
 
     public init() {}
 

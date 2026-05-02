@@ -7,9 +7,11 @@ struct GlobalInspector: View {
 
     var body: some View {
         if controller.projectConfig != nil {
+            projectSection
             canvasSection
             colorsSection
             playbackSection
+            noteSection
             threeDSection
         } else {
             Text("No project open")
@@ -20,6 +22,37 @@ struct GlobalInspector: View {
     }
 
     // MARK: - Sections
+
+    private var projectSection: some View {
+        InspectorSection("Project") {
+            VStack(alignment: .leading, spacing: 3) {
+                if let url = controller.projectURL {
+                    Text(url.lastPathComponent)
+                        .font(.system(size: 12, weight: .medium))
+                        .lineLimit(1)
+                    Text(url.deletingLastPathComponent().path)
+                        .font(.system(size: 11))
+                        .foregroundStyle(.tertiary)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                } else {
+                    Text("No project")
+                        .font(.system(size: 12))
+                        .foregroundStyle(.tertiary)
+                }
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 4)
+
+            HStack {
+                Spacer()
+                Button("Change…") { controller.presentOpenPanel() }
+                    .font(.system(size: 12))
+                    .padding(.trailing, 12)
+                    .padding(.bottom, 4)
+            }
+        }
+    }
 
     private var canvasSection: some View {
         InspectorSection("Canvas") {
@@ -79,6 +112,19 @@ struct GlobalInspector: View {
             InspectorField("BG once") {
                 Toggle("", isOn: bind(\.drawBackgroundOnce)).labelsHidden()
             }
+        }
+    }
+
+    private var noteSection: some View {
+        InspectorSection("Note") {
+            TextEditor(text: bind(\.note))
+                .font(.system(size: 12))
+                .frame(minHeight: 80, maxHeight: 120)
+                .background(Color(nsColor: .textBackgroundColor))
+                .clipShape(RoundedRectangle(cornerRadius: 4))
+                .overlay(RoundedRectangle(cornerRadius: 4).stroke(Color.secondary.opacity(0.3), lineWidth: 0.5))
+                .padding(.horizontal, 12)
+                .padding(.bottom, 8)
         }
     }
 

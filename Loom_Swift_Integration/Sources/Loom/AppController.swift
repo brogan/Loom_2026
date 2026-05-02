@@ -1,3 +1,4 @@
+import AppKit
 import Foundation
 import LoomEngine
 
@@ -25,6 +26,8 @@ final class AppController: ObservableObject, @unchecked Sendable {
     @Published var selectedSpriteID:              String? = nil
     @Published var selectedRendererIndex:         Int?    = nil
     @Published var selectedRendererItemIndex:     Int?    = nil   // within selected set
+    @Published var subdivSelectedSpriteID:        String? = nil   // sprite selected in subdivision tab
+    @Published var subdivPreviewSetName:          String? = nil   // set currently previewed (may differ from sprite's assigned set)
 
     // MARK: - Published: export
 
@@ -50,6 +53,7 @@ final class AppController: ObservableObject, @unchecked Sendable {
 
     private var sentinelTimer:    Timer?
     private var pausedBySentinel: Bool = false
+    private var reloadDebounce:   DispatchWorkItem?
 
     // MARK: - Init
 
@@ -60,10 +64,8 @@ final class AppController: ObservableObject, @unchecked Sendable {
 
     // MARK: - Config mutation (parameter editor)
 
-    /// Mutate the in-memory `projectConfig` and auto-save to `project_config.json`.
-    ///
-    /// The engine does NOT reload automatically; the saved JSON is picked up on the
-    /// next engine reload (manual or via `.reload` sentinel).
+    /// Mutate the in-memory `projectConfig`, auto-save to `project_config.json`,
+    /// and schedule a debounced engine reload so live preview reflects changes.
     func updateProjectConfig(_ fn: (inout ProjectConfig) -> Void) {
         guard var config = projectConfig else { return }
         fn(&config)
@@ -71,9 +73,57 @@ final class AppController: ObservableObject, @unchecked Sendable {
         if let url = projectURL {
             try? ProjectLoader.save(config, to: url)
         }
+        scheduleEngineReload()
+    }
+
+    private func scheduleEngineReload() {
+        reloadDebounce?.cancel()
+        let wasPlaying = playbackState == .playing
+        let work = DispatchWorkItem { [weak self] in
+            guard let self, let url = self.projectURL else { return }
+            self.loadError = nil
+            self.loadEngine(from: url)
+            self.playbackState = wasPlaying ? .playing : .stopped
+        }
+        reloadDebounce = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3, execute: work)
     }
 
     // MARK: - Project management
+
+    // MARK: - Project creation / open (called from menu and toolbar)
+
+    func newProject() {
+        let panel = NSSavePanel()
+        panel.title = "New Loom Project"
+        panel.nameFieldLabel = "Project Name:"
+        panel.nameFieldStringValue = "MyProject"
+        panel.canCreateDirectories = true
+        panel.directoryURL = Self.defaultProjectsDirectory
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        createProject(at: url)
+    }
+
+    func presentOpenPanel() {
+        let panel = NSOpenPanel()
+        panel.canChooseDirectories    = true
+        panel.canChooseFiles          = false
+        panel.allowsMultipleSelection = false
+        panel.prompt       = "Open Project"
+        panel.directoryURL = Self.defaultProjectsDirectory
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        open(projectDirectory: url)
+    }
+
+    private func createProject(at url: URL) {
+        do {
+            try FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
+            try ProjectLoader.save(ProjectConfig(), to: url)
+            open(projectDirectory: url)
+        } catch {
+            loadError = "Could not create project: \(error.localizedDescription)"
+        }
+    }
 
     func open(projectDirectory: URL) {
         projectURL = projectDirectory
@@ -136,6 +186,151 @@ final class AppController: ObservableObject, @unchecked Sendable {
         persistRecentProjects()
     }
 
+    // MARK: - Geometry CRUD
+
+    func deleteGeometry(key: String) {
+        let parts = key.split(separator: "/", maxSplits: 1)
+        guard parts.count == 2 else { return }
+        let folder  = String(parts[0])
+        let name    = String(parts[1])
+        updateProjectConfig { [weak self] cfg in
+            switch folder {
+            case "polygonSets", "regularPolygons":
+                if let idx = cfg.polygonConfig.library.polygonSets.firstIndex(where: { $0.name == name }) {
+                    let def = cfg.polygonConfig.library.polygonSets[idx]
+                    if let base = self?.projectURL, !def.filename.isEmpty {
+                        let dir = def.folder == "polygonSet" || def.folder.isEmpty ? "polygonSets" : def.folder
+                        try? FileManager.default.removeItem(at: base.appendingPathComponent(dir).appendingPathComponent(def.filename))
+                    }
+                    cfg.polygonConfig.library.polygonSets.remove(at: idx)
+                }
+            case "curveSets":
+                if let idx = cfg.curveConfig.library.curveSets.firstIndex(where: { $0.name == name }) {
+                    let def = cfg.curveConfig.library.curveSets[idx]
+                    if let base = self?.projectURL, !def.filename.isEmpty {
+                        try? FileManager.default.removeItem(at: base.appendingPathComponent(def.folder).appendingPathComponent(def.filename))
+                    }
+                    cfg.curveConfig.library.curveSets.remove(at: idx)
+                }
+            case "pointSets":
+                if let idx = cfg.pointConfig.library.pointSets.firstIndex(where: { $0.name == name }) {
+                    let def = cfg.pointConfig.library.pointSets[idx]
+                    if let base = self?.projectURL, !def.filename.isEmpty {
+                        try? FileManager.default.removeItem(at: base.appendingPathComponent(def.folder).appendingPathComponent(def.filename))
+                    }
+                    cfg.pointConfig.library.pointSets.remove(at: idx)
+                }
+            default: break
+            }
+        }
+        if selectedGeometryKey == key { selectedGeometryKey = nil }
+    }
+
+    func duplicateGeometry(key: String) {
+        let parts = key.split(separator: "/", maxSplits: 1)
+        guard parts.count == 2 else { return }
+        let folder  = String(parts[0])
+        let name    = String(parts[1])
+        updateProjectConfig { [weak self] cfg in
+            switch folder {
+            case "polygonSets", "regularPolygons":
+                guard var def = cfg.polygonConfig.library.polygonSets.first(where: { $0.name == name }) else { return }
+                def.name = "\(name)_copy"
+                if let base = self?.projectURL, !def.filename.isEmpty {
+                    let dir = def.folder == "polygonSet" || def.folder.isEmpty ? "polygonSets" : def.folder
+                    let srcURL = base.appendingPathComponent(dir).appendingPathComponent(def.filename)
+                    let newFilename = "\(def.name).xml"
+                    try? FileManager.default.copyItem(at: srcURL, to: base.appendingPathComponent(dir).appendingPathComponent(newFilename))
+                    def.filename = newFilename
+                }
+                cfg.polygonConfig.library.polygonSets.append(def)
+            case "curveSets":
+                guard var def = cfg.curveConfig.library.curveSets.first(where: { $0.name == name }) else { return }
+                def.name = "\(name)_copy"
+                if let base = self?.projectURL, !def.filename.isEmpty {
+                    let newFilename = "\(def.name).xml"
+                    try? FileManager.default.copyItem(at: base.appendingPathComponent(def.folder).appendingPathComponent(def.filename),
+                                                      to: base.appendingPathComponent(def.folder).appendingPathComponent(newFilename))
+                    def.filename = newFilename
+                }
+                cfg.curveConfig.library.curveSets.append(def)
+            case "pointSets":
+                guard var def = cfg.pointConfig.library.pointSets.first(where: { $0.name == name }) else { return }
+                def.name = "\(name)_copy"
+                if let base = self?.projectURL, !def.filename.isEmpty {
+                    let newFilename = "\(def.name).xml"
+                    try? FileManager.default.copyItem(at: base.appendingPathComponent(def.folder).appendingPathComponent(def.filename),
+                                                      to: base.appendingPathComponent(def.folder).appendingPathComponent(newFilename))
+                    def.filename = newFilename
+                }
+                cfg.pointConfig.library.pointSets.append(def)
+            default: break
+            }
+        }
+    }
+
+    func renameGeometry(key: String, to newName: String) {
+        let parts = key.split(separator: "/", maxSplits: 1)
+        guard parts.count == 2 else { return }
+        let folder  = String(parts[0])
+        let oldName = String(parts[1])
+        updateProjectConfig { [weak self] cfg in
+            switch folder {
+            case "polygonSets", "regularPolygons":
+                guard let idx = cfg.polygonConfig.library.polygonSets.firstIndex(where: { $0.name == oldName }) else { return }
+                var def = cfg.polygonConfig.library.polygonSets[idx]
+                def.name = newName
+                if let base = self?.projectURL, !def.filename.isEmpty {
+                    let dir = def.folder == "polygonSet" || def.folder.isEmpty ? "polygonSets" : def.folder
+                    let newFilename = "\(newName).xml"
+                    try? FileManager.default.moveItem(at: base.appendingPathComponent(dir).appendingPathComponent(def.filename),
+                                                      to: base.appendingPathComponent(dir).appendingPathComponent(newFilename))
+                    def.filename = newFilename
+                }
+                cfg.polygonConfig.library.polygonSets[idx] = def
+                cfg.shapeConfig.library.shapeSets = cfg.shapeConfig.library.shapeSets.map { ss in
+                    var ss = ss
+                    ss.shapes = ss.shapes.map { s in var s = s; if s.polygonSetName == oldName { s.polygonSetName = newName }; return s }
+                    return ss
+                }
+            case "curveSets":
+                guard let idx = cfg.curveConfig.library.curveSets.firstIndex(where: { $0.name == oldName }) else { return }
+                var def = cfg.curveConfig.library.curveSets[idx]
+                def.name = newName
+                if let base = self?.projectURL, !def.filename.isEmpty {
+                    let newFilename = "\(newName).xml"
+                    try? FileManager.default.moveItem(at: base.appendingPathComponent(def.folder).appendingPathComponent(def.filename),
+                                                      to: base.appendingPathComponent(def.folder).appendingPathComponent(newFilename))
+                    def.filename = newFilename
+                }
+                cfg.curveConfig.library.curveSets[idx] = def
+                cfg.shapeConfig.library.shapeSets = cfg.shapeConfig.library.shapeSets.map { ss in
+                    var ss = ss
+                    ss.shapes = ss.shapes.map { s in var s = s; if s.openCurveSetName == oldName { s.openCurveSetName = newName }; return s }
+                    return ss
+                }
+            case "pointSets":
+                guard let idx = cfg.pointConfig.library.pointSets.firstIndex(where: { $0.name == oldName }) else { return }
+                var def = cfg.pointConfig.library.pointSets[idx]
+                def.name = newName
+                if let base = self?.projectURL, !def.filename.isEmpty {
+                    let newFilename = "\(newName).xml"
+                    try? FileManager.default.moveItem(at: base.appendingPathComponent(def.folder).appendingPathComponent(def.filename),
+                                                      to: base.appendingPathComponent(def.folder).appendingPathComponent(newFilename))
+                    def.filename = newFilename
+                }
+                cfg.pointConfig.library.pointSets[idx] = def
+                cfg.shapeConfig.library.shapeSets = cfg.shapeConfig.library.shapeSets.map { ss in
+                    var ss = ss
+                    ss.shapes = ss.shapes.map { s in var s = s; if s.pointSetName == oldName { s.pointSetName = newName }; return s }
+                    return ss
+                }
+            default: break
+            }
+        }
+        selectedGeometryKey = "\(folder)/\(newName)"
+    }
+
     // MARK: - Private: loading
 
     private func loadEngine(from url: URL) {
@@ -155,6 +350,8 @@ final class AppController: ObservableObject, @unchecked Sendable {
         selectedSubdivisionIndex      = nil
         selectedSubdivisionParamIndex = nil
         selectedSpriteID              = nil
+        subdivSelectedSpriteID        = nil
+        subdivPreviewSetName          = nil
         selectedRendererIndex         = nil
         selectedRendererItemIndex     = nil
     }

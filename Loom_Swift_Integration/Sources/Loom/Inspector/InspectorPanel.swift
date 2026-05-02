@@ -24,8 +24,8 @@ struct InspectorPanel: View {
         case .global:
             GlobalInspector()
                 .environmentObject(controller)
-        case .project:
-            placeholderText("Select a project item to preview it.")
+        case .assets:
+            placeholderText("Select an asset to preview it.")
         case .geometry:
             if controller.selectedGeometryKey != nil {
                 GeometryInspector()
@@ -38,7 +38,7 @@ struct InspectorPanel: View {
                 SubdivisionInspector()
                     .environmentObject(controller)
             } else {
-                placeholderText("Select a subdivision set.")
+                placeholderText("Select a sprite or subdivision set to edit params.")
             }
         case .sprites:
             if controller.selectedSpriteID != nil {
@@ -200,40 +200,216 @@ struct InspectorPickList<T>: View {
     }
 }
 
-// MARK: - Geometry inspector (read-only for Phase 2)
+// MARK: - Geometry inspector
 
 private struct GeometryInspector: View {
     @EnvironmentObject private var controller: AppController
 
     var body: some View {
         if let key = controller.selectedGeometryKey {
-            let parts = key.split(separator: "/", maxSplits: 1)
+            let parts  = key.split(separator: "/", maxSplits: 1)
             let folder = parts.count == 2 ? String(parts[0]) : "—"
             let name   = parts.count == 2 ? String(parts[1]) : key
+
             InspectorSection("Geometry") {
+                HStack {
+                    Spacer()
+                    Button("Edit…") {
+                        // TODO: open Bezier editor window (Phase 4)
+                    }
+                    .font(.system(size: 12))
+                    .padding(.horizontal, 12)
+                    .padding(.bottom, 2)
+                }
                 InspectorRow(label: "Folder", value: folder)
                 InspectorRow(label: "Name",   value: name)
             }
-            if folder == "polygonSets",
-               let def = polygonSetDef(named: name) {
-                polygonSetEditor(def: def)
+            switch folder {
+            case "polygonSets":
+                if let def = polygonSetDef(named: name) { polygonSetSection(def: def) }
+            case "regularPolygons":
+                if let def = polygonSetDef(named: name), let rp = def.regularParams {
+                    regularPolygonSection(rp: rp, name: name)
+                }
+            case "curveSets":
+                if let def = curveSetDef(named: name) { curveSetSection(def: def) }
+            case "pointSets":
+                if let def = pointSetDef(named: name) { pointSetSection(def: def) }
+            default:
+                EmptyView()
             }
+            quickSetupSection(folder: folder, name: name)
         }
     }
+
+    // MARK: Lookup helpers
 
     private func polygonSetDef(named name: String) -> PolygonSetDef? {
         controller.projectConfig?.polygonConfig.library.polygonSets.first { $0.name == name }
     }
 
+    private func curveSetDef(named name: String) -> OpenCurveSetDef? {
+        controller.projectConfig?.curveConfig.library.curveSets.first { $0.name == name }
+    }
+
+    private func pointSetDef(named name: String) -> PointSetDef? {
+        controller.projectConfig?.pointConfig.library.pointSets.first { $0.name == name }
+    }
+
+    // MARK: Section views
+
     @ViewBuilder
-    private func polygonSetEditor(def: PolygonSetDef) -> some View {
+    private func polygonSetSection(def: PolygonSetDef) -> some View {
         InspectorSection("Polygon Set") {
-            InspectorRow(label: "Type",     value: def.polygonType.rawValue)
-            InspectorRow(label: "File",     value: def.filename.isEmpty ? "(regular)" : def.filename)
-            if let rp = def.regularParams {
-                InspectorRow(label: "Points",  value: "\(rp.totalPoints)")
-                InspectorRow(label: "Inner r", value: String(format: "%.3f", rp.internalRadius))
+            InspectorRow(label: "Type", value: def.polygonType.rawValue)
+            if def.regularParams != nil {
+                InspectorRow(label: "Source", value: "algorithmic")
+            } else {
+                InspectorRow(label: "File", value: def.filename.isEmpty ? "—" : def.filename)
             }
         }
+    }
+
+    @ViewBuilder
+    private func regularPolygonSection(rp: RegularPolygonParams, name: String) -> some View {
+        InspectorSection("Regular Polygon") {
+            InspectorField("Points") {
+                TextField("", value: bindRegularInt(\.totalPoints, name: name), format: .number)
+                    .textFieldStyle(.squareBorder).font(.system(size: 12, design: .monospaced)).frame(width: 50)
+            }
+            InspectorField("Inner r") {
+                TextField("", value: bindRegular(\.internalRadius, name: name),
+                          format: .number.precision(.fractionLength(3)))
+                    .textFieldStyle(.squareBorder).font(.system(size: 12, design: .monospaced)).frame(width: 60)
+            }
+            InspectorField("Offset") {
+                TextField("", value: bindRegular(\.offset, name: name),
+                          format: .number.precision(.fractionLength(1)))
+                    .textFieldStyle(.squareBorder).font(.system(size: 12, design: .monospaced)).frame(width: 55)
+                Text("°").font(.system(size: 11)).foregroundStyle(.secondary)
+            }
+            InspectorField("Scale X") {
+                TextField("", value: bindRegular(\.scaleX, name: name),
+                          format: .number.precision(.fractionLength(3)))
+                    .textFieldStyle(.squareBorder).font(.system(size: 12, design: .monospaced)).frame(width: 55)
+            }
+            InspectorField("Scale Y") {
+                TextField("", value: bindRegular(\.scaleY, name: name),
+                          format: .number.precision(.fractionLength(3)))
+                    .textFieldStyle(.squareBorder).font(.system(size: 12, design: .monospaced)).frame(width: 55)
+            }
+            InspectorField("Rotation") {
+                TextField("", value: bindRegular(\.rotationAngle, name: name),
+                          format: .number.precision(.fractionLength(1)))
+                    .textFieldStyle(.squareBorder).font(.system(size: 12, design: .monospaced)).frame(width: 55)
+                Text("°").font(.system(size: 11)).foregroundStyle(.secondary)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func curveSetSection(def: OpenCurveSetDef) -> some View {
+        InspectorSection("Curve Set") {
+            InspectorRow(label: "Folder", value: def.folder)
+            InspectorRow(label: "File",   value: def.filename.isEmpty ? "—" : def.filename)
+        }
+    }
+
+    @ViewBuilder
+    private func pointSetSection(def: PointSetDef) -> some View {
+        InspectorSection("Point Set") {
+            InspectorRow(label: "Folder", value: def.folder)
+            InspectorRow(label: "File",   value: def.filename.isEmpty ? "—" : def.filename)
+        }
+    }
+
+    @ViewBuilder
+    private func quickSetupSection(folder: String, name: String) -> some View {
+        let subSets = controller.projectConfig?.subdivisionConfig.paramsSets ?? []
+        if !subSets.isEmpty {
+            InspectorSection("Quick Setup") {
+                InspectorField("Subdiv set") {
+                    Picker("", selection: subdivBinding(folder: folder, name: name)) {
+                        Text("None").tag("")
+                        ForEach(subSets, id: \.name) { set in
+                            Text(set.name).tag(set.name)
+                        }
+                    }
+                    .labelsHidden()
+                    .font(.system(size: 12))
+                    .frame(maxWidth: 120)
+                }
+            }
+        }
+    }
+
+    // MARK: Binding helpers
+
+    private func bindRegular(_ kp: WritableKeyPath<RegularPolygonParams, Double>, name: String) -> Binding<Double> {
+        let ctl = controller
+        return Binding(
+            get: {
+                ctl.projectConfig?.polygonConfig.library.polygonSets
+                    .first(where: { $0.name == name })?.regularParams?[keyPath: kp] ?? 0.0
+            },
+            set: { val in
+                ctl.updateProjectConfig { cfg in
+                    guard let idx = cfg.polygonConfig.library.polygonSets.firstIndex(where: { $0.name == name }) else { return }
+                    cfg.polygonConfig.library.polygonSets[idx].regularParams?[keyPath: kp] = val
+                }
+            }
+        )
+    }
+
+    private func bindRegularInt(_ kp: WritableKeyPath<RegularPolygonParams, Int>, name: String) -> Binding<Int> {
+        let ctl = controller
+        return Binding(
+            get: {
+                ctl.projectConfig?.polygonConfig.library.polygonSets
+                    .first(where: { $0.name == name })?.regularParams?[keyPath: kp] ?? 0
+            },
+            set: { val in
+                ctl.updateProjectConfig { cfg in
+                    guard let idx = cfg.polygonConfig.library.polygonSets.firstIndex(where: { $0.name == name }) else { return }
+                    cfg.polygonConfig.library.polygonSets[idx].regularParams?[keyPath: kp] = val
+                }
+            }
+        )
+    }
+
+    private func subdivBinding(folder: String, name: String) -> Binding<String> {
+        let ctl = controller
+        return Binding(
+            get: {
+                guard let cfg = ctl.projectConfig else { return "" }
+                return cfg.shapeConfig.library.shapeSets.flatMap { $0.shapes }.first { shape in
+                    switch folder {
+                    case "polygonSets", "regularPolygons": return shape.polygonSetName == name
+                    case "curveSets":   return shape.openCurveSetName == name
+                    case "pointSets":   return shape.pointSetName == name
+                    default:            return false
+                    }
+                }?.subdivisionParamsSetName ?? ""
+            },
+            set: { newValue in
+                ctl.updateProjectConfig { cfg in
+                    for ssIdx in cfg.shapeConfig.library.shapeSets.indices {
+                        for sIdx in cfg.shapeConfig.library.shapeSets[ssIdx].shapes.indices {
+                            let shape = cfg.shapeConfig.library.shapeSets[ssIdx].shapes[sIdx]
+                            let matches: Bool
+                            switch folder {
+                            case "polygonSets", "regularPolygons": matches = shape.polygonSetName == name
+                            case "curveSets":   matches = shape.openCurveSetName == name
+                            case "pointSets":   matches = shape.pointSetName == name
+                            default:            matches = false
+                            }
+                            if matches {
+                                cfg.shapeConfig.library.shapeSets[ssIdx].shapes[sIdx].subdivisionParamsSetName = newValue
+                            }
+                        }
+                    }
+                }
+            }
+        )
     }
 }

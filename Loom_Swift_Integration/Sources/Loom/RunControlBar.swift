@@ -64,7 +64,10 @@ struct RunControlBar: View {
 
                 Divider().frame(height: 18)
 
-                iconButton("folder.badge.plus", help: "Open Project…", action: presentOpenPanel)
+                iconButton("folder.badge.plus", help: "New Project…") { controller.newProject() }
+                    .keyboardShortcut("n", modifiers: .command)
+
+                iconButton("folder", help: "Open Project…") { controller.presentOpenPanel() }
                     .keyboardShortcut("o", modifiers: .command)
 
                 if controller.engine != nil {
@@ -119,15 +122,4 @@ struct RunControlBar: View {
         }
     }
 
-    private func presentOpenPanel() {
-        let panel = NSOpenPanel()
-        panel.canChooseDirectories    = true
-        panel.canChooseFiles          = false
-        panel.allowsMultipleSelection = false
-        panel.prompt       = "Open Project"
-        panel.directoryURL = AppController.defaultProjectsDirectory
-        if panel.runModal() == .OK, let url = panel.url {
-            controller.open(projectDirectory: url)
-        }
-    }
 }

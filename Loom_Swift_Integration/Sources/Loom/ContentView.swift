@@ -103,8 +103,8 @@ struct ContentView: View {
         switch controller.selectedTab {
         case .global:
             EmptyView()
-        case .project:
-            ProjectTabView()
+        case .assets:
+            AssetsTabView()
                 .environmentObject(controller)
         case .geometry:
             GeometryTabView()
@@ -126,6 +126,14 @@ struct ContentView: View {
         switch controller.selectedTab {
         case .geometry:
             GeometryMainView()
+                .environmentObject(controller)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+        case .sprites:
+            SpriteWireframeView()
+                .environmentObject(controller)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+        case .subdivision:
+            SubdivisionWireframeView()
                 .environmentObject(controller)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
         default:
@@ -169,7 +177,7 @@ struct ContentView: View {
                     .padding(.horizontal)
             }
 
-            Button("Open Project…") { presentOpenPanel() }
+            Button("Open Project…") { controller.presentOpenPanel() }
                 .buttonStyle(.borderedProminent)
                 .keyboardShortcut("o", modifiers: .command)
 
@@ -211,17 +219,4 @@ struct ContentView: View {
         .padding(.horizontal)
     }
 
-    // MARK: - Open panel
-
-    private func presentOpenPanel() {
-        let panel = NSOpenPanel()
-        panel.canChooseDirectories    = true
-        panel.canChooseFiles          = false
-        panel.allowsMultipleSelection = false
-        panel.prompt       = "Open Project"
-        panel.directoryURL = AppController.defaultProjectsDirectory
-        if panel.runModal() == .OK, let url = panel.url {
-            controller.open(projectDirectory: url)
-        }
-    }
 }

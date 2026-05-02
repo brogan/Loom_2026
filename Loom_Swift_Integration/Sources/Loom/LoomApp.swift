@@ -12,17 +12,18 @@ struct LoomIntegrationApp: App {
             ContentView()
                 .environmentObject(controller)
                 .frame(minWidth: 900, minHeight: 600)
+                .focusedObject(controller)
         }
         .windowStyle(.titleBar)
         .windowToolbarStyle(.unifiedCompact)
         .commands {
-            CommandGroup(replacing: .newItem) { }
-            CommandGroup(after: .appInfo) {
-                Button("Open Project…") {
-                    // Forwarded via AppController in Phase 3
-                }
-                .keyboardShortcut("o", modifiers: .command)
+            CommandGroup(replacing: .newItem) {
+                Button("New Project…") { controller.newProject() }
+                    .keyboardShortcut("n", modifiers: .command)
+                Button("Open Project…") { controller.presentOpenPanel() }
+                    .keyboardShortcut("o", modifiers: .command)
             }
+            CommandGroup(replacing: .saveItem) { }
         }
     }
 }

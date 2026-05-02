@@ -98,6 +98,9 @@ public struct LoomEngine: @unchecked Sendable {
     /// Canvas size in pixels (width × qualityMultiple, height × qualityMultiple).
     public var canvasSize: CGSize { viewTransform.canvasSize }
 
+    /// All sprite instances in the scene (base geometry + def, no animation applied).
+    public var spriteInstances: [SpriteInstance] { scene.instances }
+
     /// Number of times `advance()` has been called.
     public var currentFrame: Int { frameCount }
 

@@ -44,6 +44,9 @@ public final class Engine: @unchecked Sendable {
     /// per-frame state without driving rendering themselves.
     public private(set) var loomEngine: LoomEngine
 
+    /// All sprite instances in the scene (base geometry + def, no animation applied).
+    public var spriteInstances: [SpriteInstance] { loomEngine.spriteInstances }
+
     /// The project directory this engine was loaded from, if any.
     /// Used by `reset()` to reinitialise the engine from scratch.
     public let projectDirectory: URL?
