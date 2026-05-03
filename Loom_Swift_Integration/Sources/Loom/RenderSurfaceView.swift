@@ -19,8 +19,8 @@ struct RenderSurfaceView: NSViewRepresentable {
     }
 
     func updateNSView(_ nsView: RenderSurfaceNSView, context: Context) {
-        nsView.onFrameTick          = onFrameTick
-        nsView.onAnimationComplete  = onAnimationComplete
+        nsView.onFrameTick         = onFrameTick
+        nsView.onAnimationComplete = onAnimationComplete
         if nsView.engine !== engine { nsView.replaceEngine(engine) }
         applyState(playbackState, to: nsView, isInitial: false)
     }
@@ -38,9 +38,21 @@ struct RenderSurfaceView: NSViewRepresentable {
 
 final class RenderSurfaceNSView: NSView {
 
-    fileprivate var engine: Engine
-    private var lastTick:   CFTimeInterval = 0
-    private var latestFrame: CGImage?
+    // Owned exclusively by renderQueue after init; nonisolated(unsafe) because
+    // NSView is @MainActor but engine must be accessed off-main for rendering.
+    nonisolated(unsafe) fileprivate var engine: Engine
+
+    // Serial queue: all engine mutation and CGImage production happen here.
+    private let renderQueue = DispatchQueue(label: "com.loom.render", qos: .userInteractive)
+
+    // Main-thread only below this line ↓
+    private var latestFrame:      CGImage?
+    private var lastTick:         CFTimeInterval = 0
+    private var renderPending:    Bool           = false
+    private var accumulatedDt:    CFTimeInterval = 0
+    // Incremented whenever the engine or project is replaced; lets in-flight
+    // renders on renderQueue detect that their result is stale.
+    private var renderGeneration: Int            = 0
 
     var onFrameTick:         (Int) -> Void
     var onAnimationComplete: (() -> Void)?
@@ -58,19 +70,22 @@ final class RenderSurfaceNSView: NSView {
 
     override func makeBackingLayer() -> CALayer {
         let l = CALayer()
-        l.contentsGravity  = .resizeAspect
-        l.backgroundColor  = CGColor(gray: 0, alpha: 1)
+        l.contentsGravity = .resizeAspect
+        l.backgroundColor = CGColor(gray: 0, alpha: 1)
         return l
     }
+
+    // MARK: - Timer lifecycle
 
     func startRendering() {
         guard renderTimer == nil else { return }
         lastTick    = CACurrentMediaTime()
-        renderTimer = Timer(timeInterval: 1.0 / 60,
-                            target:       self,
-                            selector:     #selector(tick),
-                            userInfo:     nil,
-                            repeats:      true)
+        // Closure-based timer: no strong reference to self → no retain cycle.
+        renderTimer = Timer(timeInterval: 1.0 / 60, repeats: true) { [weak self] _ in
+            guard let self else { return }
+            // Timer fires on RunLoop.main, so main-actor isolation holds.
+            MainActor.assumeIsolated { self.tick() }
+        }
         RunLoop.main.add(renderTimer!, forMode: .common)
     }
 
@@ -79,18 +94,96 @@ final class RenderSurfaceNSView: NSView {
         renderTimer = nil
     }
 
+    // Stop the timer automatically when the view leaves the window (tab switch).
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        if window == nil { stopRendering() }
+    }
+
+    // MARK: - Engine replacement
+
     func replaceEngine(_ newEngine: Engine) {
         stopRendering()
-        engine = newEngine
+        renderGeneration += 1
+        let gen = renderGeneration
         clearDisplay()
-        renderFrame()
+        renderQueue.async { [weak self] in
+            guard let self else { return }
+            self.engine = newEngine
+            guard let frame = self.engine.makeFrame() else { return }
+            DispatchQueue.main.async { [weak self] in
+                guard let self, self.renderGeneration == gen else { return }
+                self.updateLayer(with: frame)
+            }
+        }
     }
 
     func resetAndRenderFirstFrame() {
-        try? engine.reset()
+        stopRendering()
+        renderGeneration += 1
+        let gen = renderGeneration
         clearDisplay()
-        renderFrame()
+        renderQueue.async { [weak self] in
+            guard let self else { return }
+            try? self.engine.reset()
+            guard let frame = self.engine.makeFrame() else { return }
+            DispatchQueue.main.async { [weak self] in
+                guard let self, self.renderGeneration == gen else { return }
+                self.updateLayer(with: frame)
+            }
+        }
     }
+
+    // MARK: - Frame loop
+
+    private func tick() {
+        let now  = CACurrentMediaTime()
+        let dt   = min(now - lastTick, 1.0 / 10)
+        lastTick = now
+
+        // If the previous frame is still rendering, accumulate time and skip.
+        if renderPending { accumulatedDt += dt; return }
+
+        renderPending = true
+        let totalDt = dt + accumulatedDt
+        accumulatedDt = 0
+        let gen = renderGeneration
+
+        renderQueue.async { [weak self] in
+            guard let self else { return }
+            self.engine.update(deltaTime: totalDt)
+            let frameNum = self.engine.currentFrame
+            let isDone   = self.checkAnimationDone()
+            guard let frame = self.engine.makeFrame() else {
+                DispatchQueue.main.async { [weak self] in self?.renderPending = false }
+                return
+            }
+            DispatchQueue.main.async { [weak self] in
+                guard let self else { return }
+                // Discard stale renders produced before a replaceEngine/reset.
+                guard self.renderGeneration == gen else {
+                    self.renderPending = false
+                    return
+                }
+                self.renderPending = false
+                self.onFrameTick(frameNum)
+                if isDone { self.stopRendering(); self.onAnimationComplete?() }
+                self.updateLayer(with: frame)
+            }
+        }
+    }
+
+    // Called from renderQueue; engine is exclusively owned there.
+    nonisolated private func checkAnimationDone() -> Bool {
+        let maxFrames = engine.maxAnimationFrames
+        guard maxFrames > 0 else { return false }
+        return engine.spriteInstances.allSatisfy { inst in
+            let td = inst.def.animation.totalDraws
+            return td == 0 || inst.state.drawCycle >= td
+        }
+    }
+
+    // MARK: - Display helpers (main thread)
 
     private func clearDisplay() {
         latestFrame = nil
@@ -102,30 +195,7 @@ final class RenderSurfaceNSView: NSView {
         }
     }
 
-    @objc private func tick() {
-        let now  = CACurrentMediaTime()
-        let dt   = min(now - lastTick, 1.0 / 10)
-        lastTick = now
-        engine.update(deltaTime: dt)
-        onFrameTick(engine.currentFrame)
-        renderFrame()
-        checkAnimationComplete()
-    }
-
-    private func checkAnimationComplete() {
-        let maxFrames = engine.maxAnimationFrames
-        guard maxFrames > 0 else { return }
-        let allDone = engine.spriteInstances.allSatisfy { inst in
-            let td = inst.def.animation.totalDraws
-            return td == 0 || inst.state.drawCycle >= td
-        }
-        guard allDone else { return }
-        stopRendering()
-        onAnimationComplete?()
-    }
-
-    private func renderFrame() {
-        guard let frame = engine.makeFrame() else { return }
+    private func updateLayer(with frame: CGImage) {
         latestFrame = frame
         if let l = layer {
             CATransaction.begin()
@@ -145,6 +215,5 @@ final class RenderSurfaceNSView: NSView {
 
     deinit {
         renderTimer?.invalidate()
-        renderTimer = nil
     }
 }
