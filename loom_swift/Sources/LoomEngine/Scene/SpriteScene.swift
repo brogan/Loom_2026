@@ -575,10 +575,11 @@ public struct SpriteScene: Sendable {
 
         switch set.playbackConfig.mode {
         case .all:
-            return set.renderers
+            return set.renderers.filter { $0.enabled }
         default:
             let idx = min(instance.state.activeRendererIndex, set.renderers.count - 1)
-            return [set.renderers[idx]]
+            let r = set.renderers[idx]
+            return r.enabled ? [r] : []
         }
     }
 

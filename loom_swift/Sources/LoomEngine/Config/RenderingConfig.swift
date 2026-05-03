@@ -168,6 +168,7 @@ public struct RendererPlaybackConfig: Equatable, Codable, Sendable {
 /// `changes` holds any animated parameter variations declared in `<Changes>`.
 public struct Renderer: Equatable, Codable, Sendable {
     public var name: String
+    public var enabled: Bool
     public var mode: RendererMode
     public var strokeWidth: Double
     public var strokeColor: LoomColor
@@ -183,6 +184,7 @@ public struct Renderer: Equatable, Codable, Sendable {
 
     public init(
         name: String              = "",
+        enabled: Bool             = true,
         mode: RendererMode        = .stroked,
         strokeWidth: Double       = 1.0,
         strokeColor: LoomColor    = .black,
@@ -193,7 +195,7 @@ public struct Renderer: Equatable, Codable, Sendable {
         brushConfig: BrushConfig?   = nil,
         stencilConfig: StencilConfig? = nil
     ) {
-        self.name = name; self.mode = mode
+        self.name = name; self.enabled = enabled; self.mode = mode
         self.strokeWidth = strokeWidth; self.strokeColor = strokeColor
         self.fillColor = fillColor; self.pointSize = pointSize
         self.holdLength = holdLength; self.changes = changes
