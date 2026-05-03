@@ -241,16 +241,41 @@ struct SubdivisionTabView: View {
             Text(param.name.isEmpty ? param.subdivisionType.shortLabel : param.name)
                 .font(.system(size: 11))
                 .lineLimit(1)
+                .opacity(param.enabled ? 1.0 : 0.4)
             Spacer()
             Text(param.subdivisionType.shortLabel)
                 .font(.system(size: 10))
                 .foregroundStyle(.secondary)
+                .opacity(param.enabled ? 1.0 : 0.4)
+            Toggle("", isOn: bindParamEnabled(setIdx: setIdx, paramIdx: paramIdx))
+                .labelsHidden()
+                .toggleStyle(.checkbox)
+                .scaleEffect(0.82)
+                .frame(width: 18)
         }
         .padding(.horizontal, 8)
         .padding(.vertical, 2)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(isSelected ? Color.accentColor.opacity(0.12) : Color.clear)
         .contentShape(Rectangle())
+    }
+
+    private func bindParamEnabled(setIdx: Int, paramIdx: Int) -> Binding<Bool> {
+        let ctl = controller
+        return Binding(
+            get: {
+                ctl.projectConfig?.subdivisionConfig
+                    .paramsSets[safe: setIdx]?.params[safe: paramIdx]?.enabled ?? true
+            },
+            set: { v in
+                ctl.updateProjectConfig { cfg in
+                    guard setIdx  < cfg.subdivisionConfig.paramsSets.count,
+                          paramIdx < cfg.subdivisionConfig.paramsSets[setIdx].params.count
+                    else { return }
+                    cfg.subdivisionConfig.paramsSets[setIdx].params[paramIdx].enabled = v
+                }
+            }
+        )
     }
 
     // MARK: - Sets toolbar

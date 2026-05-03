@@ -7,6 +7,7 @@ import Foundation
 public struct SubdivisionParams: Equatable, Codable, Sendable {
 
     public var name: String
+    public var enabled: Bool
 
     // MARK: - Algorithm selection
 
@@ -76,6 +77,7 @@ public struct SubdivisionParams: Equatable, Codable, Sendable {
 
     public init(
         name: String                         = "",
+        enabled: Bool                         = true,
         subdivisionType: SubdivisionType      = .quad,
         lineRatios: Vector2D                  = Vector2D(x: 0.5, y: 0.5),
         controlPointRatios: Vector2D          = Vector2D(x: 0.25, y: 0.75),
@@ -101,6 +103,7 @@ public struct SubdivisionParams: Equatable, Codable, Sendable {
         ptpTransformSet: PTPTransformSet?     = nil
     ) {
         self.name                       = name
+        self.enabled                    = enabled
         self.subdivisionType            = subdivisionType
         self.lineRatios                 = lineRatios
         self.controlPointRatios         = controlPointRatios

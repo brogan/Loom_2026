@@ -67,6 +67,7 @@ public enum SubdivisionEngine {
         var active   = polygons.filter { !$0.isBypassType }
 
         for params in paramSet {
+            guard params.enabled else { continue }
             active = active.flatMap { subdivide(polygon: $0, params: params, rng: &rng) }
             // Prune: only visible polygons advance to the next generation
             active = active.filter { $0.visible }
