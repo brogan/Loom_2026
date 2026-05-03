@@ -1,13 +1,18 @@
 import AppKit
 import Foundation
 import LoomEngine
+import UniformTypeIdentifiers
+
+// MARK: - RenderOutputType
+
+enum RenderOutputType { case still, animation }
 
 @MainActor
 final class AppController: ObservableObject, @unchecked Sendable {
 
     // MARK: - Published: engine + project
 
-    @Published private(set) var engine:         Engine?
+    @Published private(set) var engine:             Engine?
     @Published private(set) var projectConfig:  ProjectConfig?
     @Published private(set) var projectURL:     URL?
     @Published private(set) var loadError:      String?
@@ -31,10 +36,11 @@ final class AppController: ObservableObject, @unchecked Sendable {
 
     // MARK: - Published: export
 
-    @Published var isExporting:         Bool   = false
-    @Published var exportProgress:      Double = 0
-    @Published var exportError:         String?
-    @Published var showingExportSheet:  Bool   = false
+    @Published var isExporting:             Bool              = false
+    @Published var exportProgress:          Double            = 0
+    @Published var exportError:             String?
+    @Published var showingExportSheet:      Bool              = false
+    @Published private(set) var lastRenderOutputType: RenderOutputType? = nil
 
     // MARK: - Constants
 
@@ -50,6 +56,14 @@ final class AppController: ObservableObject, @unchecked Sendable {
     }
 
     // MARK: - Private
+
+    // Brush editor window — single shared instance, reused across create/edit flows
+    var brushEditorWindow: NSWindow? = nil
+    var brushEditorState: BrushEditorState? = nil
+
+    // Stamp editor window — RGBA variant, same pattern
+    var stampEditorWindow: NSWindow? = nil
+    var stampEditorState: StampEditorState? = nil
 
     private var sentinelTimer:      Timer?
     private var pausedBySentinel:   Bool = false
@@ -186,9 +200,10 @@ final class AppController: ObservableObject, @unchecked Sendable {
     // MARK: - Export coordination
 
     func beginExport() {
-        isExporting    = true
-        exportProgress = 0
-        exportError    = nil
+        lastRenderOutputType = .animation
+        isExporting          = true
+        exportProgress       = 0
+        exportError          = nil
     }
 
     func endExport(error: Error? = nil) {
@@ -196,10 +211,40 @@ final class AppController: ObservableObject, @unchecked Sendable {
         isExporting = false
     }
 
+    // MARK: - Still export (toolbar button)
+
+    func saveStill() {
+        guard let engine = engine else { return }
+        let name = engine.globalConfig.name.isEmpty
+            ? (projectURL?.lastPathComponent ?? "loom")
+            : engine.globalConfig.name
+        let f = DateFormatter()
+        f.dateFormat = "yyyyMMdd_HHmmss"
+        let panel = NSSavePanel()
+        panel.allowedContentTypes  = [UTType.png]
+        panel.nameFieldStringValue = "\(name)_\(f.string(from: Date())).png"
+        panel.directoryURL         = stillRendersDirectory()
+        panel.begin { [weak self] response in
+            guard response == .OK, let url = panel.url else { return }
+            try? StillExporter.exportPNG(engine: engine, to: url)
+            self?.lastRenderOutputType = .still
+        }
+    }
+
     // MARK: - Renders directories
 
     func animationRendersDirectory() -> URL? { existingRendersDir(["animation", "animations"]) }
     func stillRendersDirectory()     -> URL? { existingRendersDir(["still", "stills"]) }
+
+    /// Returns the renders subdirectory for the most recently performed render.
+    /// Falls back to whichever subdirectory exists if no render has been done yet.
+    func lastUsedRendersDirectory() -> URL? {
+        switch lastRenderOutputType {
+        case .still:     return stillRendersDirectory()     ?? animationRendersDirectory()
+        case .animation: return animationRendersDirectory() ?? stillRendersDirectory()
+        case nil:        return animationRendersDirectory() ?? stillRendersDirectory()
+        }
+    }
 
     // MARK: - Recent projects
 
@@ -464,6 +509,7 @@ final class AppController: ObservableObject, @unchecked Sendable {
 
     private func saveSentinelStill() {
         guard let eng = engine, let projURL = projectURL else { return }
+        lastRenderOutputType = .still
         let dir  = stillRendersDirectory() ?? projURL
         let name = eng.globalConfig.name.isEmpty ? projURL.lastPathComponent : eng.globalConfig.name
         let f    = DateFormatter()

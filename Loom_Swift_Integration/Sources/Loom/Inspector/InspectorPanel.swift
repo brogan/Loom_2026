@@ -24,8 +24,6 @@ struct InspectorPanel: View {
         case .global:
             GlobalInspector()
                 .environmentObject(controller)
-        case .assets:
-            placeholderText("Select an asset to preview it.")
         case .geometry:
             if controller.selectedGeometryKey != nil {
                 GeometryInspector()

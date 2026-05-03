@@ -58,6 +58,8 @@ public struct BrushConfig: Equatable, Codable, Sendable {
     public var meander:                 MeanderConfig     = MeanderConfig()
     public var pressureSizeInfluence:   Double            = 0.0
     public var pressureAlphaInfluence:  Double            = 0.0
+    /// Per-brush enable flags; index aligns with `brushNames`. Missing entries default to true.
+    public var brushEnabled:            [Bool]            = []
 
     public init() {}
 

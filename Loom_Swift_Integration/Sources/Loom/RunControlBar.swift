@@ -1,7 +1,6 @@
 import AppKit
 import SwiftUI
 import LoomEngine
-import UniformTypeIdentifiers
 
 struct RunControlBar: View {
 
@@ -48,15 +47,16 @@ struct RunControlBar: View {
 
             // Action buttons
             HStack(spacing: 4) {
-                iconButton("photo", help: "Save Still", action: saveStill)
+                // Render output section
+                iconButton("photo", help: "Save Still") { controller.saveStill() }
                     .disabled(controller.engine == nil || controller.isExporting)
 
-                iconButton("square.and.arrow.up", help: "Export Video…") {
+                iconButton("movieclapper", help: "Export Video…") {
                     controller.showingExportSheet = true
                 }
                 .disabled(controller.engine == nil || controller.isExporting)
 
-                if let dir = controller.animationRendersDirectory() {
+                if let dir = controller.lastUsedRendersDirectory() {
                     iconButton("folder", help: "Open Renders Folder") {
                         NSWorkspace.shared.open(dir)
                     }
@@ -64,6 +64,14 @@ struct RunControlBar: View {
 
                 Divider().frame(height: 18)
 
+                // Loom projects section
+                iconButton("smallcircle.filled.circle", help: "Open Loom Projects Folder") {
+                    NSWorkspace.shared.open(AppController.defaultProjectsDirectory)
+                }
+
+                Divider().frame(height: 18)
+
+                // New / open / reload section
                 iconButton("folder.badge.plus", help: "New Project…") { controller.newProject() }
                     .keyboardShortcut("n", modifiers: .command)
 
@@ -103,23 +111,5 @@ struct RunControlBar: View {
         .help(help)
     }
 
-    // MARK: - Actions
-
-    private func saveStill() {
-        guard let engine = controller.engine else { return }
-        let name = engine.globalConfig.name.isEmpty
-            ? (controller.projectURL?.lastPathComponent ?? "loom")
-            : engine.globalConfig.name
-        let f = DateFormatter()
-        f.dateFormat = "yyyyMMdd_HHmmss"
-        let panel = NSSavePanel()
-        panel.allowedContentTypes  = [.png]
-        panel.nameFieldStringValue = "\(name)_\(f.string(from: Date())).png"
-        panel.directoryURL         = controller.stillRendersDirectory()
-        panel.begin { response in
-            guard response == .OK, let url = panel.url else { return }
-            try? StillExporter.exportPNG(engine: engine, to: url)
-        }
-    }
-
 }
+

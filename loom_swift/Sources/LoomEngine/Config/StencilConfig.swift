@@ -42,6 +42,8 @@ public struct StencilConfig: Equatable, Codable, Sendable {
     public var agentCount:             Int                   = 1
     public var postCompletionMode:     PostCompletionMode    = .hold
     public var opacityChange:          StencilOpacityChange  = StencilOpacityChange()
+    /// Per-stamp enable flags; index aligns with `stampNames`. Missing entries default to true.
+    public var stampEnabled:           [Bool]                = []
 
     public init() {}
 

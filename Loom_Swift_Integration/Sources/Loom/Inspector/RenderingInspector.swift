@@ -1,9 +1,21 @@
+import AppKit
 import SwiftUI
 import LoomEngine
 
 struct RenderingInspector: View {
 
     @EnvironmentObject private var controller: AppController
+
+    // Collapse state — primary sections default open, secondary default closed
+    @State private var renderersCollapsed    = false
+    @State private var rendererCollapsed     = false
+    @State private var brushCollapsed        = false
+    @State private var meanderCollapsed      = true
+    @State private var stampCollapsed        = false
+    @State private var opacityAnimCollapsed  = true
+    @State private var fillChangeCollapsed   = true
+    @State private var strokeChangeCollapsed = true
+    @State private var widthChangeCollapsed  = true
 
     var body: some View {
         let setIdx = controller.selectedRendererIndex ?? 0
@@ -26,6 +38,7 @@ struct RenderingInspector: View {
                 default:
                     EmptyView()
                 }
+                changesSection(renderer: renderer, setIdx: setIdx, itemIdx: itemIdx)
             }
         })
     }
@@ -33,7 +46,8 @@ struct RenderingInspector: View {
     // MARK: - Set header
 
     private func setHeader(set: RendererSet, setIdx: Int) -> some View {
-        InspectorSection("Set") {
+        let mode = set.playbackConfig.mode
+        return InspectorSection("Set") {
             InspectorField("Name") {
                 TextField("", text: bindSet(setIdx, \.name))
                     .textFieldStyle(.squareBorder)
@@ -49,6 +63,23 @@ struct RenderingInspector: View {
                 .labelsHidden()
                 .frame(maxWidth: 120)
             }
+            if mode == .random {
+                InspectorField("Preferred") {
+                    TextField("", text: bindSet(setIdx, \.playbackConfig.preferredRenderer))
+                        .textFieldStyle(.squareBorder)
+                        .font(.system(size: 12))
+                        .frame(maxWidth: 110)
+                }
+                InspectorField("Pref. prob.") {
+                    FloatEntryField(value: bindSet(setIdx, \.playbackConfig.preferredProbability),
+                                    width: 55, fractionDigits: 1)
+                    Text("%").font(.system(size: 10)).foregroundStyle(.secondary)
+                }
+            }
+            InspectorField("Mod. params") {
+                Toggle("", isOn: bindSet(setIdx, \.playbackConfig.modifyInternalParameters))
+                    .labelsHidden()
+            }
             InspectorRow(label: "Renderers", value: "\(set.renderers.count)")
         }
     }
@@ -56,7 +87,7 @@ struct RenderingInspector: View {
     // MARK: - Renderers mini-list
 
     private func renderersList(set: RendererSet, setIdx: Int) -> some View {
-        InspectorSection("Renderers") {
+        InspectorSection("Renderers", isCollapsed: $renderersCollapsed) {
             InspectorPickList(
                 items: set.renderers,
                 labelFor: { $0.name.isEmpty ? "(unnamed)" : $0.name },
@@ -75,7 +106,7 @@ struct RenderingInspector: View {
 
     @ViewBuilder
     private func rendererEditor(renderer: Renderer, setIdx: Int, itemIdx: Int) -> some View {
-        InspectorSection("Renderer") {
+        InspectorSection("Renderer", isCollapsed: $rendererCollapsed) {
             InspectorField("Name") {
                 TextField("", text: bindR(setIdx, itemIdx, \.name))
                     .textFieldStyle(.squareBorder)
@@ -84,7 +115,7 @@ struct RenderingInspector: View {
             }
             InspectorField("Mode") {
                 Picker("", selection: bindR(setIdx, itemIdx, \.mode)) {
-                    ForEach(RendererMode.allCases, id: \.self) { m in
+                    ForEach(RendererMode.allCases.filter { $0 != .stenciled }, id: \.self) { m in
                         Text(m.displayName).tag(m)
                     }
                 }
@@ -118,15 +149,14 @@ struct RenderingInspector: View {
 
     @ViewBuilder
     private func brushConfigSection(setIdx: Int, itemIdx: Int, cfg: BrushConfig) -> some View {
-        InspectorSection("Brush") {
-            InspectorField("Brushes") {
-                TextField("", text: bindBrush(setIdx, itemIdx,
-                    get: { $0.brushNames.joined(separator: ", ") },
-                    set: { cfg, v in cfg.brushNames = v.split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty } }))
-                    .textFieldStyle(.squareBorder)
-                    .font(.system(size: 11))
-                    .frame(maxWidth: .infinity)
-            }
+        InspectorSection("Brush", isCollapsed: $brushCollapsed) {
+            BrushLibraryView(
+                dir: "brushes",
+                names: bindBrushKP(setIdx, itemIdx, \.brushNames, fallback: []),
+                enabled: bindBrushKP(setIdx, itemIdx, \.brushEnabled, fallback: [])
+            )
+            .padding(.horizontal, 12)
+            .padding(.bottom, 4)
             InspectorField("Draw mode") {
                 Picker("", selection: bindBrushKP(setIdx, itemIdx, \.drawMode,
                                                   fallback: cfg.drawMode)) {
@@ -188,8 +218,21 @@ struct RenderingInspector: View {
                     .font(.system(size: 12, design: .monospaced))
                     .frame(width: 50)
             }
+            InspectorField("Pressure→size") {
+                FloatEntryField(value: bindBrushKP(setIdx, itemIdx, \.pressureSizeInfluence,
+                                                   fallback: cfg.pressureSizeInfluence),
+                                width: 55, fractionDigits: 2)
+            }
+            InspectorField("Pressure→α") {
+                FloatEntryField(value: bindBrushKP(setIdx, itemIdx, \.pressureAlphaInfluence,
+                                                   fallback: cfg.pressureAlphaInfluence),
+                                width: 55, fractionDigits: 2)
+            }
+            if let brushDir = controller.projectURL?.appendingPathComponent("brushes") {
+                revealButton(label: "Reveal brushes folder", url: brushDir)
+            }
         }
-        InspectorSection("Meander") {
+        InspectorSection("Meander", isCollapsed: $meanderCollapsed) {
             InspectorField("Enabled") {
                 Toggle("", isOn: bindBrushKP(setIdx, itemIdx, \.meander.enabled,
                                              fallback: cfg.meander.enabled))
@@ -206,6 +249,21 @@ struct RenderingInspector: View {
                                                        fallback: cfg.meander.frequency),
                                     width: 60, fractionDigits: 4)
                 }
+                InspectorField("Samples") {
+                    TextField("", value: bindBrushKP(setIdx, itemIdx, \.meander.samples,
+                                                     fallback: cfg.meander.samples), format: .number)
+                        .textFieldStyle(.squareBorder)
+                        .font(.system(size: 12, design: .monospaced))
+                        .frame(width: 50)
+                }
+                InspectorField("Seed") {
+                    TextField("", value: bindBrushKP(setIdx, itemIdx, \.meander.seed,
+                                                     fallback: cfg.meander.seed), format: .number)
+                        .textFieldStyle(.squareBorder)
+                        .font(.system(size: 12, design: .monospaced))
+                        .frame(width: 50)
+                    Text("0=auto").font(.system(size: 9)).foregroundStyle(.tertiary)
+                }
                 InspectorField("Animated") {
                     Toggle("", isOn: bindBrushKP(setIdx, itemIdx, \.meander.animated,
                                                  fallback: cfg.meander.animated))
@@ -218,6 +276,25 @@ struct RenderingInspector: View {
                                         width: 60, fractionDigits: 4)
                     }
                 }
+                InspectorField("Scale path") {
+                    Toggle("", isOn: bindBrushKP(setIdx, itemIdx, \.meander.scaleAlongPath,
+                                                 fallback: cfg.meander.scaleAlongPath))
+                        .labelsHidden()
+                }
+                if cfg.meander.scaleAlongPath {
+                    InspectorField("Path freq.") {
+                        FloatEntryField(
+                            value: bindBrushKP(setIdx, itemIdx, \.meander.scaleAlongPathFrequency,
+                                               fallback: cfg.meander.scaleAlongPathFrequency),
+                            width: 60, fractionDigits: 4)
+                    }
+                    InspectorField("Path range") {
+                        FloatEntryField(
+                            value: bindBrushKP(setIdx, itemIdx, \.meander.scaleAlongPathRange,
+                                               fallback: cfg.meander.scaleAlongPathRange),
+                            width: 60, fractionDigits: 3)
+                    }
+                }
             }
         }
     }
@@ -226,15 +303,14 @@ struct RenderingInspector: View {
 
     @ViewBuilder
     private func stencilConfigSection(setIdx: Int, itemIdx: Int, cfg: StencilConfig) -> some View {
-        InspectorSection("Stamp") {
-            InspectorField("Stamps") {
-                TextField("", text: bindStencil(setIdx, itemIdx,
-                    get: { $0.stampNames.joined(separator: ", ") },
-                    set: { cfg, v in cfg.stampNames = v.split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty } }))
-                    .textFieldStyle(.squareBorder)
-                    .font(.system(size: 11))
-                    .frame(maxWidth: .infinity)
-            }
+        InspectorSection("Stamp", isCollapsed: $stampCollapsed) {
+            BrushLibraryView(
+                dir: "stamps",
+                names: bindStencilKP(setIdx, itemIdx, \.stampNames, fallback: []),
+                enabled: bindStencilKP(setIdx, itemIdx, \.stampEnabled, fallback: [])
+            )
+            .padding(.horizontal, 12)
+            .padding(.bottom, 4)
             InspectorField("Draw mode") {
                 Picker("", selection: bindStencilKP(setIdx, itemIdx, \.drawMode,
                                                     fallback: cfg.drawMode)) {
@@ -286,10 +362,186 @@ struct RenderingInspector: View {
                 .labelsHidden()
                 .frame(maxWidth: 110)
             }
+            if let stampDir = controller.projectURL?.appendingPathComponent("stamps") {
+                revealButton(label: "Reveal stamps folder", url: stampDir)
+            }
+        }
+        InspectorSection("Opacity Animation", isCollapsed: $opacityAnimCollapsed) {
+            let oc = cfg.opacityChange
+            InspectorField("Enabled") {
+                Toggle("", isOn: bindStencilKP(setIdx, itemIdx, \.opacityChange.enabled,
+                                               fallback: oc.enabled))
+                    .labelsHidden()
+            }
+            if oc.enabled {
+                sizeChangeFields(
+                    kind:      bindStencilKP(setIdx, itemIdx, \.opacityChange.kind,     fallback: oc.kind),
+                    motion:    bindStencilKP(setIdx, itemIdx, \.opacityChange.motion,   fallback: oc.motion),
+                    cycle:     bindStencilKP(setIdx, itemIdx, \.opacityChange.cycle,    fallback: oc.cycle),
+                    scale:     bindStencilKP(setIdx, itemIdx, \.opacityChange.scale,    fallback: oc.scale),
+                    pauseMax:  bindStencilKP(setIdx, itemIdx, \.opacityChange.pauseMax, fallback: oc.pauseMax),
+                    palette:   bindStencilOpacityPalette(setIdx, itemIdx)
+                )
+            }
         }
     }
 
-    // MARK: - Shared field helper
+    // MARK: - Renderer changes section
+
+    @ViewBuilder
+    private func changesSection(renderer: Renderer, setIdx: Int, itemIdx: Int) -> some View {
+        let ch = renderer.changes
+
+        // Fill color change
+        InspectorSection("Fill Color Change", isCollapsed: $fillChangeCollapsed) {
+            let enabled = ch.fillColor?.enabled ?? false
+            InspectorField("Enabled") {
+                Toggle("", isOn: bindFillChange(setIdx, itemIdx, \.enabled, fallback: false))
+                    .labelsHidden()
+            }
+            if enabled, let fc = ch.fillColor {
+                colorChangeFields(
+                    kind:     bindFillChange(setIdx, itemIdx, \.kind,     fallback: fc.kind),
+                    motion:   bindFillChange(setIdx, itemIdx, \.motion,   fallback: fc.motion),
+                    cycle:    bindFillChange(setIdx, itemIdx, \.cycle,    fallback: fc.cycle),
+                    scale:    bindFillChange(setIdx, itemIdx, \.scale,    fallback: fc.scale),
+                    pauseMax: bindFillChange(setIdx, itemIdx, \.pauseMax, fallback: fc.pauseMax)
+                )
+                ColorPaletteEditor(palette: bindFillColorPalette(setIdx, itemIdx))
+            }
+        }
+
+        // Stroke color change
+        InspectorSection("Stroke Color Change", isCollapsed: $strokeChangeCollapsed) {
+            let enabled = ch.strokeColor?.enabled ?? false
+            InspectorField("Enabled") {
+                Toggle("", isOn: bindStrokeChange(setIdx, itemIdx, \.enabled, fallback: false))
+                    .labelsHidden()
+            }
+            if enabled, let sc = ch.strokeColor {
+                colorChangeFields(
+                    kind:     bindStrokeChange(setIdx, itemIdx, \.kind,     fallback: sc.kind),
+                    motion:   bindStrokeChange(setIdx, itemIdx, \.motion,   fallback: sc.motion),
+                    cycle:    bindStrokeChange(setIdx, itemIdx, \.cycle,    fallback: sc.cycle),
+                    scale:    bindStrokeChange(setIdx, itemIdx, \.scale,    fallback: sc.scale),
+                    pauseMax: bindStrokeChange(setIdx, itemIdx, \.pauseMax, fallback: sc.pauseMax)
+                )
+                ColorPaletteEditor(palette: bindStrokeColorPalette(setIdx, itemIdx))
+            }
+        }
+
+        // Stroke width change
+        InspectorSection("Stroke Width Change", isCollapsed: $widthChangeCollapsed) {
+            let enabled = ch.strokeWidth?.enabled ?? false
+            InspectorField("Enabled") {
+                Toggle("", isOn: bindWidthChange(setIdx, itemIdx, \.enabled, fallback: false))
+                    .labelsHidden()
+            }
+            if enabled, let sw = ch.strokeWidth {
+                sizeChangeFields(
+                    kind:     bindWidthChange(setIdx, itemIdx, \.kind,     fallback: sw.kind),
+                    motion:   bindWidthChange(setIdx, itemIdx, \.motion,   fallback: sw.motion),
+                    cycle:    bindWidthChange(setIdx, itemIdx, \.cycle,    fallback: sw.cycle),
+                    scale:    bindWidthChange(setIdx, itemIdx, \.scale,    fallback: sw.scale),
+                    pauseMax: bindWidthChange(setIdx, itemIdx, \.pauseMax, fallback: sw.pauseMax),
+                    palette:  bindWidthPalette(setIdx, itemIdx)
+                )
+            }
+        }
+    }
+
+    // MARK: - Shared change field helpers
+
+    @ViewBuilder
+    private func colorChangeFields(kind: Binding<ChangeKind>, motion: Binding<ChangeMotion>,
+                                    cycle: Binding<ChangeCycle>, scale: Binding<ChangeScale>,
+                                    pauseMax: Binding<Int>) -> some View {
+        InspectorField("Kind") {
+            Picker("", selection: kind) {
+                Text("Sequential").tag(ChangeKind.sequential)
+                Text("Random").tag(ChangeKind.random)
+            }
+            .labelsHidden().frame(maxWidth: 110)
+        }
+        InspectorField("Motion") {
+            Picker("", selection: motion) {
+                Text("Up").tag(ChangeMotion.up)
+                Text("Down").tag(ChangeMotion.down)
+                Text("Ping-Pong").tag(ChangeMotion.pingPong)
+            }
+            .labelsHidden().frame(maxWidth: 110)
+        }
+        InspectorField("Cycle") {
+            Picker("", selection: cycle) {
+                Text("Constant").tag(ChangeCycle.constant)
+                Text("Pausing").tag(ChangeCycle.pausing)
+            }
+            .labelsHidden().frame(maxWidth: 110)
+        }
+        InspectorField("Scale") {
+            Picker("", selection: scale) {
+                Text("Poly").tag(ChangeScale.poly)
+                Text("Sprite").tag(ChangeScale.sprite)
+                Text("Global").tag(ChangeScale.global)
+            }
+            .labelsHidden().frame(maxWidth: 110)
+        }
+        if cycle.wrappedValue == .pausing {
+            InspectorField("Pause max") {
+                TextField("", value: pauseMax, format: .number)
+                    .textFieldStyle(.squareBorder)
+                    .font(.system(size: 12, design: .monospaced))
+                    .frame(width: 50)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func sizeChangeFields(kind: Binding<ChangeKind>, motion: Binding<ChangeMotion>,
+                                   cycle: Binding<ChangeCycle>, scale: Binding<ChangeScale>,
+                                   pauseMax: Binding<Int>, palette: Binding<[Double]>) -> some View {
+        InspectorField("Kind") {
+            Picker("", selection: kind) {
+                Text("Sequential").tag(ChangeKind.sequential)
+                Text("Random").tag(ChangeKind.random)
+            }
+            .labelsHidden().frame(maxWidth: 110)
+        }
+        InspectorField("Motion") {
+            Picker("", selection: motion) {
+                Text("Up").tag(ChangeMotion.up)
+                Text("Down").tag(ChangeMotion.down)
+                Text("Ping-Pong").tag(ChangeMotion.pingPong)
+            }
+            .labelsHidden().frame(maxWidth: 110)
+        }
+        InspectorField("Cycle") {
+            Picker("", selection: cycle) {
+                Text("Constant").tag(ChangeCycle.constant)
+                Text("Pausing").tag(ChangeCycle.pausing)
+            }
+            .labelsHidden().frame(maxWidth: 110)
+        }
+        InspectorField("Scale") {
+            Picker("", selection: scale) {
+                Text("Poly").tag(ChangeScale.poly)
+                Text("Sprite").tag(ChangeScale.sprite)
+                Text("Global").tag(ChangeScale.global)
+            }
+            .labelsHidden().frame(maxWidth: 110)
+        }
+        if cycle.wrappedValue == .pausing {
+            InspectorField("Pause max") {
+                TextField("", value: pauseMax, format: .number)
+                    .textFieldStyle(.squareBorder)
+                    .font(.system(size: 12, design: .monospaced))
+                    .frame(width: 50)
+            }
+        }
+        SizePaletteEditor(palette: palette)
+    }
+
+    // MARK: - Shared field helpers
 
     private func rangeField2(_ label: String,
                               v1: Binding<Double>, v2: Binding<Double>) -> some View {
@@ -300,6 +552,18 @@ struct RenderingInspector: View {
                 FloatEntryField(value: v2, width: 54, fractionDigits: 2, fontSize: 11)
             }
         }
+    }
+
+    private func revealButton(label: String, url: URL) -> some View {
+        Button(label) {
+            NSWorkspace.shared.selectFile(nil, inFileViewerRootedAtPath: url.path)
+        }
+        .font(.system(size: 11))
+        .buttonStyle(.plain)
+        .foregroundStyle(Color.accentColor)
+        .padding(.horizontal, 12)
+        .padding(.vertical, 4)
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     // MARK: - Mode config initialisation
@@ -318,7 +582,7 @@ struct RenderingInspector: View {
         }
     }
 
-    // MARK: - Binding helpers: set and renderer
+    // MARK: - Binding helpers: set
 
     private func bindSet<T>(_ setIdx: Int,
                              _ kp: WritableKeyPath<RendererSet, T>) -> Binding<T> {
@@ -337,6 +601,8 @@ struct RenderingInspector: View {
             }
         )
     }
+
+    // MARK: - Binding helpers: renderer
 
     private func bindR<T>(_ setIdx: Int, _ itemIdx: Int,
                            _ kp: WritableKeyPath<Renderer, T>) -> Binding<T> {
@@ -375,35 +641,13 @@ struct RenderingInspector: View {
                     guard setIdx < cfg.renderingConfig.library.rendererSets.count,
                           itemIdx < cfg.renderingConfig.library.rendererSets[setIdx].renderers.count
                     else { return }
-                    if cfg.renderingConfig.library.rendererSets[setIdx].renderers[itemIdx].brushConfig == nil {
-                        cfg.renderingConfig.library.rendererSets[setIdx].renderers[itemIdx].brushConfig = BrushConfig()
+                    if cfg.renderingConfig.library.rendererSets[setIdx]
+                        .renderers[itemIdx].brushConfig == nil {
+                        cfg.renderingConfig.library.rendererSets[setIdx]
+                            .renderers[itemIdx].brushConfig = BrushConfig()
                     }
-                    cfg.renderingConfig.library.rendererSets[setIdx].renderers[itemIdx].brushConfig![keyPath: kp] = v
-                }
-            }
-        )
-    }
-
-    private func bindBrush(_ setIdx: Int, _ itemIdx: Int,
-                            get: @escaping (BrushConfig) -> String,
-                            set setter: @escaping (inout BrushConfig, String) -> Void) -> Binding<String> {
-        let ctl = controller
-        return Binding(
-            get: {
-                guard let cfg = ctl.projectConfig?.renderingConfig.library
-                    .rendererSets[safe: setIdx]?.renderers[safe: itemIdx]?.brushConfig
-                else { return "" }
-                return get(cfg)
-            },
-            set: { v in
-                ctl.updateProjectConfig { projCfg in
-                    guard setIdx < projCfg.renderingConfig.library.rendererSets.count,
-                          itemIdx < projCfg.renderingConfig.library.rendererSets[setIdx].renderers.count
-                    else { return }
-                    var brush = projCfg.renderingConfig.library.rendererSets[setIdx]
-                        .renderers[itemIdx].brushConfig ?? BrushConfig()
-                    setter(&brush, v)
-                    projCfg.renderingConfig.library.rendererSets[setIdx].renderers[itemIdx].brushConfig = brush
+                    cfg.renderingConfig.library.rendererSets[setIdx]
+                        .renderers[itemIdx].brushConfig![keyPath: kp] = v
                 }
             }
         )
@@ -426,35 +670,200 @@ struct RenderingInspector: View {
                     guard setIdx < cfg.renderingConfig.library.rendererSets.count,
                           itemIdx < cfg.renderingConfig.library.rendererSets[setIdx].renderers.count
                     else { return }
-                    if cfg.renderingConfig.library.rendererSets[setIdx].renderers[itemIdx].stencilConfig == nil {
-                        cfg.renderingConfig.library.rendererSets[setIdx].renderers[itemIdx].stencilConfig = StencilConfig()
+                    if cfg.renderingConfig.library.rendererSets[setIdx]
+                        .renderers[itemIdx].stencilConfig == nil {
+                        cfg.renderingConfig.library.rendererSets[setIdx]
+                            .renderers[itemIdx].stencilConfig = StencilConfig()
                     }
-                    cfg.renderingConfig.library.rendererSets[setIdx].renderers[itemIdx].stencilConfig![keyPath: kp] = v
+                    cfg.renderingConfig.library.rendererSets[setIdx]
+                        .renderers[itemIdx].stencilConfig![keyPath: kp] = v
                 }
             }
         )
     }
 
-    private func bindStencil(_ setIdx: Int, _ itemIdx: Int,
-                              get: @escaping (StencilConfig) -> String,
-                              set setter: @escaping (inout StencilConfig, String) -> Void) -> Binding<String> {
+    private func bindStencilOpacityPalette(_ setIdx: Int, _ itemIdx: Int) -> Binding<[Double]> {
         let ctl = controller
         return Binding(
             get: {
-                guard let cfg = ctl.projectConfig?.renderingConfig.library
-                    .rendererSets[safe: setIdx]?.renderers[safe: itemIdx]?.stencilConfig
-                else { return "" }
-                return get(cfg)
+                ctl.projectConfig?.renderingConfig.library
+                    .rendererSets[safe: setIdx]?.renderers[safe: itemIdx]?
+                    .stencilConfig?.opacityChange.sizePalette ?? []
             },
             set: { v in
-                ctl.updateProjectConfig { projCfg in
-                    guard setIdx < projCfg.renderingConfig.library.rendererSets.count,
-                          itemIdx < projCfg.renderingConfig.library.rendererSets[setIdx].renderers.count
+                ctl.updateProjectConfig { cfg in
+                    guard setIdx < cfg.renderingConfig.library.rendererSets.count,
+                          itemIdx < cfg.renderingConfig.library.rendererSets[setIdx].renderers.count
                     else { return }
-                    var stencil = projCfg.renderingConfig.library.rendererSets[setIdx]
-                        .renderers[itemIdx].stencilConfig ?? StencilConfig()
-                    setter(&stencil, v)
-                    projCfg.renderingConfig.library.rendererSets[setIdx].renderers[itemIdx].stencilConfig = stencil
+                    if cfg.renderingConfig.library.rendererSets[setIdx]
+                        .renderers[itemIdx].stencilConfig == nil {
+                        cfg.renderingConfig.library.rendererSets[setIdx]
+                            .renderers[itemIdx].stencilConfig = StencilConfig()
+                    }
+                    cfg.renderingConfig.library.rendererSets[setIdx]
+                        .renderers[itemIdx].stencilConfig!.opacityChange.sizePalette = v
+                }
+            }
+        )
+    }
+
+    // MARK: - Binding helpers: RendererChanges — fill color
+
+    private func bindFillChange<T>(_ setIdx: Int, _ itemIdx: Int,
+                                    _ kp: WritableKeyPath<FillColorChange, T>,
+                                    fallback: T) -> Binding<T> {
+        let ctl = controller
+        return Binding(
+            get: {
+                ctl.projectConfig?.renderingConfig.library
+                    .rendererSets[safe: setIdx]?.renderers[safe: itemIdx]?
+                    .changes.fillColor?[keyPath: kp] ?? fallback
+            },
+            set: { v in
+                ctl.updateProjectConfig { cfg in
+                    guard setIdx < cfg.renderingConfig.library.rendererSets.count,
+                          itemIdx < cfg.renderingConfig.library.rendererSets[setIdx].renderers.count
+                    else { return }
+                    if cfg.renderingConfig.library.rendererSets[setIdx]
+                        .renderers[itemIdx].changes.fillColor == nil {
+                        cfg.renderingConfig.library.rendererSets[setIdx]
+                            .renderers[itemIdx].changes.fillColor = FillColorChange()
+                    }
+                    cfg.renderingConfig.library.rendererSets[setIdx]
+                        .renderers[itemIdx].changes.fillColor![keyPath: kp] = v
+                }
+            }
+        )
+    }
+
+    private func bindFillColorPalette(_ setIdx: Int, _ itemIdx: Int) -> Binding<[LoomColor]> {
+        let ctl = controller
+        return Binding(
+            get: {
+                ctl.projectConfig?.renderingConfig.library
+                    .rendererSets[safe: setIdx]?.renderers[safe: itemIdx]?
+                    .changes.fillColor?.palette ?? []
+            },
+            set: { v in
+                ctl.updateProjectConfig { cfg in
+                    guard setIdx < cfg.renderingConfig.library.rendererSets.count,
+                          itemIdx < cfg.renderingConfig.library.rendererSets[setIdx].renderers.count
+                    else { return }
+                    if cfg.renderingConfig.library.rendererSets[setIdx]
+                        .renderers[itemIdx].changes.fillColor == nil {
+                        cfg.renderingConfig.library.rendererSets[setIdx]
+                            .renderers[itemIdx].changes.fillColor = FillColorChange()
+                    }
+                    cfg.renderingConfig.library.rendererSets[setIdx]
+                        .renderers[itemIdx].changes.fillColor!.palette = v
+                }
+            }
+        )
+    }
+
+    // MARK: - Binding helpers: RendererChanges — stroke color
+
+    private func bindStrokeChange<T>(_ setIdx: Int, _ itemIdx: Int,
+                                      _ kp: WritableKeyPath<StrokeColorChange, T>,
+                                      fallback: T) -> Binding<T> {
+        let ctl = controller
+        return Binding(
+            get: {
+                ctl.projectConfig?.renderingConfig.library
+                    .rendererSets[safe: setIdx]?.renderers[safe: itemIdx]?
+                    .changes.strokeColor?[keyPath: kp] ?? fallback
+            },
+            set: { v in
+                ctl.updateProjectConfig { cfg in
+                    guard setIdx < cfg.renderingConfig.library.rendererSets.count,
+                          itemIdx < cfg.renderingConfig.library.rendererSets[setIdx].renderers.count
+                    else { return }
+                    if cfg.renderingConfig.library.rendererSets[setIdx]
+                        .renderers[itemIdx].changes.strokeColor == nil {
+                        cfg.renderingConfig.library.rendererSets[setIdx]
+                            .renderers[itemIdx].changes.strokeColor = StrokeColorChange()
+                    }
+                    cfg.renderingConfig.library.rendererSets[setIdx]
+                        .renderers[itemIdx].changes.strokeColor![keyPath: kp] = v
+                }
+            }
+        )
+    }
+
+    private func bindStrokeColorPalette(_ setIdx: Int, _ itemIdx: Int) -> Binding<[LoomColor]> {
+        let ctl = controller
+        return Binding(
+            get: {
+                ctl.projectConfig?.renderingConfig.library
+                    .rendererSets[safe: setIdx]?.renderers[safe: itemIdx]?
+                    .changes.strokeColor?.palette ?? []
+            },
+            set: { v in
+                ctl.updateProjectConfig { cfg in
+                    guard setIdx < cfg.renderingConfig.library.rendererSets.count,
+                          itemIdx < cfg.renderingConfig.library.rendererSets[setIdx].renderers.count
+                    else { return }
+                    if cfg.renderingConfig.library.rendererSets[setIdx]
+                        .renderers[itemIdx].changes.strokeColor == nil {
+                        cfg.renderingConfig.library.rendererSets[setIdx]
+                            .renderers[itemIdx].changes.strokeColor = StrokeColorChange()
+                    }
+                    cfg.renderingConfig.library.rendererSets[setIdx]
+                        .renderers[itemIdx].changes.strokeColor!.palette = v
+                }
+            }
+        )
+    }
+
+    // MARK: - Binding helpers: RendererChanges — stroke width
+
+    private func bindWidthChange<T>(_ setIdx: Int, _ itemIdx: Int,
+                                     _ kp: WritableKeyPath<StrokeWidthChange, T>,
+                                     fallback: T) -> Binding<T> {
+        let ctl = controller
+        return Binding(
+            get: {
+                ctl.projectConfig?.renderingConfig.library
+                    .rendererSets[safe: setIdx]?.renderers[safe: itemIdx]?
+                    .changes.strokeWidth?[keyPath: kp] ?? fallback
+            },
+            set: { v in
+                ctl.updateProjectConfig { cfg in
+                    guard setIdx < cfg.renderingConfig.library.rendererSets.count,
+                          itemIdx < cfg.renderingConfig.library.rendererSets[setIdx].renderers.count
+                    else { return }
+                    if cfg.renderingConfig.library.rendererSets[setIdx]
+                        .renderers[itemIdx].changes.strokeWidth == nil {
+                        cfg.renderingConfig.library.rendererSets[setIdx]
+                            .renderers[itemIdx].changes.strokeWidth = StrokeWidthChange()
+                    }
+                    cfg.renderingConfig.library.rendererSets[setIdx]
+                        .renderers[itemIdx].changes.strokeWidth![keyPath: kp] = v
+                }
+            }
+        )
+    }
+
+    private func bindWidthPalette(_ setIdx: Int, _ itemIdx: Int) -> Binding<[Double]> {
+        let ctl = controller
+        return Binding(
+            get: {
+                ctl.projectConfig?.renderingConfig.library
+                    .rendererSets[safe: setIdx]?.renderers[safe: itemIdx]?
+                    .changes.strokeWidth?.sizePalette ?? []
+            },
+            set: { v in
+                ctl.updateProjectConfig { cfg in
+                    guard setIdx < cfg.renderingConfig.library.rendererSets.count,
+                          itemIdx < cfg.renderingConfig.library.rendererSets[setIdx].renderers.count
+                    else { return }
+                    if cfg.renderingConfig.library.rendererSets[setIdx]
+                        .renderers[itemIdx].changes.strokeWidth == nil {
+                        cfg.renderingConfig.library.rendererSets[setIdx]
+                            .renderers[itemIdx].changes.strokeWidth = StrokeWidthChange()
+                    }
+                    cfg.renderingConfig.library.rendererSets[setIdx]
+                        .renderers[itemIdx].changes.strokeWidth!.sizePalette = v
                 }
             }
         )

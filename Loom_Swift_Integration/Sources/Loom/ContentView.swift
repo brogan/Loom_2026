@@ -103,9 +103,6 @@ struct ContentView: View {
         switch controller.selectedTab {
         case .global:
             EmptyView()
-        case .assets:
-            AssetsTabView()
-                .environmentObject(controller)
         case .geometry:
             GeometryTabView()
                 .environmentObject(controller)
