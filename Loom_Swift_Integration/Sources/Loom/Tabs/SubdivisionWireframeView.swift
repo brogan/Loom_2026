@@ -5,6 +5,9 @@ struct SubdivisionWireframeView: View {
 
     @EnvironmentObject private var controller: AppController
 
+    // Cached result — only recomputed when inputs actually change (async, off main thread)
+    @State private var cachedSubdivided: [Polygon2D] = []
+
     var body: some View {
         ZStack {
             Color(red: 0.08, green: 0.08, blue: 0.12)
@@ -12,7 +15,7 @@ struct SubdivisionWireframeView: View {
             GeometryReader { geo in
                 Canvas { ctx, size in
                     let cRect = canvasRect(viewSize: size)
-                    drawSprites(ctx: ctx, rect: cRect)
+                    drawSprites(ctx: ctx, rect: cRect, subdivided: cachedSubdivided)
                 }
                 .contentShape(Rectangle())
                 .onTapGesture { location in
@@ -26,6 +29,36 @@ struct SubdivisionWireframeView: View {
                     .foregroundStyle(.secondary)
             }
         }
+        .task(id: subdivisionInputs) {
+            guard let inputs = subdivisionInputs else { cachedSubdivided = []; return }
+            let polys  = inputs.basePolygons
+            let params = inputs.params
+            let result: [Polygon2D] = await Task.detached(priority: .userInitiated) {
+                var rng = SeededRNG()
+                return SubdivisionEngine.process(polygons: polys, paramSet: params, rng: &rng)
+            }.value
+            cachedSubdivided = result
+        }
+    }
+
+    // MARK: - Subdivision inputs (triggers recomputation only when these change)
+
+    private struct SubdivisionInputs: Equatable, Sendable {
+        let spriteID: String
+        let setName: String
+        let basePolygons: [Polygon2D]
+        let params: [SubdivisionParams]
+    }
+
+    private var subdivisionInputs: SubdivisionInputs? {
+        guard let spriteID = controller.subdivSelectedSpriteID,
+              let setName  = controller.subdivPreviewSetName, !setName.isEmpty,
+              let paramSet = controller.projectConfig?.subdivisionConfig.paramsSet(named: setName),
+              !paramSet.params.isEmpty,
+              let inst     = makeInstanceMap()[spriteID]
+        else { return nil }
+        return SubdivisionInputs(spriteID: spriteID, setName: setName,
+                                  basePolygons: inst.basePolygons, params: paramSet.params)
     }
 
     // MARK: - Canvas rect (letterboxed)
@@ -45,7 +78,7 @@ struct SubdivisionWireframeView: View {
 
     // MARK: - Drawing
 
-    private func drawSprites(ctx: GraphicsContext, rect: CGRect) {
+    private func drawSprites(ctx: GraphicsContext, rect: CGRect, subdivided: [Polygon2D]) {
         guard let cfg = controller.projectConfig else { return }
         let instanceMap = makeInstanceMap()
         let relevant    = polygonSetSprites(in: cfg)
@@ -61,9 +94,9 @@ struct SubdivisionWireframeView: View {
                         ctx.stroke(buildPath(pts, type: polygon.type),
                                    with: .color(Color(white: 0.32)), lineWidth: 0.5)
                     }
-                    // Subdivided result (highlighted)
-                    let subdivided = computeSubdivision(basePolygons: instance.basePolygons)
-                    for polygon in subdivided where polygon.visible {
+                    // Subdivided result from cache (highlighted)
+                    let toDisplay = subdivided.isEmpty ? instance.basePolygons : subdivided
+                    for polygon in toDisplay where polygon.visible {
                         let pts = polygon.points.map { transformPoint($0, def: sprite, rect: rect) }
                         ctx.stroke(buildPath(pts, type: polygon.type),
                                    with: .color(Color(red: 0.31, green: 0.78, blue: 0.47).opacity(0.85)),
@@ -83,15 +116,6 @@ struct SubdivisionWireframeView: View {
                 drawPlaceholder(ctx: ctx, centre: centre, color: color)
             }
         }
-    }
-
-    private func computeSubdivision(basePolygons: [Polygon2D]) -> [Polygon2D] {
-        guard let setName = controller.subdivPreviewSetName, !setName.isEmpty,
-              let paramSet = controller.projectConfig?.subdivisionConfig.paramsSet(named: setName),
-              !paramSet.params.isEmpty
-        else { return basePolygons }
-        var rng = SeededRNG()
-        return SubdivisionEngine.process(polygons: basePolygons, paramSet: paramSet.params, rng: &rng)
     }
 
     // MARK: - Tap-to-select
