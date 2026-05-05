@@ -32,7 +32,7 @@ struct SpritesTabView: View {
                 emptyState(controller.projectConfig == nil ? "No project open" : "No sprite sets")
             } else {
                 ScrollView {
-                    LazyVStack(alignment: .leading, spacing: 0) {
+                    VStack(alignment: .leading, spacing: 0) {
                         ForEach(sets.indices, id: \.self) { setIdx in
                             setRow(set: sets[setIdx], setIdx: setIdx)
                             if expandedSets.contains(setIdx) {
@@ -102,12 +102,19 @@ struct SpritesTabView: View {
             Text(sprite.name.isEmpty ? "(unnamed)" : sprite.name)
                 .font(.system(size: 11))
                 .lineLimit(1)
+                .opacity(sprite.enabled ? 1.0 : 0.38)
             Spacer(minLength: 2)
             if sprite.animation.enabled {
                 Image(systemName: "play.fill")
                     .font(.system(size: 9))
                     .foregroundStyle(.secondary)
+                    .opacity(sprite.enabled ? 1.0 : 0.38)
             }
+            Toggle("", isOn: bindSpriteEnabled(setIdx: setIdx, itemIdx: itemIdx))
+                .labelsHidden()
+                .toggleStyle(.checkbox)
+                .scaleEffect(0.82)
+                .frame(width: 18)
         }
         .padding(.horizontal, 8)
         .padding(.vertical, 2)
@@ -292,6 +299,26 @@ struct SpritesTabView: View {
             c.spriteConfig.library.spriteSets[setIdx].sprites.insert(copy, at: itemIdx + 1)
         }
         controller.selectedSpriteID = copy.name
+    }
+
+    // MARK: - Binding: sprite enabled
+
+    private func bindSpriteEnabled(setIdx: Int, itemIdx: Int) -> Binding<Bool> {
+        let ctl = controller
+        return Binding(
+            get: {
+                ctl.projectConfig?.spriteConfig.library
+                    .spriteSets[safe: setIdx]?.sprites[safe: itemIdx]?.enabled ?? true
+            },
+            set: { v in
+                ctl.updateProjectConfig { cfg in
+                    guard setIdx  < cfg.spriteConfig.library.spriteSets.count,
+                          itemIdx < cfg.spriteConfig.library.spriteSets[setIdx].sprites.count
+                    else { return }
+                    cfg.spriteConfig.library.spriteSets[setIdx].sprites[itemIdx].enabled = v
+                }
+            }
+        )
     }
 
     // MARK: - Helpers

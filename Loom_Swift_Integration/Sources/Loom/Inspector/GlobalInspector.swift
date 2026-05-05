@@ -13,6 +13,7 @@ struct GlobalInspector: View {
             playbackSection
             noteSection
             threeDSection
+            statusSection
         } else {
             Text("No project open")
                 .font(.caption)
@@ -136,6 +137,19 @@ struct GlobalInspector: View {
                     .frame(width: 50)
                 Text("°").font(.system(size: 11)).foregroundStyle(.secondary)
             }
+        }
+    }
+
+    private var statusSection: some View {
+        InspectorSection("Status") {
+            Text(controller.appStatusMessage)
+                .font(.system(size: 11, design: .monospaced))
+                .foregroundStyle(.secondary)
+                .textSelection(.enabled)
+                .lineLimit(4)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.horizontal, 12)
+                .padding(.vertical, 6)
         }
     }
 

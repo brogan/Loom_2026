@@ -6,6 +6,7 @@ struct ContentView: View {
 
     @EnvironmentObject private var controller: AppController
     @State private var currentFrame: Int = 0
+    @State private var newProjectName: String = "MyProject"
 
     var body: some View {
         if controller.engine != nil {
@@ -105,16 +106,12 @@ struct ContentView: View {
             EmptyView()
         case .geometry:
             GeometryTabView()
-                .environmentObject(controller)
         case .subdivision:
             SubdivisionTabView()
-                .environmentObject(controller)
         case .sprites:
             SpritesTabView()
-                .environmentObject(controller)
         case .rendering:
             RenderingTabView()
-                .environmentObject(controller)
         }
     }
 
@@ -123,15 +120,12 @@ struct ContentView: View {
         switch controller.selectedTab {
         case .geometry:
             GeometryMainView()
-                .environmentObject(controller)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
         case .sprites:
             SpriteWireframeView()
-                .environmentObject(controller)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
         case .subdivision:
             SubdivisionWireframeView()
-                .environmentObject(controller)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
         default:
             liveCanvas
@@ -177,9 +171,23 @@ struct ContentView: View {
                     .padding(.horizontal)
             }
 
-            Button("Open Project…") { controller.presentOpenPanel() }
-                .buttonStyle(.borderedProminent)
-                .keyboardShortcut("o", modifiers: .command)
+            VStack(spacing: 8) {
+                TextField("Project name", text: $newProjectName)
+                    .textFieldStyle(.roundedBorder)
+                    .frame(width: 240)
+                    .foregroundColor(.black)
+
+                HStack(spacing: 10) {
+                    Button("New Project") {
+                        controller.createProject(named: newProjectName)
+                    }
+                    .buttonStyle(.borderedProminent)
+
+                    Button("Open Project…") { controller.presentOpenPanel() }
+                        .buttonStyle(.bordered)
+                        .keyboardShortcut("o", modifiers: .command)
+                }
+            }
 
             if !controller.recentProjects.isEmpty {
                 recentProjectsList

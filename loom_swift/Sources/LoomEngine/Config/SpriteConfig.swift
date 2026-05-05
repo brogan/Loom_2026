@@ -5,6 +5,7 @@
 /// into live objects.
 public struct SpriteDef: Codable, Sendable {
     public var name: String
+    public var enabled: Bool
     /// Which shape set the shape lives in.
     public var shapeSetName: String
     /// Name of the shape within that set.
@@ -18,16 +19,18 @@ public struct SpriteDef: Codable, Sendable {
     public var animation: SpriteAnimation
 
     public init(
-        name: String              = "",
-        shapeSetName: String      = "",
-        shapeName: String         = "",
-        rendererSetName: String   = "",
-        position: Vector2D        = .zero,
-        scale: Vector2D           = Vector2D(x: 1, y: 1),
-        rotation: Double          = 0,
+        name: String               = "",
+        enabled: Bool              = true,
+        shapeSetName: String       = "",
+        shapeName: String          = "",
+        rendererSetName: String    = "",
+        position: Vector2D         = .zero,
+        scale: Vector2D            = Vector2D(x: 1, y: 1),
+        rotation: Double           = 0,
         animation: SpriteAnimation = .disabled
     ) {
-        self.name = name; self.shapeSetName = shapeSetName
+        self.name = name; self.enabled = enabled
+        self.shapeSetName = shapeSetName
         self.shapeName = shapeName; self.rendererSetName = rendererSetName
         self.position = position; self.scale = scale
         self.rotation = rotation; self.animation = animation

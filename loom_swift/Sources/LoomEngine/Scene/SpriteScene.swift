@@ -68,7 +68,7 @@ public struct SpriteScene: Sendable {
     ///   load.
     public init(config: ProjectConfig, projectDirectory: URL) throws {
         var result: [SpriteInstance] = []
-        for sprite in config.spriteConfig.library.allSprites {
+        for sprite in config.spriteConfig.library.allSprites where sprite.enabled {
             let instance = try SpriteScene.makeInstance(
                 sprite: sprite,
                 config: config,
@@ -185,6 +185,12 @@ public struct SpriteScene: Sendable {
                 .appendingPathComponent(polyDef.filename)
             guard FileManager.default.fileExists(atPath: url.path) else {
                 throw SpriteSceneError.polygonFileNotFound(url)
+            }
+            if polyDef.filename.lowercased().hasSuffix(".json") {
+                return try EditableGeometryJSONLoader.load(url: url).runtimePolygons(
+                    targetLayerID: polyDef.editableLayerID,
+                    targetLayerName: polyDef.editableLayerName
+                )
             }
             return try XMLPolygonLoader.load(url: url)
 

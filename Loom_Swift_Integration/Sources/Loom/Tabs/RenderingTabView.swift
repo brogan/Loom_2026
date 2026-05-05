@@ -28,7 +28,7 @@ struct RenderingTabView: View {
                 emptyState(controller.projectConfig == nil ? "No project open" : "No renderer sets")
             } else {
                 ScrollView {
-                    LazyVStack(alignment: .leading, spacing: 0) {
+                    VStack(alignment: .leading, spacing: 0) {
                         ForEach(sets.indices, id: \.self) { setIdx in
                             setRow(set: sets[setIdx], setIdx: setIdx)
                             if expandedSets.contains(setIdx) {

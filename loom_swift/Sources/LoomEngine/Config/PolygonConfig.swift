@@ -1,3 +1,5 @@
+import Foundation
+
 /// How the polygon data is represented in the source file.
 public enum PolygonFileType: String, Codable, Sendable {
     case splinePolygon = "SPLINE_POLYGON"
@@ -38,19 +40,48 @@ public struct PolygonSetDef: Codable, Sendable {
     public var polygonType: PolygonFileType
     /// Non-nil when the polygon set is generated from a `<Source type="regular">` element.
     public var regularParams: RegularPolygonParams?
+    /// Optional target layer inside an editable JSON geometry document.
+    public var editableLayerID: UUID?
+    /// Display/fallback name for the targeted editable JSON layer.
+    public var editableLayerName: String?
 
     public init(
         name: String,
         folder: String               = "polygonSet",
         filename: String             = "",
         polygonType: PolygonFileType = .splinePolygon,
-        regularParams: RegularPolygonParams? = nil
+        regularParams: RegularPolygonParams? = nil,
+        editableLayerID: UUID? = nil,
+        editableLayerName: String? = nil
     ) {
-        self.name          = name
-        self.folder        = folder
-        self.filename      = filename
-        self.polygonType   = polygonType
-        self.regularParams = regularParams
+        self.name              = name
+        self.folder            = folder
+        self.filename          = filename
+        self.polygonType       = polygonType
+        self.regularParams     = regularParams
+        self.editableLayerID   = editableLayerID
+        self.editableLayerName = editableLayerName
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case name
+        case folder
+        case filename
+        case polygonType
+        case regularParams
+        case editableLayerID
+        case editableLayerName
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        name = try container.decode(String.self, forKey: .name)
+        folder = try container.decode(String.self, forKey: .folder)
+        filename = try container.decode(String.self, forKey: .filename)
+        polygonType = try container.decode(PolygonFileType.self, forKey: .polygonType)
+        regularParams = try container.decodeIfPresent(RegularPolygonParams.self, forKey: .regularParams)
+        editableLayerID = try container.decodeIfPresent(UUID.self, forKey: .editableLayerID)
+        editableLayerName = try container.decodeIfPresent(String.self, forKey: .editableLayerName)
     }
 }
 

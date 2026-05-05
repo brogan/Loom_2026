@@ -134,7 +134,7 @@ enum PolygonTransforms {
                 guard poly.visible else { return poly }
                 guard Double.random(in: 0..<100, using: &rng) < params.pTP_probability
                 else { return poly }
-                return applyPTPTransformSet(poly, transformSet: ts)
+                return applyPTPTransformSet(poly, transformSet: ts, rng: &rng)
             }
 
             // Full-array transform.
@@ -170,8 +170,11 @@ enum PolygonTransforms {
     ///
     /// `InnerControlPoints` is NOT applied here — it requires the full polygon array
     /// and is handled separately in `applyPoints`.
-    private static func applyPTPTransformSet(_ poly: Polygon2D,
-                                              transformSet ts: PTPTransformSet) -> Polygon2D {
+    private static func applyPTPTransformSet<G: RandomNumberGenerator>(
+        _ poly: Polygon2D,
+        transformSet ts: PTPTransformSet,
+        rng: inout G
+    ) -> Polygon2D {
         let n = poly.points.count
         guard n >= 12 else { return poly }
         let centreIndex = n == 12 ? 4 : n / 2
@@ -180,7 +183,7 @@ enum PolygonTransforms {
         var pts = poly.points
 
         if ts.exteriorAnchors.enabled {
-            applyExteriorAnchors(&pts, centreIndex: centreIndex, config: ts.exteriorAnchors)
+            applyExteriorAnchors(&pts, centreIndex: centreIndex, config: ts.exteriorAnchors, rng: &rng)
         }
         if ts.centralAnchors.enabled {
             guard centreIndex >= 1 && centreIndex + 1 < n else { return poly }
@@ -200,15 +203,14 @@ enum PolygonTransforms {
     }
 
     /// Spike exterior anchor pairs away from the centre reference point.
-    ///
-    /// Mirrors Scala `ExteriorAnchors.spike`:
-    ///  - Collects all anchor endpoints (i%4==0 or i%4==3) into pairs.
-    ///  - For each pair: `spikePos = lerp(pair[0], pts[centreIndex], spikeFactor)`.
-    ///  - Negative spikeFactor → anchor moves away from centrePoint (outward spike).
-    ///  - SYMMETRICAL type: both pair members set to spikePos.
-    private static func applyExteriorAnchors(_ pts: inout [Vector2D],
-                                              centreIndex: Int,
-                                              config ea: ExteriorAnchorsTransform) {
+    /// Implements randomSpike, RANDOM spikeType, cpsFollow, randomCpsFollow,
+    /// cpsSqueeze, and randomCpsSqueeze. Mirrors Scala `ExteriorAnchors.spike`.
+    private static func applyExteriorAnchors<G: RandomNumberGenerator>(
+        _ pts: inout [Vector2D],
+        centreIndex: Int,
+        config ea: ExteriorAnchorsTransform,
+        rng: inout G
+    ) {
         let n = pts.count
         let centre = pts[centreIndex]
 
@@ -217,62 +219,176 @@ enum PolygonTransforms {
         for i in 0..<n where i % 4 == 0 || i % 4 == 3 { anchorIdx.append(i) }
         guard !anchorIdx.isEmpty else { return }
 
-        // Build pairs: [last, first] then [1,2], [3,4], ...
-        var pairs = [(Int, Int)]()
-        pairs.append((anchorIdx.last!, anchorIdx.first!))
+        // Collect CP indices (i%4==1 or i%4==2).
+        var cpIdx = [Int]()
+        for i in 0..<n where i % 4 == 1 || i % 4 == 2 { cpIdx.append(i) }
+
+        // Build anchor pairs: wrap-around first, then consecutive.
+        var anchorPairs = [(Int, Int)]()
+        anchorPairs.append((anchorIdx.last!, anchorIdx.first!))
         var k = 1
         while k < anchorIdx.count - 1 {
-            pairs.append((anchorIdx[k], anchorIdx[k + 1]))
+            anchorPairs.append((anchorIdx[k], anchorIdx[k + 1]))
             k += 2
         }
 
-        // Optionally filter by whichSpike setting.
-        // CORNERS = only the first pair (the corner anchor); MIDDLES = all others.
-        let activePairs: [(Int, Int)]
-        switch ea.whichSpike {
-        case "CORNERS":
-            activePairs = pairs.isEmpty ? [] : [pairs[0]]
-        case "MIDDLES":
-            activePairs = pairs.count > 1 ? Array(pairs.dropFirst()) : []
-        default: // "ALL"
-            activePairs = pairs
+        // Build CP pairs with identical pairing structure.
+        var cpPairs = [(Int, Int)]()
+        if cpIdx.count >= 2 {
+            cpPairs.append((cpIdx.last!, cpIdx.first!))
+            k = 1
+            while k < cpIdx.count - 1 {
+                cpPairs.append((cpIdx[k], cpIdx[k + 1]))
+                k += 2
+            }
         }
 
-        for (i0, i1) in activePairs {
-            let spikeFactor = ea.spikeFactor
-            let spikePos    = Vector2D.lerp(pts[i0], centre, t: spikeFactor)
-            let diff        = spikePos - pts[i0]
+        // Determine active pair indices from whichSpike.
+        let activePairIndices: [Int]
+        switch ea.whichSpike {
+        case "CORNERS":
+            activePairIndices = anchorPairs.isEmpty ? [] : [0]
+        case "MIDDLES":
+            activePairIndices = anchorPairs.count > 1 ? Array(1..<anchorPairs.count) : []
+        default: // "ALL"
+            activePairIndices = Array(0..<anchorPairs.count)
+        }
 
+        for pairIdx in activePairIndices {
+            let (i0, i1) = anchorPairs[pairIdx]
+
+            // Spike factor (possibly random).
+            let sf = ea.randomSpike
+                ? randomDouble(in: ea.randomSpikeFactor, using: &rng)
+                : ea.spikeFactor
+            let spikePos = Vector2D.lerp(pts[i0], centre, t: sf)
+            let diff     = spikePos - pts[i0]
+
+            // Resolve spike type: RANDOM picks 0=SYMMETRICAL, 1=RIGHT, 2=LEFT per pair.
+            let resolvedType: Int
+            if ea.spikeType == "RANDOM" {
+                resolvedType = Int.random(in: 0...2, using: &rng)
+            } else {
+                resolvedType = ea.spikeType == "RIGHT" ? 1 : (ea.spikeType == "LEFT" ? 2 : 0)
+            }
+
+            // Apply spike to anchor points.
             switch ea.spikeAxis {
             case "X":
                 let sp = Vector2D(x: spikePos.x, y: pts[i0].y)
-                let d  = Vector2D(x: diff.x, y: 0)
-                applySpike(&pts, i0: i0, i1: i1, spikePos: sp, diff: d, type: ea.spikeType)
+                eaApplyAnchorSpike(&pts, i0: i0, i1: i1, pos: sp, type: resolvedType, isX: true, isY: false)
             case "Y":
                 let sp = Vector2D(x: pts[i0].x, y: spikePos.y)
-                let d  = Vector2D(x: 0, y: diff.y)
-                applySpike(&pts, i0: i0, i1: i1, spikePos: sp, diff: d, type: ea.spikeType)
+                eaApplyAnchorSpike(&pts, i0: i0, i1: i1, pos: sp, type: resolvedType, isX: false, isY: true)
             default: // "XY"
-                applySpike(&pts, i0: i0, i1: i1, spikePos: spikePos, diff: diff,
-                           type: ea.spikeType)
+                eaApplyAnchorSpike(&pts, i0: i0, i1: i1, pos: spikePos, type: resolvedType, isX: true, isY: true)
+            }
+
+            guard pairIdx < cpPairs.count else { continue }
+            let (c0, c1) = cpPairs[pairIdx]
+
+            // cpsFollow: translate matching CPs by diff * multiplier.
+            if ea.cpsFollow {
+                let mult = ea.randomCpsFollow
+                    ? randomDouble(in: ea.randomCpsFollowRange, using: &rng)
+                    : ea.cpsFollowMultiplier
+                switch ea.spikeAxis {
+                case "X":
+                    eaApplyCpsFollow(&pts, c0: c0, c1: c1,
+                                     diff: Vector2D(x: diff.x, y: 0), mult: mult,
+                                     type: resolvedType, isX: true, isY: false)
+                case "Y":
+                    eaApplyCpsFollow(&pts, c0: c0, c1: c1,
+                                     diff: Vector2D(x: 0, y: diff.y), mult: mult,
+                                     type: resolvedType, isX: false, isY: true)
+                default:
+                    eaApplyCpsFollow(&pts, c0: c0, c1: c1, diff: diff, mult: mult,
+                                     type: resolvedType, isX: true, isY: true)
+                }
+            }
+
+            // cpsSqueeze: lerp the two CPs toward each other.
+            // Applied after cpsFollow so squeeze operates on the post-follow positions.
+            if ea.cpsSqueeze {
+                let f = ea.randomCpsSqueeze
+                    ? randomDouble(in: ea.randomCpsSqueezeRange, using: &rng)
+                    : ea.cpsSqueezeFactor
+                switch ea.spikeAxis {
+                case "X":
+                    eaApplyCpsSqueeze(&pts, c0: c0, c1: c1, factor: f, type: resolvedType, isX: true, isY: false)
+                case "Y":
+                    eaApplyCpsSqueeze(&pts, c0: c0, c1: c1, factor: f, type: resolvedType, isX: false, isY: true)
+                default:
+                    eaApplyCpsSqueeze(&pts, c0: c0, c1: c1, factor: f, type: resolvedType, isX: true, isY: true)
+                }
             }
         }
     }
 
-    private static func applySpike(_ pts: inout [Vector2D],
-                                    i0: Int, i1: Int,
-                                    spikePos: Vector2D, diff: Vector2D,
-                                    type spikeType: String) {
-        switch spikeType {
-        case "RIGHT":
-            pts[i0] = spikePos
-        case "LEFT":
-            pts[i1] = spikePos
-        default: // "SYMMETRICAL"
-            pts[i0] = spikePos
-            pts[i1] = spikePos
+    // resolvedType: 0=SYMMETRICAL, 1=RIGHT, 2=LEFT
+    private static func eaApplyAnchorSpike(_ pts: inout [Vector2D],
+                                            i0: Int, i1: Int, pos: Vector2D,
+                                            type resolvedType: Int,
+                                            isX: Bool, isY: Bool) {
+        switch resolvedType {
+        case 1: // RIGHT — only i0
+            if isX { pts[i0].x = pos.x }
+            if isY { pts[i0].y = pos.y }
+        case 2: // LEFT — only i1
+            if isX { pts[i1].x = pos.x }
+            if isY { pts[i1].y = pos.y }
+        default: // SYMMETRICAL — both
+            if isX { pts[i0].x = pos.x; pts[i1].x = pos.x }
+            if isY { pts[i0].y = pos.y; pts[i1].y = pos.y }
         }
-        _ = diff  // used only when cpsFollow is true (not yet needed)
+    }
+
+    private static func eaApplyCpsFollow(_ pts: inout [Vector2D],
+                                          c0: Int, c1: Int,
+                                          diff: Vector2D, mult: Double,
+                                          type resolvedType: Int,
+                                          isX: Bool, isY: Bool) {
+        let cP1X = pts[c0].x + diff.x * mult
+        let cP1Y = pts[c0].y + diff.y * mult
+        let cP2X = pts[c1].x + diff.x * mult
+        let cP2Y = pts[c1].y + diff.y * mult
+
+        switch resolvedType {
+        case 1: // RIGHT — only c0
+            if isX { pts[c0].x = cP1X }
+            if isY { pts[c0].y = cP1Y }
+        case 2: // LEFT — only c1
+            if isX { pts[c1].x = cP2X }
+            if isY { pts[c1].y = cP2Y }
+        default: // SYMMETRICAL — both
+            if isX { pts[c0].x = cP1X; pts[c1].x = cP2X }
+            if isY { pts[c0].y = cP1Y; pts[c1].y = cP2Y }
+        }
+    }
+
+    private static func eaApplyCpsSqueeze(_ pts: inout [Vector2D],
+                                           c0: Int, c1: Int,
+                                           factor: Double,
+                                           type resolvedType: Int,
+                                           isX: Bool, isY: Bool) {
+        let sqA = Vector2D.lerp(pts[c0], pts[c1], t: factor)
+        let sqB = Vector2D.lerp(pts[c1], pts[c0], t: factor)
+
+        switch resolvedType {
+        case 1: // RIGHT — c0 = sqA
+            if isX { pts[c0].x = sqA.x }
+            if isY { pts[c0].y = sqA.y }
+        case 2: // LEFT — Scala quirk: XY uses sqA for c1; X/Y use sqB
+            if isX && isY {
+                pts[c1] = sqA
+            } else {
+                if isX { pts[c1].x = sqB.x }
+                if isY { pts[c1].y = sqB.y }
+            }
+        default: // SYMMETRICAL — c0=sqA, c1=sqB
+            if isX { pts[c0].x = sqA.x; pts[c1].x = sqB.x }
+            if isY { pts[c0].y = sqA.y; pts[c1].y = sqB.y }
+        }
     }
 
     /// Tear central anchor pairs toward an outside reference point.

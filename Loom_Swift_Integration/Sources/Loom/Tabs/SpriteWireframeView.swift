@@ -19,6 +19,9 @@ struct SpriteWireframeView: View {
     @State private var snapToGrid:            Bool   = false
     @State private var selectedKeyframeIndex: Int    = 0    // 0 = base params, 1..N = KF
     @State private var editKeyframe:          Bool   = true
+    @State private var zoomLevel:             Double = 1.0  // 1.0 = 100 %
+
+    private static let zoomSteps: [Double] = [0.25, 0.5, 0.75, 1.0, 1.25, 1.5, 2.0]
 
     // MARK: - Body
 
@@ -27,6 +30,9 @@ struct SpriteWireframeView: View {
             GeometryReader { geo in
                 Canvas { ctx, size in
                     let cRect = canvasRect(viewSize: size)
+                    guard cRect.width > 0, cRect.height > 0 else { return }
+                    // Render area background (dark blue-grey) — black shows outside
+                    ctx.fill(Path(cRect), with: .color(Color(red: 0.08, green: 0.08, blue: 0.12)))
                     drawGrid(ctx: ctx, rect: cRect)
                     drawSprites(ctx: ctx, rect: cRect)
                 }
@@ -48,7 +54,7 @@ struct SpriteWireframeView: View {
                         .onEnded { _ in commitDrag() }
                 )
             }
-            .background(Color(red: 0.08, green: 0.08, blue: 0.12))
+            .background(Color.black)
 
             Divider()
             controlStrip
@@ -64,7 +70,7 @@ struct SpriteWireframeView: View {
         HStack(spacing: 10) {
             Text("Grid:")
                 .font(.system(size: 11))
-                .foregroundStyle(.secondary)
+                .foregroundStyle(controlTextSecondary)
             Picker("", selection: $gridSizePct) {
                 Text("5%").tag(5.0)
                 Text("10%").tag(10.0)
@@ -84,7 +90,7 @@ struct SpriteWireframeView: View {
 
                 Text("KF:")
                     .font(.system(size: 11))
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(controlTextSecondary)
 
                 Picker("", selection: $selectedKeyframeIndex) {
                     Text("—").tag(0)
@@ -105,6 +111,8 @@ struct SpriteWireframeView: View {
 
             Spacer()
 
+            zoomControls
+
             if !transformText.isEmpty {
                 Text(transformText)
                     .font(.system(size: 11, design: .monospaced))
@@ -118,6 +126,59 @@ struct SpriteWireframeView: View {
         .padding(.horizontal, 8)
         .padding(.vertical, 5)
         .background(Color(white: 0.11))
+    }
+
+    private var zoomControls: some View {
+        HStack(spacing: 4) {
+            Divider().frame(height: 16)
+
+            zoomButton("-", tooltip: "Zoom out", disabled: isMinZoom) {
+                if let prev = Self.zoomSteps.last(where: { $0 < zoomLevel - 1e-9 }) {
+                    zoomLevel = prev
+                }
+            }
+
+            Button { zoomLevel = 1.0 } label: {
+                Text("\(Int((zoomLevel * 100).rounded()))%")
+                    .font(.system(size: 11, design: .monospaced))
+                    .frame(width: 42, height: 22)
+            }
+            .buttonStyle(.plain)
+            .foregroundStyle(isDefaultZoom ? controlTextSecondary : controlTextPrimary)
+            .contentShape(Rectangle())
+            .help("Reset to 100%")
+
+            zoomButton("+", tooltip: "Zoom in", disabled: isMaxZoom) {
+                if let next = Self.zoomSteps.first(where: { $0 > zoomLevel + 1e-9 }) {
+                    zoomLevel = next
+                }
+            }
+        }
+    }
+
+    private var isDefaultZoom: Bool { abs(zoomLevel - 1.0) < 1e-9 }
+    private var isMinZoom: Bool { zoomLevel <= Self.zoomSteps.first! + 1e-9 }
+    private var isMaxZoom: Bool { zoomLevel >= Self.zoomSteps.last! - 1e-9 }
+    private var controlTextPrimary: Color { Color(white: 0.92) }
+    private var controlTextSecondary: Color { Color(white: 0.68) }
+    private var controlTextDisabled: Color { Color(white: 0.42) }
+
+    private func zoomButton(
+        _ title: String,
+        tooltip: String,
+        disabled: Bool,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button(action: action) {
+            Text(title)
+                .font(.system(size: 13, weight: .semibold, design: .monospaced))
+                .frame(width: 24, height: 22)
+        }
+        .buttonStyle(.plain)
+        .foregroundStyle(disabled ? controlTextDisabled : controlTextPrimary)
+        .contentShape(Rectangle())
+        .disabled(disabled)
+        .help(tooltip)
     }
 
     // MARK: - Types
@@ -169,19 +230,34 @@ struct SpriteWireframeView: View {
                       eff.rotation)
     }
 
-    // MARK: - Canvas rect (letterboxed to canvas aspect ratio)
+    // MARK: - Canvas rect (letterboxed to canvas aspect ratio, scaled by zoom)
 
     private func canvasRect(viewSize: CGSize) -> CGRect {
         let cSize   = controller.engine?.canvasSize ?? CGSize(width: 1, height: 1)
+        guard viewSize.width.isFinite, viewSize.height.isFinite,
+              cSize.width.isFinite, cSize.height.isFinite,
+              viewSize.width > 0, viewSize.height > 0,
+              cSize.width > 0, cSize.height > 0,
+              zoomLevel.isFinite, zoomLevel > 0
+        else { return .zero }
+
         let cAspect = cSize.width / cSize.height
         let vAspect = viewSize.width / viewSize.height
+
+        // 100% letterboxed rect
+        let base: CGRect
         if cAspect > vAspect {
             let h = viewSize.width / cAspect
-            return CGRect(x: 0, y: (viewSize.height - h) / 2, width: viewSize.width, height: h)
+            base = CGRect(x: 0, y: (viewSize.height - h) / 2, width: viewSize.width, height: h)
         } else {
             let w = viewSize.height * cAspect
-            return CGRect(x: (viewSize.width - w) / 2, y: 0, width: w, height: viewSize.height)
+            base = CGRect(x: (viewSize.width - w) / 2, y: 0, width: w, height: viewSize.height)
         }
+
+        // Scale around the centre of the 100% rect
+        let zw = base.width  * zoomLevel
+        let zh = base.height * zoomLevel
+        return CGRect(x: base.midX - zw / 2, y: base.midY - zh / 2, width: zw, height: zh)
     }
 
     // MARK: - Coordinate conversions

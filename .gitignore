@@ -30,8 +30,19 @@ loom_engine/loom_parameter_editor/.venv/
 # macOS app bundles (built artefacts)
 **/*.app/
 
+# Swift build artifacts
+**/.build/
+**/.swiftpm/
+**/*.o
+**/*.d
+**/*.swiftdeps
+**/*.swiftdeps~
+
 # Claude Code session files
 **/Claude_Code_*.txt
+
+# Local error reports
+LoomErrorReport.txt
 
 # Large user data / project outputs
 loom_engine/sketches/

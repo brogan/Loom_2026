@@ -7,6 +7,7 @@ struct SubdivisionTabView: View {
 
     // Expansion state for the subdivision sets tree (index-based so renames don't lose state)
     @State private var expandedSets: Set<Int> = []
+    @State private var bakeAlert: BakeAlert?  = nil
 
     var body: some View {
         GeometryReader { geo in
@@ -33,6 +34,10 @@ struct SubdivisionTabView: View {
             }
         }
         .onAppear { autoSelectFirstSprite() }
+        .alert(item: $bakeAlert) { a in
+            Alert(title: Text(a.title), message: Text(a.message),
+                  dismissButton: .default(Text("OK")))
+        }
     }
 
     // MARK: - Sprite section (top)
@@ -301,8 +306,8 @@ struct SubdivisionTabView: View {
 
             Divider().frame(height: 14).padding(.horizontal, 4)
 
-            toolbarButton("flame", tooltip: "Bake param (not yet implemented)") { /* TODO: bake */ }
-                .disabled(true)
+            toolbarButton("flame", tooltip: "Bake selected set to polygon file") { bakeSelectedSet() }
+                .disabled(!canBake)
 
             Spacer()
         }
@@ -519,6 +524,118 @@ struct SubdivisionTabView: View {
         controller.selectedSubdivisionParamIndex = paramIdx + 1
     }
 
+    // MARK: - Bake
+
+    private var canBake: Bool {
+        guard controller.selectedSubdivisionIndex != nil,
+              let spriteID = controller.subdivSelectedSpriteID,
+              let cfg      = controller.projectConfig,
+              let sprite   = cfg.spriteConfig.library.allSprites.first(where: { $0.name == spriteID }),
+              let shape    = cfg.shapeConfig.library.shapeSets
+                  .first(where: { $0.name == sprite.shapeSetName })?
+                  .shapes.first(where: { $0.name == sprite.shapeName }),
+              shape.sourceType == .polygonSet,
+              !shape.polygonSetName.isEmpty,
+              let polyDef = cfg.polygonConfig.library.polygonSets
+                  .first(where: { $0.name == shape.polygonSetName }),
+              polyDef.regularParams == nil,  // file-backed only, not generated
+              !polyDef.filename.isEmpty
+        else { return false }
+        return true
+    }
+
+    private func bakeSelectedSet() {
+        guard let setIdx    = controller.selectedSubdivisionIndex,
+              let cfg       = controller.projectConfig,
+              let projectURL = controller.projectURL,
+              setIdx < cfg.subdivisionConfig.paramsSets.count,
+              let spriteID  = controller.subdivSelectedSpriteID,
+              let sprite    = cfg.spriteConfig.library.allSprites.first(where: { $0.name == spriteID }),
+              let shape     = cfg.shapeConfig.library.shapeSets
+                  .first(where: { $0.name == sprite.shapeSetName })?
+                  .shapes.first(where: { $0.name == sprite.shapeName }),
+              let polyDef   = cfg.polygonConfig.library.polygonSets
+                  .first(where: { $0.name == shape.polygonSetName })
+        else { return }
+
+        // Resolve source file path.
+        let resolvedFolder = (polyDef.folder == "polygonSet" || polyDef.folder.isEmpty)
+            ? "polygonSets" : polyDef.folder
+        let sourceURL = projectURL
+            .appendingPathComponent(resolvedFolder)
+            .appendingPathComponent(polyDef.filename)
+
+        guard FileManager.default.fileExists(atPath: sourceURL.path) else {
+            bakeAlert = BakeAlert(title: "Bake Failed",
+                                  message: "Source polygon file not found:\n\(sourceURL.path)")
+            return
+        }
+
+        // Load polygons without normalisation — same as LoomBake CLI.
+        let polys: [Polygon2D]
+        do {
+            polys = try XMLPolygonLoader.load(url: sourceURL, normalise: false)
+        } catch {
+            bakeAlert = BakeAlert(title: "Bake Failed",
+                                  message: "Could not load polygon file:\n\(error.localizedDescription)")
+            return
+        }
+
+        // Run subdivision.
+        let paramSet = cfg.subdivisionConfig.paramsSets[setIdx]
+        var rng      = SystemRandomNumberGenerator()
+        let result   = SubdivisionEngine.process(polygons: polys, paramSet: paramSet.params, rng: &rng)
+
+        // Build output path in polygonSets/.
+        let safePolyName  = shape.polygonSetName.replacingOccurrences(of: " ", with: "_")
+        let safeSetName   = paramSet.name.replacingOccurrences(of: " ", with: "_")
+        let baseName      = "\(safePolyName)_\(safeSetName)_baked"
+        let outputDir     = projectURL.appendingPathComponent("polygonSets")
+        let filename      = uniqueBakeFilename(base: baseName, in: outputDir)
+        let outputURL     = outputDir.appendingPathComponent(filename)
+        let stem          = String(filename.dropLast(4))  // drop ".xml"
+
+        // Create polygonSets/ directory if needed.
+        do {
+            try FileManager.default.createDirectory(at: outputDir,
+                                                     withIntermediateDirectories: true)
+        } catch {
+            bakeAlert = BakeAlert(title: "Bake Failed",
+                                  message: "Could not create output directory:\n\(error.localizedDescription)")
+            return
+        }
+
+        // Write XML.
+        do {
+            try XMLPolygonWriter.write(result, name: stem, to: outputURL)
+        } catch {
+            bakeAlert = BakeAlert(title: "Bake Failed",
+                                  message: "Could not write baked file:\n\(error.localizedDescription)")
+            return
+        }
+
+        // Register new polygon set in config.
+        let newDef = PolygonSetDef(name: stem, folder: "polygonSet", filename: filename)
+        controller.updateProjectConfig { config in
+            config.polygonConfig.library.polygonSets.append(newDef)
+        }
+
+        bakeAlert = BakeAlert(title: "Bake Complete",
+                              message: "Saved \(result.count) polygon(s) to:\n\(filename)\n\nThe baked set '\(stem)' is now available in the Geometry tab.")
+    }
+
+    private func uniqueBakeFilename(base: String, in dir: URL) -> String {
+        let candidate = "\(base).xml"
+        if !FileManager.default.fileExists(atPath: dir.appendingPathComponent(candidate).path) {
+            return candidate
+        }
+        var i = 2
+        while FileManager.default.fileExists(atPath: dir.appendingPathComponent("\(base)_\(i).xml").path) {
+            i += 1
+        }
+        return "\(base)_\(i).xml"
+    }
+
     // MARK: - Auto-select on appear
 
     private func autoSelectFirstSprite() {
@@ -590,6 +707,14 @@ struct SubdivisionTabView: View {
             .padding(12)
             .frame(maxWidth: .infinity, alignment: .leading)
     }
+}
+
+// MARK: - Bake alert model
+
+private struct BakeAlert: Identifiable {
+    let id      = UUID()
+    let title:   String
+    let message: String
 }
 
 // MARK: - Subdivision type display name
