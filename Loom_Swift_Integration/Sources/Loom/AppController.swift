@@ -8,12 +8,39 @@ import UniformTypeIdentifiers
 enum RenderOutputType { case still, animation }
 
 enum GeometryEditorTool: String {
+    case standalonePoints = "Create Points"
     case points = "Points"
     case edges = "Edges"
     case openCurves = "Open Curves"
     case polygons = "Polygons"
     case pointByPoint = "Point By Point"
+    case meshExtend = "Mesh Extend"
+    case knife = "Knife"
     case freehand = "Freehand"
+}
+
+struct GeometryMeshExtendDraft: Equatable {
+    var layerID: EditableGeometryID
+    var itemID: EditableGeometryID
+    var segmentID: EditableGeometryID
+    var isPolygon: Bool
+    var startAnchorID: EditableGeometryID
+    var controlOutID: EditableGeometryID
+    var controlInID: EditableGeometryID
+    var endAnchorID: EditableGeometryID
+    var start: Vector2D
+    var controlOut: Vector2D
+    var controlIn: Vector2D
+    var end: Vector2D
+    var apex: Vector2D
+    var confirmedAnchors: [Vector2D] = []
+    var activeEdgeStartIndex: Int = 1
+    var isPreviewActive: Bool = false
+}
+
+struct GeometryKnifeLine: Equatable {
+    var start: Vector2D
+    var end: Vector2D
 }
 
 enum GeometryTransformPivot: String {
@@ -67,6 +94,9 @@ final class AppController: ObservableObject, @unchecked Sendable {
     @Published var geometryEditorFreehandPoints:  [Vector2D] = []
     @Published var geometryEditorFreehandPressures: [Double] = []
     @Published var geometryEditorFreehandDetail:  Double = 0.2
+    @Published var geometryEditorMeshExtendDraft: GeometryMeshExtendDraft? = nil
+    @Published var geometryEditorKnifeLine:       GeometryKnifeLine? = nil
+    @Published var geometryEditorKnifeCutsAllVisibleLayers: Bool = false
     @Published var geometryEditorLayers:          [GeometryEditorLayer] = [GeometryEditorLayer(name: "Layer 1")]
     @Published var geometryEditorAutoWeld:        Bool = true
     @Published var geometryEditorWeldTolerance:   Double = 0.5
@@ -134,6 +164,14 @@ final class AppController: ObservableObject, @unchecked Sendable {
         var minimumDirectionDot: Double
     }
 
+    private struct GeometryKnifeIntersection {
+        var segmentIndex: Int
+        var t: Double
+        var point: Vector2D
+
+        var globalT: Double { Double(segmentIndex) + t }
+    }
+
     // MARK: - Init
 
     init() {
@@ -167,6 +205,8 @@ final class AppController: ObservableObject, @unchecked Sendable {
         geometryEditorTool = .points
         geometryEditorDraftPoints.removeAll()
         clearGeometryFreehandStroke()
+        cancelGeometryMeshExtendDraft()
+        cancelGeometryKnifeLine()
     }
 
     func ensureGeometryEditorLayerSelection() {
@@ -379,10 +419,66 @@ final class AppController: ObservableObject, @unchecked Sendable {
             startFreehandGeometryCreation()
             return
         }
+        if tool == .meshExtend {
+            startMeshExtendGeometryCreation()
+            return
+        }
+        if tool == .knife {
+            startKnifeGeometryCut()
+            return
+        }
         geometryEditorTool = tool
         geometryEditorDraftPoints.removeAll()
         clearGeometryFreehandStroke()
+        cancelGeometryMeshExtendDraft()
+        cancelGeometryKnifeLine()
         geometryEditorSelection = .empty
+    }
+
+    func startStandalonePointGeometryCreation() {
+        if geometryEditorTool == .standalonePoints {
+            geometryEditorTool = .points
+            return
+        }
+        geometryEditorTool = .standalonePoints
+        geometryEditorDraftPoints.removeAll()
+        clearGeometryFreehandStroke()
+        cancelGeometryMeshExtendDraft()
+        cancelGeometryKnifeLine()
+        if geometryEditorDocument == nil {
+            var document = EditableGeometryDocument(name: "Untitled Geometry")
+            document.ensureActiveLayer()
+            setGeometryEditorDocument(document)
+        }
+    }
+
+    func createStandalonePointGeometry(at position: Vector2D) {
+        guard geometryEditorTool == .standalonePoints else { return }
+        var document = geometryEditorDocument ?? EditableGeometryDocument(name: "Untitled Geometry")
+        document.ensureActiveLayer()
+        if let selectedGeometryEditorLayerID,
+           document.layers.contains(where: { $0.id == selectedGeometryEditorLayerID }) {
+            document.activeLayerID = selectedGeometryEditorLayerID
+        }
+        guard let layerID = document.activeLayerID,
+              layerCanEdit(layerID),
+              let layerIndex = document.layers.firstIndex(where: { $0.id == layerID })
+        else { return }
+
+        let point = EditableStandalonePoint(
+            name: "Point \(document.layers[layerIndex].points.count + 1)",
+            position: position
+        )
+        recordGeometryEditorUndoSnapshot()
+        document.layers[layerIndex].points.append(point)
+        geometryEditorSelection = EditableGeometrySelection(
+            layerID: layerID,
+            standalonePointIDs: [point.id],
+            pointIDs: [point.id]
+        )
+        selectedGeometryEditorLayerID = layerID
+        setGeometryEditorDocument(document)
+        postStatus("Created point")
     }
 
     func appendGeometryDraftPoint(_ point: Vector2D) {
@@ -392,6 +488,250 @@ final class AppController: ObservableObject, @unchecked Sendable {
 
     func clearGeometryDraft() {
         geometryEditorDraftPoints.removeAll()
+        cancelGeometryMeshExtendDraft()
+        cancelGeometryKnifeLine()
+    }
+
+    func createOvalGeometry() {
+        let polygon = EditableClosedPolygon(
+            name: "Oval",
+            ovalCentre: .zero,
+            radiusX: 0.28,
+            radiusY: 0.2
+        )
+        createPolygonInNewGeometryLayer(polygon, baseLayerName: "Oval")
+        postStatus("Created oval")
+    }
+
+    func createRegularPolygonGeometry(sides: Int = 5) {
+        do {
+            let polygon = try EditableClosedPolygon(
+                name: "Regular Polygon",
+                regularPolygonSides: sides,
+                centre: .zero,
+                radius: 0.28
+            )
+            createPolygonInNewGeometryLayer(polygon, baseLayerName: "Regular Polygon")
+            postStatus("Created \(sides)-sided regular polygon")
+        } catch {
+            postStatus(error.localizedDescription)
+        }
+    }
+
+    func startMeshExtendGeometryCreation() {
+        if geometryEditorTool == .meshExtend {
+            geometryEditorTool = .edges
+            cancelGeometryMeshExtendDraft()
+            return
+        }
+        geometryEditorTool = .meshExtend
+        geometryEditorDraftPoints.removeAll()
+        clearGeometryFreehandStroke()
+        cancelGeometryMeshExtendDraft()
+        cancelGeometryKnifeLine()
+        if geometryEditorDocument == nil {
+            var document = EditableGeometryDocument(name: "Untitled Polygon")
+            document.ensureActiveLayer()
+            setGeometryEditorDocument(document)
+        }
+    }
+
+    func startKnifeGeometryCut() {
+        if geometryEditorTool == .knife {
+            geometryEditorTool = .polygons
+            cancelGeometryKnifeLine()
+            return
+        }
+        geometryEditorTool = .knife
+        geometryEditorDraftPoints.removeAll()
+        clearGeometryFreehandStroke()
+        cancelGeometryMeshExtendDraft()
+        cancelGeometryKnifeLine()
+    }
+
+    func beginGeometryKnifeLine(at point: Vector2D) {
+        guard geometryEditorTool == .knife else { return }
+        geometryEditorKnifeLine = GeometryKnifeLine(start: point, end: point)
+    }
+
+    func updateGeometryKnifeLine(to point: Vector2D) {
+        guard geometryEditorTool == .knife,
+              var line = geometryEditorKnifeLine
+        else { return }
+        line.end = point
+        geometryEditorKnifeLine = line
+    }
+
+    func finishGeometryKnifeCut() {
+        guard geometryEditorTool == .knife,
+              let line = geometryEditorKnifeLine
+        else { return }
+        defer { cancelGeometryKnifeLine() }
+        guard line.start.distance(to: line.end) >= 0.005 else { return }
+        performGeometryKnifeCut(from: line.start, to: line.end)
+    }
+
+    func cancelGeometryKnifeLine() {
+        geometryEditorKnifeLine = nil
+    }
+
+    func beginGeometryMeshExtend(
+        layerID: EditableGeometryID,
+        polygonID: EditableGeometryID?,
+        openCurveID: EditableGeometryID?,
+        segmentID: EditableGeometryID,
+        apex: Vector2D
+    ) {
+        guard geometryEditorTool == .meshExtend,
+              let document = geometryEditorDocument,
+              layerCanEdit(layerID)
+        else { return }
+        let matching = editableGeometrySegmentReferences(in: document).first { reference in
+            reference.layerID == layerID &&
+            reference.segment.id == segmentID &&
+            ((reference.isPolygon && polygonID == reference.itemID) ||
+             (!reference.isPolygon && openCurveID == reference.itemID))
+        }
+        guard let reference = matching,
+              let start = document.point(id: reference.segment.startAnchorID)?.position,
+              let controlOut = document.point(id: reference.segment.controlOutID)?.position,
+              let controlIn = document.point(id: reference.segment.controlInID)?.position,
+              let end = document.point(id: reference.segment.endAnchorID)?.position
+        else { return }
+
+        if reference.isPolygon {
+            selectGeometrySegment(
+                layerID: layerID,
+                polygonID: reference.itemID,
+                segmentID: segmentID
+            )
+        } else {
+            selectGeometryOpenCurveSegment(
+                layerID: layerID,
+                openCurveID: reference.itemID,
+                segmentID: segmentID
+            )
+        }
+        geometryEditorMeshExtendDraft = GeometryMeshExtendDraft(
+            layerID: layerID,
+            itemID: reference.itemID,
+            segmentID: segmentID,
+            isPolygon: reference.isPolygon,
+            startAnchorID: reference.segment.startAnchorID,
+            controlOutID: reference.segment.controlOutID,
+            controlInID: reference.segment.controlInID,
+            endAnchorID: reference.segment.endAnchorID,
+            start: start,
+            controlOut: controlOut,
+            controlIn: controlIn,
+            end: end,
+            apex: midpoint(start, end)
+        )
+    }
+
+    func updateGeometryMeshExtendDraft(apex: Vector2D) {
+        guard geometryEditorTool == .meshExtend,
+              geometryEditorMeshExtendDraft != nil
+        else { return }
+        geometryEditorMeshExtendDraft?.isPreviewActive = true
+        geometryEditorMeshExtendDraft?.apex = apex
+    }
+
+    func updateGeometryMeshExtendConfirmedAnchor(index: Int, to position: Vector2D) {
+        guard geometryEditorTool == .meshExtend,
+              var draft = geometryEditorMeshExtendDraft,
+              draft.confirmedAnchors.indices.contains(index)
+        else { return }
+        draft.confirmedAnchors[index] = position
+        draft.isPreviewActive = false
+        geometryEditorMeshExtendDraft = draft
+    }
+
+    func beginGeometryMeshExtendPreviewDrag(from start: Vector2D, to apex: Vector2D) {
+        guard geometryEditorTool == .meshExtend,
+              var draft = geometryEditorMeshExtendDraft,
+              let activeIndex = nearestMeshExtendCandidateEdgeStartIndex(to: start, in: draft)
+        else { return }
+        draft.activeEdgeStartIndex = activeIndex
+        draft.isPreviewActive = true
+        draft.apex = apex
+        geometryEditorMeshExtendDraft = draft
+    }
+
+    var canContinueGeometryMeshExtend: Bool {
+        guard geometryEditorTool == .meshExtend,
+              let draft = geometryEditorMeshExtendDraft,
+              layerCanEdit(draft.layerID),
+              draft.isPreviewActive
+        else { return false }
+        let edge = meshExtendActiveEdge(for: draft)
+        return edge.start.distance(to: edge.end) > 0.000_001 &&
+            distanceFromPoint(draft.apex, toSegmentFrom: edge.start, to: edge.end) > 0.004
+    }
+
+    var isGeometryMeshExtendPreviewActive: Bool {
+        guard geometryEditorTool == .meshExtend,
+              let draft = geometryEditorMeshExtendDraft
+        else { return false }
+        return draft.isPreviewActive
+    }
+
+    func continueGeometryMeshExtendDraft() {
+        guard canContinueGeometryMeshExtend,
+              var draft = geometryEditorMeshExtendDraft
+        else { return }
+        let insertionIndex = max(0, min(draft.confirmedAnchors.count, draft.activeEdgeStartIndex - 1))
+        draft.confirmedAnchors.insert(draft.apex, at: insertionIndex)
+        let nextEdge = meshExtendActiveEdge(for: draft)
+        draft.apex = midpoint(nextEdge.start, nextEdge.end)
+        draft.isPreviewActive = false
+        geometryEditorMeshExtendDraft = draft
+    }
+
+    func cancelGeometryMeshExtendDraft() {
+        geometryEditorMeshExtendDraft = nil
+    }
+
+    private func createPolygonInNewGeometryLayer(
+        _ polygon: EditableClosedPolygon,
+        baseLayerName: String
+    ) {
+        var document = geometryEditorDocument ?? EditableGeometryDocument(name: "Untitled Polygon")
+        document.ensureActiveLayer()
+        let layerName = uniqueGeometryLayerName(baseLayerName, in: document)
+        var layer = EditableGeometryLayer(name: layerName, polygons: [polygon])
+        layer.isVisible = true
+        layer.isEditable = true
+
+        recordGeometryEditorUndoSnapshot()
+        for index in document.layers.indices {
+            document.layers[index].isEditable = false
+        }
+        document.layers.append(layer)
+        document.activeLayerID = layer.id
+        selectedGeometryEditorLayerID = layer.id
+        geometryEditorTool = .polygons
+        geometryEditorDraftPoints.removeAll()
+        clearGeometryFreehandStroke()
+        cancelGeometryMeshExtendDraft()
+        geometryEditorSelection = EditableGeometrySelection(
+            layerID: layer.id,
+            polygonIDs: [polygon.id]
+        )
+        setGeometryEditorDocument(document)
+    }
+
+    private func uniqueGeometryLayerName(
+        _ baseName: String,
+        in document: EditableGeometryDocument
+    ) -> String {
+        let existing = Set(document.layers.map(\.name))
+        if !existing.contains(baseName) { return baseName }
+        var index = 2
+        while existing.contains("\(baseName) \(index)") {
+            index += 1
+        }
+        return "\(baseName) \(index)"
     }
 
     func startFreehandGeometryCreation() {
@@ -458,34 +798,37 @@ final class AppController: ObservableObject, @unchecked Sendable {
         let segmentCount = max(1, fitted.count / 4)
         let pressureCount = shouldClose ? segmentCount : segmentCount + 1
         let pressures = mappedPressures(rawPressures, count: pressureCount)
-        do {
-            recordGeometryEditorUndoSnapshot()
-            if shouldClose {
-                let name = "Freehand Polygon \(document.layers[layerIndex].polygons.count + 1)"
-                let polygon = try EditableClosedPolygon(
-                    name: name,
-                    polygon: Polygon2D(points: fitted, type: .spline, pressures: pressures, visible: true)
-                )
-                document.layers[layerIndex].polygons.append(polygon)
-                geometryEditorSelection = EditableGeometrySelection(layerID: activeLayerID, polygonIDs: [polygon.id])
-                geometryEditorTool = .polygons
-            } else {
-                let name = "Freehand Curve \(document.layers[layerIndex].openCurves.count + 1)"
-                let curve = try EditableOpenCurve(
-                    name: name,
-                    polygon: Polygon2D(points: fitted, type: .openSpline, pressures: pressures, visible: true)
-                )
-                document.layers[layerIndex].openCurves.append(curve)
-                geometryEditorSelection = EditableGeometrySelection(layerID: activeLayerID, openCurveIDs: [curve.id])
-                geometryEditorTool = .openCurves
-            }
-            selectedGeometryEditorLayerID = activeLayerID
-            setGeometryEditorDocument(document)
-            postStatus("Created \(shouldClose ? "freehand polygon" : "freehand curve")")
-        } catch {
-            geometryEditorLoadError = error.localizedDescription
-            postStatus("Freehand fit failed: \(error.localizedDescription)")
+        recordGeometryEditorUndoSnapshot()
+        let fittedSegments = stride(from: 0, to: fitted.count, by: 4).compactMap { index -> [Vector2D]? in
+            guard index + 3 < fitted.count else { return nil }
+            return Array(fitted[index...(index + 3)])
         }
+        if shouldClose {
+            let name = "Freehand Polygon \(document.layers[layerIndex].polygons.count + 1)"
+            guard let polygon = editableClosedPolygon(
+                name: name,
+                segments: fittedSegments,
+                pressures: pressures,
+                isVisible: true
+            ) else { return }
+            document.layers[layerIndex].polygons.append(polygon)
+            geometryEditorSelection = EditableGeometrySelection(layerID: activeLayerID, polygonIDs: [polygon.id])
+            geometryEditorTool = .polygons
+        } else {
+            let name = "Freehand Curve \(document.layers[layerIndex].openCurves.count + 1)"
+            guard let curve = editableOpenCurve(
+                name: name,
+                segments: fittedSegments,
+                pressures: pressures,
+                isVisible: true
+            ) else { return }
+            document.layers[layerIndex].openCurves.append(curve)
+            geometryEditorSelection = EditableGeometrySelection(layerID: activeLayerID, openCurveIDs: [curve.id])
+            geometryEditorTool = .openCurves
+        }
+        selectedGeometryEditorLayerID = activeLayerID
+        setGeometryEditorDocument(document)
+        postStatus("Created \(shouldClose ? "freehand polygon" : "freehand curve")")
     }
 
     func clearGeometryFreehandStroke() {
@@ -509,7 +852,9 @@ final class AppController: ObservableObject, @unchecked Sendable {
     }
 
     var canFinaliseGeometryDraftPolygon: Bool {
-        (geometryEditorDraftPoints.count >= 3 && selectedGeometryEditorLayerCanEdit) || canCloseSelectedOpenCurve
+        (geometryEditorDraftPoints.count >= 3 && selectedGeometryEditorLayerCanEdit) ||
+        canFinaliseGeometryMeshExtend ||
+        canCloseSelectedOpenCurve
     }
 
     var canFinaliseGeometryDraftOpenCurve: Bool {
@@ -518,6 +863,10 @@ final class AppController: ObservableObject, @unchecked Sendable {
 
     func finaliseGeometryDraftPolygon() {
         guard canFinaliseGeometryDraftPolygon else { return }
+        if canFinaliseGeometryMeshExtend {
+            finaliseGeometryMeshExtend()
+            return
+        }
         if geometryEditorDraftPoints.isEmpty, canCloseSelectedOpenCurve {
             closeSelectedOpenCurve()
             return
@@ -543,6 +892,618 @@ final class AppController: ObservableObject, @unchecked Sendable {
         } catch {
             geometryEditorLoadError = error.localizedDescription
         }
+    }
+
+    var canFinaliseGeometryMeshExtend: Bool {
+        guard geometryEditorTool == .meshExtend,
+              let draft = geometryEditorMeshExtendDraft,
+              layerCanEdit(draft.layerID)
+        else { return false }
+        return meshExtendVertices(for: draft).count >= 3 &&
+            (!draft.confirmedAnchors.isEmpty || canContinueGeometryMeshExtend)
+    }
+
+    func finaliseGeometryMeshExtend() {
+        guard var document = geometryEditorDocument,
+              canFinaliseGeometryMeshExtend,
+              let draft = geometryEditorMeshExtendDraft,
+              let layerIndex = document.layers.firstIndex(where: { $0.id == draft.layerID })
+        else { return }
+
+        let polygonIndex = document.layers[layerIndex].polygons.count + 1
+        let polygon = meshExtendPolygon(
+            name: "Mesh Polygon \(polygonIndex)",
+            draft: draft
+        )
+        recordGeometryEditorUndoSnapshot()
+        document.layers[layerIndex].polygons.append(polygon.polygon)
+        document.weldPoints([polygon.startAnchorID, draft.startAnchorID])
+        document.weldPoints([polygon.controlOutID, draft.controlOutID])
+        document.weldPoints([polygon.controlInID, draft.controlInID])
+        document.weldPoints([polygon.endAnchorID, draft.endAnchorID])
+        geometryEditorMeshExtendDraft = nil
+        geometryEditorSelection = EditableGeometrySelection(
+            layerID: draft.layerID,
+            polygonIDs: [polygon.polygon.id],
+            segmentIDs: Set(polygon.outerSegmentIDs)
+        )
+        setGeometryEditorDocument(document)
+        postStatus("Created \(polygon.polygon.segments.count)-sided mesh polygon")
+    }
+
+    var canFillSelectedGeometryTriangle: Bool {
+        guard let document = geometryEditorDocument else { return false }
+        return selectedMeshCornerFillDefinition(in: document) != nil
+    }
+
+    var canFillSelectedGeometryQuad: Bool {
+        guard let document = geometryEditorDocument else { return false }
+        return selectedMeshCornerFillDefinition(in: document) != nil
+    }
+
+    var canFillSelectedGeometryHole: Bool {
+        guard let document = geometryEditorDocument else { return false }
+        return orderedHoleBoundary(in: document) != nil
+    }
+
+    func fillSelectedGeometryTriangle() {
+        fillSelectedGeometryCorner(kind: .triangle)
+    }
+
+    func fillSelectedGeometryQuad() {
+        fillSelectedGeometryCorner(kind: .quad)
+    }
+
+    func fillSelectedGeometryHole() {
+        guard var document = geometryEditorDocument,
+              let layerID = geometryEditorSelection.layerID,
+              layerCanEdit(layerID),
+              let layerIndex = document.layers.firstIndex(where: { $0.id == layerID })
+        else { return }
+        guard let boundary = orderedHoleBoundary(in: document) else {
+            postStatus("Select boundary edges that form a closed loop")
+            return
+        }
+        let polygonIndex = document.layers[layerIndex].polygons.count + 1
+        guard let result = polygonFromHoleBoundary(
+            boundary,
+            name: "Mesh Fill \(polygonIndex)",
+            document: document
+        ) else { return }
+
+        recordGeometryEditorUndoSnapshot()
+        document.layers[layerIndex].polygons.append(result.polygon)
+        for weldPair in result.weldPairs {
+            document.weldPoints(weldPair)
+        }
+        geometryEditorMeshExtendDraft = nil
+        geometryEditorSelection = EditableGeometrySelection(
+            layerID: layerID,
+            polygonIDs: [result.polygon.id]
+        )
+        setGeometryEditorDocument(document)
+        postStatus("Filled mesh hole")
+    }
+
+    private enum MeshCornerFillKind {
+        case triangle
+        case quad
+    }
+
+    private struct MeshPolygonBuildResult {
+        var polygon: EditableClosedPolygon
+        var startAnchorID: EditableGeometryID
+        var controlOutID: EditableGeometryID
+        var controlInID: EditableGeometryID
+        var endAnchorID: EditableGeometryID
+        var outerSegmentIDs: [EditableGeometryID]
+    }
+
+    private struct HolePolygonBuildResult {
+        var polygon: EditableClosedPolygon
+        var weldPairs: [Set<EditableGeometryID>]
+    }
+
+    private struct MeshSegmentEndpoint {
+        var id: EditableGeometryID
+        var position: Vector2D
+        var isStart: Bool
+        var key: String
+    }
+
+    private struct MeshCornerFillDefinition {
+        var layerID: EditableGeometryID
+        var first: (reference: GeometrySegmentReference, forward: Bool)
+        var second: (reference: GeometrySegmentReference, forward: Bool)
+    }
+
+    private func fillSelectedGeometryCorner(kind: MeshCornerFillKind) {
+        guard var document = geometryEditorDocument,
+              let definition = selectedMeshCornerFillDefinition(in: document),
+              let layerIndex = document.layers.firstIndex(where: { $0.id == definition.layerID }),
+              layerCanEdit(definition.layerID)
+        else { return }
+        let polygonIndex = document.layers[layerIndex].polygons.count + 1
+        let kindName = kind == .triangle ? "Triangle" : "Quad"
+        guard let result = polygonFromCornerFill(
+            definition,
+            kind: kind,
+            name: "Mesh \(kindName) \(polygonIndex)",
+            document: document
+        ) else {
+            postStatus("Select two connected edges")
+            return
+        }
+
+        recordGeometryEditorUndoSnapshot()
+        document.layers[layerIndex].polygons.append(result.polygon)
+        for weldPair in result.weldPairs {
+            document.weldPoints(weldPair)
+        }
+        geometryEditorMeshExtendDraft = nil
+        geometryEditorSelection = EditableGeometrySelection(
+            layerID: definition.layerID,
+            polygonIDs: [result.polygon.id]
+        )
+        setGeometryEditorDocument(document)
+        postStatus("Filled mesh \(kindName.lowercased())")
+    }
+
+    private func meshExtendPolygon(
+        name: String,
+        draft: GeometryMeshExtendDraft
+    ) -> MeshPolygonBuildResult {
+        let vertices = meshExtendVertices(for: draft)
+        let start = EditableCubicPoint(position: vertices[0], kind: .anchor)
+        let controlOut = EditableCubicPoint(position: draft.controlOut, kind: .control)
+        let controlIn = EditableCubicPoint(position: draft.controlIn, kind: .control)
+        let end = EditableCubicPoint(position: vertices[1], kind: .anchor)
+
+        let baseSegment = EditableCubicSegment(
+            startAnchorID: start.id,
+            controlOutID: controlOut.id,
+            controlInID: controlIn.id,
+            endAnchorID: end.id
+        )
+        var points = [start, controlOut, controlIn, end]
+        var segments = [baseSegment]
+        var previousAnchor = end
+        for vertex in vertices.dropFirst(2) {
+            let nextAnchor = EditableCubicPoint(position: vertex, kind: .anchor)
+            let controls = linearControlPoints(from: previousAnchor.position, to: vertex)
+            let controlOut = EditableCubicPoint(position: controls.0, kind: .control)
+            let controlIn = EditableCubicPoint(position: controls.1, kind: .control)
+            points.append(contentsOf: [controlOut, controlIn, nextAnchor])
+            segments.append(
+                EditableCubicSegment(
+                    startAnchorID: previousAnchor.id,
+                    controlOutID: controlOut.id,
+                    controlInID: controlIn.id,
+                    endAnchorID: nextAnchor.id
+                )
+            )
+            previousAnchor = nextAnchor
+        }
+        let closeControls = linearControlPoints(from: previousAnchor.position, to: start.position)
+        let closeControlOut = EditableCubicPoint(position: closeControls.0, kind: .control)
+        let closeControlIn = EditableCubicPoint(position: closeControls.1, kind: .control)
+        points.append(contentsOf: [closeControlOut, closeControlIn])
+        segments.append(
+            EditableCubicSegment(
+                startAnchorID: previousAnchor.id,
+                controlOutID: closeControlOut.id,
+                controlInID: closeControlIn.id,
+                endAnchorID: start.id
+            )
+        )
+        let polygon = EditableClosedPolygon(
+            name: name,
+            points: points,
+            segments: segments,
+            pressures: Array(repeating: 1.0, count: segments.count),
+            isVisible: true
+        )
+        return MeshPolygonBuildResult(
+            polygon: polygon,
+            startAnchorID: start.id,
+            controlOutID: controlOut.id,
+            controlInID: controlIn.id,
+            endAnchorID: end.id,
+            outerSegmentIDs: Array(segments.dropFirst().map(\.id))
+        )
+    }
+
+    private func meshExtendVertices(for draft: GeometryMeshExtendDraft) -> [Vector2D] {
+        var vertices = [draft.start, draft.end] + draft.confirmedAnchors
+        if draft.isPreviewActive {
+            let insertionIndex = max(0, min(draft.confirmedAnchors.count, draft.activeEdgeStartIndex - 1))
+            vertices.insert(draft.apex, at: insertionIndex + 2)
+        }
+        return vertices
+    }
+
+    private func meshExtendActiveEdge(for draft: GeometryMeshExtendDraft) -> (start: Vector2D, end: Vector2D) {
+        let vertices = [draft.start, draft.end] + draft.confirmedAnchors
+        guard vertices.count >= 2 else { return (draft.start, draft.end) }
+        let startIndex = max(1, min(draft.activeEdgeStartIndex, vertices.count - 1))
+        let endIndex = startIndex == vertices.count - 1 ? 0 : startIndex + 1
+        return (vertices[startIndex], vertices[endIndex])
+    }
+
+    private func meshExtendCandidateEdgeStartIndices(for draft: GeometryMeshExtendDraft) -> [Int] {
+        let vertices = [draft.start, draft.end] + draft.confirmedAnchors
+        guard vertices.count >= 2 else { return [] }
+        return Array(1..<vertices.count)
+    }
+
+    private func nearestMeshExtendCandidateEdgeStartIndex(
+        to point: Vector2D,
+        in draft: GeometryMeshExtendDraft
+    ) -> Int? {
+        let vertices = [draft.start, draft.end] + draft.confirmedAnchors
+        var bestIndex: Int?
+        var bestDistance = 0.018
+        for index in meshExtendCandidateEdgeStartIndices(for: draft) {
+            let endIndex = index == vertices.count - 1 ? 0 : index + 1
+            let centre = midpoint(vertices[index], vertices[endIndex])
+            let distance = point.distance(to: centre)
+            if distance < bestDistance {
+                bestDistance = distance
+                bestIndex = index
+            }
+        }
+        return bestIndex
+    }
+
+    private func midpoint(_ first: Vector2D, _ second: Vector2D) -> Vector2D {
+        Vector2D(x: (first.x + second.x) / 2, y: (first.y + second.y) / 2)
+    }
+
+    private func linearControlPoints(from start: Vector2D, to end: Vector2D) -> (Vector2D, Vector2D) {
+        let delta = end - start
+        return (start + delta * (1.0 / 3.0), start + delta * (2.0 / 3.0))
+    }
+
+    private func distanceFromPoint(_ point: Vector2D, toSegmentFrom start: Vector2D, to end: Vector2D) -> Double {
+        let dx = end.x - start.x
+        let dy = end.y - start.y
+        let lengthSquared = dx * dx + dy * dy
+        guard lengthSquared > 0 else { return point.distance(to: start) }
+        let t = max(0, min(1, ((point.x - start.x) * dx + (point.y - start.y) * dy) / lengthSquared))
+        let projection = Vector2D(x: start.x + t * dx, y: start.y + t * dy)
+        return point.distance(to: projection)
+    }
+
+    private struct HoleBoundaryEdge {
+        var reference: GeometrySegmentReference
+        var startKey: String
+        var endKey: String
+    }
+
+    private func orderedHoleBoundary(
+        in document: EditableGeometryDocument
+    ) -> [(reference: GeometrySegmentReference, forward: Bool)]? {
+        let references = selectedGeometrySegmentReferences(in: document)
+        guard references.count >= 3 else { return nil }
+        var edges: [HoleBoundaryEdge] = []
+        for reference in references {
+            guard let start = document.point(id: reference.segment.startAnchorID)?.position,
+                  let end = document.point(id: reference.segment.endAnchorID)?.position
+            else { return nil }
+            edges.append(
+                HoleBoundaryEdge(
+                    reference: reference,
+                    startKey: boundaryKey(for: reference.segment.startAnchorID, position: start, in: document),
+                    endKey: boundaryKey(for: reference.segment.endAnchorID, position: end, in: document)
+                )
+            )
+        }
+        var degrees: [String: Int] = [:]
+        for edge in edges {
+            degrees[edge.startKey, default: 0] += 1
+            degrees[edge.endKey, default: 0] += 1
+        }
+        guard degrees.count >= 3,
+              degrees.values.allSatisfy({ $0 == 2 })
+        else { return nil }
+
+        let first = edges[0]
+        let startingKey = first.startKey
+        var currentKey = first.endKey
+        var usedSegmentIDs: Set<EditableGeometryID> = [first.reference.segment.id]
+        var ordered: [(reference: GeometrySegmentReference, forward: Bool)] = [(first.reference, true)]
+
+        while usedSegmentIDs.count < edges.count {
+            guard let next = edges.first(where: { edge in
+                !usedSegmentIDs.contains(edge.reference.segment.id) &&
+                (edge.startKey == currentKey || edge.endKey == currentKey)
+            }) else { return nil }
+            let forward = next.startKey == currentKey
+            currentKey = forward ? next.endKey : next.startKey
+            usedSegmentIDs.insert(next.reference.segment.id)
+            ordered.append((next.reference, forward))
+            if currentKey == startingKey && usedSegmentIDs.count < edges.count {
+                return nil
+            }
+        }
+
+        return currentKey == startingKey ? ordered : nil
+    }
+
+    private func boundaryKey(
+        for pointID: EditableGeometryID,
+        position: Vector2D,
+        in document: EditableGeometryDocument
+    ) -> String {
+        let welded = document.weldedPointIDs(containing: pointID)
+        if welded.count > 1 {
+            return welded.map(\.uuidString).sorted().joined(separator: "|")
+        }
+        let scale = 100_000.0
+        let x = Int((position.x * scale).rounded())
+        let y = Int((position.y * scale).rounded())
+        return "pos:\(x):\(y)"
+    }
+
+    private func selectedMeshCornerFillDefinition(
+        in document: EditableGeometryDocument
+    ) -> MeshCornerFillDefinition? {
+        let references = selectedGeometrySegmentReferences(in: document)
+        guard references.count == 2,
+              references[0].layerID == references[1].layerID,
+              layerCanEdit(references[0].layerID)
+        else { return nil }
+
+        let firstEndpoints = meshSegmentEndpoints(for: references[0], in: document)
+        let secondEndpoints = meshSegmentEndpoints(for: references[1], in: document)
+        guard firstEndpoints.count == 2, secondEndpoints.count == 2 else { return nil }
+
+        let matches = firstEndpoints.flatMap { first in
+            secondEndpoints.compactMap { second -> (MeshSegmentEndpoint, MeshSegmentEndpoint)? in
+                first.key == second.key ? (first, second) : nil
+            }
+        }
+        guard matches.count == 1,
+              let shared = matches.first
+        else { return nil }
+
+        return MeshCornerFillDefinition(
+            layerID: references[0].layerID,
+            first: (
+                reference: references[0],
+                forward: !shared.0.isStart
+            ),
+            second: (
+                reference: references[1],
+                forward: shared.1.isStart
+            )
+        )
+    }
+
+    private func meshSegmentEndpoints(
+        for reference: GeometrySegmentReference,
+        in document: EditableGeometryDocument
+    ) -> [MeshSegmentEndpoint] {
+        guard let start = document.point(id: reference.segment.startAnchorID)?.position,
+              let end = document.point(id: reference.segment.endAnchorID)?.position
+        else { return [] }
+        return [
+            MeshSegmentEndpoint(
+                id: reference.segment.startAnchorID,
+                position: start,
+                isStart: true,
+                key: boundaryKey(for: reference.segment.startAnchorID, position: start, in: document)
+            ),
+            MeshSegmentEndpoint(
+                id: reference.segment.endAnchorID,
+                position: end,
+                isStart: false,
+                key: boundaryKey(for: reference.segment.endAnchorID, position: end, in: document)
+            )
+        ]
+    }
+
+    private func polygonFromCornerFill(
+        _ definition: MeshCornerFillDefinition,
+        kind: MeshCornerFillKind,
+        name: String,
+        document: EditableGeometryDocument
+    ) -> HolePolygonBuildResult? {
+        let firstIDs = orientedSegmentIDs(definition.first.reference.segment, forward: definition.first.forward)
+        let secondIDs = orientedSegmentIDs(definition.second.reference.segment, forward: definition.second.forward)
+        guard let firstStartID = firstIDs.start,
+              let firstControlOutID = firstIDs.controlOut,
+              let firstControlInID = firstIDs.controlIn,
+              let sharedFromFirstID = firstIDs.end,
+              let sharedFromSecondID = secondIDs.start,
+              let secondControlOutID = secondIDs.controlOut,
+              let secondControlInID = secondIDs.controlIn,
+              let secondEndID = secondIDs.end,
+              let firstStart = document.point(id: firstStartID)?.position,
+              let firstControlOutPosition = document.point(id: firstControlOutID)?.position,
+              let firstControlInPosition = document.point(id: firstControlInID)?.position,
+              let shared = document.point(id: sharedFromFirstID)?.position,
+              let secondControlOutPosition = document.point(id: secondControlOutID)?.position,
+              let secondControlInPosition = document.point(id: secondControlInID)?.position,
+              let secondEnd = document.point(id: secondEndID)?.position
+        else { return nil }
+
+        let firstAnchor = EditableCubicPoint(position: firstStart, kind: .anchor)
+        let sharedAnchor = EditableCubicPoint(position: shared, kind: .anchor)
+        let secondAnchor = EditableCubicPoint(position: secondEnd, kind: .anchor)
+        let firstControlOut = EditableCubicPoint(position: firstControlOutPosition, kind: .control)
+        let firstControlIn = EditableCubicPoint(position: firstControlInPosition, kind: .control)
+        let secondControlOut = EditableCubicPoint(position: secondControlOutPosition, kind: .control)
+        let secondControlIn = EditableCubicPoint(position: secondControlInPosition, kind: .control)
+
+        var points = [
+            firstAnchor,
+            firstControlOut,
+            firstControlIn,
+            sharedAnchor,
+            secondControlOut,
+            secondControlIn,
+            secondAnchor
+        ]
+        var segments = [
+            EditableCubicSegment(
+                startAnchorID: firstAnchor.id,
+                controlOutID: firstControlOut.id,
+                controlInID: firstControlIn.id,
+                endAnchorID: sharedAnchor.id
+            ),
+            EditableCubicSegment(
+                startAnchorID: sharedAnchor.id,
+                controlOutID: secondControlOut.id,
+                controlInID: secondControlIn.id,
+                endAnchorID: secondAnchor.id
+            )
+        ]
+
+        if kind == .quad {
+            let fourthPosition = firstStart + secondEnd - shared
+            let fourthAnchor = EditableCubicPoint(position: fourthPosition, kind: .anchor)
+            let toFourthControls = linearControlPoints(from: secondEnd, to: fourthPosition)
+            let toFirstControls = linearControlPoints(from: fourthPosition, to: firstStart)
+            let toFourthControlOut = EditableCubicPoint(position: toFourthControls.0, kind: .control)
+            let toFourthControlIn = EditableCubicPoint(position: toFourthControls.1, kind: .control)
+            let toFirstControlOut = EditableCubicPoint(position: toFirstControls.0, kind: .control)
+            let toFirstControlIn = EditableCubicPoint(position: toFirstControls.1, kind: .control)
+            points.append(contentsOf: [
+                toFourthControlOut,
+                toFourthControlIn,
+                fourthAnchor,
+                toFirstControlOut,
+                toFirstControlIn
+            ])
+            segments.append(
+                EditableCubicSegment(
+                    startAnchorID: secondAnchor.id,
+                    controlOutID: toFourthControlOut.id,
+                    controlInID: toFourthControlIn.id,
+                    endAnchorID: fourthAnchor.id
+                )
+            )
+            segments.append(
+                EditableCubicSegment(
+                    startAnchorID: fourthAnchor.id,
+                    controlOutID: toFirstControlOut.id,
+                    controlInID: toFirstControlIn.id,
+                    endAnchorID: firstAnchor.id
+                )
+            )
+        } else {
+            let closeControls = linearControlPoints(from: secondEnd, to: firstStart)
+            let closeControlOut = EditableCubicPoint(position: closeControls.0, kind: .control)
+            let closeControlIn = EditableCubicPoint(position: closeControls.1, kind: .control)
+            points.append(contentsOf: [closeControlOut, closeControlIn])
+            segments.append(
+                EditableCubicSegment(
+                    startAnchorID: secondAnchor.id,
+                    controlOutID: closeControlOut.id,
+                    controlInID: closeControlIn.id,
+                    endAnchorID: firstAnchor.id
+                )
+            )
+        }
+
+        return HolePolygonBuildResult(
+            polygon: EditableClosedPolygon(
+                name: name,
+                points: points,
+                segments: segments,
+                pressures: Array(repeating: 1.0, count: segments.count),
+                isVisible: true
+            ),
+            weldPairs: [
+                [firstAnchor.id, firstStartID],
+                [firstControlOut.id, firstControlOutID],
+                [firstControlIn.id, firstControlInID],
+                [sharedAnchor.id, sharedFromFirstID, sharedFromSecondID],
+                [secondControlOut.id, secondControlOutID],
+                [secondControlIn.id, secondControlInID],
+                [secondAnchor.id, secondEndID]
+            ]
+        )
+    }
+
+    private func polygonFromHoleBoundary(
+        _ boundary: [(reference: GeometrySegmentReference, forward: Bool)],
+        name: String,
+        document: EditableGeometryDocument
+    ) -> HolePolygonBuildResult? {
+        guard let first = boundary.first,
+              let firstStart = orientedSegmentIDs(first.reference.segment, forward: first.forward).start,
+              let firstStartPosition = document.point(id: firstStart)?.position
+        else { return nil }
+
+        var points: [EditableCubicPoint] = []
+        var segments: [EditableCubicSegment] = []
+        var weldPairs: [Set<EditableGeometryID>] = []
+        let firstAnchor = EditableCubicPoint(position: firstStartPosition, kind: .anchor)
+        points.append(firstAnchor)
+        var currentStartID = firstAnchor.id
+
+        for index in boundary.indices {
+            let item = boundary[index]
+            let ids = orientedSegmentIDs(item.reference.segment, forward: item.forward)
+            guard let oldStartID = ids.start,
+                  let oldControlOutID = ids.controlOut,
+                  let oldControlInID = ids.controlIn,
+                  let oldEndID = ids.end,
+                  let oldControlOut = document.point(id: oldControlOutID)?.position,
+                  let oldControlIn = document.point(id: oldControlInID)?.position,
+                  let oldEnd = document.point(id: oldEndID)?.position
+            else { return nil }
+
+            let controlOut = EditableCubicPoint(position: oldControlOut, kind: .control)
+            let controlIn = EditableCubicPoint(position: oldControlIn, kind: .control)
+            let isLast = index == boundary.indices.last
+            let endAnchorID: EditableGeometryID
+            if isLast {
+                endAnchorID = firstAnchor.id
+            } else {
+                let endAnchor = EditableCubicPoint(position: oldEnd, kind: .anchor)
+                points.append(endAnchor)
+                endAnchorID = endAnchor.id
+            }
+            points.append(contentsOf: [controlOut, controlIn])
+            segments.append(
+                EditableCubicSegment(
+                    startAnchorID: currentStartID,
+                    controlOutID: controlOut.id,
+                    controlInID: controlIn.id,
+                    endAnchorID: endAnchorID
+                )
+            )
+            weldPairs.append([currentStartID, oldStartID])
+            weldPairs.append([controlOut.id, oldControlOutID])
+            weldPairs.append([controlIn.id, oldControlInID])
+            weldPairs.append([endAnchorID, oldEndID])
+            currentStartID = endAnchorID
+        }
+
+        guard segments.count >= 3 else { return nil }
+        return HolePolygonBuildResult(
+            polygon: EditableClosedPolygon(
+                name: name,
+                points: points,
+                segments: segments,
+                pressures: Array(repeating: 1.0, count: segments.count),
+                isVisible: true
+            ),
+            weldPairs: weldPairs
+        )
+    }
+
+    private func orientedSegmentIDs(
+        _ segment: EditableCubicSegment,
+        forward: Bool
+    ) -> (start: EditableGeometryID?, controlOut: EditableGeometryID?, controlIn: EditableGeometryID?, end: EditableGeometryID?) {
+        if forward {
+            return (segment.startAnchorID, segment.controlOutID, segment.controlInID, segment.endAnchorID)
+        }
+        return (segment.endAnchorID, segment.controlInID, segment.controlOutID, segment.startAnchorID)
     }
 
     func finaliseGeometryDraftOpenCurve() {
@@ -701,6 +1662,35 @@ final class AppController: ObservableObject, @unchecked Sendable {
         geometryEditorSelection = EditableGeometrySelection(
             layerID: layerID,
             openCurveIDs: [openCurveID],
+            pointIDs: [pointID]
+        )
+    }
+
+    func selectGeometryStandalonePoint(
+        layerID: EditableGeometryID,
+        pointID: EditableGeometryID,
+        additive: Bool = false,
+        toggle: Bool = false
+    ) {
+        guard layerCanEdit(layerID) else { return }
+        selectGeometryEditorLayer(id: layerID)
+        if (additive || toggle), geometryEditorSelection.layerID == layerID {
+            var selection = geometryEditorSelection
+            selection.layerID = layerID
+            selection.segmentIDs.removeAll()
+            if toggle, selection.pointIDs.contains(pointID) {
+                selection.pointIDs.remove(pointID)
+                selection.standalonePointIDs.remove(pointID)
+            } else {
+                selection.pointIDs.insert(pointID)
+                selection.standalonePointIDs.insert(pointID)
+            }
+            geometryEditorSelection = selection.pointIDs.isEmpty ? .empty : selection
+            return
+        }
+        geometryEditorSelection = EditableGeometrySelection(
+            layerID: layerID,
+            standalonePointIDs: [pointID],
             pointIDs: [pointID]
         )
     }
@@ -978,7 +1968,12 @@ final class AppController: ObservableObject, @unchecked Sendable {
         else { return false }
         if geometryEditorSelection.pointIDs.isEmpty && geometryEditorSelection.segmentIDs.isEmpty {
             return layer.polygons.contains { geometryEditorSelection.polygonIDs.contains($0.id) } ||
-                layer.openCurves.contains { geometryEditorSelection.openCurveIDs.contains($0.id) }
+                layer.openCurves.contains { geometryEditorSelection.openCurveIDs.contains($0.id) } ||
+                layer.points.contains { geometryEditorSelection.standalonePointIDs.contains($0.id) }
+        }
+        if !geometryEditorSelection.pointIDs.isEmpty,
+           geometryEditorSelection.pointIDs.allSatisfy({ pointID in layer.points.contains { $0.id == pointID } }) {
+            return true
         }
         if geometryEditorSelection.pointIDs.count == 1,
            let pointID = geometryEditorSelection.pointIDs.first {
@@ -1011,7 +2006,8 @@ final class AppController: ObservableObject, @unchecked Sendable {
               layer.isEditable
         else { return false }
         return layer.polygons.contains { geometryEditorSelection.polygonIDs.contains($0.id) } ||
-            layer.openCurves.contains { geometryEditorSelection.openCurveIDs.contains($0.id) }
+            layer.openCurves.contains { geometryEditorSelection.openCurveIDs.contains($0.id) } ||
+            !geometryEditorSelection.pointIDs.intersection(Set(layer.points.map(\.id))).isEmpty
     }
 
     var selectedGeometryAnchorCount: Int {
@@ -1028,7 +2024,55 @@ final class AppController: ObservableObject, @unchecked Sendable {
         let curveAnchors = layer.openCurves
             .filter { geometryEditorSelection.openCurveIDs.contains($0.id) }
             .flatMap(\.anchorIDs)
-        return Set(polygonAnchors + curveAnchors).count
+        let standalonePoints = layer.points
+            .filter { geometryEditorSelection.standalonePointIDs.contains($0.id) || geometryEditorSelection.pointIDs.contains($0.id) }
+            .map(\.id)
+        return Set(polygonAnchors + curveAnchors + standalonePoints).count
+    }
+
+    var selectedRegularPolygonParameters: EditableRegularPolygonParameters? {
+        guard let document = geometryEditorDocument,
+              let layerID = geometryEditorSelection.layerID,
+              geometryEditorSelection.polygonIDs.count == 1,
+              geometryEditorSelection.openCurveIDs.isEmpty,
+              geometryEditorSelection.pointIDs.isEmpty,
+              geometryEditorSelection.segmentIDs.isEmpty,
+              let polygonID = geometryEditorSelection.polygonIDs.first,
+              let layer = document.layers.first(where: { $0.id == layerID }),
+              let polygon = layer.polygons.first(where: { $0.id == polygonID }),
+              case .regularPolygon(let parameters) = polygon.parametricSource
+        else { return nil }
+        return parameters
+    }
+
+    func updateSelectedRegularPolygonParameters(
+        _ update: (inout EditableRegularPolygonParameters) -> Void
+    ) {
+        guard var document = geometryEditorDocument,
+              let layerID = geometryEditorSelection.layerID,
+              layerCanEdit(layerID),
+              geometryEditorSelection.polygonIDs.count == 1,
+              let polygonID = geometryEditorSelection.polygonIDs.first,
+              let layerIndex = document.layers.firstIndex(where: { $0.id == layerID }),
+              let polygonIndex = document.layers[layerIndex].polygons.firstIndex(where: { $0.id == polygonID }),
+              case .regularPolygon(var parameters) = document.layers[layerIndex].polygons[polygonIndex].parametricSource
+        else { return }
+
+        update(&parameters)
+        parameters.sides = max(3, min(64, parameters.sides))
+        parameters.radius = max(0.01, min(2.0, parameters.radius))
+        parameters.innerRadius = max(0.05, min(1.0, parameters.innerRadius))
+        parameters.scaleX = max(0.05, min(4.0, parameters.scaleX))
+        parameters.scaleY = max(0.05, min(4.0, parameters.scaleY))
+
+        do {
+            let source = EditableParametricSource.regularPolygon(parameters)
+            document.layers[layerIndex].polygons[polygonIndex] =
+                try document.layers[layerIndex].polygons[polygonIndex].regeneratedFromParametricSource(source)
+            setGeometryEditorDocument(document)
+        } catch {
+            postStatus(error.localizedDescription)
+        }
     }
 
     func duplicateSelectedGeometry() {
@@ -1038,14 +2082,16 @@ final class AppController: ObservableObject, @unchecked Sendable {
               let layerIndex = document.layers.firstIndex(where: { $0.id == layerID }),
               canDuplicateSelectedGeometry
         else {
-            postStatus("Duplicate: no selectable polygon or open curve")
+            postStatus("Duplicate: no selectable geometry")
             return
         }
 
         let selectedPolygons = geometryEditorSelection.polygonIDs
         let selectedCurves = geometryEditorSelection.openCurveIDs
+        let selectedStandalonePoints = geometryEditorSelection.pointIDs
         var copiedPolygonIDs = Set<EditableGeometryID>()
         var copiedCurveIDs = Set<EditableGeometryID>()
+        var copiedStandalonePointIDs = Set<EditableGeometryID>()
         let selectedPoints = selectedGeometryPoints(in: document.layers[layerIndex])
         let offsetDistance = duplicateOffsetDistance(for: selectedPoints)
         let offset = Vector2D(x: offsetDistance, y: -offsetDistance)
@@ -1064,22 +2110,32 @@ final class AppController: ObservableObject, @unchecked Sendable {
             curveCopies.append(copy)
         }
 
-        guard !polygonCopies.isEmpty || !curveCopies.isEmpty else {
+        var pointCopies: [EditableStandalonePoint] = []
+        for point in document.layers[layerIndex].points where selectedStandalonePoints.contains(point.id) {
+            let copy = point.duplicated(name: "\(point.name) Copy").translated(by: offset)
+            copiedStandalonePointIDs.insert(copy.id)
+            pointCopies.append(copy)
+        }
+
+        guard !polygonCopies.isEmpty || !curveCopies.isEmpty || !pointCopies.isEmpty else {
             postStatus("Duplicate: selected geometry was not found in layer")
             return
         }
         recordGeometryEditorUndoSnapshot()
         document.layers[layerIndex].polygons.append(contentsOf: polygonCopies)
         document.layers[layerIndex].openCurves.append(contentsOf: curveCopies)
+        document.layers[layerIndex].points.append(contentsOf: pointCopies)
         geometryEditorDocument = document
         syncGeometryEditorLayers(from: document.layers)
         geometryEditorSelection = EditableGeometrySelection(
             layerID: layerID,
             polygonIDs: copiedPolygonIDs,
-            openCurveIDs: copiedCurveIDs
+            openCurveIDs: copiedCurveIDs,
+            standalonePointIDs: copiedStandalonePointIDs,
+            pointIDs: copiedStandalonePointIDs
         )
         selectedGeometryEditorLayerID = layerID
-        postStatus("Duplicated \(polygonCopies.count + curveCopies.count) item(s)")
+        postStatus("Duplicated \(polygonCopies.count + curveCopies.count + pointCopies.count) item(s)")
     }
 
     private func selectedGeometryPoints(in layer: EditableGeometryLayer) -> [Vector2D] {
@@ -1089,7 +2145,10 @@ final class AppController: ObservableObject, @unchecked Sendable {
         let curvePoints = layer.openCurves
             .filter { geometryEditorSelection.openCurveIDs.contains($0.id) }
             .flatMap { $0.points.map(\.position) }
-        return polygonPoints + curvePoints
+        let standalonePoints = layer.points
+            .filter { geometryEditorSelection.standalonePointIDs.contains($0.id) || geometryEditorSelection.pointIDs.contains($0.id) }
+            .map(\.position)
+        return polygonPoints + curvePoints + standalonePoints
     }
 
     private func selectedGeometryObjectPointIDs(
@@ -1103,6 +2162,7 @@ final class AppController: ObservableObject, @unchecked Sendable {
         for curve in layer.openCurves where selection.openCurveIDs.contains(curve.id) {
             ids.formUnion(curve.points.map(\.id))
         }
+        ids.formUnion(layer.points.filter { selection.standalonePointIDs.contains($0.id) }.map(\.id))
         return ids
     }
 
@@ -1132,7 +2192,8 @@ final class AppController: ObservableObject, @unchecked Sendable {
     ) -> Set<EditableGeometryID> {
         let layerPointIDs = Set(
             layer.polygons.flatMap { $0.points.map(\.id) } +
-            layer.openCurves.flatMap { $0.points.map(\.id) }
+            layer.openCurves.flatMap { $0.points.map(\.id) } +
+            layer.points.map(\.id)
         )
         return selection.pointIDs.intersection(layerPointIDs)
     }
@@ -1268,6 +2329,7 @@ final class AppController: ObservableObject, @unchecked Sendable {
               !selectedTransformSeedPointIDs(in: document.layers[layerIndex], selection: geometryEditorSelection).isEmpty
         else { return }
         recordGeometryEditorUndoSnapshot()
+        clearParametricSourceForSelectedPolygons(in: &document, selection: geometryEditorSelection)
         applyTransform(to: &document, selection: geometryEditorSelection, pivot: pivot, transform: transform)
         setGeometryEditorDocument(document)
     }
@@ -1285,6 +2347,7 @@ final class AppController: ObservableObject, @unchecked Sendable {
         let layer = document.layers[layerIndex]
         let seedIDs = selectedTransformSeedPointIDs(in: layer, selection: selection)
         guard !seedIDs.isEmpty else { return }
+        clearParametricSourceForSelectedPolygons(in: &document, selection: selection)
         let targetIDs = document.relationalPointIDs(startingWith: seedIDs)
         let selectedPoints = seedIDs.compactMap { document.point(id: $0)?.position }
         let transformCentre: Vector2D
@@ -1298,6 +2361,20 @@ final class AppController: ObservableObject, @unchecked Sendable {
         }
 
         transformDocumentPointIDs(targetIDs, in: &document, around: transformCentre, transform: transform)
+    }
+
+    private func clearParametricSourceForSelectedPolygons(
+        in document: inout EditableGeometryDocument,
+        selection: EditableGeometrySelection
+    ) {
+        guard let layerID = selection.layerID,
+              !selection.polygonIDs.isEmpty,
+              let layerIndex = document.layers.firstIndex(where: { $0.id == layerID })
+        else { return }
+        for polygonIndex in document.layers[layerIndex].polygons.indices
+            where selection.polygonIDs.contains(document.layers[layerIndex].polygons[polygonIndex].id) {
+            document.layers[layerIndex].polygons[polygonIndex].parametricSource = nil
+        }
     }
 
     private func transformDocumentPointIDs(
@@ -1326,7 +2403,10 @@ final class AppController: ObservableObject, @unchecked Sendable {
         let curvePoints = layer.openCurves
             .filter { selection.openCurveIDs.contains($0.id) }
             .flatMap { $0.points.map(\.position) }
-        return centre(of: polygonPoints + curvePoints)
+        let standalonePoints = layer.points
+            .filter { selection.standalonePointIDs.contains($0.id) || selection.pointIDs.contains($0.id) }
+            .map(\.position)
+        return centre(of: polygonPoints + curvePoints + standalonePoints)
     }
 
     private func pivotCentre(
@@ -1362,6 +2442,7 @@ final class AppController: ObservableObject, @unchecked Sendable {
               let currentPosition = document.point(id: pointID)?.position
         else { return }
 
+        clearParametricSourceForSelectedPolygons(in: &document, selection: geometryEditorSelection)
         translateRelationalPointIDs([pointID], by: position - currentPosition, in: &document)
         setGeometryEditorDocument(document)
     }
@@ -1378,9 +2459,38 @@ final class AppController: ObservableObject, @unchecked Sendable {
         let selectedPolygons = geometryEditorSelection.polygonIDs
         let selectedCurves = geometryEditorSelection.openCurveIDs
         guard !selectedPolygons.isEmpty || !selectedCurves.isEmpty else { return }
+        if moveSelectedCleanRegularPolygonParametrically(by: delta, in: &document, layerIndex: layerIndex) {
+            setGeometryEditorDocument(document)
+            return
+        }
         let seedIDs = selectedGeometryObjectPointIDs(in: document.layers[layerIndex], selection: geometryEditorSelection)
+        clearParametricSourceForSelectedPolygons(in: &document, selection: geometryEditorSelection)
         translateRelationalPointIDs(seedIDs, by: delta, in: &document)
         setGeometryEditorDocument(document)
+    }
+
+    private func moveSelectedCleanRegularPolygonParametrically(
+        by delta: Vector2D,
+        in document: inout EditableGeometryDocument,
+        layerIndex: Int
+    ) -> Bool {
+        guard geometryEditorSelection.polygonIDs.count == 1,
+              geometryEditorSelection.openCurveIDs.isEmpty,
+              let polygonID = geometryEditorSelection.polygonIDs.first,
+              let polygonIndex = document.layers[layerIndex].polygons.firstIndex(where: { $0.id == polygonID }),
+              case .regularPolygon(var parameters) = document.layers[layerIndex].polygons[polygonIndex].parametricSource
+        else { return false }
+        parameters.centre = parameters.centre + delta
+        do {
+            document.layers[layerIndex].polygons[polygonIndex] =
+                try document.layers[layerIndex].polygons[polygonIndex].regeneratedFromParametricSource(
+                    .regularPolygon(parameters)
+                )
+            return true
+        } catch {
+            postStatus(error.localizedDescription)
+            return false
+        }
     }
 
     func moveSelectedGeometrySegments(by delta: Vector2D) {
@@ -1397,6 +2507,7 @@ final class AppController: ObservableObject, @unchecked Sendable {
         guard (!selectedPolygons.isEmpty || !selectedCurves.isEmpty), !selectedSegments.isEmpty else { return }
 
         let seedIDs = selectedGeometrySegmentPointIDs(in: document.layers[layerIndex], selection: geometryEditorSelection)
+        clearParametricSourceForSelectedPolygons(in: &document, selection: geometryEditorSelection)
         translateRelationalPointIDs(seedIDs, by: delta, in: &document)
         setGeometryEditorDocument(document)
     }
@@ -1603,6 +2714,407 @@ final class AppController: ObservableObject, @unchecked Sendable {
         geometryEditorAutoWeldSegmentIDs.removeAll()
     }
 
+    private func performGeometryKnifeCut(from lineStart: Vector2D, to lineEnd: Vector2D) {
+        guard var document = geometryEditorDocument else { return }
+        var cutCount = 0
+        var selectedPolygonIDs = Set<EditableGeometryID>()
+        var selectedCurveIDs = Set<EditableGeometryID>()
+
+        let targetLayerID = geometryEditorKnifeCutsAllVisibleLayers ? nil : selectedGeometryEditorLayerID
+        guard geometryEditorKnifeCutsAllVisibleLayers || targetLayerID != nil else {
+            postStatus("Knife: no selected layer")
+            return
+        }
+
+        for layerIndex in document.layers.indices {
+            if let targetLayerID,
+               document.layers[layerIndex].id != targetLayerID {
+                continue
+            }
+            guard document.layers[layerIndex].isVisible,
+                  document.layers[layerIndex].isEditable
+            else { continue }
+
+            var replacementPolygons: [EditableClosedPolygon] = []
+            var polygonIDsToRemove = Set<EditableGeometryID>()
+            for polygon in document.layers[layerIndex].polygons {
+                guard polygon.isVisible,
+                      let pieces = knifePieces(for: polygon, lineStart: lineStart, lineEnd: lineEnd)
+                else { continue }
+                polygonIDsToRemove.insert(polygon.id)
+                replacementPolygons.append(contentsOf: pieces)
+                selectedPolygonIDs.formUnion(pieces.map(\.id))
+                cutCount += 1
+            }
+            if !polygonIDsToRemove.isEmpty {
+                document.layers[layerIndex].polygons.removeAll { polygonIDsToRemove.contains($0.id) }
+                document.layers[layerIndex].polygons.append(contentsOf: replacementPolygons)
+            }
+
+            var replacementCurves: [EditableOpenCurve] = []
+            var curveIDsToRemove = Set<EditableGeometryID>()
+            for curve in document.layers[layerIndex].openCurves {
+                guard curve.isVisible,
+                      let pieces = knifePieces(for: curve, lineStart: lineStart, lineEnd: lineEnd)
+                else { continue }
+                curveIDsToRemove.insert(curve.id)
+                replacementCurves.append(contentsOf: pieces)
+                selectedCurveIDs.formUnion(pieces.map(\.id))
+                cutCount += 1
+            }
+            if !curveIDsToRemove.isEmpty {
+                document.layers[layerIndex].openCurves.removeAll { curveIDsToRemove.contains($0.id) }
+                document.layers[layerIndex].openCurves.append(contentsOf: replacementCurves)
+            }
+        }
+
+        guard cutCount > 0 else {
+            postStatus("Knife: no geometry crossed")
+            return
+        }
+        recordGeometryEditorUndoSnapshot()
+        setGeometryEditorDocument(document)
+        geometryEditorSelection = EditableGeometrySelection(
+            layerID: selectedGeometryEditorLayerID,
+            polygonIDs: selectedPolygonIDs,
+            openCurveIDs: selectedCurveIDs
+        )
+        postStatus("Knife cut \(cutCount) item(s)")
+    }
+
+    private func knifePieces(
+        for polygon: EditableClosedPolygon,
+        lineStart: Vector2D,
+        lineEnd: Vector2D
+    ) -> [EditableClosedPolygon]? {
+        let segments = orderedEditorSegments(for: polygon)
+        let intersections = knifeIntersections(
+            segments: segments,
+            lineStart: lineStart,
+            lineEnd: lineEnd
+        )
+        guard intersections.count >= 2, intersections.count.isMultiple(of: 2) else { return nil }
+
+        var pieces: [EditableClosedPolygon] = []
+        for index in intersections.indices {
+            let next = intersections.index(after: index) == intersections.endIndex
+                ? intersections.startIndex
+                : intersections.index(after: index)
+            let pieceSegments = buildClosedKnifePiece(
+                segments: segments,
+                from: intersections[index],
+                to: intersections[next]
+            )
+            guard pieceSegments.count >= 2,
+                  let piece = editableClosedPolygon(
+                    name: "\(polygon.name) Cut \(pieces.count + 1)",
+                    segments: pieceSegments,
+                    isVisible: polygon.isVisible
+                  )
+            else { continue }
+            pieces.append(piece)
+        }
+        return pieces.count >= 2 ? pieces : nil
+    }
+
+    private func knifePieces(
+        for curve: EditableOpenCurve,
+        lineStart: Vector2D,
+        lineEnd: Vector2D
+    ) -> [EditableOpenCurve]? {
+        let segments = orderedEditorSegments(for: curve)
+        let intersections = knifeIntersections(
+            segments: segments,
+            lineStart: lineStart,
+            lineEnd: lineEnd
+        )
+        guard !intersections.isEmpty else { return nil }
+
+        var boundaries: [GeometryKnifeIntersection] = [
+            GeometryKnifeIntersection(segmentIndex: 0, t: 0, point: segments[0][0])
+        ]
+        boundaries.append(contentsOf: intersections)
+        boundaries.append(
+            GeometryKnifeIntersection(
+                segmentIndex: segments.count - 1,
+                t: 1,
+                point: segments[segments.count - 1][3]
+            )
+        )
+
+        var pieces: [EditableOpenCurve] = []
+        for index in 0..<(boundaries.count - 1) {
+            let pieceSegments = buildOpenKnifePiece(
+                segments: segments,
+                from: boundaries[index],
+                to: boundaries[index + 1]
+            )
+            guard !pieceSegments.isEmpty,
+                  let piece = editableOpenCurve(
+                    name: "\(curve.name) Cut \(pieces.count + 1)",
+                    segments: pieceSegments,
+                    isVisible: curve.isVisible
+                  )
+            else { continue }
+            pieces.append(piece)
+        }
+        return pieces.count >= 2 ? pieces : nil
+    }
+
+    private func orderedEditorSegments(for polygon: EditableClosedPolygon) -> [[Vector2D]] {
+        let pointMap = Dictionary(uniqueKeysWithValues: polygon.points.map { ($0.id, $0.position) })
+        return polygon.segments.compactMap { segment in
+            guard let a0 = pointMap[segment.startAnchorID],
+                  let c0 = pointMap[segment.controlOutID],
+                  let c1 = pointMap[segment.controlInID],
+                  let a1 = pointMap[segment.endAnchorID]
+            else { return nil }
+            return [a0, c0, c1, a1]
+        }
+    }
+
+    private func orderedEditorSegments(for curve: EditableOpenCurve) -> [[Vector2D]] {
+        let pointMap = Dictionary(uniqueKeysWithValues: curve.points.map { ($0.id, $0.position) })
+        return curve.segments.compactMap { segment in
+            guard let a0 = pointMap[segment.startAnchorID],
+                  let c0 = pointMap[segment.controlOutID],
+                  let c1 = pointMap[segment.controlInID],
+                  let a1 = pointMap[segment.endAnchorID]
+            else { return nil }
+            return [a0, c0, c1, a1]
+        }
+    }
+
+    private func knifeIntersections(
+        segments: [[Vector2D]],
+        lineStart: Vector2D,
+        lineEnd: Vector2D
+    ) -> [GeometryKnifeIntersection] {
+        guard segments.count > 0 else { return [] }
+        let a = -(lineEnd.y - lineStart.y)
+        let b = lineEnd.x - lineStart.x
+        let c = -(a * lineStart.x + b * lineStart.y)
+        let lineDelta = lineEnd - lineStart
+        let lineLengthSquared = lineDelta.x * lineDelta.x + lineDelta.y * lineDelta.y
+        guard lineLengthSquared > 1e-12 else { return [] }
+
+        var raw: [GeometryKnifeIntersection] = []
+        for (index, segment) in segments.enumerated() {
+            let distances = segment.map { a * $0.x + b * $0.y + c }
+            findKnifeRoots(
+                distances,
+                tMin: 0,
+                tMax: 1,
+                segmentIndex: index,
+                segment: segment,
+                output: &raw
+            )
+        }
+
+        let filtered = raw
+            .sorted { $0.globalT < $1.globalT }
+            .filter { intersection in
+                let s = ((intersection.point.x - lineStart.x) * lineDelta.x +
+                         (intersection.point.y - lineStart.y) * lineDelta.y) / lineLengthSquared
+                return s >= -0.02 && s <= 1.02
+            }
+
+        var deduped: [GeometryKnifeIntersection] = []
+        for intersection in filtered {
+            guard !deduped.contains(where: { abs($0.globalT - intersection.globalT) < 0.015 }) else { continue }
+            deduped.append(intersection)
+        }
+        return deduped
+    }
+
+    private func findKnifeRoots(
+        _ distances: [Double],
+        tMin: Double,
+        tMax: Double,
+        segmentIndex: Int,
+        segment: [Vector2D],
+        output: inout [GeometryKnifeIntersection]
+    ) {
+        let allPositive = distances.allSatisfy { $0 >= 0 }
+        let allNegative = distances.allSatisfy { $0 <= 0 }
+        if allPositive || allNegative { return }
+        if tMax - tMin < 1e-6 {
+            let t = (tMin + tMax) / 2
+            output.append(
+                GeometryKnifeIntersection(
+                    segmentIndex: segmentIndex,
+                    t: t,
+                    point: BezierMath.point(seg: segment, t: t)
+                )
+            )
+            return
+        }
+
+        let tMid = (tMin + tMax) / 2
+        let d01 = (distances[0] + distances[1]) / 2
+        let d12 = (distances[1] + distances[2]) / 2
+        let d23 = (distances[2] + distances[3]) / 2
+        let d012 = (d01 + d12) / 2
+        let d123 = (d12 + d23) / 2
+        let d0123 = (d012 + d123) / 2
+
+        findKnifeRoots(
+            [distances[0], d01, d012, d0123],
+            tMin: tMin,
+            tMax: tMid,
+            segmentIndex: segmentIndex,
+            segment: segment,
+            output: &output
+        )
+        findKnifeRoots(
+            [d0123, d123, d23, distances[3]],
+            tMin: tMid,
+            tMax: tMax,
+            segmentIndex: segmentIndex,
+            segment: segment,
+            output: &output
+        )
+    }
+
+    private func buildClosedKnifePiece(
+        segments: [[Vector2D]],
+        from start: GeometryKnifeIntersection,
+        to end: GeometryKnifeIntersection
+    ) -> [[Vector2D]] {
+        var piece = pathSegmentsBetween(segments: segments, from: start, to: end, wraps: true)
+        piece.append(BezierMath.connector(from: end.point, to: start.point, cpRatios: Vector2D(x: 1.0 / 3.0, y: 2.0 / 3.0)))
+        return piece
+    }
+
+    private func buildOpenKnifePiece(
+        segments: [[Vector2D]],
+        from start: GeometryKnifeIntersection,
+        to end: GeometryKnifeIntersection
+    ) -> [[Vector2D]] {
+        pathSegmentsBetween(segments: segments, from: start, to: end, wraps: false)
+    }
+
+    private func pathSegmentsBetween(
+        segments: [[Vector2D]],
+        from start: GeometryKnifeIntersection,
+        to end: GeometryKnifeIntersection,
+        wraps: Bool
+    ) -> [[Vector2D]] {
+        guard !segments.isEmpty else { return [] }
+        let startIndex = start.segmentIndex
+        let endIndex = end.segmentIndex
+        var result: [[Vector2D]] = []
+
+        if startIndex == endIndex && start.t < end.t {
+            result.append(extractSubCurve(segments[startIndex], from: start.t, to: end.t))
+            return result
+        }
+
+        result.append(BezierMath.split(seg: segments[startIndex], t: start.t).right)
+        var index = startIndex + 1
+        while index != endIndex {
+            if index >= segments.count {
+                guard wraps else { return result }
+                index = 0
+                if index == endIndex { break }
+            }
+            result.append(segments[index])
+            index += 1
+        }
+        if segments.indices.contains(endIndex) {
+            result.append(BezierMath.split(seg: segments[endIndex], t: end.t).left)
+        }
+        return result.filter { $0[0].distance(to: $0[3]) > 1e-8 }
+    }
+
+    private func extractSubCurve(_ segment: [Vector2D], from t0: Double, to t1: Double) -> [Vector2D] {
+        let right = BezierMath.split(seg: segment, t: t0).right
+        guard t1 < 1.0 - 1e-9 else { return right }
+        let adjusted = (t1 - t0) / (1.0 - t0)
+        return BezierMath.split(seg: right, t: adjusted).left
+    }
+
+    private func editableClosedPolygon(
+        name: String,
+        segments: [[Vector2D]],
+        pressures: [Double]? = nil,
+        isVisible: Bool
+    ) -> EditableClosedPolygon? {
+        guard segments.count >= 2 else { return nil }
+        let firstAnchor = EditableCubicPoint(position: segments[0][0], kind: .anchor)
+        var points = [firstAnchor]
+        var editableSegments: [EditableCubicSegment] = []
+        var previousAnchorID = firstAnchor.id
+
+        for (index, segment) in segments.enumerated() {
+            let controlOut = EditableCubicPoint(position: segment[1], kind: .control)
+            let controlIn = EditableCubicPoint(position: segment[2], kind: .control)
+            let endAnchorID: EditableGeometryID
+            if index == segments.count - 1 && segment[3].distance(to: segments[0][0]) < 1e-7 {
+                endAnchorID = firstAnchor.id
+                points.append(contentsOf: [controlOut, controlIn])
+            } else {
+                let endAnchor = EditableCubicPoint(position: segment[3], kind: .anchor)
+                endAnchorID = endAnchor.id
+                points.append(contentsOf: [controlOut, controlIn, endAnchor])
+            }
+            editableSegments.append(
+                EditableCubicSegment(
+                    startAnchorID: previousAnchorID,
+                    controlOutID: controlOut.id,
+                    controlInID: controlIn.id,
+                    endAnchorID: endAnchorID
+                )
+            )
+            previousAnchorID = endAnchorID
+        }
+
+        return EditableClosedPolygon(
+            name: name,
+            points: points,
+            segments: editableSegments,
+            pressures: pressures ?? Array(repeating: 1.0, count: editableSegments.count),
+            isVisible: isVisible
+        )
+    }
+
+    private func editableOpenCurve(
+        name: String,
+        segments: [[Vector2D]],
+        pressures: [Double]? = nil,
+        isVisible: Bool
+    ) -> EditableOpenCurve? {
+        guard !segments.isEmpty else { return nil }
+        let firstAnchor = EditableCubicPoint(position: segments[0][0], kind: .anchor)
+        var points = [firstAnchor]
+        var editableSegments: [EditableCubicSegment] = []
+        var previousAnchorID = firstAnchor.id
+
+        for segment in segments {
+            let controlOut = EditableCubicPoint(position: segment[1], kind: .control)
+            let controlIn = EditableCubicPoint(position: segment[2], kind: .control)
+            let endAnchor = EditableCubicPoint(position: segment[3], kind: .anchor)
+            points.append(contentsOf: [controlOut, controlIn, endAnchor])
+            editableSegments.append(
+                EditableCubicSegment(
+                    startAnchorID: previousAnchorID,
+                    controlOutID: controlOut.id,
+                    controlInID: controlIn.id,
+                    endAnchorID: endAnchor.id
+                )
+            )
+            previousAnchorID = endAnchor.id
+        }
+
+        return EditableOpenCurve(
+            name: name,
+            points: points,
+            segments: editableSegments,
+            pressures: pressures ?? Array(repeating: 1.0, count: editableSegments.count),
+            isVisible: isVisible
+        )
+    }
+
     private func selectedWeldPointIDs(in document: EditableGeometryDocument? = nil) -> Set<EditableGeometryID> {
         guard let document = document ?? geometryEditorDocument,
               let layerID = geometryEditorSelection.layerID,
@@ -1760,10 +3272,22 @@ final class AppController: ObservableObject, @unchecked Sendable {
         if geometryEditorSelection.pointIDs.isEmpty && geometryEditorSelection.segmentIDs.isEmpty {
             let selectedPolygons = geometryEditorSelection.polygonIDs
             let selectedCurves = geometryEditorSelection.openCurveIDs
-            guard !selectedPolygons.isEmpty || !selectedCurves.isEmpty else { return }
+            let selectedStandalonePoints = geometryEditorSelection.standalonePointIDs
+            guard !selectedPolygons.isEmpty || !selectedCurves.isEmpty || !selectedStandalonePoints.isEmpty else { return }
             recordGeometryEditorUndoSnapshot()
             document.layers[layerIndex].polygons.removeAll { selectedPolygons.contains($0.id) }
             document.layers[layerIndex].openCurves.removeAll { selectedCurves.contains($0.id) }
+            document.layers[layerIndex].points.removeAll { selectedStandalonePoints.contains($0.id) }
+            geometryEditorSelection = .empty
+            setGeometryEditorDocument(document)
+            return
+        }
+
+        let selectedStandalonePoints = geometryEditorSelection.pointIDs
+        if !selectedStandalonePoints.isEmpty,
+           selectedStandalonePoints.allSatisfy({ pointID in document.layers[layerIndex].points.contains { $0.id == pointID } }) {
+            recordGeometryEditorUndoSnapshot()
+            document.layers[layerIndex].points.removeAll { selectedStandalonePoints.contains($0.id) }
             geometryEditorSelection = .empty
             setGeometryEditorDocument(document)
             return
@@ -1823,6 +3347,7 @@ final class AppController: ObservableObject, @unchecked Sendable {
         }
         let polygonIDs = Set(layer.polygons.map(\.id))
         let openCurveIDs = Set(layer.openCurves.map(\.id))
+        let standalonePointIDs = Set(layer.points.map(\.id))
         var pointIDs = Set<EditableGeometryID>()
         var segmentIDs = Set<EditableGeometryID>()
         for polygon in layer.polygons where geometryEditorSelection.polygonIDs.contains(polygon.id) {
@@ -1833,11 +3358,16 @@ final class AppController: ObservableObject, @unchecked Sendable {
             pointIDs.formUnion(curve.points.map(\.id))
             segmentIDs.formUnion(curve.segments.map(\.id))
         }
+        pointIDs.formUnion(standalonePointIDs)
         geometryEditorSelection.polygonIDs.formIntersection(polygonIDs)
         geometryEditorSelection.openCurveIDs.formIntersection(openCurveIDs)
+        geometryEditorSelection.standalonePointIDs.formIntersection(standalonePointIDs)
         geometryEditorSelection.pointIDs.formIntersection(pointIDs)
         geometryEditorSelection.segmentIDs.formIntersection(segmentIDs)
-        if geometryEditorSelection.polygonIDs.isEmpty && geometryEditorSelection.openCurveIDs.isEmpty {
+        if geometryEditorSelection.polygonIDs.isEmpty &&
+            geometryEditorSelection.openCurveIDs.isEmpty &&
+            geometryEditorSelection.standalonePointIDs.isEmpty &&
+            geometryEditorSelection.pointIDs.isEmpty {
             geometryEditorSelection = .empty
         }
     }

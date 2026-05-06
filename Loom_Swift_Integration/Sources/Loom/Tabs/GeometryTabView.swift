@@ -356,7 +356,7 @@ struct GeometryTabView: View {
         return (
             hasPolygons: document.layers.contains { !$0.polygons.isEmpty },
             hasCurves: document.layers.contains { !$0.openCurves.isEmpty },
-            hasPoints: false
+            hasPoints: document.layers.contains { !$0.points.isEmpty }
         )
     }
 
@@ -774,6 +774,8 @@ private struct EditableGeometryCanvas: View {
     @State private var activePolygonDragTarget: GeometryPolygonHit?
     @State private var activeOpenCurveDragTarget: GeometryOpenCurveHit?
     @State private var activeSegmentDragTarget: GeometrySegmentHit?
+    @State private var activeMeshAnchorIndex: Int?
+    @State private var activeMeshPreviewDrag = false
     @State private var lastDragWorldPoint: Vector2D?
     @State private var rubberBandStart: CGPoint?
     @State private var rubberBandEnd: CGPoint?
@@ -795,6 +797,9 @@ private struct EditableGeometryCanvas: View {
                 DragGesture(minimumDistance: 0)
                     .onChanged { value in
                         switch controller.geometryEditorTool {
+                        case .standalonePoints:
+                            return
+
                         case .points:
                             if activeDragTarget == nil {
                                 activeDragTarget = hitTestPoint(at: value.location, canvasSize: canvasSize)
@@ -911,16 +916,77 @@ private struct EditableGeometryCanvas: View {
                                 controller.appendGeometryFreehandPoint(point, pressure: pressure)
                             }
 
+                        case .meshExtend:
+                            let point = unproject(value.location, canvasSize: canvasSize)
+                            if controller.geometryEditorMeshExtendDraft == nil {
+                                if let target = hitTestSegment(at: value.startLocation, canvasSize: canvasSize) {
+                                    controller.beginGeometryMeshExtend(
+                                        layerID: target.layerID,
+                                        polygonID: target.polygonID,
+                                        openCurveID: target.openCurveID,
+                                        segmentID: target.segmentID,
+                                        apex: point
+                                    )
+                                }
+                            } else if controller.geometryEditorMeshExtendDraft?.isPreviewActive == false {
+                                if activeMeshAnchorIndex == nil && !activeMeshPreviewDrag {
+                                    activeMeshAnchorIndex = hitTestMeshConfirmedAnchor(
+                                        at: value.startLocation,
+                                        canvasSize: canvasSize
+                                    )
+                                }
+                                if let index = activeMeshAnchorIndex {
+                                    controller.updateGeometryMeshExtendConfirmedAnchor(index: index, to: point)
+                                } else {
+                                    controller.beginGeometryMeshExtendPreviewDrag(
+                                        from: unproject(value.startLocation, canvasSize: canvasSize),
+                                        to: point
+                                    )
+                                    activeMeshPreviewDrag = controller.isGeometryMeshExtendPreviewActive
+                                }
+                            } else {
+                                controller.updateGeometryMeshExtendDraft(apex: point)
+                                activeMeshPreviewDrag = true
+                            }
+
                         case .pointByPoint:
                             return
+
+                        case .knife:
+                            let point = unproject(value.location, canvasSize: canvasSize)
+                            if controller.geometryEditorKnifeLine == nil {
+                                controller.beginGeometryKnifeLine(at: unproject(value.startLocation, canvasSize: canvasSize))
+                            }
+                            controller.updateGeometryKnifeLine(to: point)
                         }
                     }
                     .onEnded { value in
                         switch controller.geometryEditorTool {
+                        case .standalonePoints:
+                            controller.createStandalonePointGeometry(at: unproject(value.location, canvasSize: canvasSize))
+
                         case .pointByPoint:
                             controller.appendGeometryDraftPoint(unproject(value.location, canvasSize: canvasSize))
                         case .freehand:
                             controller.finaliseGeometryFreehandStroke()
+                        case .meshExtend:
+                            if controller.geometryEditorMeshExtendDraft == nil,
+                               let target = hitTestSegment(at: value.location, canvasSize: canvasSize) {
+                                controller.beginGeometryMeshExtend(
+                                    layerID: target.layerID,
+                                    polygonID: target.polygonID,
+                                    openCurveID: target.openCurveID,
+                                    segmentID: target.segmentID,
+                                    apex: unproject(value.location, canvasSize: canvasSize)
+                                )
+                            } else if activeMeshPreviewDrag {
+                                controller.continueGeometryMeshExtendDraft()
+                            }
+                            activeMeshAnchorIndex = nil
+                            activeMeshPreviewDrag = false
+                            activeSegmentDragTarget = nil
+                            lastDragWorldPoint = nil
+                            dragUndoRecorded = false
                         case .points:
                             if activeDragTarget == nil {
                                 controller.clearGeometryEditorSelection()
@@ -993,8 +1059,26 @@ private struct EditableGeometryCanvas: View {
                             lastDragWorldPoint = nil
                             controller.executeGeometryEditorPendingAutoWelds()
                             dragUndoRecorded = false
+                        case .knife:
+                            controller.updateGeometryKnifeLine(to: unproject(value.location, canvasSize: canvasSize))
+                            controller.finishGeometryKnifeCut()
                         }
                     }
+            )
+            .background(
+                GeometryKeyCaptureView { event in
+                    guard controller.isGeometryEditorActive else { return false }
+                    let key = event.charactersIgnoringModifiers?.lowercased() ?? ""
+                    if key == "p" {
+                        controller.finaliseGeometryDraftPolygon()
+                        return true
+                    }
+                    if key == "\u{1B}" {
+                        controller.cancelGeometryMeshExtendDraft()
+                        return true
+                    }
+                    return false
+                }
             )
             .position(x: proxy.size.width / 2, y: proxy.size.height / 2)
         }
@@ -1035,12 +1119,22 @@ private struct EditableGeometryCanvas: View {
                     project: { project($0, scale: scale, origin: origin) }
                 )
             }
+            for point in layer.points where point.isVisible {
+                draw(
+                    standalonePoint: point,
+                    isEditable: layerCanEdit(layer),
+                    ctx: ctx,
+                    project: { project($0, scale: scale, origin: origin) }
+                )
+            }
         }
 
         if selectedLayerCanEdit {
             drawDraft(ctx: ctx, project: { project($0, scale: scale, origin: origin) })
+            drawMeshExtendPreview(ctx: ctx, project: { project($0, scale: scale, origin: origin) })
             drawFreehandPreview(ctx: ctx, project: { project($0, scale: scale, origin: origin) })
         }
+        drawKnifeLine(ctx: ctx, project: { project($0, scale: scale, origin: origin) })
         drawRubberBand(ctx: ctx)
     }
 
@@ -1231,6 +1325,48 @@ private struct EditableGeometryCanvas: View {
         }
     }
 
+    private func draw(
+        standalonePoint point: EditableStandalonePoint,
+        isEditable: Bool,
+        ctx: GraphicsContext,
+        project: (Vector2D) -> CGPoint
+    ) {
+        let location = project(point.position)
+        let color = isEditable ? Color.yellow : Color.gray.opacity(0.75)
+        let radius: CGFloat = 4.0
+        ctx.stroke(
+            Path(ellipseIn: CGRect(
+                x: location.x - radius - 2,
+                y: location.y - radius - 2,
+                width: (radius + 2) * 2,
+                height: (radius + 2) * 2
+            )),
+            with: .color(color.opacity(0.85)),
+            lineWidth: 1.2
+        )
+        ctx.fill(
+            Path(ellipseIn: CGRect(
+                x: location.x - radius,
+                y: location.y - radius,
+                width: radius * 2,
+                height: radius * 2
+            )),
+            with: .color(color)
+        )
+        if isEditable && controller.geometryEditorSelection.pointIDs.contains(point.id) {
+            ctx.stroke(
+                Path(ellipseIn: CGRect(
+                    x: location.x - radius - 5,
+                    y: location.y - radius - 5,
+                    width: (radius + 5) * 2,
+                    height: (radius + 5) * 2
+                )),
+                with: .color(Color.white),
+                lineWidth: 1.2
+            )
+        }
+    }
+
     private func isWelded(_ pointID: EditableGeometryID) -> Bool {
         document.weldedPointIDs(containing: pointID).count > 1
     }
@@ -1291,6 +1427,79 @@ private struct EditableGeometryCanvas: View {
         }
     }
 
+    private func drawMeshExtendPreview(ctx: GraphicsContext, project: (Vector2D) -> CGPoint) {
+        guard let draft = controller.geometryEditorMeshExtendDraft else { return }
+        let start = project(draft.start)
+        let end = project(draft.end)
+        let stableVertices = [draft.start, draft.end] + draft.confirmedAnchors
+        var previewVertices = stableVertices
+        if draft.isPreviewActive {
+            let insertionIndex = max(0, min(draft.confirmedAnchors.count, draft.activeEdgeStartIndex - 1))
+            previewVertices.insert(draft.apex, at: insertionIndex + 2)
+        }
+        var base = Path()
+        base.move(to: start)
+        base.addCurve(
+            to: end,
+            control1: project(draft.controlOut),
+            control2: project(draft.controlIn)
+        )
+        ctx.stroke(base, with: .color(Color.white.opacity(0.9)), lineWidth: 3.0)
+        ctx.stroke(base, with: .color(Color.orange), lineWidth: 1.6)
+
+        var preview = Path()
+        preview.move(to: end)
+        for vertex in previewVertices.dropFirst(2) {
+            preview.addLine(to: project(vertex))
+        }
+        preview.addLine(to: start)
+        ctx.stroke(
+            preview,
+            with: .color(Color.orange.opacity(controller.canFinaliseGeometryMeshExtend ? 0.85 : 0.35)),
+            style: StrokeStyle(lineWidth: 1.4, lineCap: .round, lineJoin: .round, dash: [6, 4])
+        )
+        var fill = Path()
+        fill.move(to: start)
+        for vertex in previewVertices.dropFirst() {
+            fill.addLine(to: project(vertex))
+        }
+        fill.closeSubpath()
+        if draft.isPreviewActive || !draft.confirmedAnchors.isEmpty {
+            ctx.fill(fill, with: .color(Color.orange.opacity(0.08)))
+        }
+        for point in draft.confirmedAnchors {
+            let location = project(point)
+            ctx.fill(
+                Path(ellipseIn: CGRect(x: location.x - 4, y: location.y - 4, width: 8, height: 8)),
+                with: .color(Color.red.opacity(0.85))
+            )
+        }
+        for index in 1..<stableVertices.count {
+            let nextIndex = index == stableVertices.count - 1 ? 0 : index + 1
+            let handle = project(Vector2D(
+                x: (stableVertices[index].x + stableVertices[nextIndex].x) / 2,
+                y: (stableVertices[index].y + stableVertices[nextIndex].y) / 2
+            ))
+            let isActive = draft.activeEdgeStartIndex == index
+            ctx.fill(
+                Path(ellipseIn: CGRect(x: handle.x - 6, y: handle.y - 6, width: 12, height: 12)),
+                with: .color(Color.red.opacity(isActive ? 1.0 : 0.65))
+            )
+            ctx.stroke(
+                Path(ellipseIn: CGRect(x: handle.x - 8, y: handle.y - 8, width: 16, height: 16)),
+                with: .color(Color.white.opacity(isActive ? 0.9 : 0.45)),
+                lineWidth: 1.2
+            )
+        }
+        if draft.isPreviewActive {
+            let apex = project(draft.apex)
+            ctx.fill(
+                Path(ellipseIn: CGRect(x: apex.x - 5, y: apex.y - 5, width: 10, height: 10)),
+                with: .color(Color.red)
+            )
+        }
+    }
+
     private func drawFreehandPreview(ctx: GraphicsContext, project: (Vector2D) -> CGPoint) {
         let points = controller.geometryEditorFreehandPoints
         guard points.count >= 2 else { return }
@@ -1313,6 +1522,28 @@ private struct EditableGeometryCanvas: View {
                 Path(ellipseIn: CGRect(x: start.x - 8, y: start.y - 8, width: 16, height: 16)),
                 with: .color(Color(red: 0.95, green: 0.58, blue: 1.0)),
                 lineWidth: 1.4
+            )
+        }
+    }
+
+    private func drawKnifeLine(ctx: GraphicsContext, project: (Vector2D) -> CGPoint) {
+        guard let line = controller.geometryEditorKnifeLine,
+              line.start.distance(to: line.end) > 0.000_1
+        else { return }
+        let start = project(line.start)
+        let end = project(line.end)
+        var path = Path()
+        path.move(to: start)
+        path.addLine(to: end)
+        ctx.stroke(
+            path,
+            with: .color(Color.red.opacity(0.85)),
+            style: StrokeStyle(lineWidth: 1.5, lineCap: .round, dash: [6, 4])
+        )
+        for point in [start, end] {
+            ctx.fill(
+                Path(ellipseIn: CGRect(x: point.x - 4, y: point.y - 4, width: 8, height: 8)),
+                with: .color(Color.red.opacity(0.9))
             )
         }
     }
@@ -1351,7 +1582,7 @@ private struct EditableGeometryCanvas: View {
                     let hitRadius: CGFloat = point.kind == .anchor ? 10 : 8
                     if distance <= hitRadius, distance < bestDistance {
                         bestDistance = distance
-                        bestHit = GeometryPointHit(layerID: layer.id, polygonID: polygon.id, openCurveID: nil, pointID: point.id)
+                        bestHit = GeometryPointHit(layerID: layer.id, polygonID: polygon.id, openCurveID: nil, standalonePointID: nil, pointID: point.id)
                     }
                 }
             }
@@ -1362,13 +1593,37 @@ private struct EditableGeometryCanvas: View {
                     let hitRadius: CGFloat = point.kind == .anchor ? 10 : 8
                     if distance <= hitRadius, distance < bestDistance {
                         bestDistance = distance
-                        bestHit = GeometryPointHit(layerID: layer.id, polygonID: nil, openCurveID: curve.id, pointID: point.id)
+                        bestHit = GeometryPointHit(layerID: layer.id, polygonID: nil, openCurveID: curve.id, standalonePointID: nil, pointID: point.id)
                     }
+                }
+            }
+            for point in layer.points where point.isVisible {
+                let screen = project(point.position, scale: scale, origin: .zero)
+                let distance = hypot(screen.x - location.x, screen.y - location.y)
+                if distance <= 11, distance < bestDistance {
+                    bestDistance = distance
+                    bestHit = GeometryPointHit(layerID: layer.id, polygonID: nil, openCurveID: nil, standalonePointID: point.id, pointID: point.id)
                 }
             }
         }
 
         return bestHit
+    }
+
+    private func hitTestMeshConfirmedAnchor(at location: CGPoint, canvasSize: CGFloat) -> Int? {
+        guard let draft = controller.geometryEditorMeshExtendDraft else { return nil }
+        let scale = canvasSize / 1040
+        var bestIndex: Int?
+        var bestDistance = CGFloat.greatestFiniteMagnitude
+        for (index, anchor) in draft.confirmedAnchors.enumerated() {
+            let screen = project(anchor, scale: scale, origin: .zero)
+            let distance = hypot(screen.x - location.x, screen.y - location.y)
+            if distance <= 12, distance < bestDistance {
+                bestDistance = distance
+                bestIndex = index
+            }
+        }
+        return bestIndex
     }
 
     private func hitTestSegment(at location: CGPoint, canvasSize: CGFloat) -> GeometrySegmentHit? {
@@ -1627,6 +1882,13 @@ private struct EditableGeometryCanvas: View {
                 additive: additive,
                 toggle: toggle
             )
+        } else if let standalonePointID = target.standalonePointID {
+            controller.selectGeometryStandalonePoint(
+                layerID: target.layerID,
+                pointID: standalonePointID,
+                additive: additive,
+                toggle: toggle
+            )
         }
     }
 
@@ -1828,6 +2090,7 @@ private struct GeometryPointHit: Equatable {
     var layerID: EditableGeometryID
     var polygonID: EditableGeometryID?
     var openCurveID: EditableGeometryID?
+    var standalonePointID: EditableGeometryID?
     var pointID: EditableGeometryID
 }
 
@@ -1846,6 +2109,43 @@ private struct GeometrySegmentHit: Equatable {
     var polygonID: EditableGeometryID?
     var openCurveID: EditableGeometryID?
     var segmentID: EditableGeometryID
+}
+
+private struct GeometryKeyCaptureView: NSViewRepresentable {
+    var handle: (NSEvent) -> Bool
+
+    func makeNSView(context: Context) -> KeyView {
+        let view = KeyView()
+        view.handle = handle
+        return view
+    }
+
+    func updateNSView(_ nsView: KeyView, context: Context) {
+        nsView.handle = handle
+        DispatchQueue.main.async {
+            nsView.window?.makeFirstResponder(nsView)
+        }
+    }
+
+    final class KeyView: NSView {
+        var handle: ((NSEvent) -> Bool)?
+
+        override var acceptsFirstResponder: Bool { true }
+
+        override func viewDidMoveToWindow() {
+            super.viewDidMoveToWindow()
+            DispatchQueue.main.async {
+                self.window?.makeFirstResponder(self)
+            }
+        }
+
+        override func keyDown(with event: NSEvent) {
+            if handle?(event) == true {
+                return
+            }
+            super.keyDown(with: event)
+        }
+    }
 }
 
 // MARK: - Wireframe canvas
@@ -1882,10 +2182,10 @@ private struct WireframeCanvas: View {
         let h       = Double(size.height)
         let scale   = min(w / paddedW, h / paddedH)
         let ox      = (w - paddedW * scale) / 2 - (minX - pad) * scale
-        let oy      = (h - paddedH * scale) / 2 - (minY - pad) * scale
+        let oy      = (h - paddedH * scale) / 2 + (maxY + pad) * scale
 
         func sc(_ v: Vector2D) -> CGPoint {
-            CGPoint(x: v.x * scale + ox, y: v.y * scale + oy)
+            CGPoint(x: v.x * scale + ox, y: oy - v.y * scale)
         }
 
         for poly in polygons {

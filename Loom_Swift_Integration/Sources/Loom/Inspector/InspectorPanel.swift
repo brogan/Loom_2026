@@ -403,6 +403,7 @@ private struct GeometryEditorShellInspector: View {
     @State private var viewCollapsed = false
     @State private var deleteCollapsed = false
     @State private var fileCollapsed = false
+    @State private var parametricCollapsed = false
     @State private var scaleAxis = "XY"
     @State private var scaleSliderValue = 0.0
     @State private var rotateSliderValue = 0.0
@@ -416,14 +417,36 @@ private struct GeometryEditorShellInspector: View {
                 InspectorRow(label: "Anchors", value: "\(controller.selectedGeometryAnchorCount)")
             }
 
+            if let parameters = controller.selectedRegularPolygonParameters {
+                InspectorSection("Regular Polygon", isCollapsed: $parametricCollapsed) {
+                    regularPolygonParametersSection(parameters)
+                }
+            }
+
             InspectorSection("Create", isCollapsed: $createCollapsed) {
                 iconRow {
-                    iconButton(help: "Create points", disabled: true) { PointCircleIcon() }
+                    iconButton(
+                        help: "Create standalone points",
+                        disabled: !controller.selectedGeometryEditorLayerCanEditForUI,
+                        selected: controller.geometryEditorTool == .standalonePoints
+                    ) {
+                        PointCircleIcon()
+                    } action: {
+                        controller.startStandalonePointGeometryCreation()
+                    }
                     Spacer()
                 }
                 iconRow {
-                    iconButton(help: "Create oval", disabled: true) { OvalGeometryIcon() }
-                    iconButton(help: "Create regular polygon", disabled: true) { Image(systemName: "star").font(.system(size: 15)) }
+                    iconButton(help: "Create oval") {
+                        OvalGeometryIcon()
+                    } action: {
+                        controller.createOvalGeometry()
+                    }
+                    iconButton(help: "Create regular polygon") {
+                        Image(systemName: "star").font(.system(size: 15))
+                    } action: {
+                        controller.createRegularPolygonGeometry()
+                    }
                     Spacer()
                 }
                 iconRow {
@@ -458,8 +481,30 @@ private struct GeometryEditorShellInspector: View {
                     Spacer()
                 }
                 iconRow {
-                    iconButton(help: "Mesh build", disabled: true) { Image(systemName: "square.grid.3x3").font(.system(size: 15)) }
-                    iconButton(help: "Bitmap to polygon", disabled: true) { Image(systemName: "person.crop.rectangle").font(.system(size: 15)) }
+                    iconButton(
+                        help: "Mesh extend: drag from an edge, release to add a temporary vertex, drag temporary vertices to adjust, P or Finalise Polygon to commit. Click again to leave mesh mode.",
+                        disabled: !controller.selectedGeometryEditorLayerCanEditForUI,
+                        selected: controller.geometryEditorTool == .meshExtend
+                    ) {
+                        Image(systemName: "square.grid.3x3").font(.system(size: 15))
+                    } action: {
+                        controller.startMeshExtendGeometryCreation()
+                    }
+                    iconButton(help: "Fill triangle from two connected selected edges", disabled: !controller.canFillSelectedGeometryTriangle) {
+                        Image(systemName: "triangle").font(.system(size: 15))
+                    } action: {
+                        controller.fillSelectedGeometryTriangle()
+                    }
+                    iconButton(help: "Fill quad from two connected selected edges", disabled: !controller.canFillSelectedGeometryQuad) {
+                        Image(systemName: "square").font(.system(size: 15))
+                    } action: {
+                        controller.fillSelectedGeometryQuad()
+                    }
+                    iconButton(help: "Fill selected closed mesh hole", disabled: !controller.canFillSelectedGeometryHole) {
+                        Image(systemName: "square.dashed").font(.system(size: 15))
+                    } action: {
+                        controller.fillSelectedGeometryHole()
+                    }
                     Spacer()
                 }
                 iconRow {
@@ -552,7 +597,23 @@ private struct GeometryEditorShellInspector: View {
                     } action: {
                         controller.duplicateSelectedGeometry()
                     }
-                    iconButton(help: "Knife", disabled: true) { Image(systemName: "scissors").font(.system(size: 15)) }
+                    iconButton(
+                        help: "Knife: drag a cut line through polygons or open curves. Click again to leave knife mode.",
+                        disabled: !controller.selectedGeometryEditorLayerCanEditForUI,
+                        selected: controller.geometryEditorTool == .knife
+                    ) {
+                        Image(systemName: "scissors").font(.system(size: 15))
+                    } action: {
+                        controller.startKnifeGeometryCut()
+                    }
+                    iconButton(
+                        help: "Knife cuts all visible editable layers",
+                        selected: controller.geometryEditorKnifeCutsAllVisibleLayers
+                    ) {
+                        KnifeAllLayersIcon()
+                    } action: {
+                        controller.geometryEditorKnifeCutsAllVisibleLayers.toggle()
+                    }
                     iconButton(help: "Intersect", disabled: true) { Image(systemName: "circle.grid.cross").font(.system(size: 15)) }
                     Spacer()
                 }
@@ -673,6 +734,99 @@ private struct GeometryEditorShellInspector: View {
             if rotateSliderValue != 0 {
                 controller.updateRotateTransformGesture(sliderValue: rotateSliderValue, pivot: transformPivot)
             }
+        }
+    }
+
+    @ViewBuilder
+    private func regularPolygonParametersSection(_ parameters: EditableRegularPolygonParameters) -> some View {
+        InspectorField("Sides") {
+            Stepper(
+                "\(parameters.sides)",
+                value: Binding(
+                    get: { controller.selectedRegularPolygonParameters?.sides ?? parameters.sides },
+                    set: { newValue in
+                        controller.updateSelectedRegularPolygonParameters { $0.sides = newValue }
+                    }
+                ),
+                in: 3...64
+            )
+            .font(.system(size: 12))
+            .help("Regular polygon sides")
+        }
+        InspectorField("Radius") {
+            Slider(
+                value: Binding(
+                    get: { controller.selectedRegularPolygonParameters?.radius ?? parameters.radius },
+                    set: { newValue in
+                        controller.updateSelectedRegularPolygonParameters { $0.radius = newValue }
+                    }
+                ),
+                in: 0.02...0.8
+            )
+            Text(String(format: "%.2f", parameters.radius))
+                .font(.system(size: 11, design: .monospaced))
+                .frame(width: 34, alignment: .trailing)
+        }
+        InspectorField("Inner") {
+            Slider(
+                value: Binding(
+                    get: { controller.selectedRegularPolygonParameters?.innerRadius ?? parameters.innerRadius },
+                    set: { newValue in
+                        controller.updateSelectedRegularPolygonParameters { $0.innerRadius = newValue }
+                    }
+                ),
+                in: 0.05...1.0
+            )
+            Text(String(format: "%.2f", parameters.innerRadius))
+                .font(.system(size: 11, design: .monospaced))
+                .frame(width: 34, alignment: .trailing)
+        }
+        InspectorField("Scale X") {
+            Slider(
+                value: Binding(
+                    get: { controller.selectedRegularPolygonParameters?.scaleX ?? parameters.scaleX },
+                    set: { newValue in
+                        controller.updateSelectedRegularPolygonParameters { $0.scaleX = newValue }
+                    }
+                ),
+                in: 0.1...3.0
+            )
+            Text(String(format: "%.2f", parameters.scaleX))
+                .font(.system(size: 11, design: .monospaced))
+                .frame(width: 34, alignment: .trailing)
+        }
+        InspectorField("Scale Y") {
+            Slider(
+                value: Binding(
+                    get: { controller.selectedRegularPolygonParameters?.scaleY ?? parameters.scaleY },
+                    set: { newValue in
+                        controller.updateSelectedRegularPolygonParameters { $0.scaleY = newValue }
+                    }
+                ),
+                in: 0.1...3.0
+            )
+            Text(String(format: "%.2f", parameters.scaleY))
+                .font(.system(size: 11, design: .monospaced))
+                .frame(width: 34, alignment: .trailing)
+        }
+        InspectorField("Rotation") {
+            Slider(
+                value: Binding(
+                    get: {
+                        let current = controller.selectedRegularPolygonParameters?.rotationRadians ?? parameters.rotationRadians
+                        return current * 180.0 / .pi
+                    },
+                    set: { newValue in
+                        controller.updateSelectedRegularPolygonParameters {
+                            $0.rotationRadians = newValue * .pi / 180.0
+                        }
+                    }
+                ),
+                in: -180...180
+            )
+            Text("\(Int((parameters.rotationRadians * 180.0 / .pi).rounded()))")
+                .font(.system(size: 11, design: .monospaced))
+                .frame(width: 34, alignment: .trailing)
         }
     }
 
@@ -859,6 +1013,37 @@ private struct PointByPointIcon: View {
     }
 }
 
+private struct KnifeAllLayersIcon: View {
+    var body: some View {
+        ZStack {
+            Image(systemName: "scissors")
+                .font(.system(size: 14))
+            GeometryReader { proxy in
+                let rect = proxy.frame(in: .local)
+                let x = rect.midX
+                let top = rect.minY + rect.height * 0.12
+                let bottom = rect.maxY - rect.height * 0.12
+                Path { path in
+                    path.move(to: CGPoint(x: x, y: top + rect.height * 0.12))
+                    path.addLine(to: CGPoint(x: x, y: bottom - rect.height * 0.12))
+
+                    path.move(to: CGPoint(x: x, y: top))
+                    path.addLine(to: CGPoint(x: x - rect.width * 0.10, y: top + rect.height * 0.14))
+                    path.move(to: CGPoint(x: x, y: top))
+                    path.addLine(to: CGPoint(x: x + rect.width * 0.10, y: top + rect.height * 0.14))
+
+                    path.move(to: CGPoint(x: x, y: bottom))
+                    path.addLine(to: CGPoint(x: x - rect.width * 0.10, y: bottom - rect.height * 0.14))
+                    path.move(to: CGPoint(x: x, y: bottom))
+                    path.addLine(to: CGPoint(x: x + rect.width * 0.10, y: bottom - rect.height * 0.14))
+                }
+                .stroke(style: StrokeStyle(lineWidth: 1.4, lineCap: .round, lineJoin: .round))
+            }
+        }
+        .padding(2)
+    }
+}
+
 // MARK: - Quick Setup section
 
 private struct QuickSetupLayerOption: Identifiable, Hashable {
@@ -980,6 +1165,12 @@ private struct QuickSetupSection: View {
         .onChange(of: qsLayerTargetID) { _, _ in
             applyRecommendedNames(overwrite: true)
         }
+        .onChange(of: sourceIsCleanParametricRegularPolygon) { _, isCleanParametricRegularPolygon in
+            if isCleanParametricRegularPolygon {
+                qsSubdivSetName = Self.noSubdivisionName
+                qsRendererMode = .stroked
+            }
+        }
         .onChange(of: qsRendererSetName) { _, _ in
             if !rendererOptions.contains(qsRendererName) {
                 qsRendererName = recommendedRendererName
@@ -1062,6 +1253,7 @@ private struct QuickSetupSection: View {
         let spriteName = clean(qsSpriteName)
         let rendererSetName = clean(qsRendererSetName)
         let rendererName = clean(qsRendererName)
+        let rendererMode = recommendedQuickSetupRendererMode
 
         controller.updateProjectConfig { cfg in
             upsertLayerTargetPolygonSet(in: &cfg, polygonSetName: polygonSetName)
@@ -1101,13 +1293,15 @@ private struct QuickSetupSection: View {
 
             let renderer = Renderer(
                 name: rendererName,
-                mode: qsRendererMode,
+                mode: rendererMode,
                 strokeWidth: 1.0,
                 strokeColor: .black,
                 fillColor: LoomColor(r: 220, g: 220, b: 220)
             )
-            if !cfg.renderingConfig.library.rendererSets[rendererSetIndex].renderers
-                .contains(where: { $0.name == rendererName }) {
+            if let rendererIndex = cfg.renderingConfig.library.rendererSets[rendererSetIndex].renderers
+                .firstIndex(where: { $0.name == rendererName }) {
+                cfg.renderingConfig.library.rendererSets[rendererSetIndex].renderers[rendererIndex] = renderer
+            } else {
                 cfg.renderingConfig.library.rendererSets[rendererSetIndex].renderers.append(renderer)
             }
 
@@ -1227,7 +1421,10 @@ private struct QuickSetupSection: View {
 
     private var recommendedSubdivSetName: String { "\(sourceNameStem)_Subdivide" }
     private var recommendedQuickSetupSubdivSetName: String {
-        sourceSupportsSubdivision ? recommendedSubdivSetName : Self.noSubdivisionName
+        if sourceIsCleanParametricRegularPolygon {
+            return Self.noSubdivisionName
+        }
+        return sourceSupportsSubdivision ? recommendedSubdivSetName : Self.noSubdivisionName
     }
     private var recommendedShapeSetName: String { "\(sourceNameStem)_Shapes" }
     private var recommendedShapeName: String { "\(sourceNameStem)_Shape" }
@@ -1235,6 +1432,9 @@ private struct QuickSetupSection: View {
     private var recommendedSpriteName: String { "\(sourceNameStem)_Sprite" }
     private var recommendedRendererSetName: String { "\(sourceNameStem)_Renderers" }
     private var recommendedRendererName: String { "\(sourceNameStem)_Renderer" }
+    private var recommendedQuickSetupRendererMode: RendererMode {
+        sourceIsCleanParametricRegularPolygon ? .stroked : qsRendererMode
+    }
 
     private var layerOptions: [QuickSetupLayerOption] {
         var options = [
@@ -1294,6 +1494,28 @@ private struct QuickSetupSection: View {
         return document.layers.contains { layer in
             layer.isVisible && layer.polygons.contains(where: { $0.isVisible })
         }
+    }
+
+    private var sourceIsCleanParametricRegularPolygon: Bool {
+        guard folder == "polygonSets",
+              let document = editableGeometryDocument
+        else { return false }
+        let visiblePolygons: [EditableClosedPolygon]
+        if let selectedLayer = selectedLayerOption,
+           let layerID = selectedLayer.layerID {
+            visiblePolygons = document.layers
+                .first(where: { $0.id == layerID })?
+                .polygons
+                .filter(\.isVisible) ?? []
+        } else {
+            visiblePolygons = document.layers.flatMap { layer in
+                layer.isVisible ? layer.polygons.filter(\.isVisible) : []
+            }
+        }
+        guard visiblePolygons.count == 1,
+              case .regularPolygon = visiblePolygons[0].parametricSource
+        else { return false }
+        return true
     }
 
     private var subdivisionSetOptions: [String] {

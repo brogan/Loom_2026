@@ -2,6 +2,16 @@ import Foundation
 
 public typealias EditableGeometryID = UUID
 
+private extension Vector2D {
+    func runtimeWorldToEditor() -> Vector2D {
+        Vector2D(x: x, y: -y)
+    }
+
+    func editorToRuntimeWorld() -> Vector2D {
+        Vector2D(x: x, y: -y)
+    }
+}
+
 public enum EditablePointKind: String, Codable, Equatable, Sendable {
     case anchor
     case control
@@ -71,6 +81,38 @@ public enum EditableAnchorDeletionResult: Equatable, Sendable {
     case openCurve(EditableOpenCurve)
 }
 
+public struct EditableRegularPolygonParameters: Codable, Equatable, Sendable {
+    public var sides: Int
+    public var centre: Vector2D
+    public var radius: Double
+    public var innerRadius: Double
+    public var scaleX: Double
+    public var scaleY: Double
+    public var rotationRadians: Double
+
+    public init(
+        sides: Int,
+        centre: Vector2D = .zero,
+        radius: Double = 0.3,
+        innerRadius: Double = 1.0,
+        scaleX: Double = 1.0,
+        scaleY: Double = 1.0,
+        rotationRadians: Double = -.pi / 2.0
+    ) {
+        self.sides = sides
+        self.centre = centre
+        self.radius = radius
+        self.innerRadius = innerRadius
+        self.scaleX = scaleX
+        self.scaleY = scaleY
+        self.rotationRadians = rotationRadians
+    }
+}
+
+public enum EditableParametricSource: Codable, Equatable, Sendable {
+    case regularPolygon(EditableRegularPolygonParameters)
+}
+
 public struct EditableClosedPolygon: Codable, Equatable, Identifiable, Sendable {
     public var id: EditableGeometryID
     public var name: String
@@ -78,6 +120,7 @@ public struct EditableClosedPolygon: Codable, Equatable, Identifiable, Sendable 
     public var segments: [EditableCubicSegment]
     public var pressures: [Double]
     public var isVisible: Bool
+    public var parametricSource: EditableParametricSource?
 
     public init(
         id: EditableGeometryID = EditableGeometryID(),
@@ -85,7 +128,8 @@ public struct EditableClosedPolygon: Codable, Equatable, Identifiable, Sendable 
         points: [EditableCubicPoint] = [],
         segments: [EditableCubicSegment] = [],
         pressures: [Double] = [],
-        isVisible: Bool = true
+        isVisible: Bool = true,
+        parametricSource: EditableParametricSource? = nil
     ) {
         self.id = id
         self.name = name
@@ -93,6 +137,7 @@ public struct EditableClosedPolygon: Codable, Equatable, Identifiable, Sendable 
         self.segments = segments
         self.pressures = pressures
         self.isVisible = isVisible
+        self.parametricSource = parametricSource
     }
 
     public init(name: String, polygon: Polygon2D) throws {
@@ -109,6 +154,7 @@ public struct EditableClosedPolygon: Codable, Equatable, Identifiable, Sendable 
         self.segments = []
         self.pressures = polygon.pressures
         self.isVisible = polygon.visible
+        self.parametricSource = nil
 
         var previousEndAnchorID: EditableGeometryID?
         for segmentIndex in stride(from: 0, to: polygon.points.count, by: 4) {
@@ -116,14 +162,26 @@ public struct EditableClosedPolygon: Codable, Equatable, Identifiable, Sendable 
             if let previousEndAnchorID {
                 startAnchorID = previousEndAnchorID
             } else {
-                let point = EditableCubicPoint(position: polygon.points[segmentIndex], kind: .anchor)
+                let point = EditableCubicPoint(
+                    position: polygon.points[segmentIndex].runtimeWorldToEditor(),
+                    kind: .anchor
+                )
                 points.append(point)
                 startAnchorID = point.id
             }
 
-            let controlOut = EditableCubicPoint(position: polygon.points[segmentIndex + 1], kind: .control)
-            let controlIn = EditableCubicPoint(position: polygon.points[segmentIndex + 2], kind: .control)
-            let endAnchor = EditableCubicPoint(position: polygon.points[segmentIndex + 3], kind: .anchor)
+            let controlOut = EditableCubicPoint(
+                position: polygon.points[segmentIndex + 1].runtimeWorldToEditor(),
+                kind: .control
+            )
+            let controlIn = EditableCubicPoint(
+                position: polygon.points[segmentIndex + 2].runtimeWorldToEditor(),
+                kind: .control
+            )
+            let endAnchor = EditableCubicPoint(
+                position: polygon.points[segmentIndex + 3].runtimeWorldToEditor(),
+                kind: .anchor
+            )
             points.append(contentsOf: [controlOut, controlIn, endAnchor])
 
             segments.append(
@@ -153,25 +211,169 @@ public struct EditableClosedPolygon: Codable, Equatable, Identifiable, Sendable 
             throw EditableGeometryError.invalidSplinePointCount(anchors.count)
         }
 
-        var points: [Vector2D] = []
-        points.reserveCapacity(anchors.count * 4)
+        self.id = EditableGeometryID()
+        self.name = name
+        self.points = []
+        self.segments = []
+        self.pressures = Array(repeating: 1.0, count: anchors.count)
+        self.isVisible = true
+        self.parametricSource = nil
+
+        let anchorPoints = anchors.map { EditableCubicPoint(position: $0, kind: .anchor) }
+        points.append(contentsOf: anchorPoints)
         for index in anchors.indices {
             let a0 = anchors[index]
             let a1 = anchors[(index + 1) % anchors.count]
             let delta = a1 - a0
-            points.append(a0)
-            points.append(a0 + delta * (1.0 / 3.0))
-            points.append(a0 + delta * (2.0 / 3.0))
-            points.append(a1)
+            let controlOut = EditableCubicPoint(position: a0 + delta * (1.0 / 3.0), kind: .control)
+            let controlIn = EditableCubicPoint(position: a0 + delta * (2.0 / 3.0), kind: .control)
+            points.append(contentsOf: [controlOut, controlIn])
+            segments.append(
+                EditableCubicSegment(
+                    startAnchorID: anchorPoints[index].id,
+                    controlOutID: controlOut.id,
+                    controlInID: controlIn.id,
+                    endAnchorID: anchorPoints[(index + 1) % anchors.count].id
+                )
+            )
         }
+    }
 
-        let polygon = Polygon2D(
-            points: points,
-            type: .spline,
-            pressures: Array(repeating: 1.0, count: anchors.count),
-            visible: true
+    public init(
+        name: String,
+        regularPolygonSides sides: Int,
+        centre: Vector2D = .zero,
+        radius: Double = 0.3,
+        innerRadius: Double = 1.0,
+        scaleX: Double = 1.0,
+        scaleY: Double = 1.0,
+        rotationRadians: Double = -.pi / 2.0
+    ) throws {
+        let parameters = EditableRegularPolygonParameters(
+            sides: sides,
+            centre: centre,
+            radius: radius,
+            innerRadius: innerRadius,
+            scaleX: scaleX,
+            scaleY: scaleY,
+            rotationRadians: rotationRadians
         )
-        try self.init(name: name, polygon: polygon)
+        try self.init(name: name, regularPolygonParameters: parameters)
+    }
+
+    public init(
+        id: EditableGeometryID = EditableGeometryID(),
+        name: String,
+        regularPolygonParameters parameters: EditableRegularPolygonParameters,
+        isVisible: Bool = true
+    ) throws {
+        let anchors = try Self.regularPolygonAnchors(parameters)
+        try self.init(name: name, anchors: anchors)
+        self.id = id
+        self.isVisible = isVisible
+        self.parametricSource = .regularPolygon(parameters)
+    }
+
+    public init(
+        name: String,
+        ovalCentre centre: Vector2D = .zero,
+        radiusX: Double = 0.28,
+        radiusY: Double = 0.2
+    ) {
+        let kappa = 0.552_284_749_830_793_6
+        let top = EditableCubicPoint(position: Vector2D(x: centre.x, y: centre.y - radiusY), kind: .anchor)
+        let right = EditableCubicPoint(position: Vector2D(x: centre.x + radiusX, y: centre.y), kind: .anchor)
+        let bottom = EditableCubicPoint(position: Vector2D(x: centre.x, y: centre.y + radiusY), kind: .anchor)
+        let left = EditableCubicPoint(position: Vector2D(x: centre.x - radiusX, y: centre.y), kind: .anchor)
+
+        let topToRightOut = EditableCubicPoint(position: Vector2D(x: centre.x + kappa * radiusX, y: centre.y - radiusY), kind: .control)
+        let topToRightIn = EditableCubicPoint(position: Vector2D(x: centre.x + radiusX, y: centre.y - kappa * radiusY), kind: .control)
+        let rightToBottomOut = EditableCubicPoint(position: Vector2D(x: centre.x + radiusX, y: centre.y + kappa * radiusY), kind: .control)
+        let rightToBottomIn = EditableCubicPoint(position: Vector2D(x: centre.x + kappa * radiusX, y: centre.y + radiusY), kind: .control)
+        let bottomToLeftOut = EditableCubicPoint(position: Vector2D(x: centre.x - kappa * radiusX, y: centre.y + radiusY), kind: .control)
+        let bottomToLeftIn = EditableCubicPoint(position: Vector2D(x: centre.x - radiusX, y: centre.y + kappa * radiusY), kind: .control)
+        let leftToTopOut = EditableCubicPoint(position: Vector2D(x: centre.x - radiusX, y: centre.y - kappa * radiusY), kind: .control)
+        let leftToTopIn = EditableCubicPoint(position: Vector2D(x: centre.x - kappa * radiusX, y: centre.y - radiusY), kind: .control)
+
+        self.init(
+            name: name,
+            points: [
+                top, topToRightOut, topToRightIn, right,
+                rightToBottomOut, rightToBottomIn, bottom,
+                bottomToLeftOut, bottomToLeftIn, left,
+                leftToTopOut, leftToTopIn
+            ],
+            segments: [
+                EditableCubicSegment(
+                    startAnchorID: top.id,
+                    controlOutID: topToRightOut.id,
+                    controlInID: topToRightIn.id,
+                    endAnchorID: right.id
+                ),
+                EditableCubicSegment(
+                    startAnchorID: right.id,
+                    controlOutID: rightToBottomOut.id,
+                    controlInID: rightToBottomIn.id,
+                    endAnchorID: bottom.id
+                ),
+                EditableCubicSegment(
+                    startAnchorID: bottom.id,
+                    controlOutID: bottomToLeftOut.id,
+                    controlInID: bottomToLeftIn.id,
+                    endAnchorID: left.id
+                ),
+                EditableCubicSegment(
+                    startAnchorID: left.id,
+                    controlOutID: leftToTopOut.id,
+                    controlInID: leftToTopIn.id,
+                    endAnchorID: top.id
+                )
+            ],
+            pressures: Array(repeating: 1.0, count: 4),
+            isVisible: true,
+            parametricSource: nil
+        )
+    }
+
+    public func regeneratedFromParametricSource(
+        _ source: EditableParametricSource
+    ) throws -> EditableClosedPolygon {
+        switch source {
+        case .regularPolygon(let parameters):
+            return try EditableClosedPolygon(
+                id: id,
+                name: name,
+                regularPolygonParameters: parameters,
+                isVisible: isVisible
+            )
+        }
+    }
+
+    public func withoutParametricSource() -> EditableClosedPolygon {
+        var copy = self
+        copy.parametricSource = nil
+        return copy
+    }
+
+    private static func regularPolygonAnchors(
+        _ parameters: EditableRegularPolygonParameters
+    ) throws -> [Vector2D] {
+        guard parameters.sides >= 3 else {
+            throw EditableGeometryError.invalidSplinePointCount(parameters.sides)
+        }
+        let isStar = parameters.innerRadius < 0.999
+        let vertexCount = isStar ? parameters.sides * 2 : parameters.sides
+        let angleStep = 2.0 * .pi / Double(vertexCount)
+        return (0..<vertexCount).map { index in
+            let radius = isStar && index % 2 == 1
+                ? parameters.radius * parameters.innerRadius
+                : parameters.radius
+            let angle = parameters.rotationRadians + Double(index) * angleStep
+            return Vector2D(
+                x: parameters.centre.x + Foundation.cos(angle) * radius * parameters.scaleX,
+                y: parameters.centre.y + Foundation.sin(angle) * radius * parameters.scaleY
+            )
+        }
     }
 
     public var anchorIDs: [EditableGeometryID] {
@@ -252,6 +454,10 @@ public struct EditableClosedPolygon: Codable, Equatable, Identifiable, Sendable 
             next.position = point.position + delta
             return next
         }
+        if case .regularPolygon(var parameters) = copy.parametricSource {
+            parameters.centre = parameters.centre + delta
+            copy.parametricSource = .regularPolygon(parameters)
+        }
         return copy
     }
 
@@ -275,7 +481,8 @@ public struct EditableClosedPolygon: Codable, Equatable, Identifiable, Sendable 
             points: copiedPoints,
             segments: copiedSegments,
             pressures: pressures,
-            isVisible: isVisible
+            isVisible: isVisible,
+            parametricSource: parametricSource
         )
     }
 
@@ -382,7 +589,7 @@ public struct EditableClosedPolygon: Codable, Equatable, Identifiable, Sendable 
                 guard let position = pointMap[id] else {
                     throw EditableGeometryError.missingPoint(id)
                 }
-                encoded.append(position)
+                encoded.append(position.editorToRuntimeWorld())
             }
         }
         return Polygon2D(points: encoded, type: .spline, pressures: pressures, visible: isVisible)
@@ -496,14 +703,26 @@ public struct EditableOpenCurve: Codable, Equatable, Identifiable, Sendable {
             if let previousEndAnchorID {
                 startAnchorID = previousEndAnchorID
             } else {
-                let point = EditableCubicPoint(position: polygon.points[segmentIndex], kind: .anchor)
+                let point = EditableCubicPoint(
+                    position: polygon.points[segmentIndex].runtimeWorldToEditor(),
+                    kind: .anchor
+                )
                 points.append(point)
                 startAnchorID = point.id
             }
 
-            let controlOut = EditableCubicPoint(position: polygon.points[segmentIndex + 1], kind: .control)
-            let controlIn = EditableCubicPoint(position: polygon.points[segmentIndex + 2], kind: .control)
-            let endAnchor = EditableCubicPoint(position: polygon.points[segmentIndex + 3], kind: .anchor)
+            let controlOut = EditableCubicPoint(
+                position: polygon.points[segmentIndex + 1].runtimeWorldToEditor(),
+                kind: .control
+            )
+            let controlIn = EditableCubicPoint(
+                position: polygon.points[segmentIndex + 2].runtimeWorldToEditor(),
+                kind: .control
+            )
+            let endAnchor = EditableCubicPoint(
+                position: polygon.points[segmentIndex + 3].runtimeWorldToEditor(),
+                kind: .anchor
+            )
             points.append(contentsOf: [controlOut, controlIn, endAnchor])
             segments.append(
                 EditableCubicSegment(
@@ -661,7 +880,7 @@ public struct EditableOpenCurve: Codable, Equatable, Identifiable, Sendable {
                 guard let position = pointMap[id] else {
                     throw EditableGeometryError.missingPoint(id)
                 }
-                encoded.append(position)
+                encoded.append(position.editorToRuntimeWorld())
             }
         }
         return Polygon2D(points: encoded, type: .openSpline, pressures: pressures, visible: isVisible)
@@ -696,6 +915,43 @@ public struct EditableOpenCurve: Codable, Equatable, Identifiable, Sendable {
     }
 }
 
+public struct EditableStandalonePoint: Codable, Equatable, Identifiable, Sendable {
+    public var id: EditableGeometryID
+    public var name: String
+    public var position: Vector2D
+    public var isVisible: Bool
+
+    public init(
+        id: EditableGeometryID = EditableGeometryID(),
+        name: String,
+        position: Vector2D,
+        isVisible: Bool = true
+    ) {
+        self.id = id
+        self.name = name
+        self.position = position
+        self.isVisible = isVisible
+    }
+
+    public func translated(by delta: Vector2D) -> EditableStandalonePoint {
+        var copy = self
+        copy.position = position + delta
+        return copy
+    }
+
+    public func duplicated(name: String? = nil) -> EditableStandalonePoint {
+        EditableStandalonePoint(
+            name: name ?? self.name,
+            position: position,
+            isVisible: isVisible
+        )
+    }
+
+    public func toPolygon2D() -> Polygon2D {
+        Polygon2D(points: [position.editorToRuntimeWorld()], type: .point, visible: isVisible)
+    }
+}
+
 public struct EditableGeometryLayer: Codable, Equatable, Identifiable, Sendable {
     public var id: EditableGeometryID
     public var name: String
@@ -703,6 +959,7 @@ public struct EditableGeometryLayer: Codable, Equatable, Identifiable, Sendable 
     public var isEditable: Bool
     public var polygons: [EditableClosedPolygon]
     public var openCurves: [EditableOpenCurve]
+    public var points: [EditableStandalonePoint]
 
     public init(
         id: EditableGeometryID = EditableGeometryID(),
@@ -710,7 +967,8 @@ public struct EditableGeometryLayer: Codable, Equatable, Identifiable, Sendable 
         isVisible: Bool = true,
         isEditable: Bool = true,
         polygons: [EditableClosedPolygon] = [],
-        openCurves: [EditableOpenCurve] = []
+        openCurves: [EditableOpenCurve] = [],
+        points: [EditableStandalonePoint] = []
     ) {
         self.id = id
         self.name = name
@@ -718,6 +976,7 @@ public struct EditableGeometryLayer: Codable, Equatable, Identifiable, Sendable 
         self.isEditable = isEditable
         self.polygons = polygons
         self.openCurves = openCurves
+        self.points = points
     }
 
     private enum CodingKeys: String, CodingKey {
@@ -727,6 +986,7 @@ public struct EditableGeometryLayer: Codable, Equatable, Identifiable, Sendable 
         case isEditable
         case polygons
         case openCurves
+        case points
     }
 
     public init(from decoder: Decoder) throws {
@@ -737,6 +997,7 @@ public struct EditableGeometryLayer: Codable, Equatable, Identifiable, Sendable 
         isEditable = try container.decodeIfPresent(Bool.self, forKey: .isEditable) ?? true
         polygons = try container.decodeIfPresent([EditableClosedPolygon].self, forKey: .polygons) ?? []
         openCurves = try container.decodeIfPresent([EditableOpenCurve].self, forKey: .openCurves) ?? []
+        points = try container.decodeIfPresent([EditableStandalonePoint].self, forKey: .points) ?? []
     }
 
     public func duplicated(name: String? = nil) -> EditableGeometryLayer {
@@ -745,7 +1006,8 @@ public struct EditableGeometryLayer: Codable, Equatable, Identifiable, Sendable 
             isVisible: isVisible,
             isEditable: isEditable,
             polygons: polygons.map { $0.duplicated(name: $0.name) },
-            openCurves: openCurves.map { $0.duplicated(name: $0.name) }
+            openCurves: openCurves.map { $0.duplicated(name: $0.name) },
+            points: points.map { $0.duplicated(name: $0.name) }
         )
     }
 }
@@ -767,6 +1029,7 @@ public struct EditableGeometrySelection: Codable, Equatable, Sendable {
     public var layerID: EditableGeometryID?
     public var polygonIDs: Set<EditableGeometryID>
     public var openCurveIDs: Set<EditableGeometryID>
+    public var standalonePointIDs: Set<EditableGeometryID>
     public var segmentIDs: Set<EditableGeometryID>
     public var pointIDs: Set<EditableGeometryID>
 
@@ -774,12 +1037,14 @@ public struct EditableGeometrySelection: Codable, Equatable, Sendable {
         layerID: EditableGeometryID? = nil,
         polygonIDs: Set<EditableGeometryID> = [],
         openCurveIDs: Set<EditableGeometryID> = [],
+        standalonePointIDs: Set<EditableGeometryID> = [],
         segmentIDs: Set<EditableGeometryID> = [],
         pointIDs: Set<EditableGeometryID> = []
     ) {
         self.layerID = layerID
         self.polygonIDs = polygonIDs
         self.openCurveIDs = openCurveIDs
+        self.standalonePointIDs = standalonePointIDs
         self.segmentIDs = segmentIDs
         self.pointIDs = pointIDs
     }
@@ -846,6 +1111,7 @@ public struct EditableGeometryDocument: Codable, Equatable, Identifiable, Sendab
         for layer in layers {
             ids.formUnion(layer.polygons.flatMap { $0.points.map(\.id) })
             ids.formUnion(layer.openCurves.flatMap { $0.points.map(\.id) })
+            ids.formUnion(layer.points.map(\.id))
         }
         return ids
     }
@@ -857,6 +1123,9 @@ public struct EditableGeometryDocument: Codable, Equatable, Identifiable, Sendab
             }
             if let point = layer.openCurves.lazy.compactMap({ $0.point(id: pointID) }).first {
                 return point
+            }
+            if let point = layer.points.first(where: { $0.id == pointID }) {
+                return EditableCubicPoint(id: point.id, position: point.position, kind: .anchor)
             }
         }
         return nil
@@ -875,6 +1144,10 @@ public struct EditableGeometryDocument: Codable, Equatable, Identifiable, Sendab
                     layers[layerIndex].openCurves[curveIndex].setPointPosition(id: pointID, to: position)
                     return
                 }
+            }
+            if let pointIndex = layers[layerIndex].points.firstIndex(where: { $0.id == pointID }) {
+                layers[layerIndex].points[pointIndex].position = position
+                return
             }
         }
     }
@@ -987,6 +1260,9 @@ public struct EditableGeometryDocument: Codable, Equatable, Identifiable, Sendab
             }
             for curve in layer.openCurves where curve.isVisible {
                 runtime.append(try curve.toPolygon2D())
+            }
+            for point in layer.points where point.isVisible {
+                runtime.append(point.toPolygon2D())
             }
         }
         return runtime

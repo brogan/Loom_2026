@@ -55,6 +55,13 @@ Last updated: 2026-05-06
 - A selected open curve with at least three anchors can be closed into a polygon through Finalise Polygon.
 - Point-by-point drafts with at least two anchors can now be finalised as open curves, so open-curve transforms can be tested without first deleting polygon edges.
 - Point By Point remains active after Finalise Polygon, so several polygons can be created without reselecting the tool each time.
+- Standalone point geometry is now implemented:
+  - the Create points icon toggles a dedicated Create Points mode;
+  - clicking in the editor creates a standalone point on the selected editable layer;
+  - standalone points are drawn as point-in-circle markers, select in Points edit mode, drag like other points, and support duplicate/delete/transform/undo;
+  - standalone points save inside the editable JSON document under their owning layer;
+  - runtime export converts each standalone point to a single `.point` `Polygon2D`, so point and stamp rendering modes can use JSON-authored points as stamp locations;
+  - the flat Geometry Sources point indicator now becomes active for editable JSON sources containing standalone points.
 - Freehand creation is now implemented:
   - the Freehand tool records a drag stroke as sampled points;
   - the detail slider maps to the Python editor's curve-fitting tolerance pattern, where higher detail produces a tighter fitted curve;
@@ -63,8 +70,37 @@ Last updated: 2026-05-06
   - the preview path is drawn live while dragging, with a closure ring shown near the start point;
   - tablet/stylus pressure is captured from the current macOS input event when available, with mouse input falling back to full pressure;
   - fitted anchor pressures are mapped from the recorded raw pressure samples.
+- Mesh creation has a first Swift implementation:
+  - bitmap-to-polygon has been removed from the visible Create controls;
+  - Mesh Extend is a Create tool activated from the mesh grid icon, and clicking that icon again leaves Mesh Extend for Edges mode;
+  - clicking an existing edge arms a single red centre pull handle on that edge;
+  - dragging the centre pull handle creates a dotted face preview from that edge to the dragged apex;
+  - releasing the mouse confirms the current temporary vertex and keeps building the same uncommitted face;
+  - confirmed temporary vertices can be dragged again to tweak their position before finalising;
+  - after release, every exposed outer edge of the temporary face receives its own red centre pull handle, so either side can be extended;
+  - the earlier `o` key temporary-confirmation step has been removed from the workflow;
+  - Finalise Polygon or the `p` key commits the full preview as a new closed polygon;
+  - this supports triangle creation after one drag/release, or quad/multi-sided face creation through repeated drag/release steps before `p`;
+  - the new polygon's base edge is welded to the source edge, including anchors and controls;
+  - the new outer edges are selected after creation so the next mesh operation can continue from the new face;
+  - mesh pull handles and confirmed temporary vertices are drawn in red to contrast with highlighted edges;
+  - Fill Triangle creates a triangular face from two connected selected edges, copying/welding the selected edge curves and adding one inferred closing edge;
+  - Fill Quad creates a quad face from two connected selected edges, copying/welding the selected edge curves and adding a parallelogram-style fourth corner;
+  - Fill Closed Hole creates a polygon from selected edges that already form a closed boundary loop.
+- Oval and regular polygon creation have a first implementation:
+  - the oval button creates a four-segment editable closed spline approximation of an ellipse;
+  - the regular polygon button creates a five-sided editable closed polygon with straight inferred controls and retained clean parametric metadata;
+  - selecting a clean regular polygon exposes a Regular Polygon inspector with Sides, Radius, Inner, Scale X, Scale Y, and Rotation controls;
+  - changing those controls regenerates the polygon live from stored parameters and preserves the JSON parametric source;
+  - reducing Inner below 1.0 creates alternating inner/outer vertices for star-like regular polygons;
+  - whole-object dragging a single clean regular polygon updates its parametric centre and keeps it parametric;
+  - direct point/edge transforms still clear the regular polygon parametric source so reshaped objects become ordinary editable polygons;
+  - Quick Setup now recommends/selects Subdivision = None and Renderer mode = Stroked for clean parametric regular/star polygons;
+  - Make Pipeline now updates an existing renderer definition instead of leaving an older filled renderer in place, avoiding self-intersecting star fill-rule artefacts;
+  - each new oval/regular polygon is placed on its own fresh focused layer;
+  - they save/load and flow through the existing editable JSON pipeline as closed polygons.
 - The right Geometry Editor controls are compressed into icon rows with tooltip help:
-  - Create uses icons for points, oval, regular polygon, point-by-point, finalise polygon/open curve, clear draft, mesh build, bitmap-to-polygon, and freehand detail;
+  - Create uses icons for points, oval, regular polygon, point-by-point, finalise polygon/open curve, clear draft, mesh extend, fill triangle, fill quad, fill closed hole, and freehand detail;
   - Edit uses one row for points, edges, open curves, and polygons;
   - Undo/Redo sit beside each other and Reset Controls sits beneath them;
   - Weld, Multiply, Transform, and View use compact icon buttons where possible.
@@ -78,6 +114,19 @@ Last updated: 2026-05-06
   - Scale/Rotate sliders preview from the geometry positions at gesture start, record one undo snapshot per drag, and reset to centre on release, matching the Python editor pattern;
   - Scale/Rotate share pivot options: local centre, common centre, or canvas centre;
   - transforms are undoable and apply through one shared weld-aware point transform path.
+- Knife has a first Swift implementation:
+  - the scissors button in Multiply toggles Knife mode;
+  - by default Knife cuts only the selected/focused editable layer;
+  - the adjacent "all layers" knife icon toggles cutting through all visible editable layers;
+  - known issue: ordinary Knife works in manual testing, but the all-layers knife toggle is not yet cutting through visible layers correctly and should be fixed next session;
+  - dragging on the editor canvas previews a red dashed cut segment;
+  - releasing cuts every visible editable closed polygon crossed by the segment into closed polygon pieces;
+  - cuts preserve existing cubic curve portions through de Casteljau splitting and add straight connector edges along the knife line;
+  - visible editable open curves crossed by the segment are split into separate open-curve objects at each crossing;
+  - the knife operation records one undo snapshot and leaves the newly created pieces selected where possible.
+- Freehand creation coordinate handling was corrected:
+  - the fitted freehand segments are now kept in editor coordinates when creating editable polygons/open curves;
+  - this avoids the previous extra runtime-import Y flip that mirrored freehand curves vertically in the Geometry Editor and throughout the pipeline.
 - Selected points and edges can now use the same live transform sliders:
   - selected points can be scaled/rotated around local/common/canvas pivots;
   - a single selected point with a local/common pivot has no visible scale/rotate effect, but can transform around the canvas pivot;
@@ -140,6 +189,24 @@ Last updated: 2026-05-06
   - if the stroke ends close to where it started, it creates a closed polygon;
   - otherwise it creates an open curve;
   - the detail slider controls how closely the fitted curve follows the drawn stroke.
+- Mesh Extend mode:
+  - click an existing edge to arm a single red centre handle;
+  - drag the centre handle to preview a new face;
+  - release adds the current preview vertex and continues building the same face;
+  - drag a confirmed temporary vertex to tweak its position before finalising;
+  - after release, both exposed temporary edges get red centre handles;
+  - `o` is no longer used for provisional mesh steps;
+  - Finalise Polygon or `p` commits the full face;
+  - Escape clears the current mesh preview;
+  - clicking the mesh icon again leaves Mesh Extend;
+  - the committed face is welded to the source edge and remains in the same layer.
+- Mesh fill:
+  - select two connected edges and press Fill Triangle to create a triangular face;
+  - select two connected edges and press Fill Quad to infer the fourth corner and create a quad face;
+  - the selected edge curves are copied into the new face and welded to the source edges;
+  - select three or more boundary edges that form a closed loop;
+  - press the Fill Closed Hole icon in the Create section;
+  - the new polygon copies the selected boundary curves and welds its anchors/controls to the selected edges.
 - Points mode:
   - drag an anchor to reshape the polygon while carrying attached controls along with it;
   - drag a control point to manually adjust curvature;
@@ -201,6 +268,8 @@ Last updated: 2026-05-06
 - EditableGeometryTests includes backwards-compatible decoding for older layer JSON that has no `isEditable` field.
 - EditableGeometryTests includes coverage for anchor deletion, edge deletion to open curve, open-curve runtime export, and closing an open curve back to a polygon.
 - EditableGeometryTests includes coverage for persistent weld groups, JSON round-trip, and relational expansion from a welded anchor to partner anchors and attached controls.
+- EditableGeometryTests includes the editor/runtime coordinate boundary: editor JSON keeps the Geometry tab's canvas coordinates, while export to the subdivision/sprite/render pipeline flips Y into Loom world coordinates. Legacy/runtime spline imports flip Y back into editor coordinates so round-trips remain stable.
+- The ordinary Geometry source preview now draws runtime polygons with the same Y-up display convention as Subdivision, Sprite, and Rendering views, so it stays visually consistent with the full pipeline.
 
 ## Deferred Notes
 
@@ -209,20 +278,44 @@ Last updated: 2026-05-06
 
 ## Recommended next stage
 
-Next session should start with a short manual validation pass of weld behaviour, then continue expanding mesh editing.
+Next session should start with a manual validation pass of the new Mesh Extend and Mesh Fill behaviour, then refine the mesh workflow.
 
 Suggested path:
 
-1. Manually validate freehand creation:
-   - draw an open stroke and confirm it becomes an editable open curve;
-   - draw a stroke that returns near its start and confirm it becomes a closed polygon;
-   - compare low and high detail slider values on the same kind of stroke;
-   - save/reload and confirm the resulting curve/polygon persists;
-   - if a pressure-capable tablet/stylus is available, confirm pressure variation is captured.
-2. Continue creation-mode implementation:
-   - parametric ovals and regular polygons as closed polygon runtime geometry with specialised editing controls;
-   - default algorithmic objects to their own layer, while avoiding a hard long-term rule if mixed layers later prove useful.
-3. Recheck weld behaviour after freehand validation:
+1. Manually validate Mesh Extend:
+   - select the mesh grid icon;
+   - click a polygon edge and confirm only the red centre handle appears, with no second point at the click position;
+   - drag the centre handle and confirm the triangular dotted preview appears;
+   - release the mouse and confirm the temporary vertex remains editable and both exposed temporary edges show centre handles;
+   - drag the temporary vertex and confirm its position can be tweaked;
+   - press `p` and confirm a triangle is created;
+   - click another edge, drag the centre handle, release, and confirm both exposed temporary edges show centre handles;
+   - drag either centre handle, press `p`, and confirm a quad is created;
+   - repeat with multiple drag/release steps for a multi-sided polygon;
+   - confirm the red centre/drag handles are visible against selected edges;
+   - click the mesh icon again and confirm it leaves Mesh Extend;
+   - drag the shared edge and confirm the welded neighbouring face follows;
+   - save/reload and confirm the created mesh face and welds persist.
+2. Manually validate Mesh Fill:
+   - select two connected edges like the screenshot case and confirm Fill Triangle creates a triangle;
+   - undo, then press Fill Quad and confirm it creates a parallelogram-style quad;
+   - drag the original selected edges and confirm the copied face sides are welded;
+   - create a simple ring of polygons with a missing centre;
+   - select the boundary edges around the hole;
+   - confirm Fill Closed Hole enables for the closed loop;
+   - press it and confirm the missing face is created and welded to the surrounding edges.
+3. Refine mesh workflow:
+   - decide whether two-edge Fill Quad needs alternative inference modes beyond parallelogram completion;
+   - decide whether Mesh Extend should offer a quick way to switch the active temporary edge without dragging from its centre handle;
+   - decide whether the mesh fill buttons belong in Create, Weld, or a future Mesh subsection.
+4. Refine oval/regular polygon creation:
+   - manually confirm the regular polygon Sides, Radius, Inner, Scale X/Y, and Rotation controls update live;
+   - manually confirm dragging a whole clean regular polygon moves it while preserving the Regular Polygon inspector;
+   - confirm Quick Setup uses Subdivision = None and Stroked mode for clean parametric regular/star polygons and that Make Pipeline updates any older filled/subdivided pipeline;
+   - confirm a vertically oriented star in Geometry Editor remains vertically oriented in the ordinary Geometry source preview, Subdivision, Sprite, and Rendering views;
+   - add oval parametric metadata and controls for width/height/radius, rotation, and centre;
+   - consider an explicit "Convert to editable" command/status cue for the hybrid model.
+5. Recheck weld behaviour after mesh validation:
    - create two polygons with a shared/near-shared edge;
    - select the two edges and press Weld Selected;
    - adjust the tolerance slider and confirm looser settings accept edges that stricter settings reject;
@@ -230,15 +323,23 @@ Suggested path:
    - with Auto Weld enabled, drag a whole polygon near a compatible edge and confirm the purple candidate highlight appears before release;
    - release the mouse and confirm the highlighted candidate weld is applied;
    - save/reload and confirm welded dragging still works.
-4. Add editable point geometry to the JSON model:
-   - make the flat Geometry Sources point indicator meaningful for editable JSON sources;
-   - add point creation/editing mode beyond the current anchor/control editing;
-   - decide how point layers feed the pipeline.
-5. UI polish can remain deferred:
+6. Manually validate standalone points:
+   - create a few points with the Create points icon and save/reload the JSON geometry;
+   - confirm the ordinary Geometry source list shows the point indicator;
+   - confirm Points edit mode can select, drag, duplicate, transform, and delete standalone points;
+   - make a quick pipeline with Renderer mode = Points or Stamped and confirm the points feed through as placement geometry.
+7. Manually validate Knife:
+   - cut a simple closed polygon with one drag and confirm two closed pieces are created;
+   - cut a curved closed polygon and confirm the original curved edge portions are preserved;
+   - cut an open curve and confirm it becomes multiple open curves;
+   - confirm Undo restores the uncut geometry;
+   - confirm ordinary Knife cuts only the focused layer;
+   - fix the all-layers knife toggle, then confirm the same cut affects all visible editable layers.
+8. UI polish can remain deferred:
    - drag-and-drop layer reordering instead of Shift Up/Shift Down;
    - warning/confirmation for deleting a non-empty layer;
    - final review of icon choices and tooltip coverage across Loom.
-6. Edge extrusion remains future work:
+9. Edge extrusion remains future work:
    - preserve the Python operation concept, but do not reuse Shift as its trigger in Swift;
    - choose a different modifier or an explicit extrude button/tool before implementation.
 
