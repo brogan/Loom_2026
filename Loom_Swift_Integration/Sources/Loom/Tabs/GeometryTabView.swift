@@ -1085,22 +1085,12 @@ private struct EditableGeometryCanvas: View {
     }
 
     private func draw(ctx: GraphicsContext, size: CGSize) {
-        let scale = min(size.width, size.height) / 1040
-        let origin = CGPoint(
-            x: (size.width - 1040 * scale) / 2,
-            y: (size.height - 1040 * scale) / 2
-        )
-        let active = CGRect(
-            x: origin.x + 20 * scale,
-            y: origin.y + 20 * scale,
-            width: 1000 * scale,
-            height: 1000 * scale
-        )
+        let (scale, origin) = viewTransform(size: size)
+        let projectPoint: (Vector2D) -> CGPoint = { project($0, scale: scale, origin: origin) }
 
-        ctx.fill(Path(CGRect(origin: origin, size: CGSize(width: 1040 * scale, height: 1040 * scale))),
+        ctx.fill(Path(CGRect(origin: .zero, size: size)),
                  with: .color(Color(red: 0.105, green: 0.108, blue: 0.12)))
-        drawGrid(ctx: ctx, rect: active)
-        ctx.stroke(Path(active), with: .color(Color.white.opacity(0.28)), lineWidth: 1)
+        drawGrid(ctx: ctx, size: size, project: projectPoint)
 
         for layer in document.layers where layerCanDraw(layer) {
             for polygon in layer.polygons where polygon.isVisible {
@@ -1108,7 +1098,7 @@ private struct EditableGeometryCanvas: View {
                     polygon: polygon,
                     isEditable: layerCanEdit(layer),
                     ctx: ctx,
-                    project: { project($0, scale: scale, origin: origin) }
+                    project: projectPoint
                 )
             }
             for curve in layer.openCurves where curve.isVisible {
@@ -1116,7 +1106,7 @@ private struct EditableGeometryCanvas: View {
                     curve: curve,
                     isEditable: layerCanEdit(layer),
                     ctx: ctx,
-                    project: { project($0, scale: scale, origin: origin) }
+                    project: projectPoint
                 )
             }
             for point in layer.points where point.isVisible {
@@ -1124,39 +1114,65 @@ private struct EditableGeometryCanvas: View {
                     standalonePoint: point,
                     isEditable: layerCanEdit(layer),
                     ctx: ctx,
-                    project: { project($0, scale: scale, origin: origin) }
+                    project: projectPoint
                 )
             }
         }
 
         if selectedLayerCanEdit {
-            drawDraft(ctx: ctx, project: { project($0, scale: scale, origin: origin) })
-            drawMeshExtendPreview(ctx: ctx, project: { project($0, scale: scale, origin: origin) })
-            drawFreehandPreview(ctx: ctx, project: { project($0, scale: scale, origin: origin) })
+            drawDraft(ctx: ctx, project: projectPoint)
+            drawMeshExtendPreview(ctx: ctx, project: projectPoint)
+            drawFreehandPreview(ctx: ctx, project: projectPoint)
         }
-        drawKnifeLine(ctx: ctx, project: { project($0, scale: scale, origin: origin) })
+        drawKnifeLine(ctx: ctx, project: projectPoint)
         drawRubberBand(ctx: ctx)
     }
 
-    private func drawGrid(ctx: GraphicsContext, rect: CGRect) {
-        var path = Path()
-        for i in 0...10 {
-            let p = CGFloat(i) / 10
-            let x = rect.minX + rect.width * p
-            let y = rect.minY + rect.height * p
-            path.move(to: CGPoint(x: x, y: rect.minY))
-            path.addLine(to: CGPoint(x: x, y: rect.maxY))
-            path.move(to: CGPoint(x: rect.minX, y: y))
-            path.addLine(to: CGPoint(x: rect.maxX, y: y))
-        }
-        ctx.stroke(path, with: .color(Color.white.opacity(0.08)), lineWidth: 1)
+    private func drawGrid(ctx: GraphicsContext, size: CGSize, project: (Vector2D) -> CGPoint) {
+        let border = Path(CGRect(
+            x: project(Vector2D(x: -0.52, y: -0.52)).x,
+            y: project(Vector2D(x: -0.52, y: -0.52)).y,
+            width: project(Vector2D(x: 0.52, y: 0.52)).x - project(Vector2D(x: -0.52, y: -0.52)).x,
+            height: project(Vector2D(x: 0.52, y: 0.52)).y - project(Vector2D(x: -0.52, y: -0.52)).y
+        ))
+        ctx.stroke(border, with: .color(Color.white.opacity(0.28)), lineWidth: 1)
 
+        guard controller.geometryEditorShowsGrid else { return }
+        switch controller.geometryEditorGridDetail {
+        case .quadrants:
+            break
+        case .standard:
+            drawGridLines(ctx: ctx, step: 0.104, color: Color.white.opacity(0.08), lineWidth: 1, project: project)
+        case .fine:
+            drawGridLines(ctx: ctx, step: 0.026, color: Color.gray.opacity(0.18), lineWidth: 0.55, project: project)
+            drawGridLines(ctx: ctx, step: 0.104, color: Color(red: 0.10, green: 0.22, blue: 0.38).opacity(0.75), lineWidth: 0.8, project: project)
+            drawGridLines(ctx: ctx, step: 0.26, color: Color(red: 0.28, green: 0.46, blue: 0.72).opacity(0.72), lineWidth: 1.0, project: project)
+        }
         var axes = Path()
-        axes.move(to: CGPoint(x: rect.midX, y: rect.minY))
-        axes.addLine(to: CGPoint(x: rect.midX, y: rect.maxY))
-        axes.move(to: CGPoint(x: rect.minX, y: rect.midY))
-        axes.addLine(to: CGPoint(x: rect.maxX, y: rect.midY))
-        ctx.stroke(axes, with: .color(Color.white.opacity(0.16)), lineWidth: 1)
+        axes.move(to: project(Vector2D(x: 0, y: -0.52)))
+        axes.addLine(to: project(Vector2D(x: 0, y: 0.52)))
+        axes.move(to: project(Vector2D(x: -0.52, y: 0)))
+        axes.addLine(to: project(Vector2D(x: 0.52, y: 0)))
+        ctx.stroke(axes, with: .color(Color.white.opacity(0.34)), lineWidth: 1.1)
+    }
+
+    private func drawGridLines(
+        ctx: GraphicsContext,
+        step: Double,
+        color: Color,
+        lineWidth: CGFloat,
+        project: (Vector2D) -> CGPoint
+    ) {
+        var path = Path()
+        var value = -0.52
+        while value <= 0.52001 {
+            path.move(to: project(Vector2D(x: value, y: -0.52)))
+            path.addLine(to: project(Vector2D(x: value, y: 0.52)))
+            path.move(to: project(Vector2D(x: -0.52, y: value)))
+            path.addLine(to: project(Vector2D(x: 0.52, y: value)))
+            value += step
+        }
+        ctx.stroke(path, with: .color(color), lineWidth: lineWidth)
     }
 
     private func draw(
@@ -1173,19 +1189,21 @@ private struct EditableGeometryCanvas: View {
             ? Color(red: 0.24, green: 0.50, blue: 0.34).opacity(0.7)
             : Color.gray.opacity(0.35)
 
-        var handles = Path()
-        for segment in polygon.segments {
-            guard let a0 = pointMap[segment.startAnchorID],
-                  let c0 = pointMap[segment.controlOutID],
-                  let c1 = pointMap[segment.controlInID],
-                  let a1 = pointMap[segment.endAnchorID]
-            else { continue }
-            handles.move(to: project(a0))
-            handles.addLine(to: project(c0))
-            handles.move(to: project(a1))
-            handles.addLine(to: project(c1))
+        if controller.geometryEditorShowsControlPoints {
+            var handles = Path()
+            for segment in polygon.segments {
+                guard let a0 = pointMap[segment.startAnchorID],
+                      let c0 = pointMap[segment.controlOutID],
+                      let c1 = pointMap[segment.controlInID],
+                      let a1 = pointMap[segment.endAnchorID]
+                else { continue }
+                handles.move(to: project(a0))
+                handles.addLine(to: project(c0))
+                handles.move(to: project(a1))
+                handles.addLine(to: project(c1))
+            }
+            ctx.stroke(handles, with: .color(handleColor), lineWidth: 0.8)
         }
-        ctx.stroke(handles, with: .color(handleColor), lineWidth: 0.8)
         var path = Path()
         var didMove = false
         var weldedPath = Path()
@@ -1223,7 +1241,7 @@ private struct EditableGeometryCanvas: View {
             project: project
         )
 
-        for point in polygon.points {
+        for point in polygon.points where point.kind == .anchor || controller.geometryEditorShowsControlPoints {
             drawPoint(point, isEditable: isEditable, ctx: ctx, at: project(point.position))
         }
     }
@@ -1252,10 +1270,12 @@ private struct EditableGeometryCanvas: View {
                   let c1 = pointMap[segment.controlInID],
                   let a1 = pointMap[segment.endAnchorID]
             else { continue }
-            handles.move(to: project(a0))
-            handles.addLine(to: project(c0))
-            handles.move(to: project(a1))
-            handles.addLine(to: project(c1))
+            if controller.geometryEditorShowsControlPoints {
+                handles.move(to: project(a0))
+                handles.addLine(to: project(c0))
+                handles.move(to: project(a1))
+                handles.addLine(to: project(c1))
+            }
             if !didMove {
                 path.move(to: project(a0))
                 didMove = true
@@ -1270,7 +1290,9 @@ private struct EditableGeometryCanvas: View {
                 weldedPath.addCurve(to: project(a1), control1: project(c0), control2: project(c1))
             }
         }
-        ctx.stroke(handles, with: .color(handleColor), lineWidth: 0.8)
+        if controller.geometryEditorShowsControlPoints {
+            ctx.stroke(handles, with: .color(handleColor), lineWidth: 0.8)
+        }
         if isOpenCurveSelected(curve) {
             ctx.stroke(path, with: .color(Color.white.opacity(0.8)), lineWidth: 3.0)
         }
@@ -1283,7 +1305,7 @@ private struct EditableGeometryCanvas: View {
             project: project
         )
 
-        for point in curve.points {
+        for point in curve.points where point.kind == .anchor || controller.geometryEditorShowsControlPoints {
             drawPoint(point, isEditable: isEditable, ctx: ctx, at: project(point.position))
         }
     }
@@ -1560,24 +1582,40 @@ private struct EditableGeometryCanvas: View {
         )
     }
 
+    private func viewTransform(size: CGSize) -> (scale: CGFloat, origin: CGPoint) {
+        let canvasSide = min(size.width, size.height)
+        let scale = (canvasSide / 1040) * CGFloat(controller.geometryEditorViewZoom)
+        let centre = controller.geometryEditorViewCentre
+        let origin = CGPoint(
+            x: size.width / 2 - CGFloat((centre.x + 0.52) * 1000) * scale,
+            y: size.height / 2 - CGFloat((centre.y + 0.52) * 1000) * scale
+        )
+        return (scale, origin)
+    }
+
+    private func viewTransform(canvasSize: CGFloat) -> (scale: CGFloat, origin: CGPoint) {
+        viewTransform(size: CGSize(width: canvasSize, height: canvasSize))
+    }
+
     private func unproject(_ point: CGPoint, canvasSize: CGFloat) -> Vector2D {
+        let (scale, origin) = viewTransform(canvasSize: canvasSize)
         let clampedX = min(max(point.x, 0), canvasSize)
         let clampedY = min(max(point.y, 0), canvasSize)
         return Vector2D(
-            x: Double(clampedX / canvasSize) * 1.04 - 0.52,
-            y: Double(clampedY / canvasSize) * 1.04 - 0.52
+            x: Double((clampedX - origin.x) / (1000 * scale)) - 0.52,
+            y: Double((clampedY - origin.y) / (1000 * scale)) - 0.52
         )
     }
 
     private func hitTestPoint(at location: CGPoint, canvasSize: CGFloat) -> GeometryPointHit? {
-        let scale = canvasSize / 1040
+        let (scale, origin) = viewTransform(canvasSize: canvasSize)
         var bestHit: GeometryPointHit?
         var bestDistance = CGFloat.greatestFiniteMagnitude
 
         for layer in document.layers where layerCanEdit(layer) {
             for polygon in layer.polygons where polygon.isVisible {
                 for point in polygon.points {
-                    let screen = project(point.position, scale: scale, origin: .zero)
+                    let screen = project(point.position, scale: scale, origin: origin)
                     let distance = hypot(screen.x - location.x, screen.y - location.y)
                     let hitRadius: CGFloat = point.kind == .anchor ? 10 : 8
                     if distance <= hitRadius, distance < bestDistance {
@@ -1588,7 +1626,7 @@ private struct EditableGeometryCanvas: View {
             }
             for curve in layer.openCurves where curve.isVisible {
                 for point in curve.points {
-                    let screen = project(point.position, scale: scale, origin: .zero)
+                    let screen = project(point.position, scale: scale, origin: origin)
                     let distance = hypot(screen.x - location.x, screen.y - location.y)
                     let hitRadius: CGFloat = point.kind == .anchor ? 10 : 8
                     if distance <= hitRadius, distance < bestDistance {
@@ -1598,7 +1636,7 @@ private struct EditableGeometryCanvas: View {
                 }
             }
             for point in layer.points where point.isVisible {
-                let screen = project(point.position, scale: scale, origin: .zero)
+                let screen = project(point.position, scale: scale, origin: origin)
                 let distance = hypot(screen.x - location.x, screen.y - location.y)
                 if distance <= 11, distance < bestDistance {
                     bestDistance = distance
@@ -1612,11 +1650,11 @@ private struct EditableGeometryCanvas: View {
 
     private func hitTestMeshConfirmedAnchor(at location: CGPoint, canvasSize: CGFloat) -> Int? {
         guard let draft = controller.geometryEditorMeshExtendDraft else { return nil }
-        let scale = canvasSize / 1040
+        let (scale, origin) = viewTransform(canvasSize: canvasSize)
         var bestIndex: Int?
         var bestDistance = CGFloat.greatestFiniteMagnitude
         for (index, anchor) in draft.confirmedAnchors.enumerated() {
-            let screen = project(anchor, scale: scale, origin: .zero)
+            let screen = project(anchor, scale: scale, origin: origin)
             let distance = hypot(screen.x - location.x, screen.y - location.y)
             if distance <= 12, distance < bestDistance {
                 bestDistance = distance
@@ -1627,7 +1665,7 @@ private struct EditableGeometryCanvas: View {
     }
 
     private func hitTestSegment(at location: CGPoint, canvasSize: CGFloat) -> GeometrySegmentHit? {
-        let scale = canvasSize / 1040
+        let (scale, origin) = viewTransform(canvasSize: canvasSize)
         var bestHit: GeometrySegmentHit?
         var bestDistance = CGFloat.greatestFiniteMagnitude
         let hitRadius: CGFloat = 14
@@ -1643,10 +1681,10 @@ private struct EditableGeometryCanvas: View {
                     else { continue }
                     let distance = distanceToCubic(
                         location,
-                        from: project(a0, scale: scale, origin: .zero),
-                        control1: project(c0, scale: scale, origin: .zero),
-                        control2: project(c1, scale: scale, origin: .zero),
-                        to: project(a1, scale: scale, origin: .zero)
+                        from: project(a0, scale: scale, origin: origin),
+                        control1: project(c0, scale: scale, origin: origin),
+                        control2: project(c1, scale: scale, origin: origin),
+                        to: project(a1, scale: scale, origin: origin)
                     )
                     if distance <= hitRadius, distance < bestDistance {
                         bestDistance = distance
@@ -1664,10 +1702,10 @@ private struct EditableGeometryCanvas: View {
                     else { continue }
                     let distance = distanceToCubic(
                         location,
-                        from: project(a0, scale: scale, origin: .zero),
-                        control1: project(c0, scale: scale, origin: .zero),
-                        control2: project(c1, scale: scale, origin: .zero),
-                        to: project(a1, scale: scale, origin: .zero)
+                        from: project(a0, scale: scale, origin: origin),
+                        control1: project(c0, scale: scale, origin: origin),
+                        control2: project(c1, scale: scale, origin: origin),
+                        to: project(a1, scale: scale, origin: origin)
                     )
                     if distance <= hitRadius, distance < bestDistance {
                         bestDistance = distance
@@ -1681,11 +1719,11 @@ private struct EditableGeometryCanvas: View {
     }
 
     private func hitTestPolygon(at location: CGPoint, canvasSize: CGFloat) -> GeometryPolygonHit? {
-        let scale = canvasSize / 1040
+        let (scale, origin) = viewTransform(canvasSize: canvasSize)
 
         for layer in document.layers.reversed() where layerCanEdit(layer) {
             for polygon in layer.polygons.reversed() where polygon.isVisible {
-                let polygonPath = path(for: polygon, scale: scale, origin: .zero)
+                let polygonPath = path(for: polygon, scale: scale, origin: origin)
                 if polygonPath.contains(location) {
                     return GeometryPolygonHit(layerID: layer.id, polygonID: polygon.id)
                 }
@@ -1695,7 +1733,7 @@ private struct EditableGeometryCanvas: View {
     }
 
     private func hitTestOpenCurve(at location: CGPoint, canvasSize: CGFloat) -> GeometryOpenCurveHit? {
-        let scale = canvasSize / 1040
+        let (scale, origin) = viewTransform(canvasSize: canvasSize)
         var bestHit: GeometryOpenCurveHit?
         var bestDistance = CGFloat.greatestFiniteMagnitude
         let hitRadius: CGFloat = 14
@@ -1711,10 +1749,10 @@ private struct EditableGeometryCanvas: View {
                     else { continue }
                     let distance = distanceToCubic(
                         location,
-                        from: project(a0, scale: scale, origin: .zero),
-                        control1: project(c0, scale: scale, origin: .zero),
-                        control2: project(c1, scale: scale, origin: .zero),
-                        to: project(a1, scale: scale, origin: .zero)
+                        from: project(a0, scale: scale, origin: origin),
+                        control1: project(c0, scale: scale, origin: origin),
+                        control2: project(c1, scale: scale, origin: origin),
+                        to: project(a1, scale: scale, origin: origin)
                     )
                     if distance <= hitRadius, distance < bestDistance {
                         bestDistance = distance
@@ -1728,13 +1766,13 @@ private struct EditableGeometryCanvas: View {
     }
 
     private func selectPolygons(in rect: CGRect, canvasSize: CGFloat, additive: Bool = false) {
-        let scale = canvasSize / 1040
+        let (scale, origin) = viewTransform(canvasSize: canvasSize)
         var firstLayerID: EditableGeometryID?
         var selected = Set<EditableGeometryID>()
 
         for layer in document.layers where layerCanEdit(layer) {
             for polygon in layer.polygons where polygon.isVisible {
-                let box = screenBounds(for: polygon, scale: scale, origin: .zero)
+                let box = screenBounds(for: polygon, scale: scale, origin: origin)
                 guard rect.intersects(box) else { continue }
                 if firstLayerID == nil {
                     firstLayerID = layer.id
@@ -1943,7 +1981,7 @@ private struct EditableGeometryCanvas: View {
     }
 
     private func selectSegments(in rect: CGRect, canvasSize: CGFloat, additive: Bool) {
-        let scale = canvasSize / 1040
+        let (scale, origin) = viewTransform(canvasSize: canvasSize)
         var firstLayerID: EditableGeometryID?
         var polygonSegments: [(polygonID: EditableGeometryID, segmentID: EditableGeometryID)] = []
         var openCurveSegments: [(openCurveID: EditableGeometryID, segmentID: EditableGeometryID)] = []
@@ -1958,7 +1996,7 @@ private struct EditableGeometryCanvas: View {
                     let midpoint = project(
                         Vector2D(x: (start.x + end.x) / 2, y: (start.y + end.y) / 2),
                         scale: scale,
-                        origin: .zero
+                        origin: origin
                     )
                     guard rect.contains(midpoint) else { continue }
                     if firstLayerID == nil {
@@ -1978,7 +2016,7 @@ private struct EditableGeometryCanvas: View {
                     let midpoint = project(
                         Vector2D(x: (start.x + end.x) / 2, y: (start.y + end.y) / 2),
                         scale: scale,
-                        origin: .zero
+                        origin: origin
                     )
                     guard rect.contains(midpoint) else { continue }
                     if firstLayerID == nil {

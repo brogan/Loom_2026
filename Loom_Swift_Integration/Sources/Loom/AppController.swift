@@ -49,6 +49,14 @@ enum GeometryTransformPivot: String {
     case absoluteCentre = "Absolute centre"
 }
 
+enum GeometryEditorGridDetail: String, CaseIterable, Identifiable {
+    case quadrants = "Quadrants"
+    case standard = "Standard"
+    case fine = "Fine"
+
+    var id: String { rawValue }
+}
+
 struct GeometryEditorLayer: Identifiable, Equatable {
     let id: UUID
     var name: String
@@ -97,6 +105,11 @@ final class AppController: ObservableObject, @unchecked Sendable {
     @Published var geometryEditorMeshExtendDraft: GeometryMeshExtendDraft? = nil
     @Published var geometryEditorKnifeLine:       GeometryKnifeLine? = nil
     @Published var geometryEditorKnifeCutsAllVisibleLayers: Bool = false
+    @Published var geometryEditorViewZoom:        Double = 1.0
+    @Published var geometryEditorViewCentre:      Vector2D = .zero
+    @Published var geometryEditorShowsGrid:       Bool = true
+    @Published var geometryEditorShowsControlPoints: Bool = true
+    @Published var geometryEditorGridDetail:      GeometryEditorGridDetail = .standard
     @Published var geometryEditorLayers:          [GeometryEditorLayer] = [GeometryEditorLayer(name: "Layer 1")]
     @Published var geometryEditorAutoWeld:        Bool = true
     @Published var geometryEditorWeldTolerance:   Double = 0.5
@@ -543,6 +556,7 @@ final class AppController: ObservableObject, @unchecked Sendable {
             return
         }
         geometryEditorTool = .knife
+        geometryEditorKnifeCutsAllVisibleLayers = false
         geometryEditorDraftPoints.removeAll()
         clearGeometryFreehandStroke()
         cancelGeometryMeshExtendDraft()
@@ -2233,6 +2247,120 @@ final class AppController: ObservableObject, @unchecked Sendable {
         return min(max(span * 0.20, 0.06), 0.16)
     }
 
+    func zoomGeometryEditorIn() {
+        geometryEditorViewZoom = min(geometryEditorViewZoom * 1.25, 8.0)
+    }
+
+    func zoomGeometryEditorOut() {
+        geometryEditorViewZoom = max(geometryEditorViewZoom / 1.25, 0.25)
+    }
+
+    func centreGeometryEditorViewOnSelectionOrLayer() {
+        centreGeometryEditorSelectionOrLayerOnGrid()
+    }
+
+    func centreGeometryEditorSelectionOrLayerOnGrid() {
+        guard var document = geometryEditorDocument,
+              let layerID = geometryEditorSelection.layerID ?? selectedGeometryEditorLayerID ?? document.activeLayerID,
+              layerCanEdit(layerID),
+              let layerIndex = document.layers.firstIndex(where: { $0.id == layerID })
+        else {
+            postStatus("Centre: no editable layer")
+            return
+        }
+
+        let layer = document.layers[layerIndex]
+        let pointIDs = geometryEditorSelectionHasGeometry
+            ? selectedViewPointIDs(in: layer, selection: geometryEditorSelection)
+            : allPointIDs(in: layer)
+        let points = pointIDs.compactMap { document.point(id: $0)?.position }
+        guard !points.isEmpty else {
+            postStatus("Centre: no geometry in layer")
+            return
+        }
+
+        let delta = Vector2D.zero - centre(of: points)
+        guard abs(delta.x) > 0.0000001 || abs(delta.y) > 0.0000001 else {
+            postStatus("Geometry already centred")
+            return
+        }
+
+        recordGeometryEditorUndoSnapshot()
+        clearParametricSourceForPointIDs(pointIDs, in: &document)
+        translateRelationalPointIDs(pointIDs, by: delta, in: &document)
+        setGeometryEditorDocument(document)
+        postStatus("Centred geometry on grid")
+    }
+
+    func snapGeometryEditorSelectionToGrid(anchorOnly: Bool) {
+        guard var document = geometryEditorDocument,
+              let layerID = geometryEditorSelection.layerID ?? selectedGeometryEditorLayerID ?? document.activeLayerID,
+              layerCanEdit(layerID),
+              let layerIndex = document.layers.firstIndex(where: { $0.id == layerID })
+        else {
+            postStatus("Snap: no editable layer")
+            return
+        }
+
+        let layer = document.layers[layerIndex]
+        var pointIDs = geometryEditorSelectionHasGeometry
+            ? selectedViewPointIDs(in: layer, selection: geometryEditorSelection)
+            : allPointIDs(in: layer)
+        if anchorOnly {
+            pointIDs = pointIDs.filter { document.point(id: $0)?.kind == .anchor }
+        }
+        guard !pointIDs.isEmpty else {
+            postStatus("Snap: no points to snap")
+            return
+        }
+
+        let spacing = geometryEditorGridSnapSpacing
+        recordGeometryEditorUndoSnapshot()
+        clearParametricSourceForPointIDs(pointIDs, in: &document)
+        for pointID in pointIDs {
+            guard let position = document.point(id: pointID)?.position else { continue }
+            document.setPointPosition(id: pointID, to: snap(position, spacing: spacing))
+        }
+        setGeometryEditorDocument(document)
+        postStatus(anchorOnly ? "Snapped anchors to grid" : "Snapped points to grid")
+    }
+
+    private var geometryEditorSelectionHasGeometry: Bool {
+        !geometryEditorSelection.polygonIDs.isEmpty ||
+        !geometryEditorSelection.openCurveIDs.isEmpty ||
+        !geometryEditorSelection.standalonePointIDs.isEmpty ||
+        !geometryEditorSelection.segmentIDs.isEmpty ||
+        !geometryEditorSelection.pointIDs.isEmpty
+    }
+
+    private var geometryEditorGridSnapSpacing: Double {
+        0.026
+    }
+
+    private func snap(_ point: Vector2D, spacing: Double) -> Vector2D {
+        Vector2D(
+            x: (point.x / spacing).rounded() * spacing,
+            y: (point.y / spacing).rounded() * spacing
+        )
+    }
+
+    private func selectedViewPointIDs(
+        in layer: EditableGeometryLayer,
+        selection: EditableGeometrySelection
+    ) -> Set<EditableGeometryID> {
+        var ids = selectedTransformSeedPointIDs(in: layer, selection: selection)
+        ids.formUnion(layer.points.filter { selection.standalonePointIDs.contains($0.id) }.map(\.id))
+        return ids
+    }
+
+    private func allPointIDs(in layer: EditableGeometryLayer) -> Set<EditableGeometryID> {
+        Set(
+            layer.polygons.flatMap { $0.points.map(\.id) } +
+            layer.openCurves.flatMap { $0.points.map(\.id) } +
+            layer.points.map(\.id)
+        )
+    }
+
     func flipSelectedGeometryHorizontally() {
         scaleSelectedGeometry(x: -1, y: 1, pivot: .commonCentre)
     }
@@ -2374,6 +2502,21 @@ final class AppController: ObservableObject, @unchecked Sendable {
         for polygonIndex in document.layers[layerIndex].polygons.indices
             where selection.polygonIDs.contains(document.layers[layerIndex].polygons[polygonIndex].id) {
             document.layers[layerIndex].polygons[polygonIndex].parametricSource = nil
+        }
+    }
+
+    private func clearParametricSourceForPointIDs(
+        _ pointIDs: Set<EditableGeometryID>,
+        in document: inout EditableGeometryDocument
+    ) {
+        guard !pointIDs.isEmpty else { return }
+        for layerIndex in document.layers.indices {
+            for polygonIndex in document.layers[layerIndex].polygons.indices {
+                let polygonPointIDs = Set(document.layers[layerIndex].polygons[polygonIndex].points.map(\.id))
+                if !polygonPointIDs.isDisjoint(with: pointIDs) {
+                    document.layers[layerIndex].polygons[polygonIndex].parametricSource = nil
+                }
+            }
         }
     }
 
@@ -2727,13 +2870,7 @@ final class AppController: ObservableObject, @unchecked Sendable {
         }
 
         for layerIndex in document.layers.indices {
-            if let targetLayerID,
-               document.layers[layerIndex].id != targetLayerID {
-                continue
-            }
-            guard document.layers[layerIndex].isVisible,
-                  document.layers[layerIndex].isEditable
-            else { continue }
+            guard geometryKnifeCanCutLayer(document.layers[layerIndex], targetLayerID: targetLayerID) else { continue }
 
             var replacementPolygons: [EditableClosedPolygon] = []
             var polygonIDsToRemove = Set<EditableGeometryID>()
@@ -2780,6 +2917,22 @@ final class AppController: ObservableObject, @unchecked Sendable {
             openCurveIDs: selectedCurveIDs
         )
         postStatus("Knife cut \(cutCount) item(s)")
+    }
+
+    private func geometryKnifeCanCutLayer(
+        _ layer: EditableGeometryLayer,
+        targetLayerID: EditableGeometryID?
+    ) -> Bool {
+        let panelLayer = geometryEditorLayers.first { $0.id == layer.id }
+        let isVisible = layer.isVisible && (panelLayer?.isVisible ?? true)
+        guard isVisible else { return false }
+
+        if geometryEditorKnifeCutsAllVisibleLayers {
+            return true
+        }
+
+        guard layer.id == targetLayerID else { return false }
+        return layer.isEditable && (panelLayer?.isEditable ?? true)
     }
 
     private func knifePieces(

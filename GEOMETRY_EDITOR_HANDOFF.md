@@ -1,6 +1,6 @@
 # Geometry Editor Handoff
 
-Last updated: 2026-05-06
+Last updated: 2026-05-07
 
 ## What is now implemented
 
@@ -104,6 +104,17 @@ Last updated: 2026-05-06
   - Edit uses one row for points, edges, open curves, and polygons;
   - Undo/Redo sit beside each other and Reset Controls sits beneath them;
   - Weld, Multiply, Transform, and View use compact icon buttons where possible.
+- The View section is now wired:
+  - Zoom In and Zoom Out change the Geometry Editor canvas view scale while preserving hit-testing alignment;
+  - the centre button now moves selected editable geometry so its overall centre lands on the grid centre; if nothing is selected, it centres all geometry in the active editable layer;
+  - centring records an undo snapshot and clears parametric metadata for affected polygons because it directly moves points;
+  - grid display can be toggled on/off;
+  - control point display can be toggled independently, leaving anchors visible when controls are hidden;
+  - grid detail offers Quadrants, Standard, and Fine views;
+  - Fine view draws grey minor lines, darker blue intermediate lines, lighter blue larger-step lines, and light grey centre quadrant axes;
+  - snap buttons snap either all relevant points or anchor points only;
+  - snapping applies to selected geometry, or to all active-layer geometry if nothing is selected;
+  - snapping always uses the fine grid spacing, regardless of the displayed grid detail.
 - Whole selected polygons/open curves can now be duplicated and transformed:
   - Duplicate creates an offset copy in the same layer and selects the copy;
   - Duplicate is enabled for selected polygons/open curves even when the current selection is a point or edge on that object;
@@ -117,12 +128,13 @@ Last updated: 2026-05-06
 - Knife has a first Swift implementation:
   - the scissors button in Multiply toggles Knife mode;
   - by default Knife cuts only the selected/focused editable layer;
-  - the adjacent "all layers" knife icon toggles cutting through all visible editable layers;
-  - known issue: ordinary Knife works in manual testing, but the all-layers knife toggle is not yet cutting through visible layers correctly and should be fixed next session;
+  - entering Knife mode resets the scope to selected/focused layer by default;
+  - the adjacent layer-stack icon is a scope toggle, not a separate tool: while Knife is active it switches between focused-layer cutting and cutting through all visible layers;
+  - all-visible-layer cutting intentionally ignores layer editability, because focused non-selected layers are greyed out/noneditable but should still be cut when the user explicitly enables the stack scope;
   - dragging on the editor canvas previews a red dashed cut segment;
-  - releasing cuts every visible editable closed polygon crossed by the segment into closed polygon pieces;
+  - releasing cuts every target closed polygon crossed by the segment into closed polygon pieces;
   - cuts preserve existing cubic curve portions through de Casteljau splitting and add straight connector edges along the knife line;
-  - visible editable open curves crossed by the segment are split into separate open-curve objects at each crossing;
+  - target open curves crossed by the segment are split into separate open-curve objects at each crossing;
   - the knife operation records one undo snapshot and leaves the newly created pieces selected where possible.
 - Freehand creation coordinate handling was corrected:
   - the fitted freehand segments are now kept in editor coordinates when creating editable polygons/open curves;
@@ -334,12 +346,21 @@ Suggested path:
    - cut an open curve and confirm it becomes multiple open curves;
    - confirm Undo restores the uncut geometry;
    - confirm ordinary Knife cuts only the focused layer;
-   - fix the all-layers knife toggle, then confirm the same cut affects all visible editable layers.
-8. UI polish can remain deferred:
+   - enable the layer-stack scope toggle and confirm the same cut affects all visible layers, including greyed-out focused layers.
+8. Manually validate View controls:
+   - zoom in/out and confirm selection/hit-testing still lines up with drawn geometry;
+   - switch between Quadrants, Standard, and Fine grids and confirm the grid display changes as expected;
+   - hide/show the grid and control points independently;
+   - select one object and centre it, then undo;
+   - select multiple objects and centre them as a group;
+   - clear selection and centre all geometry in the active layer;
+   - snap selected geometry and confirm all points move to fine-grid positions;
+   - snap anchors only and confirm control points remain where they were.
+9. UI polish can remain deferred:
    - drag-and-drop layer reordering instead of Shift Up/Shift Down;
    - warning/confirmation for deleting a non-empty layer;
    - final review of icon choices and tooltip coverage across Loom.
-9. Edge extrusion remains future work:
+10. Edge extrusion remains future work:
    - preserve the Python operation concept, but do not reuse Shift as its trigger in Swift;
    - choose a different modifier or an explicit extrude button/tool before implementation.
 

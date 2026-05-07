@@ -607,10 +607,11 @@ private struct GeometryEditorShellInspector: View {
                         controller.startKnifeGeometryCut()
                     }
                     iconButton(
-                        help: "Knife cuts all visible editable layers",
-                        selected: controller.geometryEditorKnifeCutsAllVisibleLayers
+                        help: "Knife scope: cut through all visible layers",
+                        disabled: controller.geometryEditorTool != .knife,
+                        selected: controller.geometryEditorTool == .knife && controller.geometryEditorKnifeCutsAllVisibleLayers
                     ) {
-                        KnifeAllLayersIcon()
+                        KnifeLayerStackIcon()
                     } action: {
                         controller.geometryEditorKnifeCutsAllVisibleLayers.toggle()
                     }
@@ -681,13 +682,63 @@ private struct GeometryEditorShellInspector: View {
 
             InspectorSection("View", isCollapsed: $viewCollapsed) {
                 iconRow {
-                    iconButton(help: "Zoom in", disabled: true) { Image(systemName: "plus.magnifyingglass").font(.system(size: 15)) }
-                    iconButton(help: "Zoom out", disabled: true) { Image(systemName: "minus.magnifyingglass").font(.system(size: 15)) }
-                    iconButton(help: "Centre selected", disabled: true) { Image(systemName: "scope").font(.system(size: 15)) }
-                    iconButton(help: "Toggle grid display", disabled: true) { Image(systemName: "grid").font(.system(size: 15)) }
-                    iconButton(help: "Toggle control point display", disabled: true) { PointCircleIcon() }
+                    iconButton(help: "Zoom in") {
+                        Image(systemName: "plus.magnifyingglass").font(.system(size: 15))
+                    } action: {
+                        controller.zoomGeometryEditorIn()
+                    }
+                    iconButton(help: "Zoom out") {
+                        Image(systemName: "minus.magnifyingglass").font(.system(size: 15))
+                    } action: {
+                        controller.zoomGeometryEditorOut()
+                    }
+                    iconButton(help: "Centre selected geometry, or the active layer if nothing is selected") {
+                        Image(systemName: "scope").font(.system(size: 15))
+                    } action: {
+                        controller.centreGeometryEditorViewOnSelectionOrLayer()
+                    }
+                    iconButton(
+                        help: "Show or hide grid",
+                        selected: controller.geometryEditorShowsGrid
+                    ) {
+                        Image(systemName: "grid").font(.system(size: 15))
+                    } action: {
+                        controller.geometryEditorShowsGrid.toggle()
+                    }
+                    iconButton(
+                        help: "Show or hide control points",
+                        selected: controller.geometryEditorShowsControlPoints
+                    ) {
+                        PointCircleIcon()
+                    } action: {
+                        controller.geometryEditorShowsControlPoints.toggle()
+                    }
                     Spacer()
                 }
+                HStack(spacing: 7) {
+                    Picker("", selection: $controller.geometryEditorGridDetail) {
+                        ForEach(GeometryEditorGridDetail.allCases) { detail in
+                            Text(detail.rawValue).tag(detail)
+                        }
+                    }
+                    .labelsHidden()
+                    .pickerStyle(.menu)
+                    .frame(width: 86)
+                    .help("Grid detail")
+                    iconButton(help: "Snap selected points to grid, or all active layer points if nothing is selected") {
+                        SnapAllPointsIcon()
+                    } action: {
+                        controller.snapGeometryEditorSelectionToGrid(anchorOnly: false)
+                    }
+                    iconButton(help: "Snap selected anchors to grid, leaving control points unchanged") {
+                        SnapAnchorPointsIcon()
+                    } action: {
+                        controller.snapGeometryEditorSelectionToGrid(anchorOnly: true)
+                    }
+                    Spacer()
+                }
+                .padding(.horizontal, 12)
+                .padding(.vertical, 3)
             }
 
             InspectorSection("Delete", isCollapsed: $deleteCollapsed) {
@@ -970,6 +1021,46 @@ private struct EdgeGeometryIcon: View {
     }
 }
 
+private struct SnapAllPointsIcon: View {
+    var body: some View {
+        ZStack {
+            Image(systemName: "grid")
+                .font(.system(size: 13))
+                .opacity(0.75)
+            Circle()
+                .fill()
+                .frame(width: 4, height: 4)
+                .offset(x: -4, y: -4)
+            Circle()
+                .fill()
+                .frame(width: 4, height: 4)
+                .offset(x: 4, y: 0)
+            Circle()
+                .fill()
+                .frame(width: 4, height: 4)
+                .offset(x: -1, y: 5)
+        }
+        .padding(3)
+    }
+}
+
+private struct SnapAnchorPointsIcon: View {
+    var body: some View {
+        ZStack {
+            Image(systemName: "grid")
+                .font(.system(size: 13))
+                .opacity(0.75)
+            Circle()
+                .stroke(lineWidth: 1.2)
+                .frame(width: 12, height: 12)
+            Circle()
+                .fill()
+                .frame(width: 4.5, height: 4.5)
+        }
+        .padding(3)
+    }
+}
+
 private struct OvalGeometryIcon: View {
     var body: some View {
         Ellipse()
@@ -1013,32 +1104,35 @@ private struct PointByPointIcon: View {
     }
 }
 
-private struct KnifeAllLayersIcon: View {
+private struct KnifeLayerStackIcon: View {
     var body: some View {
-        ZStack {
-            Image(systemName: "scissors")
-                .font(.system(size: 14))
-            GeometryReader { proxy in
-                let rect = proxy.frame(in: .local)
-                let x = rect.midX
-                let top = rect.minY + rect.height * 0.12
-                let bottom = rect.maxY - rect.height * 0.12
-                Path { path in
-                    path.move(to: CGPoint(x: x, y: top + rect.height * 0.12))
-                    path.addLine(to: CGPoint(x: x, y: bottom - rect.height * 0.12))
-
-                    path.move(to: CGPoint(x: x, y: top))
-                    path.addLine(to: CGPoint(x: x - rect.width * 0.10, y: top + rect.height * 0.14))
-                    path.move(to: CGPoint(x: x, y: top))
-                    path.addLine(to: CGPoint(x: x + rect.width * 0.10, y: top + rect.height * 0.14))
-
-                    path.move(to: CGPoint(x: x, y: bottom))
-                    path.addLine(to: CGPoint(x: x - rect.width * 0.10, y: bottom - rect.height * 0.14))
-                    path.move(to: CGPoint(x: x, y: bottom))
-                    path.addLine(to: CGPoint(x: x + rect.width * 0.10, y: bottom - rect.height * 0.14))
+        GeometryReader { proxy in
+            let rect = proxy.frame(in: .local)
+            let left = rect.minX + rect.width * 0.16
+            let right = rect.maxX - rect.width * 0.16
+            let topX = rect.midX
+            let layerWidth = rect.width * 0.28
+            let layerHeight = rect.height * 0.16
+            Path { path in
+                func addLayer(y: CGFloat) {
+                    path.move(to: CGPoint(x: topX, y: y))
+                    path.addLine(to: CGPoint(x: right, y: y + layerHeight))
+                    path.addLine(to: CGPoint(x: topX, y: y + layerHeight * 2))
+                    path.addLine(to: CGPoint(x: left, y: y + layerHeight))
+                    path.closeSubpath()
+                    path.move(to: CGPoint(x: left, y: y + layerHeight))
+                    path.addLine(to: CGPoint(x: left + layerWidth, y: y + layerHeight * 2.45))
+                    path.addLine(to: CGPoint(x: topX, y: y + layerHeight * 2))
+                    path.move(to: CGPoint(x: right, y: y + layerHeight))
+                    path.addLine(to: CGPoint(x: right - layerWidth, y: y + layerHeight * 2.45))
+                    path.addLine(to: CGPoint(x: topX, y: y + layerHeight * 2))
                 }
-                .stroke(style: StrokeStyle(lineWidth: 1.4, lineCap: .round, lineJoin: .round))
+
+                addLayer(y: rect.minY + rect.height * 0.16)
+                addLayer(y: rect.minY + rect.height * 0.34)
+                addLayer(y: rect.minY + rect.height * 0.52)
             }
+            .stroke(style: StrokeStyle(lineWidth: 1.25, lineCap: .round, lineJoin: .round))
         }
         .padding(2)
     }
