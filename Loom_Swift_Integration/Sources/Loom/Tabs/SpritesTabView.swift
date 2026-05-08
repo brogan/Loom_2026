@@ -36,13 +36,19 @@ struct SpritesTabView: View {
 
     @EnvironmentObject private var controller: AppController
 
-    @State private var expandedSets:     Set<String>        = []
-    @State private var selectedSetIndex: Int?                = nil
-    @State private var dragItem:         LoomDragItem?       = nil
-    @State private var dropTarget:       SpriteDropTarget?   = nil
+    @State private var expandedSets:       Set<String>   = []
+    @State private var selectedSetIndex:   Int?          = nil
+    @State private var dragItem:           LoomDragItem? = nil
+    @State private var dropTarget:         SpriteDropTarget? = nil
+    @State private var filterText:         String        = ""
+    @State private var showingRenameAlert  = false
+    @State private var renameText          = ""
+    @State private var renamingSetIdx:     Int?          = nil
+    @State private var renamingSpriteName: String?       = nil
 
     var body: some View {
         VStack(spacing: 0) {
+            filterBar
             spriteList
             Divider()
             toolbar
@@ -53,35 +59,99 @@ struct SpritesTabView: View {
             selectedSetIndex = setIdx
             if let sn = setName(at: setIdx) { expandedSets.insert(sn) }
         }
+        .alert("Rename", isPresented: $showingRenameAlert) {
+            TextField("Name", text: $renameText)
+            Button("Rename") { commitRename() }
+            Button("Cancel", role: .cancel) { renamingSetIdx = nil; renamingSpriteName = nil }
+        }
+    }
+
+    // MARK: - Filter bar
+
+    private var filterBar: some View {
+        VStack(spacing: 0) {
+            HStack(spacing: 6) {
+                Image(systemName: "magnifyingglass")
+                    .font(.system(size: 11))
+                    .foregroundStyle(.secondary)
+                TextField("Filter", text: $filterText)
+                    .font(.system(size: 11))
+                    .textFieldStyle(.plain)
+                if !filterText.isEmpty {
+                    Button { filterText = "" } label: {
+                        Image(systemName: "xmark.circle.fill")
+                            .font(.system(size: 11))
+                            .foregroundStyle(.secondary)
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+            .padding(.horizontal, 8)
+            .padding(.vertical, 5)
+            Divider()
+        }
+    }
+
+    // MARK: - Filter model
+
+    private struct DisplayEntry {
+        let setIdx:       Int
+        let set:          SpriteSet
+        let spriteIndices: [Int]
+    }
+
+    private var displayedSets: [DisplayEntry] {
+        let sets = controller.projectConfig?.spriteConfig.library.spriteSets ?? []
+        let q    = filterText.trimmingCharacters(in: .whitespaces)
+        if q.isEmpty {
+            return sets.enumerated().map {
+                DisplayEntry(setIdx: $0.offset, set: $0.element, spriteIndices: Array($0.element.sprites.indices))
+            }
+        }
+        return sets.enumerated().compactMap { offset, set in
+            let setMatches     = set.name.localizedCaseInsensitiveContains(q)
+            let spriteMatches  = set.sprites.indices.filter { set.sprites[$0].name.localizedCaseInsensitiveContains(q) }
+            if setMatches      { return DisplayEntry(setIdx: offset, set: set, spriteIndices: Array(set.sprites.indices)) }
+            if !spriteMatches.isEmpty { return DisplayEntry(setIdx: offset, set: set, spriteIndices: spriteMatches) }
+            return nil
+        }
     }
 
     // MARK: - List
 
     private var spriteList: some View {
-        let sets = controller.projectConfig?.spriteConfig.library.spriteSets ?? []
+        let allSets     = controller.projectConfig?.spriteConfig.library.spriteSets ?? []
+        let entries     = displayedSets
+        let isFiltering = !filterText.trimmingCharacters(in: .whitespaces).isEmpty
         return Group {
-            if sets.isEmpty {
+            if allSets.isEmpty {
                 emptyState(controller.projectConfig == nil ? "No project open" : "No sprite sets")
+            } else if entries.isEmpty {
+                emptyState("No matches for \"\(filterText.trimmingCharacters(in: .whitespaces))\"")
             } else {
                 ScrollView {
                     VStack(alignment: .leading, spacing: 0) {
-                        ForEach(Array(sets.enumerated()), id: \.element.name) { setIdx, set in
-                            setRow(set: set, setIdx: setIdx)
-                            if expandedSets.contains(set.name) {
-                                ForEach(Array(set.sprites.enumerated()), id: \.element.name) { itemIdx, sprite in
-                                    spriteRow(sprite: sprite, setIdx: setIdx, itemIdx: itemIdx)
+                        ForEach(entries, id: \.setIdx) { entry in
+                            let isExpanded = isFiltering || expandedSets.contains(entry.set.name)
+                            setRow(set: entry.set, setIdx: entry.setIdx)
+                            if isExpanded {
+                                ForEach(entry.spriteIndices, id: \.self) { spriteIdx in
+                                    spriteRow(sprite: entry.set.sprites[spriteIdx],
+                                              setIdx: entry.setIdx, itemIdx: spriteIdx)
                                 }
-                                afterSpritesRow(setIdx: setIdx, count: set.sprites.count)
-                                if set.sprites.isEmpty {
-                                    Text("No sprites — use + to add")
-                                        .font(.caption2)
-                                        .foregroundStyle(.tertiary)
-                                        .padding(.leading, 28)
-                                        .padding(.vertical, 3)
+                                if !isFiltering {
+                                    afterSpritesRow(setIdx: entry.setIdx, count: entry.set.sprites.count)
+                                    if entry.spriteIndices.isEmpty {
+                                        Text("No sprites — use + to add")
+                                            .font(.caption2)
+                                            .foregroundStyle(.tertiary)
+                                            .padding(.leading, 28)
+                                            .padding(.vertical, 3)
+                                    }
                                 }
                             }
                         }
-                        afterSetsRow(total: sets.count)
+                        if !isFiltering { afterSetsRow(total: allSets.count) }
                     }
                 }
             }
@@ -91,13 +161,14 @@ struct SpritesTabView: View {
     // MARK: - Set row
 
     private func setRow(set: SpriteSet, setIdx: Int) -> some View {
+        let isFiltering    = !filterText.trimmingCharacters(in: .whitespaces).isEmpty
         let isSelected     = selectedSetIndex == setIdx && controller.selectedSpriteID == nil
-        let isExpanded     = expandedSets.contains(set.name)
-        let isBeforeTarget = dropTarget == .beforeSet(setIdx)
-        let isOntoTarget   = dropTarget == .ontoSet(setIdx)
+        let isExpanded     = isFiltering || expandedSets.contains(set.name)
+        let isBeforeTarget = !isFiltering && dropTarget == .beforeSet(setIdx)
+        let isOntoTarget   = !isFiltering && dropTarget == .ontoSet(setIdx)
 
         return HStack(spacing: 5) {
-            Button { toggleExpansion(set.name) } label: {
+            Button { if !isFiltering { toggleExpansion(set.name) } } label: {
                 Image(systemName: isExpanded ? "chevron.down" : "chevron.right")
                     .font(.system(size: 9, weight: .semibold))
                     .foregroundStyle(.secondary)
@@ -108,6 +179,12 @@ struct SpritesTabView: View {
             Text(set.name.isEmpty ? "(unnamed)" : set.name)
                 .font(.system(size: 12, weight: .medium))
                 .lineLimit(1)
+                .onTapGesture(count: 2) {
+                    renamingSetIdx     = setIdx
+                    renamingSpriteName = nil
+                    renameText         = set.name
+                    showingRenameAlert = true
+                }
 
             Spacer(minLength: 2)
 
@@ -121,12 +198,11 @@ struct SpritesTabView: View {
         .background(isSelected ? Color.accentColor.opacity(0.18) : Color.clear)
         .contentShape(Rectangle())
         .onTapGesture { handleSetSelected(setIdx: setIdx, setName: set.name) }
-        // Drag source: set.name encoded as NSString gives public.utf8-plain-text — always matched by AppKit.
         .onDrag {
+            guard !isFiltering else { return NSItemProvider() }
             self.dragItem = .set(name: set.name)
             return NSItemProvider(object: set.name as NSString)
         }
-        // Drop: set reorder (beforeSet) or sprite cross-set append (ontoSet).
         .onDrop(of: [UTType.utf8PlainText], delegate: setHeaderDelegate(setIdx: setIdx))
         .overlay(alignment: .top) {
             if isBeforeTarget { insertionLine }
@@ -143,8 +219,9 @@ struct SpritesTabView: View {
     // MARK: - Sprite row
 
     private func spriteRow(sprite: SpriteDef, setIdx: Int, itemIdx: Int) -> some View {
+        let isFiltering    = !filterText.trimmingCharacters(in: .whitespaces).isEmpty
         let isSelected     = controller.selectedSpriteID == sprite.name
-        let isBeforeTarget = dropTarget == .beforeSprite(setIdx: setIdx, spriteIdx: itemIdx)
+        let isBeforeTarget = !isFiltering && dropTarget == .beforeSprite(setIdx: setIdx, spriteIdx: itemIdx)
 
         return HStack(spacing: 5) {
             Spacer().frame(width: 22)
@@ -152,6 +229,12 @@ struct SpritesTabView: View {
                 .font(.system(size: 11))
                 .lineLimit(1)
                 .opacity(sprite.enabled ? 1.0 : 0.38)
+                .onTapGesture(count: 2) {
+                    renamingSpriteName = sprite.name
+                    renamingSetIdx     = nil
+                    renameText         = sprite.name
+                    showingRenameAlert = true
+                }
             Spacer(minLength: 2)
             if sprite.animation.enabled {
                 Image(systemName: "play.fill")
@@ -172,10 +255,10 @@ struct SpritesTabView: View {
         .contentShape(Rectangle())
         .onTapGesture { handleSpriteSelected(setIdx: setIdx, itemIdx: itemIdx, sprite: sprite) }
         .onDrag {
+            guard !isFiltering else { return NSItemProvider() }
             self.dragItem = .sprite(name: sprite.name)
             return NSItemProvider(object: sprite.name as NSString)
         }
-        // Only accepts sprite drags; validateDrop rejects set drags so no indicator shows.
         .onDrop(of: [UTType.utf8PlainText], delegate: spriteDropDelegate(setIdx: setIdx, spriteIdx: itemIdx))
         .overlay(alignment: .top) {
             if isBeforeTarget { insertionLine.padding(.leading, 22) }
@@ -309,6 +392,11 @@ struct SpritesTabView: View {
                 .disabled(controller.selectedSpriteID == nil)
             toolbarButton("arrow.triangle.2.circlepath", tooltip: "Duplicate sprite")      { duplicateSelectedSprite() }
                 .disabled(controller.selectedSpriteID == nil)
+
+            Divider().frame(height: 14).padding(.horizontal, 4)
+
+            toolbarButton("pencil",                      tooltip: "Rename selection")      { beginRename() }
+                .disabled(controller.selectedSpriteID == nil && selectedSetIndex == nil)
 
             Spacer()
         }
@@ -544,6 +632,54 @@ struct SpritesTabView: View {
                 }
             }
         )
+    }
+
+    // MARK: - Rename
+
+    private func beginRename() {
+        if let spriteName = controller.selectedSpriteID {
+            renamingSpriteName = spriteName
+            renamingSetIdx     = nil
+            renameText         = spriteName
+            showingRenameAlert = true
+        } else if let idx = selectedSetIndex,
+                  let cfg = controller.projectConfig,
+                  idx < cfg.spriteConfig.library.spriteSets.count {
+            renamingSetIdx     = idx
+            renamingSpriteName = nil
+            renameText         = cfg.spriteConfig.library.spriteSets[idx].name
+            showingRenameAlert = true
+        }
+    }
+
+    private func commitRename() {
+        let newName = renameText.trimmingCharacters(in: .whitespaces)
+        defer { renamingSetIdx = nil; renamingSpriteName = nil }
+        guard !newName.isEmpty else { return }
+
+        if let idx = renamingSetIdx,
+           let cfg = controller.projectConfig,
+           idx < cfg.spriteConfig.library.spriteSets.count {
+            let oldName = cfg.spriteConfig.library.spriteSets[idx].name
+            guard oldName != newName else { return }
+            controller.updateProjectConfig { c in
+                c.spriteConfig.library.spriteSets[idx].name = newName
+            }
+            if expandedSets.contains(oldName) { expandedSets.remove(oldName); expandedSets.insert(newName) }
+
+        } else if let spriteName = renamingSpriteName,
+                  let (sIdx, iIdx) = location(ofSprite: spriteName),
+                  let cfg = controller.projectConfig,
+                  sIdx < cfg.spriteConfig.library.spriteSets.count,
+                  iIdx < cfg.spriteConfig.library.spriteSets[sIdx].sprites.count {
+            guard spriteName != newName else { return }
+            let allNames = cfg.spriteConfig.library.spriteSets.flatMap { $0.sprites.map(\.name) }
+            guard !allNames.contains(newName) else { return }
+            controller.updateProjectConfig { c in
+                c.spriteConfig.library.spriteSets[sIdx].sprites[iIdx].name = newName
+            }
+            if controller.selectedSpriteID == spriteName { controller.selectedSpriteID = newName }
+        }
     }
 
     // MARK: - Helpers
