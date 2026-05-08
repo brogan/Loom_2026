@@ -4291,6 +4291,7 @@ final class AppController: ObservableObject, @unchecked Sendable {
                     withIntermediateDirectories: true
                 )
             }
+            DefaultBrushes.write(to: url.appendingPathComponent("brushes"))
             var config = ProjectConfig()
             if let name {
                 config.globalConfig.name = name
@@ -4380,6 +4381,26 @@ final class AppController: ObservableObject, @unchecked Sendable {
     }
 
     // MARK: - Still export (toolbar button)
+
+    func saveSVG() {
+        guard let engine = engine else { return }
+        let name = engine.globalConfig.name.isEmpty
+            ? (projectURL?.lastPathComponent ?? "loom")
+            : engine.globalConfig.name
+        let f = DateFormatter()
+        f.dateFormat = "yyyyMMdd_HHmmss"
+        let panel = NSSavePanel()
+        panel.allowedContentTypes  = [UTType(filenameExtension: "svg") ?? .data]
+        panel.nameFieldStringValue = "\(name)_\(f.string(from: Date())).svg"
+        if let base = projectURL {
+            panel.directoryURL = base.appendingPathComponent("svgs")
+        }
+        panel.begin { [weak self] response in
+            guard response == .OK, let url = panel.url else { return }
+            try? SVGExporter.exportSVG(engine: engine, to: url)
+            self?.lastRenderOutputType = .still
+        }
+    }
 
     func saveStill() {
         guard let engine = engine else { return }

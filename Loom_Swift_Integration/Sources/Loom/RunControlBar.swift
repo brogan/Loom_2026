@@ -51,6 +51,9 @@ struct RunControlBar: View {
                 iconButton("photo", help: "Save Still") { controller.saveStill() }
                     .disabled(controller.engine == nil || controller.isExporting)
 
+                iconButton("doc.text", help: "Save SVG…") { controller.saveSVG() }
+                    .disabled(controller.engine == nil || controller.isExporting)
+
                 iconButton("movieclapper", help: "Export Video…") {
                     controller.showingExportSheet = true
                 }

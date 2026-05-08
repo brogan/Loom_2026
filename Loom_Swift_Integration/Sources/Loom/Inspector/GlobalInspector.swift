@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 import LoomEngine
 
@@ -87,6 +88,23 @@ struct GlobalInspector: View {
             InspectorField("Scale img") {
                 Toggle("", isOn: bind(\.scaleImage)).labelsHidden()
             }
+            InspectorField("BG image") {
+                let path = bind(\.backgroundImagePath).wrappedValue
+                if !path.isEmpty {
+                    Text(URL(fileURLWithPath: path).lastPathComponent)
+                        .font(.system(size: 11))
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                        .frame(maxWidth: 80)
+                    Button("✕") {
+                        controller.updateProjectConfig { $0.globalConfig.backgroundImagePath = "" }
+                    }
+                    .font(.system(size: 10))
+                }
+                Button("Choose…") { pickBackgroundImage() }
+                    .font(.system(size: 11))
+            }
         }
     }
 
@@ -150,6 +168,17 @@ struct GlobalInspector: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(.horizontal, 12)
                 .padding(.vertical, 6)
+        }
+    }
+
+    // MARK: - Actions
+
+    private func pickBackgroundImage() {
+        let panel = NSOpenPanel()
+        panel.allowedContentTypes = [.png, .jpeg, .tiff, .bmp, .heic]
+        panel.allowsMultipleSelection = false
+        if panel.runModal() == .OK, let url = panel.url {
+            controller.updateProjectConfig { $0.globalConfig.backgroundImagePath = url.path }
         }
     }
 
