@@ -444,6 +444,19 @@ final class AppController: ObservableObject, @unchecked Sendable {
         setGeometryEditorDocument(document)
     }
 
+    func reorderGeometryEditorLayer(id: UUID, toBeforeIndex target: Int) {
+        guard var document = geometryEditorDocumentForLayerMutation(),
+              let fromIndex = document.layers.firstIndex(where: { $0.id == id })
+        else { return }
+        guard target != fromIndex && target != fromIndex + 1 else { return }
+        recordGeometryEditorUndoSnapshot()
+        let layer = document.layers.remove(at: fromIndex)
+        let insertAt = fromIndex < target ? target - 1 : target
+        document.layers.insert(layer, at: max(0, min(insertAt, document.layers.count)))
+        document.activeLayerID = id
+        setGeometryEditorDocument(document)
+    }
+
     func startPointByPointGeometryCreation() {
         geometryEditorTool = .pointByPoint
         geometryEditorDraftPoints.removeAll()

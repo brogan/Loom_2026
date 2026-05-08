@@ -1,6 +1,7 @@
 import AppKit
 import SwiftUI
 import LoomEngine
+import UniformTypeIdentifiers
 
 private struct GeometrySource: Identifiable, Hashable {
     let key: String
@@ -397,10 +398,26 @@ struct GeometryTabView: View {
     }
 }
 
+// Reusable drop delegate for layer reordering.
+private struct LayerDropDelegate: DropDelegate {
+    var validate: () -> Bool
+    var entered:  () -> Void
+    var exited:   () -> Void
+    var perform:  () -> Bool
+
+    func validateDrop(info: DropInfo) -> Bool { validate() }
+    func dropEntered(info: DropInfo)           { entered() }
+    func dropExited(info: DropInfo)            { exited() }
+    func performDrop(info: DropInfo) -> Bool   { perform() }
+}
+
 private struct GeometryLayerPanel: View {
     @EnvironmentObject private var controller: AppController
-    @State private var showingRenameAlert = false
-    @State private var renameText = ""
+    @State private var showingRenameAlert        = false
+    @State private var renameText                = ""
+    @State private var showingDeleteConfirmation = false
+    @State private var dragLayerID:   UUID?      = nil
+    @State private var dropBeforeIdx: Int?       = nil
 
     var body: some View {
         VStack(spacing: 0) {
@@ -412,47 +429,23 @@ private struct GeometryLayerPanel: View {
             .padding(.horizontal, 12)
             .padding(.vertical, 10)
 
-            List {
-                ForEach(controller.geometryEditorLayers) { layer in
-                    HStack(spacing: 6) {
-                        Text(layer.name)
-                            .font(.system(size: 12))
-                            .lineLimit(1)
-                            .foregroundStyle(layer.id == controller.selectedGeometryEditorLayerID ? Color.primary : Color.secondary)
-                        Spacer()
-                        Button {
-                            controller.toggleGeometryEditorLayerEditability(id: layer.id)
-                        } label: {
-                            Image(systemName: layer.isEditable ? "hand.draw.fill" : "hand.draw")
-                                .frame(width: 18, height: 18)
-                        }
-                        .buttonStyle(.borderless)
-                        .foregroundStyle(layer.isEditable ? Color.accentColor : Color.secondary)
-                        .help(layer.isEditable ? "Editable" : "Not editable")
-
-                        Button {
-                            controller.toggleGeometryEditorLayerVisibility(id: layer.id)
-                        } label: {
-                            Image(systemName: layer.isVisible ? "eye.fill" : "eye.slash")
-                                .frame(width: 18, height: 18)
-                        }
-                        .buttonStyle(.borderless)
-                        .foregroundStyle(layer.isVisible ? Color.accentColor : Color.secondary)
-                        .help(layer.isVisible ? "Visible" : "Hidden")
+            let layers = controller.geometryEditorLayers
+            ScrollView {
+                VStack(spacing: 0) {
+                    ForEach(Array(layers.enumerated()), id: \.element.id) { index, layer in
+                        layerRow(layer: layer, index: index)
                     }
-                    .padding(.horizontal, 6)
-                    .padding(.vertical, 4)
-                    .background(
-                        RoundedRectangle(cornerRadius: 4)
-                            .fill(layer.id == controller.selectedGeometryEditorLayerID ? Color.accentColor.opacity(0.16) : Color.clear)
-                    )
-                    .contentShape(Rectangle())
-                    .onTapGesture {
-                        controller.focusGeometryEditorLayer(id: layer.id)
-                    }
+                    // After-all drop zone
+                    Color.clear
+                        .frame(height: 10)
+                        .contentShape(Rectangle())
+                        .onDrop(of: [UTType.utf8PlainText], delegate: afterAllDelegate(total: layers.count))
+                        .overlay(alignment: .bottom) {
+                            if dropBeforeIdx == layers.count { insertionLine }
+                        }
                 }
+                .padding(.vertical, 4)
             }
-            .listStyle(.sidebar)
             .onAppear {
                 controller.ensureGeometryEditorLayerSelection()
                 if let id = controller.selectedGeometryEditorLayerID {
@@ -464,7 +457,7 @@ private struct GeometryLayerPanel: View {
 
             VStack(spacing: 6) {
                 HStack {
-                    Button("New") { controller.addGeometryEditorLayer() }
+                    Button("New")     { controller.addGeometryEditorLayer() }
                     Spacer()
                     Button("Rename") {
                         renameText = selectedLayerName
@@ -476,21 +469,15 @@ private struct GeometryLayerPanel: View {
                     Button("Duplicate") { controller.duplicateSelectedGeometryEditorLayer() }
                         .disabled(controller.selectedGeometryEditorLayerID == nil)
                     Spacer()
-                }
-                HStack {
-                    Button("Delete") { controller.deleteSelectedGeometryEditorLayer() }
-                        .disabled(controller.geometryEditorLayers.count <= 1)
-                        .foregroundStyle(controller.geometryEditorLayers.count > 1 ? Color.red : Color.secondary)
-                    Spacer()
-                    Button("Shift Up") { controller.moveSelectedGeometryEditorLayer(up: true) }
-                        .disabled(!canShift(up: true))
-                }
-                HStack {
-                    Text("Order")
-                        .foregroundStyle(.secondary)
-                    Spacer()
-                    Button("Shift Down") { controller.moveSelectedGeometryEditorLayer(up: false) }
-                        .disabled(!canShift(up: false))
+                    Button("Delete") {
+                        if selectedLayerHasGeometry {
+                            showingDeleteConfirmation = true
+                        } else {
+                            controller.deleteSelectedGeometryEditorLayer()
+                        }
+                    }
+                    .disabled(controller.geometryEditorLayers.count <= 1)
+                    .foregroundStyle(controller.geometryEditorLayers.count > 1 ? Color.red : Color.secondary)
                 }
             }
             .buttonStyle(.borderless)
@@ -503,7 +490,108 @@ private struct GeometryLayerPanel: View {
             Button("Rename") { controller.renameSelectedGeometryEditorLayer(to: renameText) }
             Button("Cancel", role: .cancel) {}
         }
+        .confirmationDialog(
+            "Delete \"\(selectedLayerName)\"?",
+            isPresented: $showingDeleteConfirmation,
+            titleVisibility: .visible
+        ) {
+            Button("Delete Layer", role: .destructive) {
+                controller.deleteSelectedGeometryEditorLayer()
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("This layer contains geometry. Deleting it cannot be undone except via Undo.")
+        }
     }
+
+    // MARK: - Layer row
+
+    private func layerRow(layer: GeometryEditorLayer, index: Int) -> some View {
+        let isSelected   = layer.id == controller.selectedGeometryEditorLayerID
+        let isDropTarget = dropBeforeIdx == index
+
+        return HStack(spacing: 6) {
+            Text(layer.name)
+                .font(.system(size: 12))
+                .lineLimit(1)
+                .foregroundStyle(isSelected ? Color.primary : Color.secondary)
+            Spacer()
+            Button {
+                controller.toggleGeometryEditorLayerEditability(id: layer.id)
+            } label: {
+                Image(systemName: layer.isEditable ? "hand.draw.fill" : "hand.draw")
+                    .frame(width: 18, height: 18)
+            }
+            .buttonStyle(.borderless)
+            .foregroundStyle(layer.isEditable ? Color.accentColor : Color.secondary)
+            .help(layer.isEditable ? "Editable" : "Not editable")
+
+            Button {
+                controller.toggleGeometryEditorLayerVisibility(id: layer.id)
+            } label: {
+                Image(systemName: layer.isVisible ? "eye.fill" : "eye.slash")
+                    .frame(width: 18, height: 18)
+            }
+            .buttonStyle(.borderless)
+            .foregroundStyle(layer.isVisible ? Color.accentColor : Color.secondary)
+            .help(layer.isVisible ? "Visible" : "Hidden")
+        }
+        .padding(.horizontal, 6)
+        .padding(.vertical, 4)
+        .background(
+            RoundedRectangle(cornerRadius: 4)
+                .fill(isSelected ? Color.accentColor.opacity(0.16) : Color.clear)
+        )
+        .contentShape(Rectangle())
+        .onTapGesture { controller.focusGeometryEditorLayer(id: layer.id) }
+        .onDrag {
+            self.dragLayerID = layer.id
+            return NSItemProvider(object: layer.id.uuidString as NSString)
+        }
+        .onDrop(of: [UTType.utf8PlainText], delegate: rowDelegate(index: index))
+        .overlay(alignment: .top) {
+            if isDropTarget { insertionLine }
+        }
+    }
+
+    private var insertionLine: some View {
+        Rectangle()
+            .fill(Color.accentColor)
+            .frame(height: 2)
+            .padding(.horizontal, 4)
+    }
+
+    // MARK: - Drop delegates
+
+    private func rowDelegate(index: Int) -> LayerDropDelegate {
+        LayerDropDelegate(
+            validate: { self.dragLayerID != nil },
+            entered:  { self.dropBeforeIdx = index },
+            exited:   { if self.dropBeforeIdx == index { self.dropBeforeIdx = nil } },
+            perform: {
+                defer { self.dragLayerID = nil; self.dropBeforeIdx = nil }
+                guard let id = self.dragLayerID else { return false }
+                self.controller.reorderGeometryEditorLayer(id: id, toBeforeIndex: index)
+                return true
+            }
+        )
+    }
+
+    private func afterAllDelegate(total: Int) -> LayerDropDelegate {
+        LayerDropDelegate(
+            validate: { self.dragLayerID != nil },
+            entered:  { self.dropBeforeIdx = total },
+            exited:   { if self.dropBeforeIdx == total { self.dropBeforeIdx = nil } },
+            perform: {
+                defer { self.dragLayerID = nil; self.dropBeforeIdx = nil }
+                guard let id = self.dragLayerID else { return false }
+                self.controller.reorderGeometryEditorLayer(id: id, toBeforeIndex: total)
+                return true
+            }
+        )
+    }
+
+    // MARK: - Helpers
 
     private var selectedLayerName: String {
         guard let id = controller.selectedGeometryEditorLayerID,
@@ -512,11 +600,12 @@ private struct GeometryLayerPanel: View {
         return layer.name
     }
 
-    private func canShift(up: Bool) -> Bool {
+    private var selectedLayerHasGeometry: Bool {
         guard let id = controller.selectedGeometryEditorLayerID,
-              let index = controller.geometryEditorLayers.firstIndex(where: { $0.id == id })
+              let document = controller.geometryEditorDocument,
+              let layer = document.layers.first(where: { $0.id == id })
         else { return false }
-        return up ? index > 0 : index < controller.geometryEditorLayers.count - 1
+        return !layer.polygons.isEmpty || !layer.openCurves.isEmpty || !layer.points.isEmpty
     }
 }
 
@@ -1119,11 +1208,31 @@ private struct EditableGeometryCanvas: View {
             .background(
                 GeometryKeyCaptureView { event in
                     guard controller.isGeometryEditorActive else { return false }
-                    let key = event.charactersIgnoringModifiers?.lowercased() ?? ""
+                    let key  = event.charactersIgnoringModifiers?.lowercased() ?? ""
+                    let cmd  = event.modifierFlags.contains(.command)
+                    let shft = event.modifierFlags.contains(.shift)
+
+                    // ⌘Z / ⌘⇧Z — undo/redo
+                    if cmd && key == "z" {
+                        if shft { controller.redoGeometryEdit() }
+                        else    { controller.undoGeometryEdit() }
+                        return true
+                    }
+                    // ⌘X / ⌘C / ⌘V — cut / copy / paste
+                    if cmd && key == "x" { controller.cutSelectedGeometry();  return true }
+                    if cmd && key == "c" { controller.copySelectedGeometry(); return true }
+                    if cmd && key == "v" { controller.pasteGeometry();        return true }
+                    // ⌫ Delete key (keyCode 51) — delete selected geometry
+                    if !cmd && event.keyCode == 51 {
+                        controller.deleteSelectedGeometry()
+                        return true
+                    }
+                    // p — finalise polygon/open-curve draft
                     if key == "p" {
                         controller.finaliseGeometryDraftPolygon()
                         return true
                     }
+                    // Escape — cancel mesh extend draft
                     if key == "\u{1B}" {
                         controller.cancelGeometryMeshExtendDraft()
                         return true
