@@ -17,6 +17,8 @@ enum GeometryEditorTool: String {
     case meshExtend = "Mesh Extend"
     case knife = "Knife"
     case freehand = "Freehand"
+    case displacementExtrude = "Extrude (Displacement)"
+    case scaleExtrude = "Extrude (Scale)"
 }
 
 struct GeometryMeshExtendDraft: Equatable {
@@ -41,6 +43,31 @@ struct GeometryMeshExtendDraft: Equatable {
 struct GeometryKnifeLine: Equatable {
     var start: Vector2D
     var end: Vector2D
+}
+
+struct GeometryExtrudeDraft: Equatable {
+    enum Mode: Equatable { case displacement, scale }
+    var mode: Mode
+    var startPoint: Vector2D
+    var currentPoint: Vector2D
+
+    var dragDelta: Vector2D { currentPoint - startPoint }
+
+    var scaleFactor: Double {
+        let d = currentPoint - startPoint
+        // right (+x) and up (−y in editor coords) both increase scale
+        let proj = d.x - d.y
+        let normalized = proj / 0.25
+        let clamped = max(-0.95, min(3.0, normalized))
+        return clamped >= 0 ? 1.0 + clamped : max(0.05, 1.0 + clamped)
+    }
+}
+
+struct GeometryClipboardEntry {
+    var polygons: [EditableClosedPolygon]
+    var openCurves: [EditableOpenCurve]
+    var standalonePoints: [EditableStandalonePoint]
+    var centroid: Vector2D
 }
 
 enum GeometryTransformPivot: String {
@@ -105,6 +132,9 @@ final class AppController: ObservableObject, @unchecked Sendable {
     @Published var geometryEditorMeshExtendDraft: GeometryMeshExtendDraft? = nil
     @Published var geometryEditorKnifeLine:       GeometryKnifeLine? = nil
     @Published var geometryEditorKnifeCutsAllVisibleLayers: Bool = false
+    @Published var geometryEditorExtrudeDraft:    GeometryExtrudeDraft? = nil
+    @Published var geometryEditorClipboard:       GeometryClipboardEntry? = nil
+    @Published var geometryEditorLastClickPosition: Vector2D = .zero
     @Published var geometryEditorViewZoom:        Double = 1.0
     @Published var geometryEditorViewCentre:      Vector2D = .zero
     @Published var geometryEditorShowsGrid:       Bool = true
@@ -220,6 +250,7 @@ final class AppController: ObservableObject, @unchecked Sendable {
         clearGeometryFreehandStroke()
         cancelGeometryMeshExtendDraft()
         cancelGeometryKnifeLine()
+        cancelGeometryExtrudeDraft()
     }
 
     func ensureGeometryEditorLayerSelection() {
@@ -587,6 +618,75 @@ final class AppController: ObservableObject, @unchecked Sendable {
 
     func cancelGeometryKnifeLine() {
         geometryEditorKnifeLine = nil
+    }
+
+    // MARK: - Extrude tools
+
+    func startDisplacementExtrude() {
+        if geometryEditorTool == .displacementExtrude {
+            geometryEditorTool = .edges
+            cancelGeometryExtrudeDraft()
+            return
+        }
+        geometryEditorTool = .displacementExtrude
+        geometryEditorDraftPoints.removeAll()
+        clearGeometryFreehandStroke()
+        cancelGeometryMeshExtendDraft()
+        cancelGeometryKnifeLine()
+        cancelGeometryExtrudeDraft()
+    }
+
+    func startScaleExtrude() {
+        if geometryEditorTool == .scaleExtrude {
+            geometryEditorTool = .edges
+            cancelGeometryExtrudeDraft()
+            return
+        }
+        geometryEditorTool = .scaleExtrude
+        geometryEditorDraftPoints.removeAll()
+        clearGeometryFreehandStroke()
+        cancelGeometryMeshExtendDraft()
+        cancelGeometryKnifeLine()
+        cancelGeometryExtrudeDraft()
+    }
+
+    func beginGeometryExtrudeDrag(at startPoint: Vector2D) {
+        guard geometryEditorTool == .displacementExtrude || geometryEditorTool == .scaleExtrude else { return }
+        let mode: GeometryExtrudeDraft.Mode = geometryEditorTool == .displacementExtrude ? .displacement : .scale
+        geometryEditorExtrudeDraft = GeometryExtrudeDraft(mode: mode, startPoint: startPoint, currentPoint: startPoint)
+    }
+
+    func updateGeometryExtrudeDrag(to point: Vector2D) {
+        guard geometryEditorExtrudeDraft != nil else { return }
+        geometryEditorExtrudeDraft?.currentPoint = point
+    }
+
+    func finishGeometryExtrude() {
+        guard let draft = geometryEditorExtrudeDraft else { return }
+        defer { cancelGeometryExtrudeDraft() }
+        switch draft.mode {
+        case .displacement:
+            guard draft.dragDelta.length > 0.002 else { return }
+            performGeometryDisplacementExtrude(delta: draft.dragDelta)
+        case .scale:
+            let factor = draft.scaleFactor
+            guard abs(factor - 1.0) > 0.01 else { return }
+            performGeometryScaleExtrude(factor: factor)
+        }
+    }
+
+    func cancelGeometryExtrudeDraft() {
+        geometryEditorExtrudeDraft = nil
+    }
+
+    var canExtrudeSelectedGeometry: Bool {
+        guard let document = geometryEditorDocument,
+              selectedGeometryEditorLayerCanEditForUI else { return false }
+        return !extrudeSourceSegments(in: document).isEmpty
+    }
+
+    func extrudePreviewSegments(in document: EditableGeometryDocument) -> [EditableCubicSegment] {
+        extrudeSourceSegments(in: document).map(\.segment)
     }
 
     func beginGeometryMeshExtend(
@@ -1709,6 +1809,32 @@ final class AppController: ObservableObject, @unchecked Sendable {
         )
     }
 
+    func selectGeometryPoints(
+        layerID: EditableGeometryID,
+        polygonPoints: [(polygonID: EditableGeometryID, pointID: EditableGeometryID)],
+        openCurvePoints: [(openCurveID: EditableGeometryID, pointID: EditableGeometryID)],
+        standalonePointIDs: Set<EditableGeometryID>,
+        additive: Bool = false
+    ) {
+        guard layerCanEdit(layerID) else { return }
+        let newPointIDs = Set(polygonPoints.map(\.pointID) + openCurvePoints.map(\.pointID)).union(standalonePointIDs)
+        guard !newPointIDs.isEmpty else {
+            if !additive { clearGeometryEditorSelection() }
+            return
+        }
+        selectGeometryEditorLayer(id: layerID)
+        var selection = additive && geometryEditorSelection.layerID == layerID
+            ? geometryEditorSelection
+            : EditableGeometrySelection(layerID: layerID)
+        selection.layerID = layerID
+        selection.segmentIDs.removeAll()
+        selection.polygonIDs.formUnion(polygonPoints.map(\.polygonID))
+        selection.openCurveIDs.formUnion(openCurvePoints.map(\.openCurveID))
+        selection.standalonePointIDs.formUnion(standalonePointIDs)
+        selection.pointIDs.formUnion(newPointIDs)
+        geometryEditorSelection = selection
+    }
+
     func selectGeometryPolygon(
         layerID: EditableGeometryID,
         polygonID: EditableGeometryID,
@@ -1778,6 +1904,27 @@ final class AppController: ObservableObject, @unchecked Sendable {
             layerID: layerID,
             openCurveIDs: [openCurveID]
         )
+    }
+
+    func selectGeometryOpenCurves(
+        layerID: EditableGeometryID,
+        openCurveIDs: Set<EditableGeometryID>,
+        additive: Bool = false
+    ) {
+        guard !openCurveIDs.isEmpty else {
+            if !additive { clearGeometryEditorSelection() }
+            return
+        }
+        guard layerCanEdit(layerID) else { return }
+        selectGeometryEditorLayer(id: layerID)
+        var selection = additive && geometryEditorSelection.layerID == layerID
+            ? geometryEditorSelection
+            : EditableGeometrySelection(layerID: layerID)
+        selection.layerID = layerID
+        selection.pointIDs.removeAll()
+        selection.segmentIDs.removeAll()
+        selection.openCurveIDs.formUnion(openCurveIDs)
+        geometryEditorSelection = selection
     }
 
     func selectGeometrySegment(
@@ -2002,6 +2149,15 @@ final class AppController: ObservableObject, @unchecked Sendable {
         return false
     }
 
+    var canDeleteAllLayerGeometry: Bool {
+        guard let document = geometryEditorDocument,
+              let layerID = selectedGeometryEditorLayerID ?? geometryEditorSelection.layerID,
+              let layer = document.layers.first(where: { $0.id == layerID }),
+              layer.isVisible, layer.isEditable
+        else { return false }
+        return !layer.polygons.isEmpty || !layer.openCurves.isEmpty || !layer.points.isEmpty
+    }
+
     var canTransformSelectedGeometry: Bool {
         guard let document = geometryEditorDocument,
               let layerID = geometryEditorSelection.layerID,
@@ -2023,6 +2179,20 @@ final class AppController: ObservableObject, @unchecked Sendable {
             layer.openCurves.contains { geometryEditorSelection.openCurveIDs.contains($0.id) } ||
             !geometryEditorSelection.pointIDs.intersection(Set(layer.points.map(\.id))).isEmpty
     }
+
+    var canCutCopySelectedGeometry: Bool {
+        guard let document = geometryEditorDocument,
+              let layerID = geometryEditorSelection.layerID,
+              let layer = document.layers.first(where: { $0.id == layerID }),
+              layer.isVisible,
+              layer.isEditable
+        else { return false }
+        return layer.polygons.contains { geometryEditorSelection.polygonIDs.contains($0.id) } ||
+            layer.openCurves.contains { geometryEditorSelection.openCurveIDs.contains($0.id) } ||
+            layer.points.contains { geometryEditorSelection.standalonePointIDs.contains($0.id) }
+    }
+
+    var canPasteGeometry: Bool { geometryEditorClipboard != nil }
 
     var selectedGeometryAnchorCount: Int {
         if geometryEditorTool == .pointByPoint, !geometryEditorDraftPoints.isEmpty {
@@ -2150,6 +2320,118 @@ final class AppController: ObservableObject, @unchecked Sendable {
         )
         selectedGeometryEditorLayerID = layerID
         postStatus("Duplicated \(polygonCopies.count + curveCopies.count + pointCopies.count) item(s)")
+    }
+
+    func cutSelectedGeometry() {
+        guard var document = geometryEditorDocument,
+              let layerID = geometryEditorSelection.layerID,
+              layerCanEdit(layerID),
+              let layerIndex = document.layers.firstIndex(where: { $0.id == layerID }),
+              canCutCopySelectedGeometry
+        else {
+            postStatus("Cut: no selectable geometry")
+            return
+        }
+        let selectedPolygons = geometryEditorSelection.polygonIDs
+        let selectedCurves = geometryEditorSelection.openCurveIDs
+        let selectedPoints = geometryEditorSelection.standalonePointIDs
+        let polygons = document.layers[layerIndex].polygons.filter { selectedPolygons.contains($0.id) }
+        let curves = document.layers[layerIndex].openCurves.filter { selectedCurves.contains($0.id) }
+        let points = document.layers[layerIndex].points.filter { selectedPoints.contains($0.id) }
+        guard !polygons.isEmpty || !curves.isEmpty || !points.isEmpty else {
+            postStatus("Cut: selected geometry was not found in layer")
+            return
+        }
+        let allAnchors: [Vector2D] =
+            polygons.flatMap { p in p.anchorIDs.compactMap { p.point(id: $0)?.position } } +
+            curves.flatMap { c in c.anchorIDs.compactMap { c.point(id: $0)?.position } } +
+            points.map(\.position)
+        let centroid = allAnchors.isEmpty ? geometryEditorLastClickPosition :
+            Vector2D(x: allAnchors.map(\.x).reduce(0, +) / Double(allAnchors.count),
+                     y: allAnchors.map(\.y).reduce(0, +) / Double(allAnchors.count))
+        geometryEditorClipboard = GeometryClipboardEntry(polygons: polygons, openCurves: curves, standalonePoints: points, centroid: centroid)
+        recordGeometryEditorUndoSnapshot()
+        document.layers[layerIndex].polygons.removeAll { selectedPolygons.contains($0.id) }
+        document.layers[layerIndex].openCurves.removeAll { selectedCurves.contains($0.id) }
+        document.layers[layerIndex].points.removeAll { selectedPoints.contains($0.id) }
+        geometryEditorSelection = .empty
+        setGeometryEditorDocument(document)
+        postStatus("Cut \(polygons.count + curves.count + points.count) item(s)")
+    }
+
+    func copySelectedGeometry() {
+        guard let document = geometryEditorDocument,
+              let layerID = geometryEditorSelection.layerID,
+              let layer = document.layers.first(where: { $0.id == layerID }),
+              canCutCopySelectedGeometry
+        else {
+            postStatus("Copy: no selectable geometry")
+            return
+        }
+        let polygons = layer.polygons.filter { geometryEditorSelection.polygonIDs.contains($0.id) }
+        let curves = layer.openCurves.filter { geometryEditorSelection.openCurveIDs.contains($0.id) }
+        let points = layer.points.filter { geometryEditorSelection.standalonePointIDs.contains($0.id) }
+        guard !polygons.isEmpty || !curves.isEmpty || !points.isEmpty else {
+            postStatus("Copy: selected geometry was not found in layer")
+            return
+        }
+        let allAnchors: [Vector2D] =
+            polygons.flatMap { p in p.anchorIDs.compactMap { p.point(id: $0)?.position } } +
+            curves.flatMap { c in c.anchorIDs.compactMap { c.point(id: $0)?.position } } +
+            points.map(\.position)
+        let centroid = allAnchors.isEmpty ? geometryEditorLastClickPosition :
+            Vector2D(x: allAnchors.map(\.x).reduce(0, +) / Double(allAnchors.count),
+                     y: allAnchors.map(\.y).reduce(0, +) / Double(allAnchors.count))
+        geometryEditorClipboard = GeometryClipboardEntry(polygons: polygons, openCurves: curves, standalonePoints: points, centroid: centroid)
+        postStatus("Copied \(polygons.count + curves.count + points.count) item(s)")
+    }
+
+    func pasteGeometry() {
+        guard var document = geometryEditorDocument,
+              let layerID = selectedGeometryEditorLayerID ?? geometryEditorSelection.layerID,
+              layerCanEdit(layerID),
+              let layerIndex = document.layers.firstIndex(where: { $0.id == layerID }),
+              let clipboard = geometryEditorClipboard
+        else {
+            postStatus(geometryEditorClipboard == nil ? "Paste: nothing on clipboard" : "Paste: no active editable layer")
+            return
+        }
+        let pasteOffset = geometryEditorLastClickPosition - clipboard.centroid
+        var pastedPolygonIDs = Set<EditableGeometryID>()
+        var pastedCurveIDs = Set<EditableGeometryID>()
+        var pastedPointIDs = Set<EditableGeometryID>()
+        var polygonCopies: [EditableClosedPolygon] = []
+        for polygon in clipboard.polygons {
+            let copy = polygon.duplicated(name: polygon.name).translated(by: pasteOffset)
+            pastedPolygonIDs.insert(copy.id)
+            polygonCopies.append(copy)
+        }
+        var curveCopies: [EditableOpenCurve] = []
+        for curve in clipboard.openCurves {
+            let copy = curve.duplicated(name: curve.name).translated(by: pasteOffset)
+            pastedCurveIDs.insert(copy.id)
+            curveCopies.append(copy)
+        }
+        var pointCopies: [EditableStandalonePoint] = []
+        for point in clipboard.standalonePoints {
+            let copy = point.duplicated(name: point.name).translated(by: pasteOffset)
+            pastedPointIDs.insert(copy.id)
+            pointCopies.append(copy)
+        }
+        recordGeometryEditorUndoSnapshot()
+        document.layers[layerIndex].polygons.append(contentsOf: polygonCopies)
+        document.layers[layerIndex].openCurves.append(contentsOf: curveCopies)
+        document.layers[layerIndex].points.append(contentsOf: pointCopies)
+        geometryEditorSelection = EditableGeometrySelection(
+            layerID: layerID,
+            polygonIDs: pastedPolygonIDs,
+            openCurveIDs: pastedCurveIDs,
+            standalonePointIDs: pastedPointIDs,
+            pointIDs: pastedPointIDs
+        )
+        selectedGeometryEditorLayerID = layerID
+        setGeometryEditorDocument(document)
+        postStatus("Pasted \(polygonCopies.count + curveCopies.count + pointCopies.count) item(s)")
     }
 
     private func selectedGeometryPoints(in layer: EditableGeometryLayer) -> [Vector2D] {
@@ -3489,6 +3771,22 @@ final class AppController: ObservableObject, @unchecked Sendable {
         setGeometryEditorDocument(document)
     }
 
+    func deleteAllLayerGeometry() {
+        guard var document = geometryEditorDocument,
+              let layerID = selectedGeometryEditorLayerID ?? geometryEditorSelection.layerID,
+              layerCanEdit(layerID),
+              let layerIndex = document.layers.firstIndex(where: { $0.id == layerID }),
+              canDeleteAllLayerGeometry
+        else { postStatus("Delete All: no active editable layer with geometry"); return }
+        recordGeometryEditorUndoSnapshot()
+        document.layers[layerIndex].polygons.removeAll()
+        document.layers[layerIndex].openCurves.removeAll()
+        document.layers[layerIndex].points.removeAll()
+        geometryEditorSelection = .empty
+        setGeometryEditorDocument(document)
+        postStatus("Deleted all geometry in layer")
+    }
+
     private func pruneGeometryEditorSelection(in document: EditableGeometryDocument) {
         guard let layerID = geometryEditorSelection.layerID,
               let layer = document.layers.first(where: { $0.id == layerID }),
@@ -3523,6 +3821,241 @@ final class AppController: ObservableObject, @unchecked Sendable {
             geometryEditorSelection.pointIDs.isEmpty {
             geometryEditorSelection = .empty
         }
+    }
+
+    // MARK: - Extrude implementation
+
+    // Collects segments to extrude from the current selection using two distinct modes:
+    //
+    // • Segment-priority (segmentIDs non-empty): uses only the explicitly listed segment IDs,
+    //   searching all editable polygons and open curves regardless of whether their parent
+    //   object is in polygonIDs/openCurveIDs. This makes chained extrusion work correctly —
+    //   after an extrude the auto-selected top edges are in segmentIDs, so the next extrude
+    //   only extends those edges rather than all four sides of the newly created quads.
+    //
+    // • Whole-object (segmentIDs empty): expands to every edge of every polygon in
+    //   polygonIDs and every open curve in openCurveIDs. This is the "3D" path — the user
+    //   switches to Polygons mode, selects the quads (no explicit edge selection), and
+    //   extruding all four sides produces a volumetric shape.
+    private func extrudeSourceSegments(
+        in document: EditableGeometryDocument
+    ) -> [GeometrySegmentReference] {
+        guard let layerID = geometryEditorSelection.layerID else { return [] }
+        let sel = geometryEditorSelection
+        var refs: [GeometrySegmentReference] = []
+        var seen = Set<EditableGeometryID>()
+
+        for layerIndex in document.layers.indices {
+            let layer = document.layers[layerIndex]
+            guard layer.id == layerID, layer.isVisible, layer.isEditable else { continue }
+
+            if sel.segmentIDs.isEmpty {
+                // Whole-object expansion: all edges of selected polygons
+                for polygonIndex in layer.polygons.indices {
+                    let polygon = layer.polygons[polygonIndex]
+                    guard sel.polygonIDs.contains(polygon.id) else { continue }
+                    for segIdx in polygon.segments.indices {
+                        let seg = polygon.segments[segIdx]
+                        if seen.insert(seg.id).inserted {
+                            refs.append(GeometrySegmentReference(
+                                layerIndex: layerIndex, isPolygon: true,
+                                itemIndex: polygonIndex, segmentIndex: segIdx,
+                                layerID: layer.id, itemID: polygon.id, segment: seg
+                            ))
+                        }
+                    }
+                }
+                // Whole-object expansion: all edges of selected open curves
+                for curveIndex in layer.openCurves.indices {
+                    let curve = layer.openCurves[curveIndex]
+                    guard sel.openCurveIDs.contains(curve.id) else { continue }
+                    for segIdx in curve.segments.indices {
+                        let seg = curve.segments[segIdx]
+                        if seen.insert(seg.id).inserted {
+                            refs.append(GeometrySegmentReference(
+                                layerIndex: layerIndex, isPolygon: false,
+                                itemIndex: curveIndex, segmentIndex: segIdx,
+                                layerID: layer.id, itemID: curve.id, segment: seg
+                            ))
+                        }
+                    }
+                }
+            } else {
+                // Segment-priority: search every editable polygon and open curve for
+                // segment IDs that appear in the explicit selection, regardless of whether
+                // the parent object is also in polygonIDs/openCurveIDs.
+                for polygonIndex in layer.polygons.indices {
+                    let polygon = layer.polygons[polygonIndex]
+                    for segIdx in polygon.segments.indices {
+                        let seg = polygon.segments[segIdx]
+                        guard sel.segmentIDs.contains(seg.id),
+                              seen.insert(seg.id).inserted else { continue }
+                        refs.append(GeometrySegmentReference(
+                            layerIndex: layerIndex, isPolygon: true,
+                            itemIndex: polygonIndex, segmentIndex: segIdx,
+                            layerID: layer.id, itemID: polygon.id, segment: seg
+                        ))
+                    }
+                }
+                for curveIndex in layer.openCurves.indices {
+                    let curve = layer.openCurves[curveIndex]
+                    for segIdx in curve.segments.indices {
+                        let seg = curve.segments[segIdx]
+                        guard sel.segmentIDs.contains(seg.id),
+                              seen.insert(seg.id).inserted else { continue }
+                        refs.append(GeometrySegmentReference(
+                            layerIndex: layerIndex, isPolygon: false,
+                            itemIndex: curveIndex, segmentIndex: segIdx,
+                            layerID: layer.id, itemID: curve.id, segment: seg
+                        ))
+                    }
+                }
+            }
+        }
+        return refs
+    }
+
+    private func makeExtrudeQuad(
+        oA0: Vector2D, oC1: Vector2D, oC2: Vector2D, oA3: Vector2D,
+        lA0: Vector2D, lC1: Vector2D, lC2: Vector2D, lA3: Vector2D,
+        name: String
+    ) -> EditableClosedPolygon {
+        func lerp(_ a: Vector2D, _ b: Vector2D, _ t: Double) -> Vector2D { a + (b - a) * t }
+
+        // Anchors
+        let pOA0 = EditableCubicPoint(position: oA0, kind: .anchor)
+        let pOA3 = EditableCubicPoint(position: oA3, kind: .anchor)
+        let pLA3 = EditableCubicPoint(position: lA3, kind: .anchor)
+        let pLA0 = EditableCubicPoint(position: lA0, kind: .anchor)
+
+        // Segment 0: bottom — original edge forward
+        let pBC1 = EditableCubicPoint(position: oC1, kind: .control)
+        let pBC2 = EditableCubicPoint(position: oC2, kind: .control)
+
+        // Segment 1: right connector — straight oA3 → lA3
+        let pRC1 = EditableCubicPoint(position: lerp(oA3, lA3, 1.0 / 3.0), kind: .control)
+        let pRC2 = EditableCubicPoint(position: lerp(oA3, lA3, 2.0 / 3.0), kind: .control)
+
+        // Segment 2: top — displaced edge reversed (lA3 → lA0 using lC2, lC1)
+        let pTC1 = EditableCubicPoint(position: lC2, kind: .control)
+        let pTC2 = EditableCubicPoint(position: lC1, kind: .control)
+
+        // Segment 3: left connector — straight lA0 → oA0
+        let pLC1 = EditableCubicPoint(position: lerp(lA0, oA0, 1.0 / 3.0), kind: .control)
+        let pLC2 = EditableCubicPoint(position: lerp(lA0, oA0, 2.0 / 3.0), kind: .control)
+
+        let seg0 = EditableCubicSegment(startAnchorID: pOA0.id, controlOutID: pBC1.id, controlInID: pBC2.id, endAnchorID: pOA3.id)
+        let seg1 = EditableCubicSegment(startAnchorID: pOA3.id, controlOutID: pRC1.id, controlInID: pRC2.id, endAnchorID: pLA3.id)
+        let seg2 = EditableCubicSegment(startAnchorID: pLA3.id, controlOutID: pTC1.id, controlInID: pTC2.id, endAnchorID: pLA0.id)
+        let seg3 = EditableCubicSegment(startAnchorID: pLA0.id, controlOutID: pLC1.id, controlInID: pLC2.id, endAnchorID: pOA0.id)
+
+        return EditableClosedPolygon(
+            name: name,
+            points: [pOA0, pBC1, pBC2, pOA3, pRC1, pRC2, pLA3, pTC1, pTC2, pLA0, pLC1, pLC2],
+            segments: [seg0, seg1, seg2, seg3]
+        )
+    }
+
+    private func performGeometryDisplacementExtrude(delta: Vector2D) {
+        guard var document = geometryEditorDocument else { return }
+        let sources = extrudeSourceSegments(in: document)
+        guard !sources.isEmpty else { return }
+
+        var pairs: [(source: GeometrySegmentReference, quad: EditableClosedPolygon)] = []
+        for source in sources {
+            guard let oA0 = document.point(id: source.segment.startAnchorID)?.position,
+                  let oC1 = document.point(id: source.segment.controlOutID)?.position,
+                  let oC2 = document.point(id: source.segment.controlInID)?.position,
+                  let oA3 = document.point(id: source.segment.endAnchorID)?.position
+            else { continue }
+            pairs.append((source, makeExtrudeQuad(
+                oA0: oA0, oC1: oC1, oC2: oC2, oA3: oA3,
+                lA0: oA0 + delta, lC1: oC1 + delta, lC2: oC2 + delta, lA3: oA3 + delta,
+                name: "Extrude Quad"
+            )))
+        }
+        commitExtrudeQuads(pairs: pairs, into: &document, statusPrefix: "Displacement extrude")
+    }
+
+    private func performGeometryScaleExtrude(factor: Double) {
+        guard var document = geometryEditorDocument else { return }
+        let sources = extrudeSourceSegments(in: document)
+        guard !sources.isEmpty else { return }
+
+        var anchorPositions: [Vector2D] = []
+        for source in sources {
+            if let p = document.point(id: source.segment.startAnchorID)?.position { anchorPositions.append(p) }
+            if let p = document.point(id: source.segment.endAnchorID)?.position   { anchorPositions.append(p) }
+        }
+        guard !anchorPositions.isEmpty else { return }
+        let centroid = anchorPositions.reduce(.zero, +) * (1.0 / Double(anchorPositions.count))
+
+        var pairs: [(source: GeometrySegmentReference, quad: EditableClosedPolygon)] = []
+        for source in sources {
+            guard let oA0 = document.point(id: source.segment.startAnchorID)?.position,
+                  let oC1 = document.point(id: source.segment.controlOutID)?.position,
+                  let oC2 = document.point(id: source.segment.controlInID)?.position,
+                  let oA3 = document.point(id: source.segment.endAnchorID)?.position
+            else { continue }
+            func sc(_ p: Vector2D) -> Vector2D { centroid + (p - centroid) * factor }
+            pairs.append((source, makeExtrudeQuad(
+                oA0: oA0, oC1: oC1, oC2: oC2, oA3: oA3,
+                lA0: sc(oA0), lC1: sc(oC1), lC2: sc(oC2), lA3: sc(oA3),
+                name: "Scale Extrude Quad"
+            )))
+        }
+        commitExtrudeQuads(pairs: pairs, into: &document,
+                           statusPrefix: String(format: "Scale extrude ×%.2f", factor))
+    }
+
+    // Shared commit for both extrude modes:
+    // • welds each quad's bottom anchors to its source polygon anchors
+    // • welds adjacent quads' top-edge corner anchors wherever two source edges shared an original anchor
+    // • records one undo snapshot (pre-mutation), then publishes the new document
+    private func commitExtrudeQuads(
+        pairs: [(source: GeometrySegmentReference, quad: EditableClosedPolygon)],
+        into document: inout EditableGeometryDocument,
+        statusPrefix: String
+    ) {
+        guard !pairs.isEmpty else { return }
+
+        // Bottom-to-source welds and layer insertion
+        for (source, quad) in pairs {
+            if source.isPolygon {
+                document.weldPoints([source.segment.startAnchorID, quad.segments[0].startAnchorID])
+                document.weldPoints([source.segment.endAnchorID,   quad.segments[0].endAnchorID])
+            }
+            document.layers[source.layerIndex].polygons.append(quad)
+        }
+
+        // Adjacent top-corner welds:
+        // seg[2] of the quad is the top edge, running from pLA3 (= oA3 displaced) to pLA0 (= oA0 displaced).
+        // Two quads from neighbouring edges share the same original anchor at their junction.
+        // Collect all top-corner anchor IDs keyed by the original anchor they were derived from,
+        // then weld any bucket that received more than one entry.
+        var originToTopIDs: [EditableGeometryID: [EditableGeometryID]] = [:]
+        for (source, quad) in pairs {
+            // seg[2].startAnchorID = pLA3, derived from source.segment.endAnchorID (oA3)
+            originToTopIDs[source.segment.endAnchorID, default: []].append(quad.segments[2].startAnchorID)
+            // seg[2].endAnchorID = pLA0, derived from source.segment.startAnchorID (oA0)
+            originToTopIDs[source.segment.startAnchorID, default: []].append(quad.segments[2].endAnchorID)
+        }
+        for topIDs in originToTopIDs.values where topIDs.count > 1 {
+            document.weldPoints(Set(topIDs))
+        }
+
+        let newPolygonIDs = Set(pairs.map(\.quad.id))
+        let newSegmentIDs = Set(pairs.map { $0.quad.segments[2].id })
+
+        recordGeometryEditorUndoSnapshot()
+        setGeometryEditorDocument(document)
+        geometryEditorTool = .edges
+        geometryEditorSelection = EditableGeometrySelection(
+            layerID: selectedGeometryEditorLayerID,
+            polygonIDs: newPolygonIDs,
+            segmentIDs: newSegmentIDs
+        )
+        postStatus("\(statusPrefix): \(pairs.count) edge(s)")
     }
 
     private func selectedGeometrySegmentReferences(
@@ -3705,9 +4238,21 @@ final class AppController: ObservableObject, @unchecked Sendable {
     private func createProject(at url: URL, name: String? = nil) {
         do {
             try FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
-            for folder in ["polygonSets", "curveSets", "pointSets", "ovalSets", "regularPolygons"] {
+            let topLevel = [
+                "polygonSets", "curveSets", "pointSets", "ovalSets", "regularPolygons",
+                "background_image", "brushes", "configuration", "morphTargets",
+                "palettes", "stamps", "svgs"
+            ]
+            for folder in topLevel {
                 try FileManager.default.createDirectory(
                     at: url.appendingPathComponent(folder),
+                    withIntermediateDirectories: true
+                )
+            }
+            let renders = url.appendingPathComponent("renders")
+            for sub in ["stills", "animations"] {
+                try FileManager.default.createDirectory(
+                    at: renders.appendingPathComponent(sub),
                     withIntermediateDirectories: true
                 )
             }

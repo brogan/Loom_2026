@@ -1,6 +1,6 @@
 # Geometry Editor Handoff
 
-Last updated: 2026-05-07
+Last updated: 2026-05-08 (session 2)
 
 ## What is now implemented
 
@@ -102,7 +102,8 @@ Last updated: 2026-05-07
 - The right Geometry Editor controls are compressed into icon rows with tooltip help:
   - Create uses icons for points, oval, regular polygon, point-by-point, finalise polygon/open curve, clear draft, mesh extend, fill triangle, fill quad, fill closed hole, and freehand detail;
   - Edit uses one row for points, edges, open curves, and polygons;
-  - Undo/Redo sit beside each other and Reset Controls sits beneath them;
+  - Undo/Redo sit beside each other;
+  - Edit also has a compact utility row ordered as custom anchor snap, snap all points, and reset controls via a steering-wheel icon;
   - Weld, Multiply, Transform, and View use compact icon buttons where possible.
 - The View section is now wired:
   - Zoom In and Zoom Out change the Geometry Editor canvas view scale while preserving hit-testing alignment;
@@ -112,7 +113,7 @@ Last updated: 2026-05-07
   - control point display can be toggled independently, leaving anchors visible when controls are hidden;
   - grid detail offers Quadrants, Standard, and Fine views;
   - Fine view draws grey minor lines, darker blue intermediate lines, lighter blue larger-step lines, and light grey centre quadrant axes;
-  - snap buttons snap either all relevant points or anchor points only;
+  - snap actions now live in Edit rather than View;
   - snapping applies to selected geometry, or to all active-layer geometry if nothing is selected;
   - snapping always uses the fine grid spacing, regardless of the displayed grid detail.
 - Whole selected polygons/open curves can now be duplicated and transformed:
@@ -125,8 +126,14 @@ Last updated: 2026-05-07
   - Scale/Rotate sliders preview from the geometry positions at gesture start, record one undo snapshot per drag, and reset to centre on release, matching the Python editor pattern;
   - Scale/Rotate share pivot options: local centre, common centre, or canvas centre;
   - transforms are undoable and apply through one shared weld-aware point transform path.
+- Two extrude modes are implemented in the Multiply section:
+  - **Displacement extrude**: select edges, whole polygons, or whole open curves, then drag on the canvas to push a displaced copy; each source edge becomes a closed quad (bottom = original edge, top = displaced copy reversed, left/right = straight connectors); bottom anchors of each quad are welded to the original closed-polygon anchors; after release, all top edges are selected so the operation chains immediately;
+  - **Scale extrude**: same selection rules but drag right/up to scale outward and left/down to scale inward; all selected anchor positions are averaged to a centroid and the top edge is the source edge scaled around that centroid by the inferred factor; partial-edge selections produce an incomplete arc rather than a full ring;
+  - both modes show a live dashed purple preview of the top edges and grey connectors while dragging;
+  - clicking an active extrude button again returns to Edges mode;
+  - Intersect has been retired: scale extrude replaces it more interactively without requiring two pre-existing polygons.
 - Knife has a first Swift implementation:
-  - the scissors button in Multiply toggles Knife mode;
+  - the diagonal knife/blade button in Multiply toggles Knife mode, leaving the scissors icon available later for ordinary Cut;
   - by default Knife cuts only the selected/focused editable layer;
   - entering Knife mode resets the scope to selected/focused layer by default;
   - the adjacent layer-stack icon is a scope toggle, not a separate tool: while Knife is active it switches between focused-layer cutting and cutting through all visible layers;
@@ -148,7 +155,8 @@ Last updated: 2026-05-07
   - old JSON with no weld data still decodes normally;
   - weld groups are pruned when geometry points disappear;
   - duplicate geometry receives fresh IDs and does not inherit weld links to the original;
-  - the Weld section now has a button for welding selected points/edges, a button for unwelding selected geometry, a button for welding adjacent edges, and a single strict-to-loose tolerance slider placed directly to the right of the weld buttons;
+  - the Weld section now has buttons for welding selected points/edges and welding adjacent edges, a single strict-to-loose tolerance slider, and a burst/explode button to break welds on selected geometry;
+  - breaking welds removes selected welded point IDs from the weld registry without moving geometry; selecting whole polygons/open curves breaks welds for that selected shape's points;
   - welded edges draw with a purple highlight on editable layers;
   - welded anchors draw with a lighter pink-purple colour on editable layers;
   - unselected/non-editable layers draw welded geometry in grey like all other layer geometry.
@@ -157,6 +165,13 @@ Last updated: 2026-05-07
   - segment midpoints inside the rectangle are selected;
   - Shift-click adds an edge to the existing selection;
   - Command-click toggles an edge in/out of the existing selection.
+- Rubber-band selection is available in all main edit modes:
+  - Points mode selects visible point markers inside the drag rectangle;
+  - if control points are hidden, Points rubber-band only selects anchors and standalone points;
+  - Edges mode selects segment midpoints inside the rectangle;
+  - Open Curves mode selects whole open curves whose screen bounds intersect the rectangle;
+  - Polygons mode selects whole polygons whose screen bounds intersect the rectangle;
+  - rubber-band selection remains constrained to the first editable layer hit, matching the existing layer-selection model.
 - Shift-click / Command-click selection modifiers are now shared across geometry selection modes:
   - Points, Edges, Open Curves, and Polygons all support Shift-click to add;
   - Points, Edges, Open Curves, and Polygons all support Command-click to toggle/remove;
@@ -184,6 +199,20 @@ Last updated: 2026-05-07
   - JSON-backed runtime loading in `SpriteScene` filters to the targeted layer when present;
   - geometry preview loading uses the same layer target;
   - no layer target preserves the previous behaviour of loading all visible layers.
+- The Edit inspector section is now fully icon-driven, with the layout finalised:
+  - Cut, Copy, and Paste share a compact icon row (scissors, two-pages, clipboard);
+  - Undo and Redo share a compact icon row at the very bottom of the Edit section, beneath the anchor/snap/reset-controls utility row;
+  - this positions undo/redo as the last action rather than intermixed with editing commands.
+- The Delete section now uses icons instead of text buttons:
+  - a dashed-outline rounded square containing a triangle represents "delete only selected geometry";
+  - three overlapping shapes (circle, triangle, five-point star) represent "delete all geometry in the active layer";
+  - the two icons sit side by side on one row, selected-geometry delete on the left;
+  - `deleteAllLayerGeometry()` is implemented in AppController and records an undo snapshot the same way as individual geometry deletion;
+  - `canDeleteAllLayerGeometry` guards the icon against pressing when no geometry exists in the active layer.
+- The File section now uses icons instead of text buttons:
+  - Save is represented by a downward arrow pointing to a horizontal baseline at the bottom of the icon;
+  - Load is represented by an upward arrow pointing to a horizontal topline at the top of the icon;
+  - both icons sit side by side on one row, Save on the left.
 - The ordinary Geometry list is now a flat Geometry Sources list rather than type-grouped sections:
   - each source appears once;
   - passive icon indicators show whether it contains polygons, curves, or points;
@@ -286,7 +315,7 @@ Last updated: 2026-05-07
 ## Deferred Notes
 
 - Rendering tab parameter edits, especially colour sliders, currently cause more screen rewrite than desired. This should be addressed later by narrowing update/reload behaviour, but it is deliberately deferred while the current focus remains the Geometry tab.
-- The Python editor used Shift+press/drag in Edge mode with selected edges to trigger edge extrusion (`bezier_py/canvas/mouse_handler.py` and `draw_panel.py`). In the Swift editor, Shift is now reserved for add-to-selection, so extrusion will need a different modifier or explicit tool/button when implemented.
+- The Python Intersect operation has been superseded by the new Scale Extrude tool; no separate Intersect button is planned.
 
 ## Recommended next stage
 
@@ -354,15 +383,30 @@ Suggested path:
    - select one object and centre it, then undo;
    - select multiple objects and centre them as a group;
    - clear selection and centre all geometry in the active layer;
-   - snap selected geometry and confirm all points move to fine-grid positions;
-   - snap anchors only and confirm control points remain where they were.
-9. UI polish can remain deferred:
-   - drag-and-drop layer reordering instead of Shift Up/Shift Down;
+   - use the Edit utility row to snap selected geometry and confirm all points move to fine-grid positions;
+   - use the Edit utility row to snap anchors only and confirm control points remain where they were;
+   - use the steering-wheel icon and confirm selected controls reset to inferred positions.
+9. Manually validate expanded rubber-band selection:
+   - Points mode selects anchors/control points/standalone points inside the rectangle;
+   - hide control points and confirm the same gesture no longer selects hidden controls;
+   - Open Curves mode selects whole curves inside/intersecting the rectangle;
+   - Shift/Command with rubber-band selection still adds to the current selection where applicable.
+10. Manually validate Weld utility UI:
+   - create a welded pair of edges;
+   - select one welded point, edge, or whole polygon and press the burst/explode button;
+   - confirm the weld highlight disappears and subsequent dragging no longer carries the former partner;
+   - confirm the geometry does not move during unweld.
+11. UI polish — remaining items:
+   - drag-and-drop layer reordering instead of Shift Up/Shift Down (Sprites tab now has drag-and-drop; Geometry layers still use shift buttons);
    - warning/confirmation for deleting a non-empty layer;
-   - final review of icon choices and tooltip coverage across Loom.
-10. Edge extrusion remains future work:
-   - preserve the Python operation concept, but do not reuse Shift as its trigger in Swift;
-   - choose a different modifier or an explicit extrude button/tool before implementation.
+   - icon choices and tooltip coverage: Delete and File sections are now fully icon-based; remaining text-button sections (Multiply, Weld sub-actions) can be reviewed at leisure.
+12. Extrude validation:
+   - select one edge on a closed polygon and displacement-extrude; confirm a quad is created, bottom welded, and top edge selected;
+   - chain a second extrude immediately from the selected top edge;
+   - select all edges of a polygon (via Polygons mode selection) and displacement-extrude; confirm N quads and all N top edges selected;
+   - repeat both tests for scale extrude (drag right-up = outward, left-down = inward);
+   - confirm partial-edge scale extrude produces an arc rather than a full ring;
+   - confirm undo restores the pre-extrude state.
 
 ## Files most relevant to continue
 

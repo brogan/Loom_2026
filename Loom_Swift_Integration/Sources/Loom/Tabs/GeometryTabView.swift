@@ -796,16 +796,24 @@ private struct EditableGeometryCanvas: View {
             .gesture(
                 DragGesture(minimumDistance: 0)
                     .onChanged { value in
+                        controller.geometryEditorLastClickPosition = unproject(value.startLocation, canvasSize: canvasSize)
                         switch controller.geometryEditorTool {
                         case .standalonePoints:
                             return
 
                         case .points:
-                            if activeDragTarget == nil {
+                            if activeDragTarget == nil && rubberBandStart == nil {
                                 activeDragTarget = hitTestPoint(at: value.location, canvasSize: canvasSize)
                                 if let target = activeDragTarget {
                                     selectPoint(target, additive: additiveSelectionModifierActive, toggle: toggleSelectionModifierActive)
+                                } else {
+                                    rubberBandStart = value.startLocation
+                                    rubberBandAddsToSelection = additiveSelectionModifierActive || toggleSelectionModifierActive
                                 }
+                            }
+                            if activeDragTarget == nil {
+                                rubberBandEnd = value.location
+                                return
                             }
                             guard activeDragTarget != nil else { return }
                             if !dragUndoRecorded {
@@ -853,7 +861,7 @@ private struct EditableGeometryCanvas: View {
 
                         case .openCurves:
                             let current = unproject(value.location, canvasSize: canvasSize)
-                            if activeOpenCurveDragTarget == nil {
+                            if activeOpenCurveDragTarget == nil && rubberBandStart == nil {
                                 activeOpenCurveDragTarget = hitTestOpenCurve(at: value.startLocation, canvasSize: canvasSize)
                                 if let target = activeOpenCurveDragTarget {
                                     if !controller.geometryEditorSelection.openCurveIDs.contains(target.openCurveID) ||
@@ -868,7 +876,14 @@ private struct EditableGeometryCanvas: View {
                                         )
                                     }
                                     lastDragWorldPoint = current
+                                } else {
+                                    rubberBandStart = value.startLocation
+                                    rubberBandAddsToSelection = additiveSelectionModifierActive || toggleSelectionModifierActive
                                 }
+                            }
+                            if activeOpenCurveDragTarget == nil {
+                                rubberBandEnd = value.location
+                                return
                             }
                             guard activeOpenCurveDragTarget != nil,
                                   let previous = lastDragWorldPoint
@@ -958,6 +973,13 @@ private struct EditableGeometryCanvas: View {
                                 controller.beginGeometryKnifeLine(at: unproject(value.startLocation, canvasSize: canvasSize))
                             }
                             controller.updateGeometryKnifeLine(to: point)
+
+                        case .displacementExtrude, .scaleExtrude:
+                            let point = unproject(value.location, canvasSize: canvasSize)
+                            if controller.geometryEditorExtrudeDraft == nil {
+                                controller.beginGeometryExtrudeDrag(at: unproject(value.startLocation, canvasSize: canvasSize))
+                            }
+                            controller.updateGeometryExtrudeDrag(to: point)
                         }
                     }
                     .onEnded { value in
@@ -988,11 +1010,23 @@ private struct EditableGeometryCanvas: View {
                             lastDragWorldPoint = nil
                             dragUndoRecorded = false
                         case .points:
-                            if activeDragTarget == nil {
+                            if activeDragTarget == nil,
+                               let start = rubberBandStart,
+                               let end = rubberBandEnd,
+                               rubberBandRect(start: start, end: end).width > 4,
+                               rubberBandRect(start: start, end: end).height > 4 {
+                                selectPoints(in: rubberBandRect(start: start, end: end), canvasSize: canvasSize, additive: rubberBandAddsToSelection)
+                            } else if activeDragTarget == nil,
+                                      let target = hitTestPoint(at: value.location, canvasSize: canvasSize) {
+                                selectPoint(target, additive: additiveSelectionModifierActive, toggle: toggleSelectionModifierActive)
+                            } else if activeDragTarget == nil {
                                 controller.clearGeometryEditorSelection()
                             }
                             activeDragTarget = nil
                             controller.clearGeometryEditorAutoWeldCandidates()
+                            rubberBandStart = nil
+                            rubberBandEnd = nil
+                            rubberBandAddsToSelection = false
                             dragUndoRecorded = false
                         case .edges:
                             if activeSegmentDragTarget == nil,
@@ -1045,6 +1079,16 @@ private struct EditableGeometryCanvas: View {
                             dragUndoRecorded = false
                         case .openCurves:
                             if activeOpenCurveDragTarget == nil,
+                               let start = rubberBandStart,
+                               let end = rubberBandEnd,
+                               rubberBandRect(start: start, end: end).width > 4,
+                               rubberBandRect(start: start, end: end).height > 4 {
+                                selectOpenCurves(
+                                    in: rubberBandRect(start: start, end: end),
+                                    canvasSize: canvasSize,
+                                    additive: rubberBandAddsToSelection
+                                )
+                            } else if activeOpenCurveDragTarget == nil,
                                let target = hitTestOpenCurve(at: value.location, canvasSize: canvasSize) {
                                 controller.selectGeometryOpenCurve(
                                     layerID: target.layerID,
@@ -1058,10 +1102,17 @@ private struct EditableGeometryCanvas: View {
                             activeOpenCurveDragTarget = nil
                             lastDragWorldPoint = nil
                             controller.executeGeometryEditorPendingAutoWelds()
+                            rubberBandStart = nil
+                            rubberBandEnd = nil
+                            rubberBandAddsToSelection = false
                             dragUndoRecorded = false
                         case .knife:
                             controller.updateGeometryKnifeLine(to: unproject(value.location, canvasSize: canvasSize))
                             controller.finishGeometryKnifeCut()
+
+                        case .displacementExtrude, .scaleExtrude:
+                            controller.updateGeometryExtrudeDrag(to: unproject(value.location, canvasSize: canvasSize))
+                            controller.finishGeometryExtrude()
                         }
                     }
             )
@@ -1125,6 +1176,7 @@ private struct EditableGeometryCanvas: View {
             drawFreehandPreview(ctx: ctx, project: projectPoint)
         }
         drawKnifeLine(ctx: ctx, project: projectPoint)
+        drawExtrudePreview(ctx: ctx, project: projectPoint)
         drawRubberBand(ctx: ctx)
     }
 
@@ -1570,6 +1622,62 @@ private struct EditableGeometryCanvas: View {
         }
     }
 
+    private func drawExtrudePreview(ctx: GraphicsContext, project: (Vector2D) -> CGPoint) {
+        guard let draft = controller.geometryEditorExtrudeDraft,
+              let document = controller.geometryEditorDocument
+        else { return }
+
+        let sources = controller.extrudePreviewSegments(in: document)
+        guard !sources.isEmpty else { return }
+
+        let topColor = Color(red: 0.8, green: 0.45, blue: 1.0).opacity(0.9)
+        let connColor = Color.white.opacity(0.28)
+        let topStyle = StrokeStyle(lineWidth: 1.5, lineCap: .round, dash: [5, 3])
+        let connStyle = StrokeStyle(lineWidth: 1.0, lineCap: .round)
+
+        for seg in sources {
+            guard let oA0 = document.point(id: seg.startAnchorID)?.position,
+                  let oC1 = document.point(id: seg.controlOutID)?.position,
+                  let oC2 = document.point(id: seg.controlInID)?.position,
+                  let oA3 = document.point(id: seg.endAnchorID)?.position
+            else { continue }
+
+            let lA0: Vector2D
+            let lC1: Vector2D
+            let lC2: Vector2D
+            let lA3: Vector2D
+
+            switch draft.mode {
+            case .displacement:
+                let d = draft.dragDelta
+                lA0 = oA0 + d; lC1 = oC1 + d; lC2 = oC2 + d; lA3 = oA3 + d
+            case .scale:
+                let centroid = sources.reduce(Vector2D.zero) { acc, s in
+                    var sum = acc
+                    if let p = document.point(id: s.startAnchorID)?.position { sum = sum + p }
+                    if let p = document.point(id: s.endAnchorID)?.position   { sum = sum + p }
+                    return sum
+                } * (1.0 / Double(sources.count * 2))
+                let f = draft.scaleFactor
+                func sc(_ p: Vector2D) -> Vector2D { centroid + (p - centroid) * f }
+                lA0 = sc(oA0); lC1 = sc(oC1); lC2 = sc(oC2); lA3 = sc(oA3)
+            }
+
+            // Top edge (displaced/scaled, direction reversed: lA3→lA0 with lC2,lC1)
+            var topPath = Path()
+            topPath.move(to: project(lA3))
+            topPath.addCurve(to: project(lA0), control1: project(lC2), control2: project(lC1))
+            ctx.stroke(topPath, with: .color(topColor), style: topStyle)
+
+            // Left and right connectors
+            var connPath = Path()
+            connPath.move(to: project(oA0)); connPath.addLine(to: project(lA0))
+            connPath.move(to: project(oA3)); connPath.addLine(to: project(lA3))
+            ctx.stroke(connPath, with: .color(connColor), style: connStyle)
+        }
+    }
+
+
     private func currentPressure() -> Double {
         let pressure = Double(NSApp.currentEvent?.pressure ?? 1.0)
         return pressure > 0 ? min(max(pressure, 0.05), 1.0) : 1.0
@@ -1810,6 +1918,26 @@ private struct EditableGeometryCanvas: View {
         return CGRect(x: minX, y: minY, width: maxX - minX, height: maxY - minY)
     }
 
+    private func screenBounds(
+        for curve: EditableOpenCurve,
+        scale: CGFloat,
+        origin: CGPoint
+    ) -> CGRect {
+        let points = curve.points.map { project($0.position, scale: scale, origin: origin) }
+        guard let first = points.first else { return .null }
+        var minX = first.x
+        var maxX = first.x
+        var minY = first.y
+        var maxY = first.y
+        for point in points.dropFirst() {
+            minX = min(minX, point.x)
+            maxX = max(maxX, point.x)
+            minY = min(minY, point.y)
+            maxY = max(maxY, point.y)
+        }
+        return CGRect(x: minX, y: minY, width: maxX - minX, height: maxY - minY)
+    }
+
     private func path(
         for polygon: EditableClosedPolygon,
         scale: CGFloat,
@@ -1960,7 +2088,12 @@ private struct EditableGeometryCanvas: View {
     }
 
     private func drawRubberBand(ctx: GraphicsContext) {
-        guard (controller.geometryEditorTool == .polygons || controller.geometryEditorTool == .edges),
+        guard (
+            controller.geometryEditorTool == .points ||
+            controller.geometryEditorTool == .edges ||
+            controller.geometryEditorTool == .openCurves ||
+            controller.geometryEditorTool == .polygons
+        ),
               let start = rubberBandStart,
               let end = rubberBandEnd
         else { return }
@@ -1978,6 +2111,88 @@ private struct EditableGeometryCanvas: View {
             width: abs(end.x - start.x),
             height: abs(end.y - start.y)
         )
+    }
+
+    private func selectPoints(in rect: CGRect, canvasSize: CGFloat, additive: Bool) {
+        let (scale, origin) = viewTransform(canvasSize: canvasSize)
+        var firstLayerID: EditableGeometryID?
+        var polygonPoints: [(polygonID: EditableGeometryID, pointID: EditableGeometryID)] = []
+        var openCurvePoints: [(openCurveID: EditableGeometryID, pointID: EditableGeometryID)] = []
+        var standalonePointIDs = Set<EditableGeometryID>()
+
+        for layer in document.layers where layerCanEdit(layer) {
+            for polygon in layer.polygons where polygon.isVisible {
+                for point in polygon.points where point.kind == .anchor || controller.geometryEditorShowsControlPoints {
+                    let screen = project(point.position, scale: scale, origin: origin)
+                    guard rect.contains(screen) else { continue }
+                    if firstLayerID == nil {
+                        firstLayerID = layer.id
+                    }
+                    if firstLayerID == layer.id {
+                        polygonPoints.append((polygon.id, point.id))
+                    }
+                }
+            }
+            for curve in layer.openCurves where curve.isVisible {
+                for point in curve.points where point.kind == .anchor || controller.geometryEditorShowsControlPoints {
+                    let screen = project(point.position, scale: scale, origin: origin)
+                    guard rect.contains(screen) else { continue }
+                    if firstLayerID == nil {
+                        firstLayerID = layer.id
+                    }
+                    if firstLayerID == layer.id {
+                        openCurvePoints.append((curve.id, point.id))
+                    }
+                }
+            }
+            for point in layer.points where point.isVisible {
+                let screen = project(point.position, scale: scale, origin: origin)
+                guard rect.contains(screen) else { continue }
+                if firstLayerID == nil {
+                    firstLayerID = layer.id
+                }
+                if firstLayerID == layer.id {
+                    standalonePointIDs.insert(point.id)
+                }
+            }
+        }
+
+        if let firstLayerID, (!polygonPoints.isEmpty || !openCurvePoints.isEmpty || !standalonePointIDs.isEmpty) {
+            controller.selectGeometryPoints(
+                layerID: firstLayerID,
+                polygonPoints: polygonPoints,
+                openCurvePoints: openCurvePoints,
+                standalonePointIDs: standalonePointIDs,
+                additive: additive
+            )
+        } else if !additive {
+            controller.clearGeometryEditorSelection()
+        }
+    }
+
+    private func selectOpenCurves(in rect: CGRect, canvasSize: CGFloat, additive: Bool) {
+        let (scale, origin) = viewTransform(canvasSize: canvasSize)
+        var firstLayerID: EditableGeometryID?
+        var selected = Set<EditableGeometryID>()
+
+        for layer in document.layers where layerCanEdit(layer) {
+            for curve in layer.openCurves where curve.isVisible {
+                let box = screenBounds(for: curve, scale: scale, origin: origin)
+                guard rect.intersects(box) else { continue }
+                if firstLayerID == nil {
+                    firstLayerID = layer.id
+                }
+                if firstLayerID == layer.id {
+                    selected.insert(curve.id)
+                }
+            }
+        }
+
+        if let firstLayerID, !selected.isEmpty {
+            controller.selectGeometryOpenCurves(layerID: firstLayerID, openCurveIDs: selected, additive: additive)
+        } else if !additive {
+            controller.clearGeometryEditorSelection()
+        }
     }
 
     private func selectSegments(in rect: CGRect, canvasSize: CGFloat, additive: Bool) {

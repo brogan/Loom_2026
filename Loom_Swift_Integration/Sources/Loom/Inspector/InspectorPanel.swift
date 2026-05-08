@@ -547,17 +547,47 @@ private struct GeometryEditorShellInspector: View {
                     Spacer()
                 }
                 iconRow {
+                    iconButton(help: "Cut selected objects", disabled: !controller.canCutCopySelectedGeometry) {
+                        Image(systemName: "scissors").font(.system(size: 15))
+                    } action: {
+                        controller.cutSelectedGeometry()
+                    }
+                    iconButton(help: "Copy selected objects", disabled: !controller.canCutCopySelectedGeometry) {
+                        CopyGeometryIcon()
+                    } action: {
+                        controller.copySelectedGeometry()
+                    }
+                    iconButton(help: "Paste at last click position", disabled: !controller.canPasteGeometry) {
+                        PasteGeometryIcon()
+                    } action: {
+                        controller.pasteGeometry()
+                    }
+                    Spacer()
+                }
+                iconRow {
+                    iconButton(help: "Snap selected anchors to grid, leaving control points unchanged") {
+                        AnchorSnapIcon()
+                    } action: {
+                        controller.snapGeometryEditorSelectionToGrid(anchorOnly: true)
+                    }
+                    iconButton(help: "Snap selected points to grid, or all active layer points if nothing is selected") {
+                        SnapAllPointsIcon()
+                    } action: {
+                        controller.snapGeometryEditorSelectionToGrid(anchorOnly: false)
+                    }
+                    iconButton(help: "Reset control points", disabled: !controller.canResetSelectedGeometryControls) {
+                        SteeringWheelIcon()
+                    } action: {
+                        controller.resetSelectedGeometryControls()
+                    }
+                    Spacer()
+                }
+                iconRow {
                     iconTextButton("Undo", help: "Undo", disabled: !controller.canUndoGeometryEdit) {
                         controller.undoGeometryEdit()
                     }
                     iconTextButton("Redo", help: "Redo", disabled: !controller.canRedoGeometryEdit) {
                         controller.redoGeometryEdit()
-                    }
-                    Spacer()
-                }
-                iconRow {
-                    iconTextButton("Reset Controls", help: "Reset control points", disabled: !controller.canResetSelectedGeometryControls) {
-                        controller.resetSelectedGeometryControls()
                     }
                     Spacer()
                 }
@@ -578,14 +608,14 @@ private struct GeometryEditorShellInspector: View {
                     } action: {
                         controller.weldAdjacentGeometryEdges()
                     }
-                    iconButton(help: "Unweld selected geometry", disabled: !controller.canUnweldSelectedGeometry) {
-                        Image(systemName: "link.slash").font(.system(size: 15))
-                    } action: {
-                        controller.unweldSelectedGeometry()
-                    }
                     Slider(value: $controller.geometryEditorWeldTolerance, in: 0...1)
                         .frame(width: 58)
                         .help("Weld tolerance: left is stricter, right accepts looser edge matches")
+                    iconButton(help: "Break welds on selected geometry", disabled: !controller.canUnweldSelectedGeometry) {
+                        ExplodeWeldIcon()
+                    } action: {
+                        controller.unweldSelectedGeometry()
+                    }
                     Spacer()
                 }
             }
@@ -602,7 +632,7 @@ private struct GeometryEditorShellInspector: View {
                         disabled: !controller.selectedGeometryEditorLayerCanEditForUI,
                         selected: controller.geometryEditorTool == .knife
                     ) {
-                        Image(systemName: "scissors").font(.system(size: 15))
+                        RazorBladeIcon()
                     } action: {
                         controller.startKnifeGeometryCut()
                     }
@@ -615,7 +645,27 @@ private struct GeometryEditorShellInspector: View {
                     } action: {
                         controller.geometryEditorKnifeCutsAllVisibleLayers.toggle()
                     }
-                    iconButton(help: "Intersect", disabled: true) { Image(systemName: "circle.grid.cross").font(.system(size: 15)) }
+                    Spacer()
+                }
+                iconRow {
+                    iconButton(
+                        help: "Displacement extrude: select edges, polygons, or open curves, then drag to push a copy sideways and stitch quads back to the originals. Click again to leave extrude mode.",
+                        disabled: !controller.selectedGeometryEditorLayerCanEditForUI,
+                        selected: controller.geometryEditorTool == .displacementExtrude
+                    ) {
+                        DisplacementExtrudeIcon()
+                    } action: {
+                        controller.startDisplacementExtrude()
+                    }
+                    iconButton(
+                        help: "Scale extrude: select edges, polygons, or open curves, then drag right/up to grow an outer ring or left/down for an inner ring, stitched to the originals. Click again to leave extrude mode.",
+                        disabled: !controller.selectedGeometryEditorLayerCanEditForUI,
+                        selected: controller.geometryEditorTool == .scaleExtrude
+                    ) {
+                        ScaleExtrudeIcon()
+                    } action: {
+                        controller.startScaleExtrude()
+                    }
                     Spacer()
                 }
             }
@@ -725,16 +775,6 @@ private struct GeometryEditorShellInspector: View {
                     .pickerStyle(.menu)
                     .frame(width: 86)
                     .help("Grid detail")
-                    iconButton(help: "Snap selected points to grid, or all active layer points if nothing is selected") {
-                        SnapAllPointsIcon()
-                    } action: {
-                        controller.snapGeometryEditorSelectionToGrid(anchorOnly: false)
-                    }
-                    iconButton(help: "Snap selected anchors to grid, leaving control points unchanged") {
-                        SnapAnchorPointsIcon()
-                    } action: {
-                        controller.snapGeometryEditorSelectionToGrid(anchorOnly: true)
-                    }
                     Spacer()
                 }
                 .padding(.horizontal, 12)
@@ -742,10 +782,19 @@ private struct GeometryEditorShellInspector: View {
             }
 
             InspectorSection("Delete", isCollapsed: $deleteCollapsed) {
-                inspectorButton("Only Selected Geometry", disabled: !controller.canDeleteSelectedGeometry) {
-                    controller.deleteSelectedGeometry()
+                iconRow {
+                    iconButton(help: "Delete selected geometry", disabled: !controller.canDeleteSelectedGeometry) {
+                        DeleteSelectedGeometryIcon()
+                    } action: {
+                        controller.deleteSelectedGeometry()
+                    }
+                    iconButton(help: "Delete all geometry in active layer", disabled: !controller.canDeleteAllLayerGeometry) {
+                        DeleteAllLayerGeometryIcon()
+                    } action: {
+                        controller.deleteAllLayerGeometry()
+                    }
+                    Spacer()
                 }
-                inspectorButton("All Geometry", destructive: true)
             }
 
             InspectorSection("File", isCollapsed: $fileCollapsed) {
@@ -755,12 +804,19 @@ private struct GeometryEditorShellInspector: View {
                         .font(.system(size: 12))
                         .frame(width: 130)
                 }
-                inspectorButton("Save", disabled: controller.geometryEditorDocument == nil) {
-                    controller.saveGeometryEditorDocument(named: geometryName)
-                    geometryName = currentGeometryName
-                }
-                inspectorButton("Load", disabled: controller.selectedGeometryKey == nil) {
-                    controller.reloadGeometryEditorDocumentFromDisk()
+                iconRow {
+                    iconButton(help: "Save geometry document", disabled: controller.geometryEditorDocument == nil) {
+                        SaveDocumentIcon()
+                    } action: {
+                        controller.saveGeometryEditorDocument(named: geometryName)
+                        geometryName = currentGeometryName
+                    }
+                    iconButton(help: "Reload geometry document from disk", disabled: controller.selectedGeometryKey == nil) {
+                        LoadDocumentIcon()
+                    } action: {
+                        controller.reloadGeometryEditorDocumentFromDisk()
+                    }
+                    Spacer()
                 }
             }
         }
@@ -1021,6 +1077,70 @@ private struct EdgeGeometryIcon: View {
     }
 }
 
+private struct ExplodeWeldIcon: View {
+    var body: some View {
+        GeometryReader { proxy in
+            let rect = proxy.frame(in: .local)
+            let centre = CGPoint(x: rect.midX, y: rect.midY)
+            let inner = min(rect.width, rect.height) * 0.16
+            let outer = min(rect.width, rect.height) * 0.42
+            Path { path in
+                for index in 0..<8 {
+                    let angle = CGFloat(index) * .pi / 4
+                    let start = CGPoint(
+                        x: centre.x + cos(angle) * inner,
+                        y: centre.y + sin(angle) * inner
+                    )
+                    let end = CGPoint(
+                        x: centre.x + cos(angle) * outer,
+                        y: centre.y + sin(angle) * outer
+                    )
+                    path.move(to: start)
+                    path.addLine(to: end)
+                }
+            }
+            .stroke(style: StrokeStyle(lineWidth: 1.5, lineCap: .round, lineJoin: .round))
+            Circle()
+                .stroke(lineWidth: 1.2)
+                .frame(width: rect.width * 0.26, height: rect.height * 0.26)
+                .position(centre)
+        }
+        .padding(3)
+    }
+}
+
+private struct RazorBladeIcon: View {
+    var body: some View {
+        GeometryReader { proxy in
+            let rect = proxy.frame(in: .local).insetBy(dx: 3.5, dy: 3.5)
+            Path { path in
+                path.move(to: CGPoint(x: rect.minX + rect.width * 0.10, y: rect.maxY - rect.height * 0.18))
+                path.addLine(to: CGPoint(x: rect.maxX - rect.width * 0.18, y: rect.minY + rect.height * 0.04))
+                path.addLine(to: CGPoint(x: rect.maxX - rect.width * 0.02, y: rect.minY + rect.height * 0.20))
+                path.addLine(to: CGPoint(x: rect.minX + rect.width * 0.26, y: rect.maxY - rect.height * 0.02))
+                path.closeSubpath()
+            }
+            .fill()
+
+            Path { path in
+                path.move(to: CGPoint(x: rect.minX + rect.width * 0.23, y: rect.maxY - rect.height * 0.12))
+                path.addLine(to: CGPoint(x: rect.maxX - rect.width * 0.12, y: rect.minY + rect.height * 0.23))
+            }
+            .stroke(Color(nsColor: .controlBackgroundColor), style: StrokeStyle(lineWidth: 0.9, lineCap: .round))
+
+            Path { path in
+                path.move(to: CGPoint(x: rect.minX, y: rect.maxY - rect.height * 0.06))
+                path.addLine(to: CGPoint(x: rect.minX + rect.width * 0.24, y: rect.maxY - rect.height * 0.30))
+                path.addLine(to: CGPoint(x: rect.minX + rect.width * 0.36, y: rect.maxY - rect.height * 0.18))
+                path.addLine(to: CGPoint(x: rect.minX + rect.width * 0.12, y: rect.maxY + rect.height * 0.06))
+                path.closeSubpath()
+            }
+            .fill()
+        }
+        .padding(1)
+    }
+}
+
 private struct SnapAllPointsIcon: View {
     var body: some View {
         ZStack {
@@ -1056,6 +1176,72 @@ private struct SnapAnchorPointsIcon: View {
             Circle()
                 .fill()
                 .frame(width: 4.5, height: 4.5)
+        }
+        .padding(3)
+    }
+}
+
+private struct AnchorSnapIcon: View {
+    var body: some View {
+        GeometryReader { proxy in
+            let rect = proxy.frame(in: .local).insetBy(dx: 4, dy: 3)
+            let centreX = rect.midX
+            Path { path in
+                path.move(to: CGPoint(x: centreX, y: rect.minY + rect.height * 0.22))
+                path.addLine(to: CGPoint(x: centreX, y: rect.maxY - rect.height * 0.18))
+                path.move(to: CGPoint(x: centreX - rect.width * 0.22, y: rect.minY + rect.height * 0.38))
+                path.addLine(to: CGPoint(x: centreX + rect.width * 0.22, y: rect.minY + rect.height * 0.38))
+                path.move(to: CGPoint(x: rect.minX + rect.width * 0.12, y: rect.maxY - rect.height * 0.34))
+                path.addQuadCurve(
+                    to: CGPoint(x: rect.maxX - rect.width * 0.12, y: rect.maxY - rect.height * 0.34),
+                    control: CGPoint(x: centreX, y: rect.maxY + rect.height * 0.10)
+                )
+                path.move(to: CGPoint(x: rect.minX + rect.width * 0.12, y: rect.maxY - rect.height * 0.34))
+                path.addLine(to: CGPoint(x: rect.minX, y: rect.maxY - rect.height * 0.48))
+                path.move(to: CGPoint(x: rect.maxX - rect.width * 0.12, y: rect.maxY - rect.height * 0.34))
+                path.addLine(to: CGPoint(x: rect.maxX, y: rect.maxY - rect.height * 0.48))
+            }
+            .stroke(style: StrokeStyle(lineWidth: 1.5, lineCap: .round, lineJoin: .round))
+            Circle()
+                .stroke(lineWidth: 1.3)
+                .frame(width: rect.width * 0.30, height: rect.width * 0.30)
+                .position(x: centreX, y: rect.minY + rect.height * 0.14)
+        }
+        .padding(2)
+    }
+}
+
+private struct SteeringWheelIcon: View {
+    var body: some View {
+        GeometryReader { proxy in
+            let rect = proxy.frame(in: .local)
+            let centre = CGPoint(x: rect.midX, y: rect.midY)
+            let radius = min(rect.width, rect.height) * 0.38
+            Path { path in
+                path.addEllipse(in: CGRect(
+                    x: centre.x - radius,
+                    y: centre.y - radius,
+                    width: radius * 2,
+                    height: radius * 2
+                ))
+                path.addEllipse(in: CGRect(
+                    x: centre.x - radius * 0.18,
+                    y: centre.y - radius * 0.18,
+                    width: radius * 0.36,
+                    height: radius * 0.36
+                ))
+            }
+            .stroke(style: StrokeStyle(lineWidth: 1.4, lineCap: .round, lineJoin: .round))
+
+            Path { path in
+                path.move(to: centre)
+                path.addLine(to: CGPoint(x: centre.x, y: centre.y + radius * 0.78))
+                path.move(to: centre)
+                path.addLine(to: CGPoint(x: centre.x - radius * 0.72, y: centre.y - radius * 0.20))
+                path.move(to: centre)
+                path.addLine(to: CGPoint(x: centre.x + radius * 0.72, y: centre.y - radius * 0.20))
+            }
+            .stroke(style: StrokeStyle(lineWidth: 1.4, lineCap: .round, lineJoin: .round))
         }
         .padding(3)
     }
@@ -1133,6 +1319,295 @@ private struct KnifeLayerStackIcon: View {
                 addLayer(y: rect.minY + rect.height * 0.52)
             }
             .stroke(style: StrokeStyle(lineWidth: 1.25, lineCap: .round, lineJoin: .round))
+        }
+        .padding(2)
+    }
+}
+
+private struct DisplacementExtrudeIcon: View {
+    var body: some View {
+        GeometryReader { proxy in
+            let r = proxy.frame(in: .local)
+            let mx = r.midX
+            Path { path in
+                // Bottom edge (original) — horizontal bar
+                path.move(to: CGPoint(x: r.minX + r.width * 0.12, y: r.midY + r.height * 0.22))
+                path.addLine(to: CGPoint(x: r.maxX - r.width * 0.12, y: r.midY + r.height * 0.22))
+                // Top edge (displaced) — horizontal bar above
+                path.move(to: CGPoint(x: r.minX + r.width * 0.12, y: r.midY - r.height * 0.28))
+                path.addLine(to: CGPoint(x: r.maxX - r.width * 0.12, y: r.midY - r.height * 0.28))
+                // Left connector
+                path.move(to: CGPoint(x: r.minX + r.width * 0.12, y: r.midY + r.height * 0.22))
+                path.addLine(to: CGPoint(x: r.minX + r.width * 0.12, y: r.midY - r.height * 0.28))
+                // Right connector
+                path.move(to: CGPoint(x: r.maxX - r.width * 0.12, y: r.midY + r.height * 0.22))
+                path.addLine(to: CGPoint(x: r.maxX - r.width * 0.12, y: r.midY - r.height * 0.28))
+                // Upward arrow from midpoint of top edge
+                path.move(to: CGPoint(x: mx, y: r.midY - r.height * 0.28))
+                path.addLine(to: CGPoint(x: mx, y: r.minY + r.height * 0.08))
+                path.move(to: CGPoint(x: mx - r.width * 0.13, y: r.minY + r.height * 0.22))
+                path.addLine(to: CGPoint(x: mx, y: r.minY + r.height * 0.08))
+                path.addLine(to: CGPoint(x: mx + r.width * 0.13, y: r.minY + r.height * 0.22))
+            }
+            .stroke(style: StrokeStyle(lineWidth: 1.3, lineCap: .round, lineJoin: .round))
+        }
+        .padding(2)
+    }
+}
+
+private struct ScaleExtrudeIcon: View {
+    var body: some View {
+        GeometryReader { proxy in
+            let r = proxy.frame(in: .local)
+            Path { path in
+                // Outer ring (larger, dashed)
+                let outerRect = CGRect(
+                    x: r.minX + r.width * 0.06, y: r.minY + r.height * 0.06,
+                    width: r.width * 0.88, height: r.height * 0.88
+                )
+                path.addEllipse(in: outerRect)
+                // Inner ring (smaller, solid)
+                let innerRect = CGRect(
+                    x: r.minX + r.width * 0.26, y: r.minY + r.height * 0.26,
+                    width: r.width * 0.48, height: r.height * 0.48
+                )
+                path.addEllipse(in: innerRect)
+                // Short spokes connecting inner to outer at cardinal points
+                let ox = r.midX; let oy = r.midY
+                let iR = r.width * 0.24; let oR = r.width * 0.44
+                for angle: Double in [0, .pi / 2, .pi, .pi * 1.5] {
+                    let cosA = cos(angle); let sinA = sin(angle)
+                    path.move(to: CGPoint(x: ox + iR * cosA, y: oy + iR * sinA))
+                    path.addLine(to: CGPoint(x: ox + oR * cosA, y: oy + oR * sinA))
+                }
+            }
+            .stroke(style: StrokeStyle(lineWidth: 1.3, lineCap: .round))
+        }
+        .padding(2)
+    }
+}
+
+private struct CopyGeometryIcon: View {
+    var body: some View {
+        GeometryReader { proxy in
+            let r = proxy.frame(in: .local)
+            let w = r.width; let h = r.height
+            // Back sheet (offset up-left)
+            Path { path in
+                path.addRoundedRect(
+                    in: CGRect(x: r.minX + w * 0.08, y: r.minY + h * 0.08,
+                               width: w * 0.60, height: h * 0.60),
+                    cornerSize: CGSize(width: 2, height: 2)
+                )
+            }
+            .stroke(style: StrokeStyle(lineWidth: 1.2))
+            // Front sheet (offset down-right)
+            Path { path in
+                path.addRoundedRect(
+                    in: CGRect(x: r.minX + w * 0.32, y: r.minY + h * 0.32,
+                               width: w * 0.60, height: h * 0.60),
+                    cornerSize: CGSize(width: 2, height: 2)
+                )
+            }
+            .fill(Color(nsColor: .windowBackgroundColor))
+            Path { path in
+                path.addRoundedRect(
+                    in: CGRect(x: r.minX + w * 0.32, y: r.minY + h * 0.32,
+                               width: w * 0.60, height: h * 0.60),
+                    cornerSize: CGSize(width: 2, height: 2)
+                )
+            }
+            .stroke(style: StrokeStyle(lineWidth: 1.2))
+        }
+        .padding(2)
+    }
+}
+
+private struct PasteGeometryIcon: View {
+    var body: some View {
+        GeometryReader { proxy in
+            let r = proxy.frame(in: .local)
+            let w = r.width; let h = r.height
+            // Clipboard body
+            Path { path in
+                path.addRoundedRect(
+                    in: CGRect(x: r.minX + w * 0.18, y: r.minY + h * 0.22,
+                               width: w * 0.64, height: h * 0.70),
+                    cornerSize: CGSize(width: 2, height: 2)
+                )
+            }
+            .stroke(style: StrokeStyle(lineWidth: 1.2))
+            // Clip tab at top centre
+            Path { path in
+                path.addRoundedRect(
+                    in: CGRect(x: r.minX + w * 0.36, y: r.minY + h * 0.08,
+                               width: w * 0.28, height: h * 0.22),
+                    cornerSize: CGSize(width: 2, height: 2)
+                )
+            }
+            .fill(Color(nsColor: .windowBackgroundColor))
+            Path { path in
+                path.addRoundedRect(
+                    in: CGRect(x: r.minX + w * 0.36, y: r.minY + h * 0.08,
+                               width: w * 0.28, height: h * 0.22),
+                    cornerSize: CGSize(width: 2, height: 2)
+                )
+            }
+            .stroke(style: StrokeStyle(lineWidth: 1.2))
+            // Small sheet on clipboard
+            Path { path in
+                path.addRoundedRect(
+                    in: CGRect(x: r.minX + w * 0.28, y: r.minY + h * 0.38,
+                               width: w * 0.44, height: h * 0.44),
+                    cornerSize: CGSize(width: 1.5, height: 1.5)
+                )
+            }
+            .stroke(style: StrokeStyle(lineWidth: 1.0))
+        }
+        .padding(2)
+    }
+}
+
+private struct DeleteSelectedGeometryIcon: View {
+    var body: some View {
+        GeometryReader { proxy in
+            let r = proxy.frame(in: .local)
+            let w = r.width; let h = r.height
+            // Dashed bounding square
+            Path { path in
+                path.addRoundedRect(
+                    in: CGRect(x: r.minX + w*0.06, y: r.minY + h*0.06,
+                               width: w*0.88, height: h*0.88),
+                    cornerSize: CGSize(width: 1.5, height: 1.5)
+                )
+            }
+            .stroke(style: StrokeStyle(lineWidth: 1.2, dash: [3, 2]))
+            // Triangle inside
+            Path { path in
+                path.move(to:    CGPoint(x: r.minX + w*0.50, y: r.minY + h*0.22))
+                path.addLine(to: CGPoint(x: r.minX + w*0.82, y: r.minY + h*0.78))
+                path.addLine(to: CGPoint(x: r.minX + w*0.18, y: r.minY + h*0.78))
+                path.closeSubpath()
+            }
+            .stroke(style: StrokeStyle(lineWidth: 1.2))
+        }
+        .padding(2)
+    }
+}
+
+private struct DeleteAllLayerGeometryIcon: View {
+    var body: some View {
+        GeometryReader { proxy in
+            let r = proxy.frame(in: .local)
+            Group {
+                daliCircle(r)
+                daliTriangle(r)
+                daliStar(r)
+            }
+        }
+        .padding(2)
+    }
+
+    private func daliCircle(_ r: CGRect) -> some View {
+        Path { path in
+            path.addEllipse(in: CGRect(x: r.minX + r.width*0.04, y: r.minY + r.height*0.04,
+                                       width: r.width*0.46, height: r.height*0.46))
+        }
+        .stroke(style: StrokeStyle(lineWidth: 1.1))
+    }
+
+    private func daliTriangle(_ r: CGRect) -> some View {
+        Path { path in
+            path.move(to:    CGPoint(x: r.minX + r.width*0.30, y: r.minY + r.height*0.24))
+            path.addLine(to: CGPoint(x: r.minX + r.width*0.72, y: r.minY + r.height*0.94))
+            path.addLine(to: CGPoint(x: r.minX + r.width*0.06, y: r.minY + r.height*0.94))
+            path.closeSubpath()
+        }
+        .stroke(style: StrokeStyle(lineWidth: 1.1))
+    }
+
+    private func daliStar(_ r: CGRect) -> some View {
+        let cx = Double(r.minX + r.width * 0.70)
+        let cy = Double(r.minY + r.height * 0.40)
+        let outerR = Double(r.width) * 0.28
+        let innerR = Double(r.width) * 0.12
+        var path = Path()
+        for i in 0..<5 {
+            let oa = Double(i) * 2 * .pi / 5 - .pi / 2
+            let ia = oa + .pi / 5
+            let op = CGPoint(x: cx + outerR * cos(oa), y: cy + outerR * sin(oa))
+            let ip = CGPoint(x: cx + innerR * cos(ia), y: cy + innerR * sin(ia))
+            if i == 0 { path.move(to: op) } else { path.addLine(to: op) }
+            path.addLine(to: ip)
+        }
+        path.closeSubpath()
+        return path.stroke(style: StrokeStyle(lineWidth: 1.0))
+    }
+}
+
+private struct SaveDocumentIcon: View {
+    var body: some View {
+        GeometryReader { proxy in
+            let r = proxy.frame(in: .local)
+            let w = r.width; let h = r.height
+            let midX = r.minX + w * 0.50
+            let arrowTop = r.minY + h * 0.12
+            let arrowTip = r.minY + h * 0.72
+            let headHalf = w * 0.28
+            let lineY = r.minY + h * 0.88
+            // Shaft
+            Path { path in
+                path.move(to:    CGPoint(x: midX, y: arrowTop))
+                path.addLine(to: CGPoint(x: midX, y: arrowTip))
+            }
+            .stroke(style: StrokeStyle(lineWidth: 1.5))
+            // Arrowhead pointing down
+            Path { path in
+                path.move(to:    CGPoint(x: midX - headHalf, y: arrowTip - h*0.22))
+                path.addLine(to: CGPoint(x: midX,            y: arrowTip))
+                path.addLine(to: CGPoint(x: midX + headHalf, y: arrowTip - h*0.22))
+            }
+            .stroke(style: StrokeStyle(lineWidth: 1.5, lineCap: .round, lineJoin: .round))
+            // Base line
+            Path { path in
+                path.move(to:    CGPoint(x: r.minX + w*0.10, y: lineY))
+                path.addLine(to: CGPoint(x: r.minX + w*0.90, y: lineY))
+            }
+            .stroke(style: StrokeStyle(lineWidth: 1.5, lineCap: .round))
+        }
+        .padding(2)
+    }
+}
+
+private struct LoadDocumentIcon: View {
+    var body: some View {
+        GeometryReader { proxy in
+            let r = proxy.frame(in: .local)
+            let w = r.width; let h = r.height
+            let midX = r.minX + w * 0.50
+            let arrowBase = r.minY + h * 0.88
+            let arrowTip = r.minY + h * 0.28
+            let headHalf = w * 0.28
+            let lineY = r.minY + h * 0.12
+            // Shaft
+            Path { path in
+                path.move(to:    CGPoint(x: midX, y: arrowBase))
+                path.addLine(to: CGPoint(x: midX, y: arrowTip))
+            }
+            .stroke(style: StrokeStyle(lineWidth: 1.5))
+            // Arrowhead pointing up
+            Path { path in
+                path.move(to:    CGPoint(x: midX - headHalf, y: arrowTip + h*0.22))
+                path.addLine(to: CGPoint(x: midX,            y: arrowTip))
+                path.addLine(to: CGPoint(x: midX + headHalf, y: arrowTip + h*0.22))
+            }
+            .stroke(style: StrokeStyle(lineWidth: 1.5, lineCap: .round, lineJoin: .round))
+            // Top line
+            Path { path in
+                path.move(to:    CGPoint(x: r.minX + w*0.10, y: lineY))
+                path.addLine(to: CGPoint(x: r.minX + w*0.90, y: lineY))
+            }
+            .stroke(style: StrokeStyle(lineWidth: 1.5, lineCap: .round))
         }
         .padding(2)
     }

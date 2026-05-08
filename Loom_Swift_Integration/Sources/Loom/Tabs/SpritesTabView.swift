@@ -1,12 +1,45 @@
 import SwiftUI
 import LoomEngine
+import UniformTypeIdentifiers
+
+// MARK: - Drag item tracking
+
+private enum LoomDragItem: Equatable {
+    case set(name: String)
+    case sprite(name: String)
+}
+
+private enum SpriteDropTarget: Equatable {
+    case beforeSet(Int)
+    case afterSets
+    case beforeSprite(setIdx: Int, spriteIdx: Int)
+    case afterSprites(setIdx: Int)
+    case ontoSet(Int)
+}
+
+// Single reusable delegate type; all logic supplied as closures.
+private struct LoomDropDelegate: DropDelegate {
+    var validate: () -> Bool
+    var entered:  () -> Void
+    var exited:   () -> Void
+    var perform:  () -> Bool
+
+    func validateDrop(info: DropInfo) -> Bool { validate() }
+    func dropEntered(info: DropInfo)           { entered() }
+    func dropExited(info: DropInfo)            { exited() }
+    func performDrop(info: DropInfo) -> Bool   { perform() }
+}
+
+// MARK: - View
 
 struct SpritesTabView: View {
 
     @EnvironmentObject private var controller: AppController
 
-    @State private var expandedSets:    Set<Int> = []
-    @State private var selectedSetIndex: Int?    = nil
+    @State private var expandedSets:     Set<String>        = []
+    @State private var selectedSetIndex: Int?                = nil
+    @State private var dragItem:         LoomDragItem?       = nil
+    @State private var dropTarget:       SpriteDropTarget?   = nil
 
     var body: some View {
         VStack(spacing: 0) {
@@ -16,10 +49,9 @@ struct SpritesTabView: View {
         }
         .onAppear { autoExpand() }
         .onChange(of: controller.selectedSpriteID) { _, name in
-            if let name, let (setIdx, _) = location(ofSprite: name) {
-                selectedSetIndex = setIdx
-                expandedSets.insert(setIdx)
-            }
+            guard let name, let (setIdx, _) = location(ofSprite: name) else { return }
+            selectedSetIndex = setIdx
+            if let sn = setName(at: setIdx) { expandedSets.insert(sn) }
         }
     }
 
@@ -33,16 +65,14 @@ struct SpritesTabView: View {
             } else {
                 ScrollView {
                     VStack(alignment: .leading, spacing: 0) {
-                        ForEach(sets.indices, id: \.self) { setIdx in
-                            setRow(set: sets[setIdx], setIdx: setIdx)
-                            if expandedSets.contains(setIdx) {
-                                ForEach(sets[setIdx].sprites.indices, id: \.self) { itemIdx in
-                                    spriteRow(
-                                        sprite: sets[setIdx].sprites[itemIdx],
-                                        setIdx: setIdx, itemIdx: itemIdx
-                                    )
+                        ForEach(Array(sets.enumerated()), id: \.element.name) { setIdx, set in
+                            setRow(set: set, setIdx: setIdx)
+                            if expandedSets.contains(set.name) {
+                                ForEach(Array(set.sprites.enumerated()), id: \.element.name) { itemIdx, sprite in
+                                    spriteRow(sprite: sprite, setIdx: setIdx, itemIdx: itemIdx)
                                 }
-                                if sets[setIdx].sprites.isEmpty {
+                                afterSpritesRow(setIdx: setIdx, count: set.sprites.count)
+                                if set.sprites.isEmpty {
                                     Text("No sprites — use + to add")
                                         .font(.caption2)
                                         .foregroundStyle(.tertiary)
@@ -51,6 +81,7 @@ struct SpritesTabView: View {
                                 }
                             }
                         }
+                        afterSetsRow(total: sets.count)
                     }
                 }
             }
@@ -60,13 +91,13 @@ struct SpritesTabView: View {
     // MARK: - Set row
 
     private func setRow(set: SpriteSet, setIdx: Int) -> some View {
-        let isSelected = selectedSetIndex == setIdx && controller.selectedSpriteID == nil
-        let isExpanded = expandedSets.contains(setIdx)
+        let isSelected     = selectedSetIndex == setIdx && controller.selectedSpriteID == nil
+        let isExpanded     = expandedSets.contains(set.name)
+        let isBeforeTarget = dropTarget == .beforeSet(setIdx)
+        let isOntoTarget   = dropTarget == .ontoSet(setIdx)
 
         return HStack(spacing: 5) {
-            Button {
-                toggleExpansion(setIdx)
-            } label: {
+            Button { toggleExpansion(set.name) } label: {
                 Image(systemName: isExpanded ? "chevron.down" : "chevron.right")
                     .font(.system(size: 9, weight: .semibold))
                     .foregroundStyle(.secondary)
@@ -89,13 +120,31 @@ struct SpritesTabView: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(isSelected ? Color.accentColor.opacity(0.18) : Color.clear)
         .contentShape(Rectangle())
-        .onTapGesture { handleSetSelected(setIdx) }
+        .onTapGesture { handleSetSelected(setIdx: setIdx, setName: set.name) }
+        // Drag source: set.name encoded as NSString gives public.utf8-plain-text — always matched by AppKit.
+        .onDrag {
+            self.dragItem = .set(name: set.name)
+            return NSItemProvider(object: set.name as NSString)
+        }
+        // Drop: set reorder (beforeSet) or sprite cross-set append (ontoSet).
+        .onDrop(of: [UTType.utf8PlainText], delegate: setHeaderDelegate(setIdx: setIdx))
+        .overlay(alignment: .top) {
+            if isBeforeTarget { insertionLine }
+        }
+        .overlay {
+            if isOntoTarget {
+                RoundedRectangle(cornerRadius: 3)
+                    .strokeBorder(Color.accentColor, lineWidth: 1.5)
+                    .padding(.horizontal, 3).padding(.vertical, 1)
+            }
+        }
     }
 
     // MARK: - Sprite row
 
     private func spriteRow(sprite: SpriteDef, setIdx: Int, itemIdx: Int) -> some View {
-        let isSelected = controller.selectedSpriteID == sprite.name
+        let isSelected     = controller.selectedSpriteID == sprite.name
+        let isBeforeTarget = dropTarget == .beforeSprite(setIdx: setIdx, spriteIdx: itemIdx)
 
         return HStack(spacing: 5) {
             Spacer().frame(width: 22)
@@ -122,25 +171,143 @@ struct SpritesTabView: View {
         .background(isSelected ? Color.accentColor.opacity(0.12) : Color.clear)
         .contentShape(Rectangle())
         .onTapGesture { handleSpriteSelected(setIdx: setIdx, itemIdx: itemIdx, sprite: sprite) }
+        .onDrag {
+            self.dragItem = .sprite(name: sprite.name)
+            return NSItemProvider(object: sprite.name as NSString)
+        }
+        // Only accepts sprite drags; validateDrop rejects set drags so no indicator shows.
+        .onDrop(of: [UTType.utf8PlainText], delegate: spriteDropDelegate(setIdx: setIdx, spriteIdx: itemIdx))
+        .overlay(alignment: .top) {
+            if isBeforeTarget { insertionLine.padding(.leading, 22) }
+        }
+    }
+
+    // MARK: - "After last" drop zones
+
+    private func afterSpritesRow(setIdx: Int, count: Int) -> some View {
+        let t = SpriteDropTarget.afterSprites(setIdx: setIdx)
+        return Color.clear
+            .frame(height: 8)
+            .contentShape(Rectangle())
+            .onDrop(of: [UTType.utf8PlainText], delegate: afterSpritesDelegate(setIdx: setIdx, count: count))
+            .overlay(alignment: .bottom) {
+                if dropTarget == t { insertionLine.padding(.leading, 22) }
+            }
+    }
+
+    private func afterSetsRow(total: Int) -> some View {
+        let t = SpriteDropTarget.afterSets
+        return Color.clear
+            .frame(height: 10)
+            .contentShape(Rectangle())
+            .onDrop(of: [UTType.utf8PlainText], delegate: afterSetsDelegate(total: total))
+            .overlay(alignment: .bottom) {
+                if dropTarget == t { insertionLine }
+            }
+    }
+
+    // MARK: - Insertion indicator
+
+    private var insertionLine: some View {
+        Rectangle()
+            .fill(Color.accentColor)
+            .frame(height: 2)
+            .padding(.horizontal, 8)
+    }
+
+    // MARK: - Drop delegates
+
+    // Set header: dispatches on dragItem kind.
+    private func setHeaderDelegate(setIdx: Int) -> LoomDropDelegate {
+        let beforeT = SpriteDropTarget.beforeSet(setIdx)
+        let ontoT   = SpriteDropTarget.ontoSet(setIdx)
+        return LoomDropDelegate(
+            validate: { self.dragItem != nil },
+            entered: {
+                switch self.dragItem {
+                case .set:    self.dropTarget = beforeT
+                case .sprite: self.dropTarget = ontoT
+                case nil:     break
+                }
+            },
+            exited: {
+                if self.dropTarget == beforeT || self.dropTarget == ontoT {
+                    self.dropTarget = nil
+                }
+            },
+            perform: {
+                defer { self.dragItem = nil; self.dropTarget = nil }
+                switch self.dragItem {
+                case .set(let name):    return self.dropSet(named: name, beforeSetIdx: setIdx)
+                case .sprite(let name): return self.dropSprite(named: name, ontoSetIdx: setIdx)
+                case nil:               return false
+                }
+            }
+        )
+    }
+
+    // Sprite row: only accepts sprite drags.
+    private func spriteDropDelegate(setIdx: Int, spriteIdx: Int) -> LoomDropDelegate {
+        let t = SpriteDropTarget.beforeSprite(setIdx: setIdx, spriteIdx: spriteIdx)
+        return LoomDropDelegate(
+            validate: { if case .sprite = self.dragItem { return true }; return false },
+            entered:  { self.dropTarget = t },
+            exited:   { if self.dropTarget == t { self.dropTarget = nil } },
+            perform: {
+                guard case .sprite(let name) = self.dragItem else { return false }
+                defer { self.dragItem = nil; self.dropTarget = nil }
+                return self.dropSprite(named: name, beforeSetIdx: setIdx, spriteIdx: spriteIdx)
+            }
+        )
+    }
+
+    // After-sprites zone: only accepts sprite drags.
+    private func afterSpritesDelegate(setIdx: Int, count: Int) -> LoomDropDelegate {
+        let t = SpriteDropTarget.afterSprites(setIdx: setIdx)
+        return LoomDropDelegate(
+            validate: { if case .sprite = self.dragItem { return true }; return false },
+            entered:  { self.dropTarget = t },
+            exited:   { if self.dropTarget == t { self.dropTarget = nil } },
+            perform: {
+                guard case .sprite(let name) = self.dragItem else { return false }
+                defer { self.dragItem = nil; self.dropTarget = nil }
+                return self.dropSprite(named: name, beforeSetIdx: setIdx, spriteIdx: count)
+            }
+        )
+    }
+
+    // After-sets zone: only accepts set drags.
+    private func afterSetsDelegate(total: Int) -> LoomDropDelegate {
+        let t = SpriteDropTarget.afterSets
+        return LoomDropDelegate(
+            validate: { if case .set = self.dragItem { return true }; return false },
+            entered:  { self.dropTarget = t },
+            exited:   { if self.dropTarget == t { self.dropTarget = nil } },
+            perform: {
+                guard case .set(let name) = self.dragItem else { return false }
+                defer { self.dragItem = nil; self.dropTarget = nil }
+                return self.dropSet(named: name, beforeSetIdx: total)
+            }
+        )
     }
 
     // MARK: - Toolbar
 
     private var toolbar: some View {
         HStack(spacing: 0) {
-            toolbarButton("plus",               tooltip: "New sprite set")      { addSet() }
-            toolbarButton("minus",              tooltip: "Delete sprite set")   { deleteSelectedSet() }
+            toolbarButton("plus",                        tooltip: "New sprite set")        { addSet() }
+            toolbarButton("minus",                       tooltip: "Delete sprite set")     { deleteSelectedSet() }
                 .disabled(selectedSetIndex == nil)
-            toolbarButton("plus.square.on.square", tooltip: "Duplicate sprite set") { duplicateSelectedSet() }
+            toolbarButton("plus.square.on.square",       tooltip: "Duplicate sprite set")  { duplicateSelectedSet() }
                 .disabled(selectedSetIndex == nil)
 
             Divider().frame(height: 14).padding(.horizontal, 4)
 
-            toolbarButton("plus.circle",        tooltip: "Add sprite")          { addSprite() }
+            toolbarButton("plus.circle",                 tooltip: "Add sprite")            { addSprite() }
                 .disabled(selectedSetIndex == nil)
-            toolbarButton("minus.circle",       tooltip: "Delete sprite")       { deleteSelectedSprite() }
+            toolbarButton("minus.circle",                tooltip: "Delete sprite")         { deleteSelectedSprite() }
                 .disabled(controller.selectedSpriteID == nil)
-            toolbarButton("arrow.triangle.2.circlepath", tooltip: "Duplicate sprite") { duplicateSelectedSprite() }
+            toolbarButton("arrow.triangle.2.circlepath", tooltip: "Duplicate sprite")      { duplicateSelectedSprite() }
                 .disabled(controller.selectedSpriteID == nil)
 
             Spacer()
@@ -168,32 +335,97 @@ struct SpritesTabView: View {
 
     // MARK: - Interaction
 
-    private func handleSetSelected(_ setIdx: Int) {
+    private func handleSetSelected(setIdx: Int, setName: String) {
         if selectedSetIndex == setIdx, controller.selectedSpriteID == nil {
-            toggleExpansion(setIdx)
-            return
+            toggleExpansion(setName); return
         }
-        selectedSetIndex             = setIdx
-        controller.selectedSpriteID  = nil
-        expandedSets.insert(setIdx)
+        selectedSetIndex            = setIdx
+        controller.selectedSpriteID = nil
+        expandedSets.insert(setName)
     }
 
     private func handleSpriteSelected(setIdx: Int, itemIdx: Int, sprite: SpriteDef) {
         selectedSetIndex            = setIdx
         controller.selectedSpriteID = sprite.name
-        expandedSets.insert(setIdx)
+        if let sn = setName(at: setIdx) { expandedSets.insert(sn) }
     }
 
-    private func toggleExpansion(_ setIdx: Int) {
-        if expandedSets.contains(setIdx) { expandedSets.remove(setIdx) }
-        else { expandedSets.insert(setIdx) }
+    private func toggleExpansion(_ setName: String) {
+        if expandedSets.contains(setName) { expandedSets.remove(setName) }
+        else { expandedSets.insert(setName) }
     }
 
     private func autoExpand() {
         guard let name = controller.selectedSpriteID,
-              let (setIdx, _) = location(ofSprite: name) else { return }
+              let (setIdx, _) = location(ofSprite: name),
+              let sn = setName(at: setIdx)
+        else { return }
         selectedSetIndex = setIdx
-        expandedSets.insert(setIdx)
+        expandedSets.insert(sn)
+    }
+
+    // MARK: - Drop mutations
+
+    private func dropSet(named name: String, beforeSetIdx target: Int) -> Bool {
+        guard let sets = controller.projectConfig?.spriteConfig.library.spriteSets,
+              let fromIdx = sets.firstIndex(where: { $0.name == name })
+        else { return false }
+        guard target != fromIdx && target != fromIdx + 1 else { return false }
+
+        controller.updateProjectConfig { cfg in
+            var s = cfg.spriteConfig.library.spriteSets
+            let set = s.remove(at: fromIdx)
+            let insertAt = fromIdx < target ? target - 1 : target
+            s.insert(set, at: max(0, min(insertAt, s.count)))
+            cfg.spriteConfig.library.spriteSets = s
+        }
+        let newSets = controller.projectConfig?.spriteConfig.library.spriteSets ?? []
+        selectedSetIndex = newSets.firstIndex(where: { $0.name == name })
+        return true
+    }
+
+    private func dropSprite(named name: String, beforeSetIdx targetSetIdx: Int, spriteIdx targetSpriteIdx: Int) -> Bool {
+        guard let (fromSetIdx, fromSpriteIdx) = location(ofSprite: name),
+              let sets = controller.projectConfig?.spriteConfig.library.spriteSets,
+              targetSetIdx < sets.count
+        else { return false }
+        if fromSetIdx == targetSetIdx,
+           targetSpriteIdx == fromSpriteIdx || targetSpriteIdx == fromSpriteIdx + 1 { return false }
+
+        let targetSetName = sets[targetSetIdx].name
+        controller.updateProjectConfig { cfg in
+            let sprite = cfg.spriteConfig.library.spriteSets[fromSetIdx].sprites.remove(at: fromSpriteIdx)
+            var insertIdx = targetSpriteIdx
+            if fromSetIdx == targetSetIdx && fromSpriteIdx < targetSpriteIdx { insertIdx -= 1 }
+            let count = cfg.spriteConfig.library.spriteSets[targetSetIdx].sprites.count
+            cfg.spriteConfig.library.spriteSets[targetSetIdx].sprites
+                .insert(sprite, at: max(0, min(insertIdx, count)))
+        }
+        let newSets = controller.projectConfig?.spriteConfig.library.spriteSets ?? []
+        selectedSetIndex = newSets.firstIndex(where: { $0.name == targetSetName })
+        controller.selectedSpriteID = name
+        expandedSets.insert(targetSetName)
+        return true
+    }
+
+    private func dropSprite(named name: String, ontoSetIdx targetSetIdx: Int) -> Bool {
+        guard let (fromSetIdx, fromSpriteIdx) = location(ofSprite: name),
+              let sets = controller.projectConfig?.spriteConfig.library.spriteSets,
+              targetSetIdx < sets.count
+        else { return false }
+        let targetCount = sets[targetSetIdx].sprites.count
+        if fromSetIdx == targetSetIdx, targetCount > 0, fromSpriteIdx == targetCount - 1 { return false }
+
+        let targetSetName = sets[targetSetIdx].name
+        controller.updateProjectConfig { cfg in
+            let sprite = cfg.spriteConfig.library.spriteSets[fromSetIdx].sprites.remove(at: fromSpriteIdx)
+            cfg.spriteConfig.library.spriteSets[targetSetIdx].sprites.append(sprite)
+        }
+        let newSets = controller.projectConfig?.spriteConfig.library.spriteSets ?? []
+        selectedSetIndex = newSets.firstIndex(where: { $0.name == targetSetName })
+        controller.selectedSpriteID = name
+        expandedSets.insert(targetSetName)
+        return true
     }
 
     // MARK: - CRUD: sets
@@ -208,22 +440,20 @@ struct SpritesTabView: View {
         let newIdx = (controller.projectConfig?.spriteConfig.library.spriteSets.count ?? 1) - 1
         selectedSetIndex            = newIdx
         controller.selectedSpriteID = nil
-        expandedSets.insert(newIdx)
+        expandedSets.insert(name)
     }
 
     private func deleteSelectedSet() {
         guard let idx = selectedSetIndex,
               let cfg = controller.projectConfig,
               idx < cfg.spriteConfig.library.spriteSets.count else { return }
-        // Clear any sprite selection inside the deleted set
+        let sn = cfg.spriteConfig.library.spriteSets[idx].name
         if let name = controller.selectedSpriteID,
            let (si, _) = location(ofSprite: name), si == idx {
             controller.selectedSpriteID = nil
         }
-        controller.updateProjectConfig { c in
-            c.spriteConfig.library.spriteSets.remove(at: idx)
-        }
-        expandedSets.remove(idx)
+        controller.updateProjectConfig { c in c.spriteConfig.library.spriteSets.remove(at: idx) }
+        expandedSets.remove(sn)
         let remaining = controller.projectConfig?.spriteConfig.library.spriteSets.count ?? 0
         selectedSetIndex = remaining > 0 ? min(idx, remaining - 1) : nil
     }
@@ -235,7 +465,6 @@ struct SpritesTabView: View {
         var copy = cfg.spriteConfig.library.spriteSets[idx]
         copy.name = uniqueName(base: "\(copy.name)_copy",
                                existing: cfg.spriteConfig.library.spriteSets.map(\.name))
-        // Give each sprite a unique name too
         let allExisting = cfg.spriteConfig.library.spriteSets.flatMap { $0.sprites.map(\.name) }
         var usedNames = allExisting
         copy.sprites = copy.sprites.map { sprite in
@@ -249,10 +478,10 @@ struct SpritesTabView: View {
         }
         selectedSetIndex            = idx + 1
         controller.selectedSpriteID = nil
-        expandedSets.insert(idx + 1)
+        expandedSets.insert(copy.name)
     }
 
-    // MARK: - CRUD: sprites within selected set
+    // MARK: - CRUD: sprites
 
     private func addSprite() {
         guard let setIdx = selectedSetIndex,
@@ -264,7 +493,7 @@ struct SpritesTabView: View {
             c.spriteConfig.library.spriteSets[setIdx].sprites.append(SpriteDef(name: name))
         }
         controller.selectedSpriteID = name
-        expandedSets.insert(setIdx)
+        if let sn = setName(at: setIdx) { expandedSets.insert(sn) }
     }
 
     private func deleteSelectedSprite() {
@@ -278,12 +507,8 @@ struct SpritesTabView: View {
         }
         let remaining = controller.projectConfig?.spriteConfig.library
             .spriteSets[safe: setIdx]?.sprites ?? []
-        if remaining.isEmpty {
-            controller.selectedSpriteID = nil
-        } else {
-            let newIdx = min(itemIdx, remaining.count - 1)
-            controller.selectedSpriteID = remaining[newIdx].name
-        }
+        controller.selectedSpriteID = remaining.isEmpty
+            ? nil : remaining[min(itemIdx, remaining.count - 1)].name
     }
 
     private func duplicateSelectedSprite() {
@@ -326,11 +551,13 @@ struct SpritesTabView: View {
     private func location(ofSprite name: String) -> (Int, Int)? {
         guard let sets = controller.projectConfig?.spriteConfig.library.spriteSets else { return nil }
         for (si, set) in sets.enumerated() {
-            if let ii = set.sprites.firstIndex(where: { $0.name == name }) {
-                return (si, ii)
-            }
+            if let ii = set.sprites.firstIndex(where: { $0.name == name }) { return (si, ii) }
         }
         return nil
+    }
+
+    private func setName(at idx: Int) -> String? {
+        controller.projectConfig?.spriteConfig.library.spriteSets[safe: idx]?.name
     }
 
     private func uniqueName(base: String, existing: [String]) -> String {
