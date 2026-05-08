@@ -4,12 +4,19 @@ import LoomEngine
 
 // MARK: - RenderSurfaceView (SwiftUI wrapper)
 
-struct RenderSurfaceView: NSViewRepresentable {
+struct RenderSurfaceView: NSViewRepresentable, Equatable {
 
     let engine:               Engine
     var playbackState:        PlaybackState
     var onFrameTick:          (Int) -> Void    = { _ in }
     var onAnimationComplete:  (() -> Void)?    = nil
+
+    // SwiftUI uses == to decide whether to call updateNSView.
+    // Closures aren't Equatable; we only diff on the properties that actually drive
+    // engine/state changes. Closure changes are always applied in updateNSView anyway.
+    nonisolated static func == (lhs: Self, rhs: Self) -> Bool {
+        lhs.engine === rhs.engine && lhs.playbackState == rhs.playbackState
+    }
 
     func makeNSView(context: Context) -> RenderSurfaceNSView {
         let view = RenderSurfaceNSView(engine: engine, onFrameTick: onFrameTick)
@@ -21,11 +28,16 @@ struct RenderSurfaceView: NSViewRepresentable {
     func updateNSView(_ nsView: RenderSurfaceNSView, context: Context) {
         nsView.onFrameTick         = onFrameTick
         nsView.onAnimationComplete = onAnimationComplete
-        if nsView.engine !== engine { nsView.replaceEngine(engine) }
-        applyState(playbackState, to: nsView, isInitial: false)
+        if nsView.engine !== engine {
+            nsView.replaceEngine(engine)
+            applyState(playbackState, to: nsView, isInitial: false)
+        } else if playbackState != nsView.appliedPlaybackState {
+            applyState(playbackState, to: nsView, isInitial: false)
+        }
     }
 
     private func applyState(_ state: PlaybackState, to view: RenderSurfaceNSView, isInitial: Bool) {
+        view.appliedPlaybackState = state
         switch state {
         case .playing: view.startRendering()
         case .paused:  view.stopRendering()
@@ -54,8 +66,9 @@ final class RenderSurfaceNSView: NSView {
     // renders on renderQueue detect that their result is stale.
     private var renderGeneration: Int            = 0
 
-    var onFrameTick:         (Int) -> Void
-    var onAnimationComplete: (() -> Void)?
+    var onFrameTick:          (Int) -> Void
+    var onAnimationComplete:  (() -> Void)?
+    var appliedPlaybackState: PlaybackState = .stopped
 
     nonisolated(unsafe) private var renderTimer: Timer?
 

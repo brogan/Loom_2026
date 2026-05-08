@@ -187,6 +187,8 @@ final class AppController: ObservableObject, @unchecked Sendable {
     private var sentinelTimer:      Timer?
     private var pausedBySentinel:   Bool = false
     private var reloadDebounce:     DispatchWorkItem?
+    private var configCommitItem:   DispatchWorkItem?
+    private let configSaveQueue = DispatchQueue(label: "loom.config.save", qos: .utility)
     private var animationCompleted: Bool = false
     private var geometryTransformGestureBase: EditableGeometrySnapshot?
     private var geometryEditorPendingAutoWeldPairs: [(EditableGeometryID, EditableGeometryID)] = []
@@ -229,11 +231,29 @@ final class AppController: ObservableObject, @unchecked Sendable {
     func updateProjectConfig(_ fn: (inout ProjectConfig) -> Void) {
         guard var config = projectConfig else { return }
         fn(&config)
-        projectConfig = config
-        if let url = projectURL {
+        projectConfig = config          // immediate: fires @Published for UI reactivity
+        scheduleConfigCommit(config)    // debounced save + reload
+    }
+
+    /// Writes config to disk on a background queue then rebuilds the engine on the main queue.
+    /// Debounced so rapid slider events coalesce into one save+reload cycle.
+    private func scheduleConfigCommit(_ config: ProjectConfig) {
+        configCommitItem?.cancel()
+        reloadDebounce?.cancel()
+        guard let url = projectURL else { return }
+        let wasPlaying = playbackState == .playing
+        let item = DispatchWorkItem { [weak self] in
             try? ProjectLoader.save(config, to: url)
+            DispatchQueue.main.async { [weak self] in
+                guard let self else { return }
+                self.loadError          = nil
+                self.animationCompleted = false
+                self.loadEngine(from: url)
+                self.playbackState = wasPlaying ? .playing : .stopped
+            }
         }
-        scheduleEngineReload()
+        configCommitItem = item
+        configSaveQueue.asyncAfter(deadline: .now() + 0.35, execute: item)
     }
 
     // MARK: - Geometry editor shell
@@ -4194,7 +4214,9 @@ final class AppController: ObservableObject, @unchecked Sendable {
         return sanitized.isEmpty ? "geometry" : sanitized
     }
 
+    /// Reload the engine from disk (for callers that already have the config persisted).
     private func scheduleEngineReload() {
+        configCommitItem?.cancel()
         reloadDebounce?.cancel()
         let wasPlaying = playbackState == .playing
         let work = DispatchWorkItem { [weak self] in

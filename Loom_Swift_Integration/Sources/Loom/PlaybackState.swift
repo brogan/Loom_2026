@@ -1,1 +1,1 @@
-enum PlaybackState { case playing, paused, stopped }
+enum PlaybackState: Equatable { case playing, paused, stopped }
