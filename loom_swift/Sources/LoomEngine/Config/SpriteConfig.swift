@@ -18,6 +18,20 @@ public struct SpriteDef: Codable, Sendable {
     /// Full animation specification. `animation.enabled` is `false` for static sprites.
     public var animation: SpriteAnimation
 
+    // MARK: Hierarchy
+
+    /// Name of the parent sprite (must appear earlier in the same SpriteSet).
+    /// `nil` means this sprite is a root (world-space transform).
+    public var parentName:   String?
+    /// Which transform components are inherited from the parent.
+    public var inheritMask:  InheritMask
+
+    // MARK: Shape sequencing
+
+    /// When non-nil, the active polygon set cycles through this sequence over
+    /// draw cycles instead of using `shapeSetName` permanently.
+    public var shapeSequence: ShapeSequence?
+
     public init(
         name: String               = "",
         enabled: Bool              = true,
@@ -27,13 +41,19 @@ public struct SpriteDef: Codable, Sendable {
         position: Vector2D         = .zero,
         scale: Vector2D            = Vector2D(x: 1, y: 1),
         rotation: Double           = 0,
-        animation: SpriteAnimation = .disabled
+        animation: SpriteAnimation = .disabled,
+        parentName: String?        = nil,
+        inheritMask: InheritMask   = .positionAndRotation,
+        shapeSequence: ShapeSequence? = nil
     ) {
         self.name = name; self.enabled = enabled
         self.shapeSetName = shapeSetName
         self.shapeName = shapeName; self.rendererSetName = rendererSetName
         self.position = position; self.scale = scale
         self.rotation = rotation; self.animation = animation
+        self.parentName    = parentName
+        self.inheritMask   = inheritMask
+        self.shapeSequence = shapeSequence
     }
 }
 

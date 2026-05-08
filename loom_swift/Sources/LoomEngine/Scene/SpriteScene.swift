@@ -127,12 +127,27 @@ public struct SpriteScene: Sendable {
             subdivParams = config.subdivisionConfig.paramsSet(named: paramsName)?.params ?? []
         }
 
+        // ── 6. Load shape-sequence polygon sets ─────────────────────────────
+        let sequencePolygons: [[Polygon2D]]
+        if let seq = sprite.shapeSequence, !seq.shapeSetNames.isEmpty {
+            sequencePolygons = seq.shapeSetNames.compactMap { setName in
+                guard let sd = config.shapeConfig.library.shapeSets
+                    .first(where: { $0.name == setName })?
+                    .shapes.first(where: { $0.name == sprite.shapeName })
+                else { return nil }
+                return try? loadBasePolygons(shapeDef: sd, config: config, projectDirectory: projectDirectory)
+            }
+        } else {
+            sequencePolygons = []
+        }
+
         return SpriteInstance(
             def:                  sprite,
             basePolygons:         basePolygons,
             morphTargetPolygons:  morphTargetPolygons,
             rendererSet:          rendererSet,
             subdivisionParams:    subdivParams,
+            sequencePolygons:     sequencePolygons,
             state:                SpriteState.initial(for: rendererSet)
         )
     }
@@ -262,24 +277,32 @@ public struct SpriteScene: Sendable {
     /// the 60 fps display timer from writing more layers than the virtual frame rate.
     @discardableResult
     public mutating func advance<RNG: RandomNumberGenerator>(
-        deltaTime: Double,
-        targetFPS: Double,
+        deltaTime:     Double,
+        targetFPS:     Double,
+        globalElapsed: Double = 0,
         using rng: inout RNG
     ) -> Bool {
         var anyAdvanced = false
-        for i in instances.indices {
-            if SpriteScene.advanceInstance(&instances[i], deltaTime: deltaTime, targetFPS: targetFPS, using: &rng) {
-                anyAdvanced = true
-            }
+        for (i, _) in instances.enumerated() {
+            if SpriteScene.advanceInstance(
+                &instances[i],
+                deltaTime:     deltaTime,
+                targetFPS:     targetFPS,
+                globalElapsed: globalElapsed,
+                spriteIndex:   i,
+                using:         &rng
+            ) { anyAdvanced = true }
         }
         return anyAdvanced
     }
 
     /// Returns `true` if this instance crossed at least one virtual-frame boundary.
     private static func advanceInstance<RNG: RandomNumberGenerator>(
-        _ instance: inout SpriteInstance,
-        deltaTime: Double,
-        targetFPS: Double,
+        _ instance:    inout SpriteInstance,
+        deltaTime:     Double,
+        targetFPS:     Double,
+        globalElapsed: Double,
+        spriteIndex:   Int,
         using rng: inout RNG
     ) -> Bool {
         // ── Continuous: update elapsed time and recompute the transform ────────
@@ -293,10 +316,13 @@ public struct SpriteScene: Sendable {
             || instance.state.drawCycle < animation.totalDraws
         if withinLimit {
             instance.state.elapsedTime += deltaTime
-            let elapsedFrames = instance.state.elapsedTime * max(1.0, targetFPS)
+            let perSpriteElapsed = instance.state.elapsedTime * max(1.0, targetFPS)
             instance.state.transform = TransformAnimator.transform(
                 for:           animation,
-                elapsedFrames: elapsedFrames,
+                elapsedFrames: perSpriteElapsed,
+                globalElapsed: globalElapsed,
+                targetFPS:     targetFPS,
+                spriteIndex:   spriteIndex,
                 using:         &rng
             )
         }
@@ -400,15 +426,83 @@ public struct SpriteScene: Sendable {
         elapsedFrames: Double = 0,
         using rng: inout RNG
     ) {
+        // Pre-compute world transforms (position, rotation, scale) for every sprite
+        // so children can look up their parent's world transform by name.
+        // Declaration order is assumed: parents appear before children.
+        var parentWorlds: [String: ParentWorld] = [:]
         for instance in instances {
-            renderInstance(instance, into: context, viewTransform: viewTransform,
+            parentWorlds[instance.def.name] = computeParentWorld(
+                instance, parentWorlds: parentWorlds, canvasSize: viewTransform.canvasSize
+            )
+        }
+
+        for instance in instances {
+            let parentWorld = instance.def.parentName.flatMap { parentWorlds[$0] }
+            renderInstance(instance, parentWorld: parentWorld,
+                           into: context, viewTransform: viewTransform,
                            brushImages: brushImages, stampImages: stampImages,
                            elapsedFrames: elapsedFrames, using: &rng)
         }
     }
 
+    // MARK: - Parent-child world transform
+
+    /// Encapsulates the resolved world-space transform of one sprite.
+    /// Children inherit selected components of their parent's ParentWorld.
+    private struct ParentWorld {
+        /// Pixel offset from canvas centre.
+        var positionPx:  Vector2D
+        /// Combined rotation in degrees.
+        var rotationDeg: Double
+        /// Combined scale (WITHOUT the ×2 coordinate convention).
+        var scale:       Vector2D
+    }
+
+    private func computeParentWorld(
+        _ instance: SpriteInstance,
+        parentWorlds: [String: ParentWorld],
+        canvasSize: CGSize
+    ) -> ParentWorld {
+        let hw = canvasSize.width  / 2.0
+        let hh = canvasSize.height / 2.0
+        let def  = instance.def
+        let anim = instance.state.transform
+
+        var sx      = def.scale.x * anim.scale.x
+        var sy      = def.scale.y * anim.scale.y
+        var rotDeg  = def.rotation + anim.rotation
+        let localTx = (def.position.x + anim.positionOffset.x) / 100.0 * hw
+        let localTy = (def.position.y + anim.positionOffset.y) / 100.0 * hh
+        var txPx    = localTx
+        var tyPx    = localTy
+
+        if let parent = def.parentName.flatMap({ parentWorlds[$0] }) {
+            let mask = def.inheritMask
+            if mask.scale {
+                sx *= parent.scale.x
+                sy *= parent.scale.y
+            }
+            if mask.rotation {
+                rotDeg += parent.rotationDeg
+            }
+            if mask.position {
+                let rad  = parent.rotationDeg * .pi / 180.0
+                let cosR = cos(rad), sinR = sin(rad)
+                txPx = parent.positionPx.x + localTx * cosR - localTy * sinR
+                tyPx = parent.positionPx.y + localTx * sinR + localTy * cosR
+            }
+        }
+
+        return ParentWorld(
+            positionPx:  Vector2D(x: txPx,  y: tyPx),
+            rotationDeg: rotDeg,
+            scale:       Vector2D(x: sx, y: sy)
+        )
+    }
+
     private func renderInstance<RNG: RandomNumberGenerator>(
         _ instance: SpriteInstance,
+        parentWorld: ParentWorld?,
         into context: CGContext,
         viewTransform: ViewTransform,
         brushImages: [String: CGImage],
@@ -416,17 +510,26 @@ public struct SpriteScene: Sendable {
         elapsedFrames: Double,
         using rng: inout RNG
     ) {
-        guard !instance.basePolygons.isEmpty else { return }
-
-        // Stop drawing once the per-sprite draw-cycle limit is reached —
-        // matching Scala's Sprite2D.draw() check on spriteTotalDraws.
-        // totalDraws == 0 means draw indefinitely.
+        // Stop drawing once the per-sprite draw-cycle limit is reached.
         let anim = instance.def.animation
         guard anim.totalDraws == 0 || instance.state.drawCycle < anim.totalDraws else { return }
 
+        // Select active polygon set (shape sequence overrides basePolygons).
+        let activePolygons: [Polygon2D]
+        if let seq = instance.def.shapeSequence, !instance.sequencePolygons.isEmpty {
+            let step = instance.state.drawCycle / max(1, seq.frameDuration)
+            let idx  = sequenceIndex(step: step,
+                                     count: instance.sequencePolygons.count,
+                                     mode: seq.mode)
+            activePolygons = instance.sequencePolygons[idx]
+        } else {
+            activePolygons = instance.basePolygons
+        }
+        guard !activePolygons.isEmpty else { return }
+
         // 1. Morph interpolation
         let morphed = MorphInterpolator.interpolate(
-            base:        instance.basePolygons,
+            base:        activePolygons,
             targets:     instance.morphTargetPolygons,
             morphAmount: instance.state.transform.morphAmount
         )
@@ -444,7 +547,10 @@ public struct SpriteScene: Sendable {
         }
 
         // 3. Apply the sprite transform (scale → rotate → translate → pixels)
-        let transformed = subdivided.map { applyTransform($0, to: instance, canvasSize: viewTransform.canvasSize) }
+        // When a parentWorld is supplied the child transform is composed with it.
+        let transformed = subdivided.map {
+            applyTransform($0, to: instance, parentWorld: parentWorld, canvasSize: viewTransform.canvasSize)
+        }
 
         // 4. Determine which renderers to apply
         let activeRenderers = resolveActiveRenderers(for: instance)
@@ -530,47 +636,82 @@ public struct SpriteScene: Sendable {
     /// The caller (`renderInstance`) then passes the resulting pixel-space polygon to
     /// `RenderEngine.draw`, whose `ViewTransform.worldToScreen` adds the canvas-centre
     /// offset to produce final screen coordinates.
-    private func applyTransform(_ polygon: Polygon2D,
-                                 to instance: SpriteInstance,
-                                 canvasSize: CGSize) -> Polygon2D {
+    private func applyTransform(
+        _ polygon: Polygon2D,
+        to instance: SpriteInstance,
+        parentWorld: ParentWorld?,
+        canvasSize: CGSize
+    ) -> Polygon2D {
         let def  = instance.def
         let anim = instance.state.transform
 
         let hw = canvasSize.width  / 2.0
         let hh = canvasSize.height / 2.0
 
-        // Loom geometry scale: ×2 for canvas convention (polygon coords in [−0.5, 0.5]
-        // map to world [−1, 1]), combined with the sprite's own scale multiplier.
-        let sx = def.scale.x * anim.scale.x * 2.0
-        let sy = def.scale.y * anim.scale.y * 2.0
+        // Local scale (×2 for coord convention: polygon coords in [−0.5, 0.5]).
+        var sx = def.scale.x * anim.scale.x * 2.0
+        var sy = def.scale.y * anim.scale.y * 2.0
 
-        // Rotation: sprite base + animation delta (degrees → radians), applied in
-        // normalised world space before canvas scaling so it isn't distorted.
-        let rotRad = (def.rotation + anim.rotation) * Double.pi / 180.0
+        // Local rotation in degrees.
+        var rotDeg = def.rotation + anim.rotation
+
+        // Local position in pixels (1/100 of canvas half-size per unit).
+        let localTx = (def.position.x + anim.positionOffset.x) / 100.0 * hw
+        let localTy = (def.position.y + anim.positionOffset.y) / 100.0 * hh
+        var txPx    = localTx
+        var tyPx    = localTy
+
+        // Compose with parent world transform according to the inherit mask.
+        if let parent = parentWorld {
+            let mask = def.inheritMask
+            if mask.scale {
+                // Parent scale is stored without ×2; multiply against child's ×2-normalised value.
+                sx *= parent.scale.x
+                sy *= parent.scale.y
+            }
+            if mask.rotation {
+                rotDeg += parent.rotationDeg
+            }
+            if mask.position {
+                // Rotate child's local position by parent rotation, then add parent position.
+                let rad  = parent.rotationDeg * .pi / 180.0
+                let cosP = cos(rad), sinP = sin(rad)
+                txPx = parent.positionPx.x + localTx * cosP - localTy * sinP
+                tyPx = parent.positionPx.y + localTx * sinP + localTy * cosP
+            }
+        }
+
+        let rotRad = rotDeg * .pi / 180.0
         let cosR   = cos(rotRad)
         let sinR   = sin(rotRad)
 
-        // Position in pixels: raw position unit = 1/100 of canvas half-size.
-        let tx = (def.position.x + anim.positionOffset.x) / 100.0 * hw
-        let ty = (def.position.y + anim.positionOffset.y) / 100.0 * hh
-
         let pts = polygon.points.map { pt -> Vector2D in
-            // 1. Scale in world space.
             var wx = pt.x * sx
             var wy = pt.y * sy
-
-            // 2. Rotate in world space.
             if rotRad != 0 {
                 let rx = wx * cosR - wy * sinR
                 let ry = wx * sinR + wy * cosR
                 wx = rx; wy = ry
             }
-
-            // 3. World → pixels, then add sprite position.
-            return Vector2D(x: wx * hw + tx, y: wy * hh + ty)
+            return Vector2D(x: wx * hw + txPx, y: wy * hh + tyPx)
         }
         return Polygon2D(points: pts, type: polygon.type,
                          pressures: polygon.pressures, visible: polygon.visible)
+    }
+
+    /// Resolve a step index into a shape-sequence array position, applying loop / once / ping-pong.
+    private func sequenceIndex(step: Int, count: Int, mode: LoopMode) -> Int {
+        guard count > 0 else { return 0 }
+        switch mode {
+        case .loop:
+            return step % count
+        case .once:
+            return min(step, count - 1)
+        case .pingPong:
+            let period = max(1, (count - 1) * 2)
+            let n      = step % period
+            return n < count ? n : period - n
+        }
     }
 
     // MARK: - Renderer-set helpers

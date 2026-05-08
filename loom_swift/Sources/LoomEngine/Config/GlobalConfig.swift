@@ -23,6 +23,8 @@ public struct GlobalConfig: Equatable, Codable, Sendable {
     /// Default 30 matches the typical Scala Loom frame rate.
     public var targetFPS: Double          = 30.0
     public var note: String               = ""
+    /// Animated camera.  `camera.enabled` must be true for pan/zoom/rotation to apply.
+    public var camera: CameraConfig       = .disabled
 
     public init() {}
 

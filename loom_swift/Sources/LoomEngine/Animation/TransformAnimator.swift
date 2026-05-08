@@ -19,12 +19,32 @@ public enum TransformAnimator {
     ///   - animation:     The sprite's animation specification.
     ///   - elapsedFrames: Fractional elapsed frame count (= `elapsedTime * targetFPS`).
     ///   - rng:           Consumed only for `.random` and `.jitterMorph`.
+    /// - Parameters:
+    ///   - animation:      The sprite's animation specification.
+    ///   - elapsedFrames:  Per-sprite fractional elapsed frame count (legacy path).
+    ///   - globalElapsed:  Engine-level elapsed frames (new driver path).
+    ///   - targetFPS:      Project frame rate — used to convert Hz to frames.
+    ///   - spriteIndex:    Index of this sprite in the scene (seed offset for drivers).
+    ///   - rng:            Consumed only by the legacy `.random` / `.jitterMorph` paths.
     public static func transform<RNG: RandomNumberGenerator>(
         for animation: SpriteAnimation,
         elapsedFrames: Double,
+        globalElapsed: Double = 0,
+        targetFPS:     Double = 30,
+        spriteIndex:   Int    = 0,
         using rng: inout RNG
     ) -> SpriteTransform {
         guard animation.enabled else { return .identity }
+
+        // New driver path — takes priority when set.
+        if let drivers = animation.drivers {
+            return driverTransform(drivers,
+                                   globalElapsed: globalElapsed,
+                                   targetFPS: targetFPS,
+                                   spriteIndex: spriteIndex)
+        }
+
+        // Legacy path — unchanged.
         switch animation.type {
         case .keyframe:
             return keyframeTransform(animation, elapsedFrames: elapsedFrames)
@@ -35,6 +55,38 @@ public enum TransformAnimator {
         case .jitterMorph:
             return jitterMorphTransform(animation, using: &rng)
         }
+    }
+
+    // MARK: - Driver-based evaluation
+
+    private static func driverTransform(
+        _ drivers:      TransformDrivers,
+        globalElapsed:  Double,
+        targetFPS:      Double,
+        spriteIndex:    Int
+    ) -> SpriteTransform {
+        let pos = DriverEvaluator.evaluate(drivers.position,
+                                           globalElapsed: globalElapsed,
+                                           targetFPS: targetFPS,
+                                           spriteIndex: spriteIndex)
+        let scl = DriverEvaluator.evaluate(drivers.scale,
+                                           globalElapsed: globalElapsed,
+                                           targetFPS: targetFPS,
+                                           spriteIndex: spriteIndex)
+        let rot = DriverEvaluator.evaluate(drivers.rotation,
+                                           globalElapsed: globalElapsed,
+                                           targetFPS: targetFPS,
+                                           spriteIndex: spriteIndex)
+        let morph = DriverEvaluator.evaluate(drivers.morph,
+                                             globalElapsed: globalElapsed,
+                                             targetFPS: targetFPS,
+                                             spriteIndex: spriteIndex)
+        return SpriteTransform(
+            positionOffset: pos,
+            scale:          scl,
+            rotation:       rot,
+            morphAmount:    morph
+        )
     }
 
     // MARK: - Loop normalisation

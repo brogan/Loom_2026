@@ -126,7 +126,12 @@ public struct LoomEngine: @unchecked Sendable {
         // Global animating flag is the master switch: when false, all sprite animation
         // is suppressed and the scene is held at its initial (frame-0) state.
         if config.globalConfig.animating {
-            sceneAdvancedThisFrame = scene.advance(deltaTime: dt, targetFPS: fps, using: &rng)
+            sceneAdvancedThisFrame = scene.advance(
+                deltaTime:     dt,
+                targetFPS:     fps,
+                globalElapsed: elapsedFrames,   // current value before incrementing
+                using:         &rng
+            )
         } else {
             sceneAdvancedThisFrame = false
         }
@@ -186,6 +191,8 @@ public struct LoomEngine: @unchecked Sendable {
     private func renderImpl(into context: CGContext, drawBackground: Bool) {
         let w = viewTransform.canvasSize.width
         let h = viewTransform.canvasSize.height
+        // Apply animated camera to a fresh ViewTransform each frame.
+        let activeTransform = cameraTransform()
 
         // Apply Y-flip: worldToScreen is top-left Y-down; CGContext is bottom-left Y-up.
         context.saveGState()
@@ -210,7 +217,7 @@ public struct LoomEngine: @unchecked Sendable {
         // Snapshot RNG so repeated render() calls produce identical output for
         // the same frame (render is non-mutating; subdivision consumes RNG).
         var spriteRNG = rng
-        scene.render(into: context, viewTransform: viewTransform,
+        scene.render(into: context, viewTransform: activeTransform,
                      brushImages: brushImages, stampImages: stampImages,
                      elapsedFrames: elapsedFrames, using: &spriteRNG)
 
@@ -266,6 +273,31 @@ public struct LoomEngine: @unchecked Sendable {
 
         renderImpl(into: ctx, drawBackground: true)
         return ctx.makeImage()
+    }
+
+    // MARK: - Camera
+
+    /// Returns a `ViewTransform` with the camera animation applied for the current frame.
+    /// When camera is disabled returns `viewTransform` unchanged.
+    private func cameraTransform() -> ViewTransform {
+        let cam = config.globalConfig.camera
+        guard cam.enabled else { return viewTransform }
+
+        let fps = max(1.0, config.globalConfig.targetFPS)
+        let pan = DriverEvaluator.evaluate(cam.pan,      globalElapsed: elapsedFrames,
+                                           targetFPS: fps, spriteIndex: 0)
+        let z   = DriverEvaluator.evaluate(cam.zoom,     globalElapsed: elapsedFrames,
+                                           targetFPS: fps, spriteIndex: 0)
+        let rot = DriverEvaluator.evaluate(cam.rotation, globalElapsed: elapsedFrames,
+                                           targetFPS: fps, spriteIndex: 0)
+
+        return ViewTransform(
+            canvasSize: viewTransform.canvasSize,
+            offset:     Vector2D(x: pan.x + viewTransform.offset.x,
+                                 y: pan.y + viewTransform.offset.y),
+            zoom:       max(0.01, z),
+            rotation:   rot
+        )
     }
 
     // MARK: - Private helpers

@@ -26,6 +26,10 @@ public struct SpriteInstance: Sendable {
     /// name is "none".
     public var subdivisionParams: [SubdivisionParams]
 
+    /// Polygon sets for `SpriteDef.shapeSequence` cycling (parallel to
+    /// `def.shapeSequence.shapeSetNames`).  Empty when no sequence is configured.
+    public var sequencePolygons: [[Polygon2D]]
+
     /// Mutable per-frame state (updated by `SpriteScene.advance`).
     public var state: SpriteState
 
@@ -35,6 +39,7 @@ public struct SpriteInstance: Sendable {
         morphTargetPolygons: [[Polygon2D]],
         rendererSet: RendererSet,
         subdivisionParams: [SubdivisionParams],
+        sequencePolygons: [[Polygon2D]] = [],
         state: SpriteState
     ) {
         self.def                  = def
@@ -42,6 +47,7 @@ public struct SpriteInstance: Sendable {
         self.morphTargetPolygons  = morphTargetPolygons
         self.rendererSet          = rendererSet
         self.subdivisionParams    = subdivisionParams
+        self.sequencePolygons     = sequencePolygons
         self.state                = state
     }
 }

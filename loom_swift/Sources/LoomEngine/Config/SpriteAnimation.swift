@@ -108,6 +108,16 @@ public struct SpriteAnimation: Equatable, Codable, Sendable {
     /// Maximum morph amount for `jitter_morph`.
     public var morphMax:         Double
 
+    // MARK: New driver-based animation
+    //
+    // When non-nil, `drivers` replaces the legacy `type`/range/keyframe path.
+    // The legacy fields are preserved for backward compatibility; serialised
+    // projects without a `drivers` key continue to work unchanged.
+
+    /// Per-property animation drivers evaluated against the engine's global elapsed frame.
+    /// Setting this enables the new oscillator / noise / per-property-keyframe system.
+    public var drivers: TransformDrivers?
+
     public init(
         enabled:          Bool          = false,
         type:             AnimationType = .random,
@@ -119,7 +129,8 @@ public struct SpriteAnimation: Equatable, Codable, Sendable {
         keyframes:        [Keyframe]    = [],
         morphTargets:     [MorphTargetRef] = [],
         morphMin:         Double        = 0,
-        morphMax:         Double        = 0
+        morphMax:         Double        = 0,
+        drivers:          TransformDrivers? = nil
     ) {
         self.enabled          = enabled
         self.type             = type
@@ -132,6 +143,7 @@ public struct SpriteAnimation: Equatable, Codable, Sendable {
         self.morphTargets     = morphTargets
         self.morphMin         = morphMin
         self.morphMax         = morphMax
+        self.drivers          = drivers
     }
 
     /// Disabled animation with all defaults — used for non-animated sprites.
