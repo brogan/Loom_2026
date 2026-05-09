@@ -7,10 +7,10 @@ import LoomEngine
 struct DoubleDriverEditor: View {
     let label: String
     @Binding var driver: DoubleDriver
-    @State private var collapsed = false
+    @Binding var isCollapsed: Bool
 
     var body: some View {
-        InspectorSection(label, isCollapsed: $collapsed) {
+        InspectorSection(label, isCollapsed: $isCollapsed) {
             InspectorField("Mode") {
                 Picker("", selection: $driver.mode) {
                     ForEach(DoubleDriver.Mode.allCases, id: \.self) { m in
@@ -90,10 +90,10 @@ struct DoubleDriverEditor: View {
 struct VectorDriverEditor: View {
     let label: String
     @Binding var driver: VectorDriver
-    @State private var collapsed = false
+    @Binding var isCollapsed: Bool
 
     var body: some View {
-        InspectorSection(label, isCollapsed: $collapsed) {
+        InspectorSection(label, isCollapsed: $isCollapsed) {
             InspectorField("Mode") {
                 Picker("", selection: $driver.mode) {
                     ForEach(VectorDriver.Mode.allCases, id: \.self) { m in

@@ -141,6 +141,7 @@ final class AppController: ObservableObject, @unchecked Sendable {
     @Published var geometryEditorShowsControlPoints: Bool = true
     @Published var geometryEditorGridDetail:      GeometryEditorGridDetail = .standard
     @Published var geometryEditorLayers:          [GeometryEditorLayer] = [GeometryEditorLayer(name: "Layer 1")]
+    @Published var geometryEditorAnchorOnlyEdit:  Bool = false
     @Published var geometryEditorAutoWeld:        Bool = true
     @Published var geometryEditorWeldTolerance:   Double = 0.5
     @Published var geometryEditorAutoWeldSegmentIDs: Set<EditableGeometryID> = []
@@ -2927,7 +2928,17 @@ final class AppController: ObservableObject, @unchecked Sendable {
         else { return }
 
         clearParametricSourceForSelectedPolygons(in: &document, selection: geometryEditorSelection)
-        translateRelationalPointIDs([pointID], by: position - currentPosition, in: &document)
+        let delta = position - currentPosition
+        if geometryEditorAnchorOnlyEdit {
+            // Expand through relational links then filter to anchors only — control points stay fixed.
+            let expanded = document.relationalPointIDs(startingWith: [pointID])
+            for id in expanded {
+                guard let pt = document.point(id: id), pt.kind == .anchor else { continue }
+                document.setPointPosition(id: id, to: pt.position + delta)
+            }
+        } else {
+            translateRelationalPointIDs([pointID], by: delta, in: &document)
+        }
         setGeometryEditorDocument(document)
     }
 

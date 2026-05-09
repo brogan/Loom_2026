@@ -542,6 +542,14 @@ private struct GeometryEditorShellInspector: View {
                     } action: {
                         controller.startGeometryEditMode(.points)
                     }
+                    iconButton(
+                        help: "Anchor-only edit: drag anchors without moving their control points",
+                        selected: controller.geometryEditorAnchorOnlyEdit
+                    ) {
+                        Image(systemName: "crosshair").font(.system(size: 15))
+                    } action: {
+                        controller.geometryEditorAnchorOnlyEdit.toggle()
+                    }
                     iconButton(help: "Edit edges", selected: controller.geometryEditorTool == .edges) {
                         EdgeGeometryIcon()
                     } action: {
@@ -578,6 +586,11 @@ private struct GeometryEditorShellInspector: View {
                     Spacer()
                 }
                 iconRow {
+                    iconButton(help: "Centre selected geometry, or the active layer if nothing is selected") {
+                        Image(systemName: "scope").font(.system(size: 15))
+                    } action: {
+                        controller.centreGeometryEditorViewOnSelectionOrLayer()
+                    }
                     iconButton(help: "Snap selected anchors to grid, leaving control points unchanged") {
                         AnchorSnapIcon()
                     } action: {
@@ -755,11 +768,6 @@ private struct GeometryEditorShellInspector: View {
                         Image(systemName: "minus.magnifyingglass").font(.system(size: 15))
                     } action: {
                         controller.zoomGeometryEditorOut()
-                    }
-                    iconButton(help: "Centre selected geometry, or the active layer if nothing is selected") {
-                        Image(systemName: "scope").font(.system(size: 15))
-                    } action: {
-                        controller.centreGeometryEditorViewOnSelectionOrLayer()
                     }
                     iconButton(
                         help: "Show or hide grid",
