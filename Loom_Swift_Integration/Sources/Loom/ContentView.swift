@@ -22,11 +22,10 @@ struct ContentView: View {
 
     private var mainLayout: some View {
         VStack(spacing: 0) {
-            if controller.showScrubBar {
-                RunControlBar(currentFrame: $currentFrame, seekFrame: $seekFrame)
-                    .environmentObject(controller)
-                Divider()
-            }
+            RunControlBar(currentFrame: $currentFrame, seekFrame: $seekFrame)
+                .environmentObject(controller)
+
+            Divider()
 
             tabBar
 

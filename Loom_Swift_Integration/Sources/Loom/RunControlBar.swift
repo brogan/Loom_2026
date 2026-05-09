@@ -15,7 +15,7 @@ struct RunControlBar: View {
     var body: some View {
         VStack(spacing: 0) {
             mainRow
-            if controller.engine != nil {
+            if controller.engine != nil && controller.showScrubBar {
                 scrubRow
             }
         }
