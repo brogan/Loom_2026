@@ -135,6 +135,9 @@ struct GlobalInspector: View {
             InspectorField("BG once") {
                 Toggle("", isOn: bind(\.drawBackgroundOnce)).labelsHidden()
             }
+            InspectorField("Scrub bar") {
+                Toggle("", isOn: $controller.showScrubBar).labelsHidden()
+            }
         }
     }
 

@@ -155,6 +155,7 @@ final class AppController: ObservableObject, @unchecked Sendable {
     @Published var selectedTimelineKF:            TimelineKFSelection? = nil
     @Published var selectedCameraKF:              CameraKFSelection?   = nil
     @Published var loopPlayback:                  Bool                 = true
+    @Published var showScrubBar:                  Bool                 = false
     @Published var selectedRendererIndex:         Int?    = nil
     @Published var selectedRendererItemIndex:     Int?    = nil   // within selected set
     @Published var subdivSelectedSpriteID:        String? = nil   // sprite selected in subdivision tab
