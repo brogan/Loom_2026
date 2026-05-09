@@ -16,6 +16,10 @@ struct SpritesInspector: View {
             generalSection(sprite: sprite, setIdx: setIdx, spriteIdx: spriteIdx)
             transformSection(setIdx: setIdx, spriteIdx: spriteIdx)
             animationSection(sprite: sprite, setIdx: setIdx, spriteIdx: spriteIdx)
+            if sprite.animation.drivers != nil {
+                driverSections(setIdx: setIdx, spriteIdx: spriteIdx)
+            }
+            hierarchySection(sprite: sprite, setIdx: setIdx, spriteIdx: spriteIdx)
         })
     }
 
@@ -101,14 +105,48 @@ struct SpritesInspector: View {
 
     // MARK: - Animation
 
-    @ViewBuilder
     private func animationSection(sprite: SpriteDef, setIdx: Int, spriteIdx: Int) -> some View {
-        let anim = sprite.animation
-        InspectorSection("Animation") {
+        let anim  = sprite.animation
+        let ctl   = controller
+        let si    = setIdx
+        let pi    = spriteIdx
+        return InspectorSection("Animation") {
             InspectorField("Enabled") {
-                Toggle("", isOn: bindA(setIdx, spriteIdx, \.enabled)).labelsHidden()
+                Toggle("", isOn: bindA(si, pi, \.enabled)).labelsHidden()
             }
-            if anim.enabled {
+            InspectorField("Use Drivers") {
+                Toggle("", isOn: Binding(
+                    get: { ctl.projectConfig?.spriteConfig.library
+                              .spriteSets[safe: si]?.sprites[safe: pi]?
+                              .animation.drivers != nil },
+                    set: { useDrivers in
+                        ctl.updateProjectConfig { cfg in
+                            guard si < cfg.spriteConfig.library.spriteSets.count,
+                                  pi < cfg.spriteConfig.library.spriteSets[si].sprites.count
+                            else { return }
+                            cfg.spriteConfig.library.spriteSets[si].sprites[pi].animation.drivers =
+                                useDrivers ? .identity : nil
+                        }
+                    }
+                ))
+                .labelsHidden()
+                Text("new system").font(.system(size: 10)).foregroundStyle(.tertiary)
+            }
+            InspectorField("Gate start") {
+                TextField("", value: bindSprite(setIdx, spriteIdx, \.gateStart), format: .number)
+                    .textFieldStyle(.squareBorder)
+                    .font(.system(size: 12, design: .monospaced))
+                    .frame(width: 55)
+                Text("0=off").font(.system(size: 10)).foregroundStyle(.tertiary)
+            }
+            InspectorField("Gate end") {
+                TextField("", value: bindSprite(setIdx, spriteIdx, \.gateEnd), format: .number)
+                    .textFieldStyle(.squareBorder)
+                    .font(.system(size: 12, design: .monospaced))
+                    .frame(width: 55)
+                Text("0=off").font(.system(size: 10)).foregroundStyle(.tertiary)
+            }
+            if anim.enabled && anim.drivers == nil {
                 InspectorField("Type") {
                     Picker("", selection: bindA(setIdx, spriteIdx, \.type)) {
                         ForEach(AnimationType.allCases, id: \.self) { t in
@@ -164,6 +202,214 @@ struct SpritesInspector: View {
         }
     }
 
+    // MARK: - Driver sections
+
+    @ViewBuilder
+    private func driverSections(setIdx si: Int, spriteIdx pi: Int) -> some View {
+        let db = driversBinding(si, pi)
+        VectorDriverEditor(label: "Position", driver: db.position)
+        VectorDriverEditor(label: "Scale",    driver: db.scale)
+        DoubleDriverEditor(label: "Rotation", driver: db.rotation)
+        DoubleDriverEditor(label: "Morph",    driver: db.morph)
+        DoubleDriverEditor(label: "Shape",    driver: db.shape)
+        morphTargetsSection(setIdx: si, spriteIdx: pi)
+        spriteVariantsSection(setIdx: si, spriteIdx: pi)
+    }
+
+    @ViewBuilder
+    private func spriteVariantsSection(setIdx si: Int, spriteIdx pi: Int) -> some View {
+        let sameSetSprites = controller.projectConfig?.spriteConfig.library
+            .spriteSets[safe: si]?.sprites ?? []
+        let currentName = sameSetSprites[safe: pi]?.name ?? ""
+        let variants = controller.projectConfig?.spriteConfig.library
+            .spriteSets[safe: si]?.sprites[safe: pi]?.spriteVariants ?? []
+
+        if !variants.isEmpty || !sameSetSprites.filter({ $0.name != currentName }).isEmpty {
+            InspectorSection("Shape Variants") {
+                ForEach(variants.indices, id: \.self) { idx in
+                    InspectorField("[\(idx + 1)]") {
+                        Text(variants[idx])
+                            .font(.system(size: 12, design: .monospaced))
+                            .foregroundStyle(.primary)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                        Button {
+                            controller.updateProjectConfig { cfg in
+                                guard si < cfg.spriteConfig.library.spriteSets.count,
+                                      pi < cfg.spriteConfig.library.spriteSets[si].sprites.count
+                                else { return }
+                                cfg.spriteConfig.library.spriteSets[si].sprites[pi].spriteVariants.remove(at: idx)
+                            }
+                        } label: {
+                            Image(systemName: "minus.circle")
+                                .font(.system(size: 11))
+                                .foregroundStyle(.secondary)
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+
+                let addable = sameSetSprites.filter { s in
+                    s.name != currentName && !variants.contains(s.name)
+                }
+                if !addable.isEmpty {
+                    InspectorField("Add") {
+                        Picker("", selection: Binding<String>(
+                            get: { "" },
+                            set: { name in
+                                guard !name.isEmpty else { return }
+                                controller.updateProjectConfig { cfg in
+                                    guard si < cfg.spriteConfig.library.spriteSets.count,
+                                          pi < cfg.spriteConfig.library.spriteSets[si].sprites.count
+                                    else { return }
+                                    cfg.spriteConfig.library.spriteSets[si].sprites[pi].spriteVariants.append(name)
+                                }
+                            }
+                        )) {
+                            Text("—").tag("")
+                            ForEach(addable, id: \.name) { s in
+                                Text(s.name).tag(s.name)
+                            }
+                        }
+                        .labelsHidden()
+                        .frame(maxWidth: 130)
+                    }
+                }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func morphTargetsSection(setIdx si: Int, spriteIdx pi: Int) -> some View {
+        let shapeSetName = controller.projectConfig?.spriteConfig.library
+            .spriteSets[safe: si]?.sprites[safe: pi]?.shapeSetName ?? ""
+        let baseShapeName = controller.projectConfig?.spriteConfig.library
+            .spriteSets[safe: si]?.sprites[safe: pi]?.shapeName ?? ""
+        let allShapeNames = controller.projectConfig?.shapeConfig.library
+            .shapeSets.first(where: { $0.name == shapeSetName })?
+            .shapes.map(\.name) ?? []
+        let targets = controller.projectConfig?.spriteConfig.library
+            .spriteSets[safe: si]?.sprites[safe: pi]?.morphTargetNames ?? []
+
+        if !targets.isEmpty || allShapeNames.filter({ $0 != baseShapeName }).count > 0 {
+            InspectorSection("Morph Targets") {
+                ForEach(targets.indices, id: \.self) { idx in
+                    InspectorField("[\(idx + 1)]") {
+                        Text(targets[idx])
+                            .font(.system(size: 12, design: .monospaced))
+                            .foregroundStyle(.primary)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                        Button {
+                            controller.updateProjectConfig { cfg in
+                                guard si < cfg.spriteConfig.library.spriteSets.count,
+                                      pi < cfg.spriteConfig.library.spriteSets[si].sprites.count
+                                else { return }
+                                cfg.spriteConfig.library.spriteSets[si].sprites[pi].morphTargetNames.remove(at: idx)
+                            }
+                        } label: {
+                            Image(systemName: "minus.circle")
+                                .font(.system(size: 11))
+                                .foregroundStyle(.secondary)
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+
+                let addable = allShapeNames.filter { n in
+                    n != baseShapeName && !targets.contains(n)
+                }
+                if !addable.isEmpty {
+                    InspectorField("Add") {
+                        Picker("", selection: Binding<String>(
+                            get: { "" },
+                            set: { name in
+                                guard !name.isEmpty else { return }
+                                controller.updateProjectConfig { cfg in
+                                    guard si < cfg.spriteConfig.library.spriteSets.count,
+                                          pi < cfg.spriteConfig.library.spriteSets[si].sprites.count
+                                    else { return }
+                                    cfg.spriteConfig.library.spriteSets[si].sprites[pi].morphTargetNames.append(name)
+                                }
+                            }
+                        )) {
+                            Text("—").tag("")
+                            ForEach(addable, id: \.self) { n in
+                                Text(n).tag(n)
+                            }
+                        }
+                        .labelsHidden()
+                        .frame(maxWidth: 130)
+                    }
+                }
+            }
+        }
+    }
+
+    private func driversBinding(_ si: Int, _ pi: Int) -> Binding<TransformDrivers> {
+        let ctl = controller
+        return Binding(
+            get: {
+                ctl.projectConfig?.spriteConfig.library
+                    .spriteSets[safe: si]?.sprites[safe: pi]?
+                    .animation.drivers ?? .identity
+            },
+            set: { v in
+                ctl.updateProjectConfig { cfg in
+                    guard si < cfg.spriteConfig.library.spriteSets.count,
+                          pi < cfg.spriteConfig.library.spriteSets[si].sprites.count
+                    else { return }
+                    cfg.spriteConfig.library.spriteSets[si].sprites[pi].animation.drivers = v
+                }
+            }
+        )
+    }
+
+    // MARK: - Hierarchy section
+
+    private func hierarchySection(sprite: SpriteDef, setIdx si: Int, spriteIdx pi: Int) -> some View {
+        let ctl       = controller
+        let allNames  = ctl.projectConfig?.spriteConfig.library.spriteSets
+                            .flatMap { $0.sprites }.map { $0.name } ?? []
+        let otherNames = allNames.filter { $0 != sprite.name }
+
+        return InspectorSection("Hierarchy") {
+            InspectorField("Parent") {
+                Picker("", selection: Binding(
+                    get: { ctl.projectConfig?.spriteConfig.library
+                               .spriteSets[safe: si]?.sprites[safe: pi]?
+                               .parentName ?? "" },
+                    set: { name in
+                        ctl.updateProjectConfig { cfg in
+                            guard si < cfg.spriteConfig.library.spriteSets.count,
+                                  pi < cfg.spriteConfig.library.spriteSets[si].sprites.count
+                            else { return }
+                            cfg.spriteConfig.library.spriteSets[si].sprites[pi].parentName =
+                                name.isEmpty ? nil : name
+                        }
+                    }
+                )) {
+                    Text("None").tag("")
+                    ForEach(otherNames, id: \.self) { name in
+                        Text(name).tag(name)
+                    }
+                }
+                .labelsHidden()
+                .frame(maxWidth: 130)
+            }
+            if sprite.parentName != nil {
+                InspectorField("Inherit") {
+                    HStack(spacing: 6) {
+                        Toggle("Pos", isOn: bindS(si, pi, \.inheritMask.position))
+                            .toggleStyle(.checkbox).font(.system(size: 11))
+                        Toggle("Rot", isOn: bindS(si, pi, \.inheritMask.rotation))
+                            .toggleStyle(.checkbox).font(.system(size: 11))
+                        Toggle("Scale", isOn: bindS(si, pi, \.inheritMask.scale))
+                            .toggleStyle(.checkbox).font(.system(size: 11))
+                    }
+                }
+            }
+        }
+    }
+
     // MARK: - Field helpers
 
     private func vec2Field(
@@ -211,6 +457,25 @@ struct SpritesInspector: View {
 
     private func bindS<T>(_ si: Int, _ pi: Int,
                            _ kp: WritableKeyPath<SpriteDef, T>) -> Binding<T> {
+        let ctl = controller
+        let fallback = SpriteDef()[keyPath: kp]
+        return Binding(
+            get: {
+                ctl.projectConfig?.spriteConfig.library
+                    .spriteSets[safe: si]?.sprites[safe: pi]?[keyPath: kp] ?? fallback
+            },
+            set: { v in
+                ctl.updateProjectConfig { cfg in
+                    guard si < cfg.spriteConfig.library.spriteSets.count,
+                          pi < cfg.spriteConfig.library.spriteSets[si].sprites.count else { return }
+                    cfg.spriteConfig.library.spriteSets[si].sprites[pi][keyPath: kp] = v
+                }
+            }
+        )
+    }
+
+    private func bindSprite<T>(_ si: Int, _ pi: Int,
+                               _ kp: WritableKeyPath<SpriteDef, T>) -> Binding<T> {
         let ctl = controller
         let fallback = SpriteDef()[keyPath: kp]
         return Binding(

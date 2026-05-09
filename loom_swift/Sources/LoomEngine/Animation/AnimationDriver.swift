@@ -187,6 +187,7 @@ public enum DriverEvaluator {
             return driver.base + driver.amplitude * wave(driver.wave, t: t)
 
         case .keyframe:
+            guard !driver.keyframes.isEmpty else { return driver.base }
             return evalDoubleKFs(driver.keyframes,
                                  elapsed: globalElapsed, loop: driver.loopMode)
         }
@@ -232,6 +233,7 @@ public enum DriverEvaluator {
             )
 
         case .keyframe:
+            guard !driver.keyframes.isEmpty else { return driver.base }
             return evalVectorKFs(driver.keyframes,
                                  elapsed: globalElapsed, loop: driver.loopMode)
         }
@@ -288,6 +290,35 @@ public enum DriverEvaluator {
         h &*= 0xc4ceb9fe1a85ec53
         h ^= h >> 33
         return Double(h >> 11) / Double(1 << 53)
+    }
+
+    // MARK: - Shape (step evaluation)
+
+    /// Evaluates a shape driver using step semantics: no interpolation between keyframes.
+    /// Returns the integer index of the last keyframe whose frame number is ≤ the
+    /// normalised elapsed time.  0 = base sprite; 1+ = spriteVariants[index−1].
+    public static func evaluateShapeIndex(
+        _ driver: DoubleDriver,
+        globalElapsed: Double
+    ) -> Int {
+        switch driver.mode {
+        case .constant:
+            return max(0, Int(driver.base))
+        case .keyframe:
+            guard !driver.keyframes.isEmpty else { return max(0, Int(driver.base)) }
+            let n = normalizeElapsed(globalElapsed,
+                                     total: driver.keyframes.last!.frame,
+                                     loop: driver.loopMode)
+            // Step: walk keyframes in order, keep the last one whose frame ≤ n.
+            var result = driver.keyframes.first!.value
+            for kf in driver.keyframes {
+                guard Double(kf.frame) <= n else { break }
+                result = kf.value
+            }
+            return max(0, Int(result))
+        default:
+            return max(0, Int(driver.base))
+        }
     }
 
     // MARK: - Keyframe helpers

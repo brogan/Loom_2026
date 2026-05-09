@@ -60,6 +60,18 @@ public struct ShapeDef: Codable, Sendable {
         self.regularPolygonSides     = regularPolygonSides
         self.subdivisionParamsSetName = subdivisionParamsSetName
     }
+
+    public init(from decoder: Decoder) throws {
+        let c                    = try decoder.container(keyedBy: CodingKeys.self)
+        name                     = try c.decodeIfPresent(String.self,          forKey: .name)                     ?? ""
+        sourceType               = try c.decodeIfPresent(ShapeSourceType.self, forKey: .sourceType)               ?? .unknown
+        polygonSetName           = try c.decodeIfPresent(String.self,          forKey: .polygonSetName)           ?? ""
+        openCurveSetName         = try c.decodeIfPresent(String.self,          forKey: .openCurveSetName)         ?? ""
+        pointSetName             = try c.decodeIfPresent(String.self,          forKey: .pointSetName)             ?? ""
+        ovalSetName              = try c.decodeIfPresent(String.self,          forKey: .ovalSetName)              ?? ""
+        regularPolygonSides      = try c.decodeIfPresent(Int.self,             forKey: .regularPolygonSides)      ?? 0
+        subdivisionParamsSetName = try c.decodeIfPresent(String.self,          forKey: .subdivisionParamsSetName) ?? ""
+    }
 }
 
 /// A named group of shape definitions.

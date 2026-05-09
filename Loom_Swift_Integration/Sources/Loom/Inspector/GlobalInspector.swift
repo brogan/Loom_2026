@@ -121,6 +121,14 @@ struct GlobalInspector: View {
             InspectorField("FPS") {
                 FloatEntryField(value: bind(\.targetFPS), width: 50, fractionDigits: 1)
             }
+            InspectorField("Duration") {
+                TextField("", value: bind(\.duration), format: .number)
+                    .textFieldStyle(.squareBorder)
+                    .font(.system(size: 12, design: .monospaced))
+                    .frame(width: 60)
+                Text("frames").font(.system(size: 11)).foregroundStyle(.secondary)
+                Text("(0 = auto)").font(.system(size: 10)).foregroundStyle(.tertiary)
+            }
             InspectorField("Animating") {
                 Toggle("", isOn: bind(\.animating)).labelsHidden()
             }

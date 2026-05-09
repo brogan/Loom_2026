@@ -30,6 +30,14 @@ public struct SpriteInstance: Sendable {
     /// `def.shapeSequence.shapeSetNames`).  Empty when no sequence is configured.
     public var sequencePolygons: [[Polygon2D]]
 
+    /// Resolved geometry for each entry in `def.spriteVariants`.
+    /// Parallel to `def.spriteVariants`; index 0 = first named variant.
+    public var variantPolygons: [[Polygon2D]]
+
+    /// Resolved renderer sets for each entry in `def.spriteVariants`.
+    /// Parallel to `def.spriteVariants`; index 0 = first named variant.
+    public var variantRendererSets: [RendererSet]
+
     /// Mutable per-frame state (updated by `SpriteScene.advance`).
     public var state: SpriteState
 
@@ -40,6 +48,8 @@ public struct SpriteInstance: Sendable {
         rendererSet: RendererSet,
         subdivisionParams: [SubdivisionParams],
         sequencePolygons: [[Polygon2D]] = [],
+        variantPolygons: [[Polygon2D]] = [],
+        variantRendererSets: [RendererSet] = [],
         state: SpriteState
     ) {
         self.def                  = def
@@ -48,6 +58,8 @@ public struct SpriteInstance: Sendable {
         self.rendererSet          = rendererSet
         self.subdivisionParams    = subdivisionParams
         self.sequencePolygons     = sequencePolygons
+        self.variantPolygons      = variantPolygons
+        self.variantRendererSets  = variantRendererSets
         self.state                = state
     }
 }

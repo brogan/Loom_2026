@@ -26,11 +26,32 @@ public struct SpriteDef: Codable, Sendable {
     /// Which transform components are inherited from the parent.
     public var inheritMask:  InheritMask
 
-    // MARK: Shape sequencing
+    // MARK: Shape sequencing (legacy — superseded by spriteVariants + shape driver)
 
     /// When non-nil, the active polygon set cycles through this sequence over
     /// draw cycles instead of using `shapeSetName` permanently.
     public var shapeSequence: ShapeSequence?
+
+    // MARK: Sprite replacement
+
+    /// Ordered list of sprite names (same SpriteSet) available for replacement.
+    /// Index 0 is always "self" (implicit); spriteVariants[0] corresponds to shape index 1.
+    public var spriteVariants: [String] = []
+
+    // MARK: Gate
+
+    /// First global frame this sprite is visible.  0 = no constraint.
+    public var gateStart: Int = 0
+    /// Last global frame this sprite is visible.  0 = no constraint.
+    public var gateEnd: Int = 0
+
+    // MARK: Morph targets
+
+    /// Ordered list of shape names (same ShapeSet as this sprite's `shapeSetName`)
+    /// used as morph target blend destinations.  Index 0 maps to morph amount 1.0,
+    /// index 1 to 2.0, etc.  All referenced shapes must have the same point count
+    /// as the base shape — mismatched targets are skipped at load time.
+    public var morphTargetNames: [String] = []
 
     public init(
         name: String               = "",
@@ -44,16 +65,46 @@ public struct SpriteDef: Codable, Sendable {
         animation: SpriteAnimation = .disabled,
         parentName: String?        = nil,
         inheritMask: InheritMask   = .positionAndRotation,
-        shapeSequence: ShapeSequence? = nil
+        shapeSequence: ShapeSequence? = nil,
+        spriteVariants: [String]   = [],
+        gateStart: Int             = 0,
+        gateEnd: Int               = 0,
+        morphTargetNames: [String] = []
     ) {
         self.name = name; self.enabled = enabled
         self.shapeSetName = shapeSetName
         self.shapeName = shapeName; self.rendererSetName = rendererSetName
         self.position = position; self.scale = scale
         self.rotation = rotation; self.animation = animation
-        self.parentName    = parentName
-        self.inheritMask   = inheritMask
-        self.shapeSequence = shapeSequence
+        self.parentName       = parentName
+        self.inheritMask      = inheritMask
+        self.shapeSequence    = shapeSequence
+        self.spriteVariants   = spriteVariants
+        self.gateStart        = gateStart
+        self.gateEnd          = gateEnd
+        self.morphTargetNames = morphTargetNames
+    }
+
+    // Custom decoder: decodeIfPresent for all fields so existing projects
+    // load cleanly when new fields are absent from the saved JSON.
+    public init(from decoder: Decoder) throws {
+        let c           = try decoder.container(keyedBy: CodingKeys.self)
+        name            = try c.decodeIfPresent(String.self,           forKey: .name)            ?? ""
+        enabled         = try c.decodeIfPresent(Bool.self,             forKey: .enabled)         ?? true
+        shapeSetName    = try c.decodeIfPresent(String.self,           forKey: .shapeSetName)    ?? ""
+        shapeName       = try c.decodeIfPresent(String.self,           forKey: .shapeName)       ?? ""
+        rendererSetName = try c.decodeIfPresent(String.self,           forKey: .rendererSetName) ?? ""
+        position        = try c.decodeIfPresent(Vector2D.self,         forKey: .position)        ?? .zero
+        scale           = try c.decodeIfPresent(Vector2D.self,         forKey: .scale)           ?? Vector2D(x: 1, y: 1)
+        rotation        = try c.decodeIfPresent(Double.self,           forKey: .rotation)        ?? 0
+        animation       = try c.decodeIfPresent(SpriteAnimation.self,  forKey: .animation)       ?? .disabled
+        parentName      = try c.decodeIfPresent(String.self,           forKey: .parentName)
+        inheritMask     = try c.decodeIfPresent(InheritMask.self,      forKey: .inheritMask)     ?? .positionAndRotation
+        shapeSequence   = try c.decodeIfPresent(ShapeSequence.self,    forKey: .shapeSequence)
+        spriteVariants    = try c.decodeIfPresent([String].self,         forKey: .spriteVariants)    ?? []
+        gateStart         = try c.decodeIfPresent(Int.self,              forKey: .gateStart)         ?? 0
+        gateEnd           = try c.decodeIfPresent(Int.self,              forKey: .gateEnd)           ?? 0
+        morphTargetNames  = try c.decodeIfPresent([String].self,         forKey: .morphTargetNames)  ?? []
     }
 }
 

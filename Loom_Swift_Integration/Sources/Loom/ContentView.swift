@@ -5,7 +5,9 @@ import LoomEngine
 struct ContentView: View {
 
     @EnvironmentObject private var controller: AppController
-    @State private var currentFrame: Int = 0
+    @State private var currentFrame:      Int  = 0
+    @State private var seekFrame:         Int? = nil
+    @State private var spritesPreviewMode: Bool = false
     @State private var newProjectName: String = "MyProject"
 
     var body: some View {
@@ -20,7 +22,7 @@ struct ContentView: View {
 
     private var mainLayout: some View {
         VStack(spacing: 0) {
-            RunControlBar(currentFrame: $currentFrame)
+            RunControlBar(currentFrame: $currentFrame, seekFrame: $seekFrame)
                 .environmentObject(controller)
 
             Divider()
@@ -30,6 +32,9 @@ struct ContentView: View {
             Divider()
 
             contentArea
+
+            TimelinePanel(currentFrame: currentFrame, seekFrame: $seekFrame)
+                .environmentObject(controller)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .sheet(isPresented: $controller.showingExportSheet) {
@@ -38,7 +43,7 @@ struct ContentView: View {
                     .environmentObject(controller)
             }
         }
-        .onChange(of: controller.projectURL) { _, _ in currentFrame = 0 }
+        .onChange(of: controller.projectURL) { _, _ in currentFrame = 0; seekFrame = nil; spritesPreviewMode = false }
     }
 
     // MARK: - Tab bar
@@ -122,8 +127,29 @@ struct ContentView: View {
             GeometryMainView()
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
         case .sprites:
-            SpriteWireframeView()
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            ZStack(alignment: .topTrailing) {
+                if spritesPreviewMode {
+                    liveCanvas
+                } else {
+                    SpriteWireframeView()
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                }
+                Button {
+                    spritesPreviewMode.toggle()
+                } label: {
+                    Label(spritesPreviewMode ? "Edit" : "Preview",
+                          systemImage: spritesPreviewMode ? "pencil" : "play.rectangle")
+                        .font(.system(size: 11))
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 4)
+                        .background(.thinMaterial)
+                        .clipShape(RoundedRectangle(cornerRadius: 6))
+                }
+                .buttonStyle(.plain)
+                .help(spritesPreviewMode ? "Switch to wireframe editor" : "Switch to live preview")
+                .padding(8)
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
         case .subdivision:
             SubdivisionWireframeView()
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -141,6 +167,7 @@ struct ContentView: View {
                 RenderSurfaceView(
                     engine:              engine,
                     playbackState:       controller.isExporting ? .paused : controller.playbackState,
+                    seekFrame:           seekFrame,
                     onFrameTick:         { currentFrame = $0 },
                     onAnimationComplete: { controller.animationDidComplete() }
                 )

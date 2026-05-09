@@ -148,6 +148,9 @@ final class AppController: ObservableObject, @unchecked Sendable {
     @Published var selectedSubdivisionIndex:      Int?    = nil
     @Published var selectedSubdivisionParamIndex: Int?    = nil   // within selected set
     @Published var selectedSpriteID:              String? = nil
+    @Published var selectedTimelineKF:            TimelineKFSelection? = nil
+    @Published var selectedCameraKF:              CameraKFSelection?   = nil
+    @Published var loopPlayback:                  Bool                 = true
     @Published var selectedRendererIndex:         Int?    = nil
     @Published var selectedRendererItemIndex:     Int?    = nil   // within selected set
     @Published var subdivSelectedSpriteID:        String? = nil   // sprite selected in subdivision tab
@@ -257,6 +260,29 @@ final class AppController: ObservableObject, @unchecked Sendable {
     }
 
     // MARK: - Geometry editor shell
+
+    // MARK: - Morph target lock
+
+    /// True when the currently open polygon set is designated as a morph target source.
+    var isCurrentGeometryMorphTargetLocked: Bool {
+        guard let geoName = currentPolygonSetName else { return false }
+        return projectConfig?.polygonConfig.library.polygonSets
+            .first(where: { $0.name == geoName })?.isMorphTarget ?? false
+    }
+
+    func toggleCurrentGeometryMorphTargetLock() {
+        guard let geoName = currentPolygonSetName else { return }
+        updateProjectConfig { cfg in
+            guard let idx = cfg.polygonConfig.library.polygonSets.firstIndex(where: { $0.name == geoName })
+            else { return }
+            cfg.polygonConfig.library.polygonSets[idx].isMorphTarget.toggle()
+        }
+    }
+
+    private var currentPolygonSetName: String? {
+        guard let key = selectedGeometryKey, key.hasPrefix("polygonSets/") else { return nil }
+        return String(key.dropFirst("polygonSets/".count))
+    }
 
     func enterGeometryEditor() {
         ensureGeometryEditorLayerSelection()
@@ -4329,6 +4355,14 @@ final class AppController: ObservableObject, @unchecked Sendable {
         playbackState = (engine?.globalConfig.animating == true) ? .playing : .stopped
     }
 
+    // MARK: - Scrub
+
+    /// Upper bound for the scrub slider.
+    /// Falls back to 300 (10 s at 30 fps) when the project has no fixed end frame.
+    var maxScrubFrames: Int {
+        max(engine?.maxAnimationFrames ?? 0, 300)
+    }
+
     // MARK: - Playback
 
     func play() {
@@ -4362,8 +4396,12 @@ final class AppController: ObservableObject, @unchecked Sendable {
 
     func animationDidComplete() {
         animationCompleted = true
-        // Use .paused so the timer stops but the canvas is preserved for the user to see.
-        playbackState      = .paused
+        if loopPlayback {
+            play()
+        } else {
+            // Use .paused so the timer stops but the canvas is preserved for the user to see.
+            playbackState = .paused
+        }
     }
 
     // MARK: - Export coordination

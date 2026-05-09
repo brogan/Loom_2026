@@ -30,6 +30,31 @@ private struct LoomDropDelegate: DropDelegate {
     func performDrop(info: DropInfo) -> Bool   { perform() }
 }
 
+// MARK: - InheritToggleStyle
+
+private struct InheritToggleStyle: ToggleStyle {
+    let label: String
+    func makeBody(configuration: Configuration) -> some View {
+        Button {
+            configuration.isOn.toggle()
+        } label: {
+            Text(label)
+                .font(.system(size: 9, weight: .semibold, design: .monospaced))
+                .frame(width: 14, height: 14)
+                .foregroundStyle(configuration.isOn ? Color.accentColor : Color.secondary.opacity(0.5))
+                .background(
+                    RoundedRectangle(cornerRadius: 2)
+                        .fill(configuration.isOn ? Color.accentColor.opacity(0.15) : Color.clear)
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: 2)
+                        .strokeBorder(configuration.isOn ? Color.accentColor.opacity(0.5) : Color.secondary.opacity(0.3), lineWidth: 0.5)
+                )
+        }
+        .buttonStyle(.plain)
+    }
+}
+
 // MARK: - View
 
 struct SpritesTabView: View {
@@ -117,6 +142,45 @@ struct SpritesTabView: View {
         }
     }
 
+    // MARK: - Tree display model
+
+    private struct SpriteDisplayNode {
+        var setIdx:    Int
+        var spriteIdx: Int
+        var sprite:    SpriteDef
+        var depth:     Int
+    }
+
+    private func buildDisplayNodes(for entry: DisplayEntry) -> [SpriteDisplayNode] {
+        let sprites = entry.set.sprites
+        var nameToIdx: [String: Int] = [:]
+        for idx in entry.spriteIndices { nameToIdx[sprites[idx].name] = idx }
+
+        let roots = entry.spriteIndices.filter { idx in
+            guard let pn = sprites[idx].parentName else { return true }
+            return nameToIdx[pn] == nil
+        }
+        var result:  [SpriteDisplayNode] = []
+        var visited = Set<Int>()
+
+        func visit(_ idx: Int, depth: Int) {
+            guard !visited.contains(idx) else { return }
+            visited.insert(idx)
+            result.append(SpriteDisplayNode(setIdx: entry.setIdx, spriteIdx: idx,
+                                             sprite: sprites[idx], depth: depth))
+            let children = entry.spriteIndices.filter {
+                sprites[$0].parentName == sprites[idx].name && $0 != idx
+            }
+            for child in children { visit(child, depth: depth + 1) }
+        }
+        for root in roots { visit(root, depth: 0) }
+        for idx in entry.spriteIndices where !visited.contains(idx) {
+            result.append(SpriteDisplayNode(setIdx: entry.setIdx, spriteIdx: idx,
+                                             sprite: sprites[idx], depth: 0))
+        }
+        return result
+    }
+
     // MARK: - List
 
     private var spriteList: some View {
@@ -135,9 +199,9 @@ struct SpritesTabView: View {
                             let isExpanded = isFiltering || expandedSets.contains(entry.set.name)
                             setRow(set: entry.set, setIdx: entry.setIdx)
                             if isExpanded {
-                                ForEach(entry.spriteIndices, id: \.self) { spriteIdx in
-                                    spriteRow(sprite: entry.set.sprites[spriteIdx],
-                                              setIdx: entry.setIdx, itemIdx: spriteIdx)
+                                let nodes = buildDisplayNodes(for: entry)
+                                ForEach(nodes, id: \.spriteIdx) { node in
+                                    spriteTreeRow(node: node)
                                 }
                                 if !isFiltering {
                                     afterSpritesRow(setIdx: entry.setIdx, count: entry.set.sprites.count)
@@ -262,6 +326,75 @@ struct SpritesTabView: View {
         .onDrop(of: [UTType.utf8PlainText], delegate: spriteDropDelegate(setIdx: setIdx, spriteIdx: itemIdx))
         .overlay(alignment: .top) {
             if isBeforeTarget { insertionLine.padding(.leading, 22) }
+        }
+    }
+
+    // MARK: - Sprite tree row
+
+    private func spriteTreeRow(node: SpriteDisplayNode) -> some View {
+        let sprite     = node.sprite
+        let setIdx     = node.setIdx
+        let spriteIdx  = node.spriteIdx
+        let isFiltering    = !filterText.trimmingCharacters(in: .whitespaces).isEmpty
+        let isSelected     = controller.selectedSpriteID == sprite.name
+        let isBeforeTarget = !isFiltering && dropTarget == .beforeSprite(setIdx: setIdx, spriteIdx: spriteIdx)
+        let indent         = CGFloat(node.depth) * 14 + 22
+
+        return HStack(spacing: 4) {
+            Spacer().frame(width: indent)
+            if node.depth > 0 {
+                Image(systemName: "arrow.turn.down.right")
+                    .font(.system(size: 7))
+                    .foregroundStyle(.tertiary)
+            }
+            Text(sprite.name.isEmpty ? "(unnamed)" : sprite.name)
+                .font(.system(size: 11))
+                .lineLimit(1)
+                .opacity(sprite.enabled ? 1.0 : 0.38)
+                .onTapGesture(count: 2) {
+                    renamingSpriteName = sprite.name
+                    renamingSetIdx     = nil
+                    renameText         = sprite.name
+                    showingRenameAlert = true
+                }
+            Spacer(minLength: 2)
+            if sprite.parentName != nil {
+                Toggle("P", isOn: inheritBinding(setIdx: setIdx, spriteIdx: spriteIdx, kp: \.inheritMask.position))
+                    .labelsHidden()
+                    .toggleStyle(InheritToggleStyle(label: "P"))
+                Toggle("R", isOn: inheritBinding(setIdx: setIdx, spriteIdx: spriteIdx, kp: \.inheritMask.rotation))
+                    .labelsHidden()
+                    .toggleStyle(InheritToggleStyle(label: "R"))
+                Toggle("S", isOn: inheritBinding(setIdx: setIdx, spriteIdx: spriteIdx, kp: \.inheritMask.scale))
+                    .labelsHidden()
+                    .toggleStyle(InheritToggleStyle(label: "S"))
+            }
+            if sprite.animation.enabled {
+                Image(systemName: "play.fill")
+                    .font(.system(size: 9))
+                    .foregroundStyle(.secondary)
+                    .opacity(sprite.enabled ? 1.0 : 0.38)
+            }
+            Toggle("", isOn: bindSpriteEnabled(setIdx: setIdx, itemIdx: spriteIdx))
+                .labelsHidden()
+                .toggleStyle(.checkbox)
+                .scaleEffect(0.82)
+                .frame(width: 18)
+        }
+        .padding(.horizontal, 8)
+        .padding(.vertical, 2)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(isSelected ? Color.accentColor.opacity(0.12) : Color.clear)
+        .contentShape(Rectangle())
+        .onTapGesture { handleSpriteSelected(setIdx: setIdx, itemIdx: spriteIdx, sprite: sprite) }
+        .onDrag {
+            guard !isFiltering else { return NSItemProvider() }
+            self.dragItem = .sprite(name: sprite.name)
+            return NSItemProvider(object: sprite.name as NSString)
+        }
+        .onDrop(of: [UTType.utf8PlainText], delegate: spriteDropDelegate(setIdx: setIdx, spriteIdx: spriteIdx))
+        .overlay(alignment: .top) {
+            if isBeforeTarget { insertionLine.padding(.leading, indent) }
         }
     }
 
@@ -629,6 +762,26 @@ struct SpritesTabView: View {
                           itemIdx < cfg.spriteConfig.library.spriteSets[setIdx].sprites.count
                     else { return }
                     cfg.spriteConfig.library.spriteSets[setIdx].sprites[itemIdx].enabled = v
+                }
+            }
+        )
+    }
+
+    // MARK: - Binding: inherit mask
+
+    private func inheritBinding(setIdx: Int, spriteIdx: Int, kp: WritableKeyPath<SpriteDef, Bool>) -> Binding<Bool> {
+        let ctl = controller
+        return Binding(
+            get: {
+                ctl.projectConfig?.spriteConfig.library
+                    .spriteSets[safe: setIdx]?.sprites[safe: spriteIdx]?[keyPath: kp] ?? false
+            },
+            set: { v in
+                ctl.updateProjectConfig { cfg in
+                    guard setIdx   < cfg.spriteConfig.library.spriteSets.count,
+                          spriteIdx < cfg.spriteConfig.library.spriteSets[setIdx].sprites.count
+                    else { return }
+                    cfg.spriteConfig.library.spriteSets[setIdx].sprites[spriteIdx][keyPath: kp] = v
                 }
             }
         )

@@ -101,6 +101,14 @@ public final class Engine: @unchecked Sendable {
         activeLoop = nil
     }
 
+    // MARK: - Seek
+
+    /// Jump the engine to `frame` without playing through intermediate frames.
+    /// Call `makeFrame()` afterwards to render the requested position.
+    public func seek(toFrame frame: Int) {
+        loomEngine.seek(toFrame: frame)
+    }
+
     // MARK: - Per-frame
 
     /// Advance the engine one frame.

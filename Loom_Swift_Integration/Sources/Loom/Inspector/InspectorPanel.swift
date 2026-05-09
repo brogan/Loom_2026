@@ -11,6 +11,14 @@ struct InspectorPanel: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 0) {
+                if controller.selectedTimelineKF != nil {
+                    KeyframeInspector()
+                        .environmentObject(controller)
+                }
+                if controller.selectedCameraKF != nil {
+                    CameraKeyframeInspector()
+                        .environmentObject(controller)
+                }
                 inspectorContent
             }
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -410,11 +418,15 @@ private struct GeometryEditorShellInspector: View {
     @State private var transformPivot = GeometryTransformPivot.commonCentre
 
     var body: some View {
+        let morphLocked = controller.isCurrentGeometryMorphTargetLocked
         VStack(alignment: .leading, spacing: 0) {
             InspectorSection("Geometry Editor") {
                 InspectorRow(label: "Mode", value: "closed polygons")
                 InspectorRow(label: "Tool", value: controller.geometryEditorTool.rawValue)
                 InspectorRow(label: "Anchors", value: "\(controller.selectedGeometryAnchorCount)")
+                if morphLocked {
+                    InspectorRow(label: "Lock", value: "Morph target — topology locked")
+                }
             }
 
             if let parameters = controller.selectedRegularPolygonParameters {
@@ -521,6 +533,7 @@ private struct GeometryEditorShellInspector: View {
                         .help("Freehand detail")
                 }
             }
+            .disabled(morphLocked)
 
             InspectorSection("Edit", isCollapsed: $editCollapsed) {
                 iconRow {
@@ -547,7 +560,7 @@ private struct GeometryEditorShellInspector: View {
                     Spacer()
                 }
                 iconRow {
-                    iconButton(help: "Cut selected objects", disabled: !controller.canCutCopySelectedGeometry) {
+                    iconButton(help: "Cut selected objects", disabled: !controller.canCutCopySelectedGeometry || morphLocked) {
                         Image(systemName: "scissors").font(.system(size: 15))
                     } action: {
                         controller.cutSelectedGeometry()
@@ -557,7 +570,7 @@ private struct GeometryEditorShellInspector: View {
                     } action: {
                         controller.copySelectedGeometry()
                     }
-                    iconButton(help: "Paste at last click position", disabled: !controller.canPasteGeometry) {
+                    iconButton(help: "Paste at last click position", disabled: !controller.canPasteGeometry || morphLocked) {
                         PasteGeometryIcon()
                     } action: {
                         controller.pasteGeometry()
@@ -669,6 +682,7 @@ private struct GeometryEditorShellInspector: View {
                     Spacer()
                 }
             }
+            .disabled(morphLocked)
 
             InspectorSection("Transform", isCollapsed: $transformCollapsed) {
                 iconRow {
@@ -783,12 +797,12 @@ private struct GeometryEditorShellInspector: View {
 
             InspectorSection("Delete", isCollapsed: $deleteCollapsed) {
                 iconRow {
-                    iconButton(help: "Delete selected geometry", disabled: !controller.canDeleteSelectedGeometry) {
+                    iconButton(help: "Delete selected geometry", disabled: !controller.canDeleteSelectedGeometry || morphLocked) {
                         DeleteSelectedGeometryIcon()
                     } action: {
                         controller.deleteSelectedGeometry()
                     }
-                    iconButton(help: "Delete all geometry in active layer", disabled: !controller.canDeleteAllLayerGeometry) {
+                    iconButton(help: "Delete all geometry in active layer", disabled: !controller.canDeleteAllLayerGeometry || morphLocked) {
                         DeleteAllLayerGeometryIcon()
                     } action: {
                         controller.deleteAllLayerGeometry()
@@ -1627,6 +1641,7 @@ private struct QuickSetupSection: View {
     let geoName: String
 
     @State private var qsLayerTargetID:   String      = QuickSetupSection.allVisibleLayerID
+    @State private var qsBaseName:        String      = ""
     @State private var qsSubdivSetName:   String      = ""
     @State private var qsSpriteSetName:   String      = ""
     @State private var qsRendererSetName: String      = ""
@@ -1648,6 +1663,15 @@ private struct QuickSetupSection: View {
                     .font(.system(size: 11))
                     .frame(maxWidth: .infinity)
                 }
+            }
+            InspectorField("Base name") {
+                TextField("", text: $qsBaseName)
+                    .textFieldStyle(.squareBorder)
+                    .font(.system(size: 11))
+                    .frame(maxWidth: .infinity)
+                    .onChange(of: qsBaseName) { _, _ in
+                        applyRecommendedNames(overwrite: true)
+                    }
             }
             InspectorField("Subdiv set") {
                 Picker("", selection: $qsSubdivSetName) {
@@ -1729,9 +1753,13 @@ private struct QuickSetupSection: View {
         }
         .onChange(of: geoName) { _, _ in
             qsLayerTargetID = initialLayerTargetID
+            // Reset base name when the geometry file changes so it seeds from the new file stem.
+            qsBaseName = stem
             applyRecommendedNames(overwrite: true)
         }
         .onChange(of: qsLayerTargetID) { _, _ in
+            // Layer change: don't reset base name — user may intentionally share set names
+            // across layers of the same file.
             applyRecommendedNames(overwrite: true)
         }
         .onChange(of: sourceIsCleanParametricRegularPolygon) { _, isCleanParametricRegularPolygon in
@@ -1934,6 +1962,8 @@ private struct QuickSetupSection: View {
 
     private func applyRecommendedNames(overwrite: Bool) {
         guard !geoName.isEmpty else { return }
+        // Seed base name from the geo stem on first load only (never overwrite after user edits it).
+        setIfNeeded(&qsBaseName, stem, overwrite: false)
         setIfNeeded(&qsSubdivSetName, recommendedQuickSetupSubdivSetName, overwrite: overwrite)
         setIfNeeded(&qsSpriteSetName, recommendedSpriteSetName, overwrite: overwrite)
         setIfNeeded(&qsSpriteName, recommendedSpriteName, overwrite: overwrite)
@@ -1970,6 +2000,13 @@ private struct QuickSetupSection: View {
         sanitized(geoName)
     }
 
+    /// Stem used for set names (sprite set, renderer set, subdivision set, shape set).
+    /// Populated from qsBaseName when the user has typed one; falls back to sourceNameStem.
+    private var baseStem: String {
+        let b = sanitized(qsBaseName)
+        return b.isEmpty ? sourceNameStem : b
+    }
+
     private var selectedLayerOption: QuickSetupLayerOption? {
         layerOptions.first { $0.id == qsLayerTargetID }
     }
@@ -1988,18 +2025,21 @@ private struct QuickSetupSection: View {
         return sourceNameStem
     }
 
-    private var recommendedSubdivSetName: String { "\(sourceNameStem)_Subdivide" }
+    // Set names use baseStem so users can give shared containers a generic label.
+    // Item names (shape, sprite, renderer) remain source-specific so each layer
+    // is distinguishable within its set.
+    private var recommendedSubdivSetName: String { "\(baseStem)_Subdivide" }
     private var recommendedQuickSetupSubdivSetName: String {
         if sourceIsCleanParametricRegularPolygon {
             return Self.noSubdivisionName
         }
         return sourceSupportsSubdivision ? recommendedSubdivSetName : Self.noSubdivisionName
     }
-    private var recommendedShapeSetName: String { "\(sourceNameStem)_Shapes" }
+    private var recommendedShapeSetName: String { "\(baseStem)_Shapes" }
     private var recommendedShapeName: String { "\(sourceNameStem)_Shape" }
-    private var recommendedSpriteSetName: String { "\(sourceNameStem)_Sprites" }
+    private var recommendedSpriteSetName: String { "\(baseStem)_Sprites" }
     private var recommendedSpriteName: String { "\(sourceNameStem)_Sprite" }
-    private var recommendedRendererSetName: String { "\(sourceNameStem)_Renderers" }
+    private var recommendedRendererSetName: String { "\(baseStem)_Renderers" }
     private var recommendedRendererName: String { "\(sourceNameStem)_Renderer" }
     private var recommendedQuickSetupRendererMode: RendererMode {
         sourceIsCleanParametricRegularPolygon ? .stroked : qsRendererMode

@@ -104,13 +104,14 @@ public struct LoomEngine: @unchecked Sendable {
     /// Number of times `advance()` has been called.
     public var currentFrame: Int { frameCount }
 
-    /// The maximum `totalDraws` value across all sprites (0 if every sprite is unlimited).
+    /// The effective animation length in frames, or 0 if unbounded.
     ///
-    /// Use this to determine how many virtual frames a synchronous animated-still render
-    /// needs to run.  A result of 0 means at least one sprite animates indefinitely and
-    /// no fixed end-frame can be derived from the project config alone.
+    /// Returns `globalConfig.duration` when set (> 0).  Falls back to the maximum
+    /// `totalDraws` across all sprites, which is 0 when every sprite is unlimited.
     public var maxAnimationFrames: Int {
-        scene.instances.reduce(0) { max($0, $1.def.animation.totalDraws) }
+        let d = globalConfig.duration
+        if d > 0 { return d }
+        return scene.instances.reduce(0) { max($0, $1.def.animation.totalDraws) }
     }
 
     // MARK: - Advance
@@ -137,6 +138,41 @@ public struct LoomEngine: @unchecked Sendable {
         }
         elapsedFrames += dt * max(1.0, fps)
         frameCount    += 1
+    }
+
+    // MARK: - Seek
+
+    /// Jump to an arbitrary frame without playing through the intermediate frames.
+    ///
+    /// After calling `seek`, call `makeFrame()` to render the requested position.
+    /// Works correctly for driver-based animations (stateless evaluation).
+    /// For legacy jitter/keyframe animations the sprite draw-cycle is set directly,
+    /// so the result is visually approximate (renderer-cycling state is not replayed).
+    public mutating func seek(toFrame frame: Int) {
+        let fps            = max(1.0, config.globalConfig.targetFPS)
+        let globalElapsed  = Double(frame)
+        frameCount             = frame
+        elapsedFrames          = globalElapsed
+        accumulationCanvas     = nil        // force fresh render at seek position
+        sceneAdvancedThisFrame = true
+        var rng = SystemRandomNumberGenerator()
+        for i in scene.instances.indices {
+            let inst = scene.instances[i]
+            // Per-sprite elapsed mirrors the global clock for a simple seek.
+            // (elapsedTime * fps == perSpriteElapsed, matching advanceInstance's formula.)
+            let perSpriteElapsed = globalElapsed
+            scene.instances[i].state.drawCycle            = frame
+            scene.instances[i].state.elapsedTime          = globalElapsed / fps
+            scene.instances[i].state.frameTimeAccumulator = 0
+            scene.instances[i].state.transform = TransformAnimator.transform(
+                for:           inst.def.animation,
+                elapsedFrames: perSpriteElapsed,
+                globalElapsed: globalElapsed,
+                targetFPS:     fps,
+                spriteIndex:   i,
+                using:         &rng
+            )
+        }
     }
 
     // MARK: - Render

@@ -46,6 +46,9 @@ public struct SpriteScene: Sendable {
     /// looks the same after a `qualityMultiple`-fold downscale.
     private let scaleImage: Bool
 
+    /// Frame rate for driver evaluation (oscillator / noise modes).
+    private let targetFPS: Double
+
     // MARK: - Convenience (testing)
 
     /// Directly construct a scene from pre-built instances.
@@ -55,6 +58,7 @@ public struct SpriteScene: Sendable {
         self.instances       = instances
         self.qualityMultiple = 1
         self.scaleImage      = true
+        self.targetFPS       = 30
     }
 
     // MARK: - Assembly
@@ -68,22 +72,27 @@ public struct SpriteScene: Sendable {
     ///   load.
     public init(config: ProjectConfig, projectDirectory: URL) throws {
         var result: [SpriteInstance] = []
-        for sprite in config.spriteConfig.library.allSprites where sprite.enabled {
-            let instance = try SpriteScene.makeInstance(
-                sprite: sprite,
-                config: config,
-                projectDirectory: projectDirectory
-            )
-            result.append(instance)
+        for spriteSet in config.spriteConfig.library.spriteSets {
+            for sprite in spriteSet.sprites where sprite.enabled {
+                let instance = try SpriteScene.makeInstance(
+                    sprite:          sprite,
+                    sameSetSprites:  spriteSet.sprites,
+                    config:          config,
+                    projectDirectory: projectDirectory
+                )
+                result.append(instance)
+            }
         }
         self.instances       = result
         self.qualityMultiple = max(1, config.globalConfig.qualityMultiple)
         self.scaleImage      = config.globalConfig.scaleImage
+        self.targetFPS       = max(1, config.globalConfig.targetFPS)
     }
 
     private static func makeInstance(
-        sprite: SpriteDef,
-        config: ProjectConfig,
+        sprite:          SpriteDef,
+        sameSetSprites:  [SpriteDef] = [],
+        config:          ProjectConfig,
         projectDirectory: URL
     ) throws -> SpriteInstance {
 
@@ -105,11 +114,34 @@ public struct SpriteScene: Sendable {
         }
 
         // ── 3. Load morph targets ────────────────────────────────────────────
-        let morphTargetPolygons: [[Polygon2D]] = sprite.animation.morphTargets.map { ref in
-            let url = projectDirectory
-                .appendingPathComponent("morphTargets")
-                .appendingPathComponent(ref.file)
-            return (try? XMLPolygonLoader.load(url: url)) ?? []
+        // New path: same-set shape names take precedence over legacy file refs.
+        let morphTargetPolygons: [[Polygon2D]]
+        if !sprite.morphTargetNames.isEmpty {
+            let shapeSet = config.shapeConfig.library.shapeSets
+                .first(where: { $0.name == sprite.shapeSetName })
+            let basePointCounts = basePolygons.map { $0.points.count }
+            morphTargetPolygons = sprite.morphTargetNames.compactMap { targetName in
+                guard let sd = shapeSet?.shapes.first(where: { $0.name == targetName }),
+                      let polys = try? loadBasePolygons(shapeDef: sd, config: config,
+                                                        projectDirectory: projectDirectory)
+                else { return nil }
+                // Skip targets whose point structure doesn't match the base.
+                guard polys.count == basePolygons.count,
+                      zip(polys, basePolygons).allSatisfy({ $0.points.count == $1.points.count })
+                else {
+                    print("[Morph] '\(targetName)' skipped: point count mismatch with '\(sprite.shapeName)'")
+                    return nil
+                }
+                return polys
+            }
+        } else {
+            // Legacy: load from morphTargets/ subdirectory.
+            morphTargetPolygons = sprite.animation.morphTargets.map { ref in
+                let url = projectDirectory
+                    .appendingPathComponent("morphTargets")
+                    .appendingPathComponent(ref.file)
+                return (try? XMLPolygonLoader.load(url: url)) ?? []
+            }
         }
 
         // ── 4. Resolve renderer set ──────────────────────────────────────────
@@ -141,6 +173,22 @@ public struct SpriteScene: Sendable {
             sequencePolygons = []
         }
 
+        // ── 7. Load sprite-replacement variants ─────────────────────────────
+        var variantPolygons:     [[Polygon2D]] = []
+        var variantRendererSets: [RendererSet] = []
+        for variantName in sprite.spriteVariants {
+            guard let variantDef = sameSetSprites.first(where: { $0.name == variantName }) else { continue }
+            let vShapeDef = config.shapeConfig.library.shapeSets
+                .first(where: { $0.name == variantDef.shapeSetName })?
+                .shapes.first(where: { $0.name == variantDef.shapeName })
+            let vPolygons = vShapeDef.flatMap { try? loadBasePolygons(shapeDef: $0, config: config, projectDirectory: projectDirectory) } ?? []
+            let vRendererSet = config.renderingConfig.library
+                .rendererSet(named: variantDef.rendererSetName)
+                ?? RendererSet(name: variantDef.rendererSetName, renderers: [Renderer(name: "default")])
+            variantPolygons.append(vPolygons)
+            variantRendererSets.append(vRendererSet)
+        }
+
         return SpriteInstance(
             def:                  sprite,
             basePolygons:         basePolygons,
@@ -148,6 +196,8 @@ public struct SpriteScene: Sendable {
             rendererSet:          rendererSet,
             subdivisionParams:    subdivParams,
             sequencePolygons:     sequencePolygons,
+            variantPolygons:      variantPolygons,
+            variantRendererSets:  variantRendererSets,
             state:                SpriteState.initial(for: rendererSet)
         )
     }
@@ -436,9 +486,9 @@ public struct SpriteScene: Sendable {
             )
         }
 
-        for instance in instances {
+        for (i, instance) in instances.enumerated() {
             let parentWorld = instance.def.parentName.flatMap { parentWorlds[$0] }
-            renderInstance(instance, parentWorld: parentWorld,
+            renderInstance(instance, spriteIndex: i, parentWorld: parentWorld,
                            into: context, viewTransform: viewTransform,
                            brushImages: brushImages, stampImages: stampImages,
                            elapsedFrames: elapsedFrames, using: &rng)
@@ -450,12 +500,18 @@ public struct SpriteScene: Sendable {
     /// Encapsulates the resolved world-space transform of one sprite.
     /// Children inherit selected components of their parent's ParentWorld.
     private struct ParentWorld {
-        /// Pixel offset from canvas centre.
-        var positionPx:  Vector2D
-        /// Combined rotation in degrees.
-        var rotationDeg: Double
+        /// Animated world position in pixels from canvas centre.
+        var positionPx:     Vector2D
+        /// World position with no animation applied (def.position composed through hierarchy).
+        /// Used to compute child offsets so that a child's wireframe position equals its visual
+        /// resting position relative to the parent.
+        var basePositionPx: Vector2D
+        /// Combined animated rotation in degrees.
+        var rotationDeg:    Double
+        /// Combined base rotation in degrees (def.rotation only, no animation).
+        var baseRotationDeg: Double
         /// Combined scale (WITHOUT the ×2 coordinate convention).
-        var scale:       Vector2D
+        var scale:          Vector2D
     }
 
     private func computeParentWorld(
@@ -471,10 +527,19 @@ public struct SpriteScene: Sendable {
         var sx      = def.scale.x * anim.scale.x
         var sy      = def.scale.y * anim.scale.y
         var rotDeg  = def.rotation + anim.rotation
+
+        // Animated position (base def + driver offset).
         let localTx = (def.position.x + anim.positionOffset.x) / 100.0 * hw
         let localTy = (def.position.y + anim.positionOffset.y) / 100.0 * hh
         var txPx    = localTx
         var tyPx    = localTy
+
+        // Base position (def only, no animation) — used by children to compute their offset.
+        let baseTx   = def.position.x / 100.0 * hw
+        let baseTy   = def.position.y / 100.0 * hh
+        var baseTxPx = baseTx
+        var baseTyPx = baseTy
+        var baseRotDeg = def.rotation
 
         if let parent = def.parentName.flatMap({ parentWorlds[$0] }) {
             let mask = def.inheritMask
@@ -483,25 +548,43 @@ public struct SpriteScene: Sendable {
                 sy *= parent.scale.y
             }
             if mask.rotation {
-                rotDeg += parent.rotationDeg
+                rotDeg    += parent.rotationDeg
+                baseRotDeg += parent.baseRotationDeg
             }
             if mask.position {
+                // Child position relative to parent's base position, then rotated by
+                // parent's animated rotation and translated to parent's animated position.
+                // This ensures that the visual offset seen in the wireframe is preserved
+                // when the parent moves or rotates.
                 let rad  = parent.rotationDeg * .pi / 180.0
                 let cosR = cos(rad), sinR = sin(rad)
-                txPx = parent.positionPx.x + localTx * cosR - localTy * sinR
-                tyPx = parent.positionPx.y + localTx * sinR + localTy * cosR
+                let relTx = localTx - parent.basePositionPx.x
+                let relTy = localTy - parent.basePositionPx.y
+                txPx = parent.positionPx.x + relTx * cosR - relTy * sinR
+                tyPx = parent.positionPx.y + relTx * sinR + relTy * cosR
+
+                // Base world position uses parent's base rotation.
+                let baseRad  = parent.baseRotationDeg * .pi / 180.0
+                let cosB = cos(baseRad), sinB = sin(baseRad)
+                let relBaseTx = baseTx - parent.basePositionPx.x
+                let relBaseTy = baseTy - parent.basePositionPx.y
+                baseTxPx = parent.basePositionPx.x + relBaseTx * cosB - relBaseTy * sinB
+                baseTyPx = parent.basePositionPx.y + relBaseTx * sinB + relBaseTy * cosB
             }
         }
 
         return ParentWorld(
-            positionPx:  Vector2D(x: txPx,  y: tyPx),
-            rotationDeg: rotDeg,
-            scale:       Vector2D(x: sx, y: sy)
+            positionPx:     Vector2D(x: txPx,    y: tyPx),
+            basePositionPx: Vector2D(x: baseTxPx, y: baseTyPx),
+            rotationDeg:    rotDeg,
+            baseRotationDeg: baseRotDeg,
+            scale:          Vector2D(x: sx, y: sy)
         )
     }
 
     private func renderInstance<RNG: RandomNumberGenerator>(
         _ instance: SpriteInstance,
+        spriteIndex: Int,
         parentWorld: ParentWorld?,
         into context: CGContext,
         viewTransform: ViewTransform,
@@ -510,38 +593,72 @@ public struct SpriteScene: Sendable {
         elapsedFrames: Double,
         using rng: inout RNG
     ) {
+        // ── Gate check ───────────────────────────────────────────────────────
+        let globalFrame = Int(elapsedFrames)
+        let gs = instance.def.gateStart, ge = instance.def.gateEnd
+        if (gs > 0 && globalFrame < gs) || (ge > 0 && globalFrame > ge) { return }
+
         // Stop drawing once the per-sprite draw-cycle limit is reached.
         let anim = instance.def.animation
         guard anim.totalDraws == 0 || instance.state.drawCycle < anim.totalDraws else { return }
 
-        // Select active polygon set (shape sequence overrides basePolygons).
+        // ── Shape driver: select active geometry and renderer set ────────────
+        // Step-evaluated: snaps to last keyframe at or before elapsed — no interpolation.
+        let shapeIdx = instance.def.animation.drivers.map {
+            DriverEvaluator.evaluateShapeIndex($0.shape, globalElapsed: elapsedFrames)
+        } ?? 0
+
+        var activeInstance = instance
+        if shapeIdx > 0,
+           shapeIdx - 1 < instance.variantPolygons.count,
+           shapeIdx - 1 < instance.variantRendererSets.count {
+            activeInstance.basePolygons = instance.variantPolygons[shapeIdx - 1]
+            activeInstance.rendererSet  = instance.variantRendererSets[shapeIdx - 1]
+            // Clamp renderer state index to new set size.
+            let maxIdx = max(0, activeInstance.rendererSet.renderers.count - 1)
+            activeInstance.state.activeRendererIndex = min(activeInstance.state.activeRendererIndex, maxIdx)
+        }
+
+        // Select active polygon set (legacy shape-sequence overrides basePolygons when no shape driver).
         let activePolygons: [Polygon2D]
-        if let seq = instance.def.shapeSequence, !instance.sequencePolygons.isEmpty {
-            let step = instance.state.drawCycle / max(1, seq.frameDuration)
+        if shapeIdx == 0, let seq = activeInstance.def.shapeSequence, !activeInstance.sequencePolygons.isEmpty {
+            let step = activeInstance.state.drawCycle / max(1, seq.frameDuration)
             let idx  = sequenceIndex(step: step,
-                                     count: instance.sequencePolygons.count,
+                                     count: activeInstance.sequencePolygons.count,
                                      mode: seq.mode)
-            activePolygons = instance.sequencePolygons[idx]
+            activePolygons = activeInstance.sequencePolygons[idx]
         } else {
-            activePolygons = instance.basePolygons
+            activePolygons = activeInstance.basePolygons
         }
         guard !activePolygons.isEmpty else { return }
 
         // 1. Morph interpolation
+        // Driver path takes precedence over legacy state.transform.morphAmount.
+        let morphAmount: Double
+        if let drivers = activeInstance.def.animation.drivers {
+            morphAmount = DriverEvaluator.evaluate(
+                drivers.morph,
+                globalElapsed: elapsedFrames,
+                targetFPS:     targetFPS,
+                spriteIndex:   spriteIndex
+            )
+        } else {
+            morphAmount = activeInstance.state.transform.morphAmount
+        }
         let morphed = MorphInterpolator.interpolate(
             base:        activePolygons,
-            targets:     instance.morphTargetPolygons,
-            morphAmount: instance.state.transform.morphAmount
+            targets:     activeInstance.morphTargetPolygons,
+            morphAmount: morphAmount
         )
 
         // 2. Subdivision
         let subdivided: [Polygon2D]
-        if instance.subdivisionParams.isEmpty {
+        if activeInstance.subdivisionParams.isEmpty {
             subdivided = morphed
         } else {
             subdivided = SubdivisionEngine.process(
                 polygons:  morphed,
-                paramSet:  instance.subdivisionParams,
+                paramSet:  activeInstance.subdivisionParams,
                 rng:       &rng
             )
         }
@@ -549,11 +666,11 @@ public struct SpriteScene: Sendable {
         // 3. Apply the sprite transform (scale → rotate → translate → pixels)
         // When a parentWorld is supplied the child transform is composed with it.
         let transformed = subdivided.map {
-            applyTransform($0, to: instance, parentWorld: parentWorld, canvasSize: viewTransform.canvasSize)
+            applyTransform($0, to: activeInstance, parentWorld: parentWorld, canvasSize: viewTransform.canvasSize)
         }
 
         // 4. Determine which renderers to apply
-        let activeRenderers = resolveActiveRenderers(for: instance)
+        let activeRenderers = resolveActiveRenderers(for: activeInstance)
 
         // 5. Draw
         // When scaleImage is false, pixel-valued style properties (stroke widths,
@@ -562,7 +679,7 @@ public struct SpriteScene: Sendable {
         let effectiveQuality = scaleImage ? qualityMultiple : 1
 
         for renderer in activeRenderers {
-            let resolved = resolveRendererChanges(renderer, instance: instance)
+            let resolved = resolveRendererChanges(renderer, instance: activeInstance)
 
             if resolved.mode == .brushed, let brushCfg = resolved.brushConfig {
                 // Brush mode: stamp images along perturbed edge paths.
@@ -584,10 +701,10 @@ public struct SpriteScene: Sendable {
                 // StampEngine can use the stepped palette index for SEQ/PING_PONG.
                 let scaledStencil = effectiveQuality > 1
                     ? stencilCfg.scaled(by: Double(effectiveQuality)) : stencilCfg
-                let activeIdx    = min(instance.state.activeRendererIndex,
-                                       instance.rendererSet.renderers.count - 1)
-                let opacityState = activeIdx < instance.state.rendererAnimationStates.count
-                    ? instance.state.rendererAnimationStates[activeIdx].stencilOpacityState
+                let activeIdx    = min(activeInstance.state.activeRendererIndex,
+                                       activeInstance.rendererSet.renderers.count - 1)
+                let opacityState = activeIdx < activeInstance.state.rendererAnimationStates.count
+                    ? activeInstance.state.rendererAnimationStates[activeIdx].stencilOpacityState
                     : nil
                 for polygon in transformed {
                     StampEngine.draw(
@@ -673,11 +790,12 @@ public struct SpriteScene: Sendable {
                 rotDeg += parent.rotationDeg
             }
             if mask.position {
-                // Rotate child's local position by parent rotation, then add parent position.
                 let rad  = parent.rotationDeg * .pi / 180.0
                 let cosP = cos(rad), sinP = sin(rad)
-                txPx = parent.positionPx.x + localTx * cosP - localTy * sinP
-                tyPx = parent.positionPx.y + localTx * sinP + localTy * cosP
+                let relTx = localTx - parent.basePositionPx.x
+                let relTy = localTy - parent.basePositionPx.y
+                txPx = parent.positionPx.x + relTx * cosP - relTy * sinP
+                tyPx = parent.positionPx.y + relTx * sinP + relTy * cosP
             }
         }
 

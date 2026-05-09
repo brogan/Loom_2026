@@ -8,6 +8,7 @@ struct RenderSurfaceView: NSViewRepresentable, Equatable {
 
     let engine:               Engine
     var playbackState:        PlaybackState
+    var seekFrame:            Int?            = nil
     var onFrameTick:          (Int) -> Void    = { _ in }
     var onAnimationComplete:  (() -> Void)?    = nil
 
@@ -15,7 +16,9 @@ struct RenderSurfaceView: NSViewRepresentable, Equatable {
     // Closures aren't Equatable; we only diff on the properties that actually drive
     // engine/state changes. Closure changes are always applied in updateNSView anyway.
     nonisolated static func == (lhs: Self, rhs: Self) -> Bool {
-        lhs.engine === rhs.engine && lhs.playbackState == rhs.playbackState
+        lhs.engine === rhs.engine
+            && lhs.playbackState == rhs.playbackState
+            && lhs.seekFrame     == rhs.seekFrame
     }
 
     func makeNSView(context: Context) -> RenderSurfaceNSView {
@@ -31,8 +34,14 @@ struct RenderSurfaceView: NSViewRepresentable, Equatable {
         if nsView.engine !== engine {
             nsView.replaceEngine(engine)
             applyState(playbackState, to: nsView, isInitial: false)
-        } else if playbackState != nsView.appliedPlaybackState {
-            applyState(playbackState, to: nsView, isInitial: false)
+        } else {
+            if playbackState != nsView.appliedPlaybackState {
+                applyState(playbackState, to: nsView, isInitial: false)
+            }
+            if let frame = seekFrame, frame != nsView.lastSeekFrame {
+                nsView.lastSeekFrame = frame
+                nsView.seekToFrame(frame)
+            }
         }
     }
 
@@ -69,6 +78,7 @@ final class RenderSurfaceNSView: NSView {
     var onFrameTick:          (Int) -> Void
     var onAnimationComplete:  (() -> Void)?
     var appliedPlaybackState: PlaybackState = .stopped
+    var lastSeekFrame:        Int?          = nil
 
     nonisolated(unsafe) private var renderTimer: Timer?
 
@@ -111,6 +121,25 @@ final class RenderSurfaceNSView: NSView {
     override func viewDidMoveToWindow() {
         super.viewDidMoveToWindow()
         if window == nil { stopRendering() }
+    }
+
+    // MARK: - Seek
+
+    /// Seek to `frame` and render a single frame to display.
+    /// The render timer must be stopped before calling (scrub pauses playback).
+    func seekToFrame(_ frame: Int) {
+        renderGeneration += 1
+        let gen = renderGeneration
+        renderQueue.async { [weak self] in
+            guard let self else { return }
+            self.engine.seek(toFrame: frame)
+            guard let img = self.engine.makeFrame() else { return }
+            DispatchQueue.main.async { [weak self] in
+                guard let self, self.renderGeneration == gen else { return }
+                self.onFrameTick(frame)
+                self.updateLayer(with: img)
+            }
+        }
     }
 
     // MARK: - Engine replacement
@@ -190,6 +219,11 @@ final class RenderSurfaceNSView: NSView {
     nonisolated private func checkAnimationDone() -> Bool {
         let maxFrames = engine.maxAnimationFrames
         guard maxFrames > 0 else { return false }
+        // Global duration takes priority: stop when frameCount reaches it.
+        if engine.globalConfig.duration > 0 {
+            return engine.currentFrame >= maxFrames
+        }
+        // Legacy: stop when all sprite draw cycles have completed.
         return engine.spriteInstances.allSatisfy { inst in
             let td = inst.def.animation.totalDraws
             return td == 0 || inst.state.drawCycle >= td

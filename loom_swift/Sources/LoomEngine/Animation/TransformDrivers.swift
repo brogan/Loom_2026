@@ -17,21 +17,38 @@ public struct TransformDrivers: Codable, Equatable, Sendable {
     /// Morph blend amount (same encoding as legacy `morphAmount` — integer part
     /// selects morph target index (1-based), fractional part blends toward next).
     public var morph:    DoubleDriver = .zero
+    /// Sprite-replacement index.  Step-evaluated integer selects the active
+    /// variant: 0 = self (base sprite), 1+ = spriteVariants[index−1].
+    /// Defaults to loopMode .once so sequences don't wrap back to 0.
+    public var shape:    DoubleDriver = DoubleDriver(mode: .constant, base: 0, loopMode: .once)
 
     public init(
         position: VectorDriver = .zero,
         scale:    VectorDriver = .identity,
         rotation: DoubleDriver = .zero,
-        morph:    DoubleDriver = .zero
+        morph:    DoubleDriver = .zero,
+        shape:    DoubleDriver = DoubleDriver(mode: .constant, base: 0, loopMode: .once)
     ) {
         self.position = position
         self.scale    = scale
         self.rotation = rotation
         self.morph    = morph
+        self.shape    = shape
     }
 
     /// All drivers at constant identity — no animation.
     public static let identity = TransformDrivers()
+
+    // Custom decoder: decodeIfPresent for all fields so projects saved before
+    // any given field was added continue to load with safe defaults.
+    public init(from decoder: Decoder) throws {
+        let c        = try decoder.container(keyedBy: CodingKeys.self)
+        position     = try c.decodeIfPresent(VectorDriver.self, forKey: .position) ?? .zero
+        scale        = try c.decodeIfPresent(VectorDriver.self, forKey: .scale)    ?? .identity
+        rotation     = try c.decodeIfPresent(DoubleDriver.self, forKey: .rotation) ?? .zero
+        morph        = try c.decodeIfPresent(DoubleDriver.self, forKey: .morph)    ?? .zero
+        shape        = try c.decodeIfPresent(DoubleDriver.self, forKey: .shape)    ?? DoubleDriver(mode: .constant, base: 0, loopMode: .once)
+    }
 }
 
 // MARK: - InheritMask

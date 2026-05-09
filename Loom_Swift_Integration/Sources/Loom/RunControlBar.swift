@@ -6,8 +6,22 @@ struct RunControlBar: View {
 
     @EnvironmentObject private var controller: AppController
     @Binding var currentFrame: Int
+    @Binding var seekFrame:    Int?
+
+    @State private var isScrubbing:           Bool   = false
+    @State private var scrubValue:            Double = 0
+    @State private var wasPlayingBeforeScrub: Bool   = false
 
     var body: some View {
+        VStack(spacing: 0) {
+            mainRow
+            if controller.engine != nil {
+                scrubRow
+            }
+        }
+    }
+
+    private var mainRow: some View {
         HStack(spacing: 12) {
 
             // Playback controls
@@ -24,6 +38,17 @@ struct RunControlBar: View {
                 }
                 .keyboardShortcut(" ", modifiers: [])
                 .disabled(controller.engine == nil || controller.isExporting)
+
+                Button {
+                    controller.loopPlayback.toggle()
+                } label: {
+                    Image(systemName: controller.loopPlayback ? "repeat" : "repeat.1")
+                        .font(.system(size: 13))
+                        .frame(width: 28, height: 28)
+                        .foregroundStyle(controller.loopPlayback ? Color.accentColor : Color.secondary)
+                }
+                .buttonStyle(.plain)
+                .help(controller.loopPlayback ? "Loop: On (click to play once)" : "Loop: Off (click to loop)")
             }
 
             // Frame counter
@@ -90,6 +115,46 @@ struct RunControlBar: View {
         .padding(.horizontal, 12)
         .frame(height: 44)
         .background(Color(nsColor: .windowBackgroundColor))
+    }
+
+    private var scrubRow: some View {
+        let maxFrames = Double(controller.maxScrubFrames)
+        let displayFrame = isScrubbing ? Int(scrubValue) : currentFrame
+        return HStack(spacing: 6) {
+            Text("\(displayFrame)")
+                .font(.system(size: 10, design: .monospaced))
+                .foregroundStyle(.secondary)
+                .frame(width: 40, alignment: .trailing)
+            Slider(
+                value: Binding(
+                    get: { isScrubbing ? scrubValue : Double(currentFrame) },
+                    set: { newVal in
+                        scrubValue = newVal
+                        seekFrame  = Int(newVal.rounded())
+                    }
+                ),
+                in: 0...max(1, maxFrames),
+                onEditingChanged: { editing in
+                    isScrubbing = editing
+                    if editing {
+                        wasPlayingBeforeScrub = controller.playbackState == .playing
+                        controller.pause()
+                    } else {
+                        if wasPlayingBeforeScrub { controller.play() }
+                    }
+                }
+            )
+            Text("\(Int(maxFrames))")
+                .font(.system(size: 10, design: .monospaced))
+                .foregroundStyle(.secondary)
+                .frame(width: 40, alignment: .leading)
+        }
+        .padding(.horizontal, 12)
+        .frame(height: 20)
+        .background(Color(nsColor: .windowBackgroundColor))
+        .onChange(of: currentFrame) { _, val in
+            if !isScrubbing { scrubValue = Double(val) }
+        }
     }
 
     // MARK: - Button helpers

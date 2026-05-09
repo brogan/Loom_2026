@@ -23,10 +23,37 @@ public struct GlobalConfig: Equatable, Codable, Sendable {
     /// Default 30 matches the typical Scala Loom frame rate.
     public var targetFPS: Double          = 30.0
     public var note: String               = ""
+    /// Project duration in frames.  0 = derive from sprite totalDraws (legacy behaviour).
+    public var duration: Int              = 0
     /// Animated camera.  `camera.enabled` must be true for pan/zoom/rotation to apply.
     public var camera: CameraConfig       = .disabled
 
     public init() {}
 
     public static let `default` = GlobalConfig()
+
+    // Custom decoder: every field uses decodeIfPresent so that old project JSON files
+    // that pre-date any given field can still load with the field's default value.
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        name               = try c.decodeIfPresent(String.self,       forKey: .name)               ?? "default"
+        width              = try c.decodeIfPresent(Int.self,           forKey: .width)              ?? 1080
+        height             = try c.decodeIfPresent(Int.self,           forKey: .height)             ?? 1080
+        qualityMultiple    = try c.decodeIfPresent(Int.self,           forKey: .qualityMultiple)    ?? 1
+        scaleImage         = try c.decodeIfPresent(Bool.self,          forKey: .scaleImage)         ?? false
+        animating          = try c.decodeIfPresent(Bool.self,          forKey: .animating)          ?? false
+        drawBackgroundOnce = try c.decodeIfPresent(Bool.self,          forKey: .drawBackgroundOnce) ?? false
+        fullscreen         = try c.decodeIfPresent(Bool.self,          forKey: .fullscreen)         ?? false
+        borderColor        = try c.decodeIfPresent(LoomColor.self,     forKey: .borderColor)        ?? .black
+        backgroundColor    = try c.decodeIfPresent(LoomColor.self,     forKey: .backgroundColor)    ?? .white
+        overlayColor       = try c.decodeIfPresent(LoomColor.self,     forKey: .overlayColor)       ?? LoomColor(r: 0, g: 0, b: 0, a: 170)
+        backgroundImagePath = try c.decodeIfPresent(String.self,       forKey: .backgroundImagePath) ?? ""
+        threeD             = try c.decodeIfPresent(Bool.self,          forKey: .threeD)             ?? false
+        cameraViewAngle    = try c.decodeIfPresent(Int.self,           forKey: .cameraViewAngle)    ?? 120
+        subdividing        = try c.decodeIfPresent(Bool.self,          forKey: .subdividing)        ?? true
+        targetFPS          = try c.decodeIfPresent(Double.self,        forKey: .targetFPS)          ?? 30.0
+        note               = try c.decodeIfPresent(String.self,        forKey: .note)               ?? ""
+        duration           = try c.decodeIfPresent(Int.self,           forKey: .duration)           ?? 0
+        camera             = try c.decodeIfPresent(CameraConfig.self,  forKey: .camera)             ?? .disabled
+    }
 }

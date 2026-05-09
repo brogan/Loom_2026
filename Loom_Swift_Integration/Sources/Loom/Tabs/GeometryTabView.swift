@@ -456,8 +456,10 @@ private struct GeometryLayerPanel: View {
             Divider()
 
             VStack(spacing: 6) {
+                let morphLocked = controller.isCurrentGeometryMorphTargetLocked
                 HStack {
                     Button("New")     { controller.addGeometryEditorLayer() }
+                        .disabled(morphLocked)
                     Spacer()
                     Button("Rename") {
                         renameText = selectedLayerName
@@ -467,7 +469,7 @@ private struct GeometryLayerPanel: View {
                 }
                 HStack {
                     Button("Duplicate") { controller.duplicateSelectedGeometryEditorLayer() }
-                        .disabled(controller.selectedGeometryEditorLayerID == nil)
+                        .disabled(controller.selectedGeometryEditorLayerID == nil || morphLocked)
                     Spacer()
                     Button("Delete") {
                         if selectedLayerHasGeometry {
@@ -476,8 +478,8 @@ private struct GeometryLayerPanel: View {
                             controller.deleteSelectedGeometryEditorLayer()
                         }
                     }
-                    .disabled(controller.geometryEditorLayers.count <= 1)
-                    .foregroundStyle(controller.geometryEditorLayers.count > 1 ? Color.red : Color.secondary)
+                    .disabled(controller.geometryEditorLayers.count <= 1 || morphLocked)
+                    .foregroundStyle(controller.geometryEditorLayers.count > 1 && !morphLocked ? Color.red : Color.secondary)
                 }
             }
             .buttonStyle(.borderless)
@@ -823,6 +825,20 @@ private struct GeometryEditorMainShell: View {
                     .font(.system(size: 11))
                     .foregroundStyle(.tertiary)
                 Spacer()
+                let locked = controller.isCurrentGeometryMorphTargetLocked
+                Button {
+                    controller.toggleCurrentGeometryMorphTargetLock()
+                } label: {
+                    HStack(spacing: 4) {
+                        Image(systemName: locked ? "lock.fill" : "lock.open")
+                            .font(.system(size: 12))
+                        Text(locked ? "Morph Target" : "Morph Target")
+                            .font(.system(size: 11))
+                    }
+                    .foregroundStyle(locked ? Color.orange : Color.secondary)
+                }
+                .help(locked ? "Morph target locked: only vertex positions can be edited. Click to unlock." : "Click to designate as morph target (locks topology)")
+                .buttonStyle(.plain)
                 Button("Default Geometry View") {
                     controller.exitGeometryEditor()
                 }
@@ -1218,13 +1234,21 @@ private struct EditableGeometryCanvas: View {
                         else    { controller.undoGeometryEdit() }
                         return true
                     }
-                    // ⌘X / ⌘C / ⌘V — cut / copy / paste
-                    if cmd && key == "x" { controller.cutSelectedGeometry();  return true }
+                    // ⌘X / ⌘C / ⌘V — cut / copy / paste (cut and paste blocked when morph locked)
+                    if cmd && key == "x" {
+                        if !controller.isCurrentGeometryMorphTargetLocked { controller.cutSelectedGeometry() }
+                        return true
+                    }
                     if cmd && key == "c" { controller.copySelectedGeometry(); return true }
-                    if cmd && key == "v" { controller.pasteGeometry();        return true }
-                    // ⌫ Delete key (keyCode 51) — delete selected geometry
+                    if cmd && key == "v" {
+                        if !controller.isCurrentGeometryMorphTargetLocked { controller.pasteGeometry() }
+                        return true
+                    }
+                    // ⌫ Delete key (keyCode 51) — delete selected geometry (blocked when morph locked)
                     if !cmd && event.keyCode == 51 {
-                        controller.deleteSelectedGeometry()
+                        if !controller.isCurrentGeometryMorphTargetLocked {
+                            controller.deleteSelectedGeometry()
+                        }
                         return true
                     }
                     // p — finalise polygon/open-curve draft

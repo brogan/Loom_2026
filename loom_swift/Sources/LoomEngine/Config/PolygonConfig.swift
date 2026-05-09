@@ -44,6 +44,10 @@ public struct PolygonSetDef: Codable, Sendable {
     public var editableLayerID: UUID?
     /// Display/fallback name for the targeted editable JSON layer.
     public var editableLayerName: String?
+    /// When true this polygon set is designated as a morph target source.
+    /// The geometry editor restricts editing to vertex-position changes only
+    /// (no add/remove vertices or polygons) to preserve same-topology constraint.
+    public var isMorphTarget: Bool
 
     public init(
         name: String,
@@ -52,7 +56,8 @@ public struct PolygonSetDef: Codable, Sendable {
         polygonType: PolygonFileType = .splinePolygon,
         regularParams: RegularPolygonParams? = nil,
         editableLayerID: UUID? = nil,
-        editableLayerName: String? = nil
+        editableLayerName: String? = nil,
+        isMorphTarget: Bool = false
     ) {
         self.name              = name
         self.folder            = folder
@@ -61,6 +66,7 @@ public struct PolygonSetDef: Codable, Sendable {
         self.regularParams     = regularParams
         self.editableLayerID   = editableLayerID
         self.editableLayerName = editableLayerName
+        self.isMorphTarget     = isMorphTarget
     }
 
     private enum CodingKeys: String, CodingKey {
@@ -71,17 +77,19 @@ public struct PolygonSetDef: Codable, Sendable {
         case regularParams
         case editableLayerID
         case editableLayerName
+        case isMorphTarget
     }
 
     public init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
-        name = try container.decode(String.self, forKey: .name)
-        folder = try container.decode(String.self, forKey: .folder)
-        filename = try container.decode(String.self, forKey: .filename)
-        polygonType = try container.decode(PolygonFileType.self, forKey: .polygonType)
-        regularParams = try container.decodeIfPresent(RegularPolygonParams.self, forKey: .regularParams)
-        editableLayerID = try container.decodeIfPresent(UUID.self, forKey: .editableLayerID)
+        name              = try container.decode(String.self, forKey: .name)
+        folder            = try container.decode(String.self, forKey: .folder)
+        filename          = try container.decode(String.self, forKey: .filename)
+        polygonType       = try container.decode(PolygonFileType.self, forKey: .polygonType)
+        regularParams     = try container.decodeIfPresent(RegularPolygonParams.self, forKey: .regularParams)
+        editableLayerID   = try container.decodeIfPresent(UUID.self, forKey: .editableLayerID)
         editableLayerName = try container.decodeIfPresent(String.self, forKey: .editableLayerName)
+        isMorphTarget     = try container.decodeIfPresent(Bool.self, forKey: .isMorphTarget) ?? false
     }
 }
 
