@@ -826,6 +826,8 @@ private struct GeometryEditorMainShell: View {
     let document: EditableGeometryDocument?
     let loadError: String?
 
+    @State private var showingUnsavedAlert = false
+
     var body: some View {
         VStack(spacing: 0) {
             HStack(spacing: 12) {
@@ -855,9 +857,39 @@ private struct GeometryEditorMainShell: View {
                 .help(locked ? "Morph target locked: only vertex positions can be edited. Click to unlock." : "Click to designate as morph target (locks topology)")
                 .buttonStyle(.plain)
                 Button("Default Geometry View") {
-                    controller.exitGeometryEditor()
+                    if controller.geometryEditorIsModified {
+                        showingUnsavedAlert = true
+                    } else {
+                        controller.exitGeometryEditor()
+                    }
                 }
                 .font(.system(size: 12))
+            }
+            .alert(
+                controller.geometryEditorDocumentIsPersisted ? "Unsaved Changes" : "Geometry Not Saved",
+                isPresented: $showingUnsavedAlert
+            ) {
+                if controller.geometryEditorDocumentIsPersisted {
+                    Button("Save & Exit") {
+                        controller.saveGeometryEditorDocument(named: "")
+                        controller.exitGeometryEditor()
+                    }
+                    Button("Discard Changes", role: .destructive) {
+                        controller.exitGeometryEditor()
+                    }
+                    Button("Cancel", role: .cancel) { }
+                } else {
+                    Button("Return to Name & Save", role: .cancel) { }
+                    Button("Discard Changes", role: .destructive) {
+                        controller.exitGeometryEditor()
+                    }
+                }
+            } message: {
+                if controller.geometryEditorDocumentIsPersisted {
+                    Text("\"\(currentGeometryName)\" has unsaved changes. Save before leaving the editor?")
+                } else {
+                    Text("This geometry has not been saved yet. Return to the editor to name and save it, or discard your work.")
+                }
             }
             .padding(.horizontal, 14)
             .padding(.vertical, 8)

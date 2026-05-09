@@ -120,7 +120,10 @@ final class AppController: ObservableObject, @unchecked Sendable {
     @Published var appStatusMessage:              String  = "Ready"
     @Published var isGeometryEditorActive:        Bool    = false
     @Published var geometryEditorTool:            GeometryEditorTool = .points
-    @Published var geometryEditorDocument:        EditableGeometryDocument? = nil
+    @Published var geometryEditorDocument:        EditableGeometryDocument? = nil {
+        didSet { geometryEditorIsModified = true }
+    }
+    @Published private(set) var geometryEditorIsModified: Bool = false
     @Published var geometryEditorLoadError:       String? = nil
     @Published var geometryEditorReloadNonce:     Int     = 0
     @Published var geometryEditorSelection:       EditableGeometrySelection = .empty
@@ -285,6 +288,13 @@ final class AppController: ObservableObject, @unchecked Sendable {
         return String(key.dropFirst("polygonSets/".count))
     }
 
+    /// True when the current polygon set has already been written to disk at least once.
+    var geometryEditorDocumentIsPersisted: Bool {
+        guard let name = currentPolygonSetName else { return false }
+        return !(projectConfig?.polygonConfig.library.polygonSets
+            .first(where: { $0.name == name })?.filename.isEmpty ?? true)
+    }
+
     func enterGeometryEditor() {
         ensureGeometryEditorLayerSelection()
         isGeometryEditorActive = true
@@ -374,7 +384,8 @@ final class AppController: ObservableObject, @unchecked Sendable {
     ) {
         var prunedDocument = document
         prunedDocument?.pruneWeldGroups()
-        geometryEditorDocument = prunedDocument
+        geometryEditorDocument = prunedDocument   // didSet marks modified
+        geometryEditorIsModified = false           // loading is not a user edit
         geometryEditorLoadError = loadError
         if resetHistory {
             geometryEditorHistory = EditableGeometryHistory()
