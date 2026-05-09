@@ -16,7 +16,10 @@ let package = Package(
             dependencies: [
                 .product(name: "LoomEngine", package: "loom_swift")
             ],
-            path: "Sources/Loom"
+            path: "Sources/Loom",
+            resources: [
+                .copy("Resources/help.html")
+            ]
         )
     ]
 )

@@ -1782,6 +1782,38 @@ final class AppController: ObservableObject, @unchecked Sendable {
         }
     }
 
+    func saveGeometryLayerAsSVG() {
+        guard let document = geometryEditorDocument,
+              let projectURL,
+              let config = projectConfig,
+              let activeLayer = document.activeLayer
+        else { return }
+
+        let polys = (try? document.runtimePolygons(targetLayerID: activeLayer.id)) ?? []
+        guard !polys.isEmpty else {
+            appStatusMessage = "Nothing to export (active layer is empty)"
+            return
+        }
+
+        let svgsDir = projectURL.appendingPathComponent("svgs")
+        let docPart   = LoomSVGWriter.safeStem(
+            document.name.isEmpty
+                ? (selectedGeometryKey?.components(separatedBy: "/").last ?? "geometry")
+                : document.name
+        )
+        let layerPart = LoomSVGWriter.safeStem(activeLayer.name)
+        let stem = "\(docPart)_\(layerPart)"
+
+        do {
+            let w = Double(config.globalConfig.width)
+            let h = Double(config.globalConfig.height)
+            let url = try LoomSVGWriter.writeSVG(polygons: polys, stem: stem, canvasSize: (w, h), to: svgsDir)
+            appStatusMessage = "SVG saved: \(url.lastPathComponent)"
+        } catch {
+            appStatusMessage = "SVG export failed: \(error.localizedDescription)"
+        }
+    }
+
     func reloadGeometryEditorDocumentFromDisk() {
         geometryEditorReloadNonce += 1
     }

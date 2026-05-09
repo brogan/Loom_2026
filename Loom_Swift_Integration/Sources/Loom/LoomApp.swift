@@ -24,6 +24,10 @@ struct LoomIntegrationApp: App {
                     .keyboardShortcut("o", modifiers: .command)
             }
             CommandGroup(replacing: .saveItem) { }
+            CommandGroup(replacing: .help) {
+                Button("Loom Help") { HelpWindowController.shared.show() }
+                    .keyboardShortcut("?", modifiers: .command)
+            }
         }
     }
 }

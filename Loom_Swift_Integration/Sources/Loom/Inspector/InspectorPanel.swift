@@ -826,14 +826,16 @@ private struct GeometryEditorShellInspector: View {
                         .font(.system(size: 12))
                         .frame(width: 130)
                 }
-                iconRow {
+                InspectorField("Export") {
+                    svgExportButton
+                }
+                InspectorField("Save") {
                     iconButton(help: "Save geometry document", disabled: controller.geometryEditorDocument == nil, size: 30) {
                         SaveToFolderIcon()
                     } action: {
                         controller.saveGeometryEditorDocument(named: geometryName)
                         geometryName = currentGeometryName
                     }
-                    Spacer()
                 }
             }
         }
@@ -952,6 +954,20 @@ private struct GeometryEditorShellInspector: View {
                 .font(.system(size: 11, design: .monospaced))
                 .frame(width: 34, alignment: .trailing)
         }
+    }
+
+    private var svgExportButton: some View {
+        let disabled = controller.geometryEditorDocument == nil
+        return Button {
+            controller.saveGeometryLayerAsSVG()
+        } label: {
+            FolderExportIcon()
+                .frame(width: 22, height: 22)
+        }
+        .buttonStyle(.plain)
+        .foregroundStyle(disabled ? Color.secondary.opacity(0.4) : Color.secondary)
+        .disabled(disabled)
+        .help("Save active layer as SVG wireframe to svgs/")
     }
 
     private var currentGeometryName: String {
@@ -1592,6 +1608,47 @@ private struct SaveToFolderIcon: View {
                 path.addLine(to: CGPoint(x: ax + hh, y: atip - hh))
             }
             .stroke(style: StrokeStyle(lineWidth: 1.5, lineCap: .round, lineJoin: .round))
+        }
+        .padding(1)
+    }
+}
+
+/// Folder outline with a diagonal arrow from the folder centre toward the upper-right corner.
+struct FolderExportIcon: View {
+    var strokeWidth: CGFloat = 1.5
+    var body: some View {
+        GeometryReader { proxy in
+            let r = proxy.frame(in: .local).insetBy(dx: 2, dy: 2)
+            let w = r.width, h = r.height
+            // Folder outline
+            Path { path in
+                path.move(to:    CGPoint(x: r.minX,          y: r.minY + h*0.30))
+                path.addLine(to: CGPoint(x: r.minX + w*0.28, y: r.minY + h*0.30))
+                path.addLine(to: CGPoint(x: r.minX + w*0.37, y: r.minY + h*0.42))
+                path.addLine(to: CGPoint(x: r.maxX,          y: r.minY + h*0.42))
+                path.addLine(to: CGPoint(x: r.maxX,          y: r.maxY))
+                path.addLine(to: CGPoint(x: r.minX,          y: r.maxY))
+                path.closeSubpath()
+            }
+            .stroke(style: StrokeStyle(lineWidth: strokeWidth, lineCap: .round, lineJoin: .round))
+            // Diagonal arrow: folder-body centre → upper-right
+            let tailX = r.midX - w * 0.06
+            let tailY = r.minY + h * 0.76
+            let tipX  = r.maxX - w * 0.13
+            let tipY  = r.minY + h * 0.53
+            let dx = tipX - tailX, dy = tipY - tailY
+            let len = (dx*dx + dy*dy).squareRoot()
+            let ux = dx / len, uy = dy / len
+            let px = -uy,      py = ux
+            let hw = w * 0.16
+            Path { path in
+                path.move(to:    CGPoint(x: tailX, y: tailY))
+                path.addLine(to: CGPoint(x: tipX,  y: tipY))
+                path.move(to:    CGPoint(x: tipX - ux*hw + px*hw*0.65, y: tipY - uy*hw + py*hw*0.65))
+                path.addLine(to: CGPoint(x: tipX,  y: tipY))
+                path.addLine(to: CGPoint(x: tipX - ux*hw - px*hw*0.65, y: tipY - uy*hw - py*hw*0.65))
+            }
+            .stroke(style: StrokeStyle(lineWidth: strokeWidth, lineCap: .round, lineJoin: .round))
         }
         .padding(1)
     }

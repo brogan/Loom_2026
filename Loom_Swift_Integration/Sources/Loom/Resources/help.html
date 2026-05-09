@@ -1,0 +1,1091 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Loom Help</title>
+<style>
+  :root {
+    --bg: #1e1e1e;
+    --surface: #252526;
+    --surface2: #2d2d2e;
+    --border: #3c3c3c;
+    --text: #cccccc;
+    --text-dim: #888;
+    --text-bright: #eeeeee;
+    --accent: #0e7fd4;
+    --accent-soft: #0e7fd420;
+    --highlight: #f0c040;
+    --sidebar-w: 230px;
+    --topbar-h: 48px;
+    --font: -apple-system, BlinkMacSystemFont, "Helvetica Neue", sans-serif;
+    --mono: "SF Mono", Menlo, monospace;
+  }
+  @media (prefers-color-scheme: light) {
+    :root {
+      --bg: #f5f5f5;
+      --surface: #ffffff;
+      --surface2: #ebebeb;
+      --border: #d0d0d0;
+      --text: #333333;
+      --text-dim: #888;
+      --text-bright: #111111;
+      --accent: #0060bf;
+      --accent-soft: #0060bf18;
+    }
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { height: 100%; background: var(--bg); color: var(--text); font-family: var(--font); font-size: 13px; line-height: 1.6; }
+
+  /* ── Top bar ─────────────────────────────────────── */
+  #topbar {
+    position: fixed; top: 0; left: 0; right: 0; height: var(--topbar-h);
+    background: var(--surface); border-bottom: 1px solid var(--border);
+    display: flex; align-items: center; padding: 0 16px; gap: 12px; z-index: 100;
+  }
+  #topbar h1 { font-size: 15px; font-weight: 600; color: var(--text-bright); letter-spacing: 0.02em; white-space: nowrap; }
+  #search-wrap { flex: 1; max-width: 360px; position: relative; }
+  #search { width: 100%; background: var(--surface2); border: 1px solid var(--border); border-radius: 5px;
+    color: var(--text); padding: 5px 10px 5px 28px; font-size: 12px; outline: none; }
+  #search:focus { border-color: var(--accent); }
+  #search-icon { position: absolute; left: 8px; top: 50%; transform: translateY(-50%); color: var(--text-dim); font-size: 11px; pointer-events: none; }
+  #search-count { font-size: 11px; color: var(--text-dim); white-space: nowrap; }
+
+  /* ── Sidebar ─────────────────────────────────────── */
+  #sidebar {
+    position: fixed; top: var(--topbar-h); left: 0; bottom: 0; width: var(--sidebar-w);
+    background: var(--surface); border-right: 1px solid var(--border); overflow-y: auto;
+    padding: 8px 0;
+  }
+  #sidebar::-webkit-scrollbar { width: 5px; }
+  #sidebar::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+  .nav-section { padding: 6px 12px 2px; font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.08em; color: var(--text-dim); }
+  .nav-link { display: block; padding: 4px 16px; color: var(--text); text-decoration: none; font-size: 12px; border-left: 2px solid transparent; }
+  .nav-link:hover { background: var(--surface2); }
+  .nav-link.active { border-left-color: var(--accent); color: var(--accent); background: var(--accent-soft); }
+  .nav-sub { padding-left: 28px; font-size: 11.5px; color: var(--text-dim); }
+
+  /* ── Main content ────────────────────────────────── */
+  #main { margin-left: var(--sidebar-w); margin-top: var(--topbar-h); padding: 32px 48px 80px; max-width: 860px; }
+  section { margin-bottom: 56px; }
+  h2 { font-size: 22px; font-weight: 600; color: var(--text-bright); margin-bottom: 12px; padding-bottom: 8px; border-bottom: 1px solid var(--border); }
+  h3 { font-size: 15px; font-weight: 600; color: var(--text-bright); margin: 24px 0 8px; }
+  h4 { font-size: 13px; font-weight: 600; color: var(--text-bright); margin: 16px 0 4px; }
+  p { margin-bottom: 10px; }
+  ul, ol { margin: 8px 0 10px 20px; }
+  li { margin-bottom: 3px; }
+  strong { color: var(--text-bright); font-weight: 600; }
+  code { font-family: var(--mono); font-size: 11.5px; background: var(--surface2); border: 1px solid var(--border); border-radius: 3px; padding: 1px 5px; }
+  a { color: var(--accent); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+
+  /* ── Tables ──────────────────────────────────────── */
+  table { width: 100%; border-collapse: collapse; margin: 12px 0; }
+  th { text-align: left; font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; color: var(--text-dim); padding: 6px 10px; border-bottom: 1px solid var(--border); }
+  td { padding: 6px 10px; border-bottom: 1px solid var(--border); vertical-align: top; }
+  tr:last-child td { border-bottom: none; }
+  td:first-child { color: var(--text-bright); white-space: nowrap; font-weight: 500; }
+
+  /* ── Callouts ────────────────────────────────────── */
+  .tip { background: var(--accent-soft); border-left: 3px solid var(--accent); padding: 10px 14px; border-radius: 0 4px 4px 0; margin: 12px 0; }
+  .tip strong { color: var(--accent); }
+  .note { background: var(--surface2); border-left: 3px solid var(--text-dim); padding: 10px 14px; border-radius: 0 4px 4px 0; margin: 12px 0; }
+
+  /* ── Steps ───────────────────────────────────────── */
+  .steps { list-style: none; margin-left: 0; counter-reset: step; }
+  .steps li { counter-increment: step; padding: 8px 0 8px 42px; position: relative; border-bottom: 1px solid var(--border); }
+  .steps li:last-child { border-bottom: none; }
+  .steps li::before { content: counter(step); position: absolute; left: 0; top: 8px; width: 26px; height: 26px; background: var(--accent); color: #fff; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 700; }
+
+  /* ── Key badge ───────────────────────────────────── */
+  kbd { font-family: var(--mono); font-size: 11px; background: var(--surface2); border: 1px solid var(--border); border-radius: 4px; padding: 1px 6px; color: var(--text-bright); box-shadow: 0 1px 0 var(--border); }
+
+  /* ── Diagrams (SVG inline) ───────────────────────── */
+  .diagram { margin: 16px 0; text-align: center; }
+  .diagram svg { max-width: 100%; }
+  .diagram figcaption { font-size: 11px; color: var(--text-dim); margin-top: 6px; }
+
+  /* ── Grid cards ──────────────────────────────────── */
+  .card-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 10px; margin: 12px 0; }
+  .card { background: var(--surface2); border: 1px solid var(--border); border-radius: 6px; padding: 12px; }
+  .card-title { font-weight: 600; color: var(--text-bright); font-size: 12px; margin-bottom: 4px; }
+  .card-desc { font-size: 11.5px; color: var(--text-dim); }
+
+  /* ── Search highlights ───────────────────────────── */
+  mark { background: var(--highlight); color: #000; border-radius: 2px; padding: 0 2px; }
+  .search-hidden { display: none !important; }
+  .search-section-hidden > :not(h2) { display: none; }
+</style>
+</head>
+<body>
+
+<!-- TOP BAR -->
+<div id="topbar">
+  <h1>Loom Help</h1>
+  <div id="search-wrap">
+    <span id="search-icon">⌕</span>
+    <input id="search" type="search" placeholder="Search help…" autocomplete="off" spellcheck="false">
+  </div>
+  <span id="search-count"></span>
+</div>
+
+<!-- SIDEBAR -->
+<nav id="sidebar">
+  <div class="nav-section">Overview</div>
+  <a class="nav-link" href="#overview">What is Loom?</a>
+  <a class="nav-link nav-sub" href="#overview-workflow">Core Workflow</a>
+  <a class="nav-link nav-sub" href="#overview-project">Project Structure</a>
+
+  <div class="nav-section">Getting Started</div>
+  <a class="nav-link" href="#start">Quick Start</a>
+  <a class="nav-link nav-sub" href="#start-new">New Project</a>
+  <a class="nav-link nav-sub" href="#start-open">Open Project</a>
+  <a class="nav-link nav-sub" href="#start-playback">Playback</a>
+
+  <div class="nav-section">Tabs</div>
+  <a class="nav-link" href="#global">Global</a>
+  <a class="nav-link" href="#geometry">Geometry</a>
+  <a class="nav-link nav-sub" href="#geometry-editor">Editor Tools</a>
+  <a class="nav-link nav-sub" href="#geometry-layers">Layers</a>
+  <a class="nav-link" href="#sprites">Sprites</a>
+  <a class="nav-link nav-sub" href="#sprites-hierarchy">Hierarchy</a>
+  <a class="nav-link" href="#subdivision">Subdivision</a>
+  <a class="nav-link nav-sub" href="#subdivision-algorithms">Algorithms</a>
+  <a class="nav-link nav-sub" href="#subdivision-ptw">PTW</a>
+  <a class="nav-link nav-sub" href="#subdivision-ptp">PTP</a>
+  <a class="nav-link nav-sub" href="#subdivision-bake">Baking</a>
+  <a class="nav-link" href="#rendering">Rendering</a>
+  <a class="nav-link nav-sub" href="#rendering-modes">Render Modes</a>
+  <a class="nav-link nav-sub" href="#rendering-brush">Brushes &amp; Stamps</a>
+
+  <div class="nav-section">Animation</div>
+  <a class="nav-link" href="#animation">Drivers &amp; Keyframes</a>
+  <a class="nav-link nav-sub" href="#animation-drivers">Driver Types</a>
+  <a class="nav-link nav-sub" href="#animation-timeline">Timeline</a>
+  <a class="nav-link nav-sub" href="#animation-camera">Camera</a>
+  <a class="nav-link nav-sub" href="#animation-morph">Morph Targets</a>
+
+  <div class="nav-section">Export</div>
+  <a class="nav-link" href="#export">Output Options</a>
+  <a class="nav-link nav-sub" href="#export-still">Still Image</a>
+  <a class="nav-link nav-sub" href="#export-svg">SVG Export</a>
+  <a class="nav-link nav-sub" href="#export-video">Video Export</a>
+
+  <div class="nav-section">Reference</div>
+  <a class="nav-link" href="#shortcuts">Keyboard Shortcuts</a>
+  <a class="nav-link" href="#fileformat">File Formats</a>
+</nav>
+
+<!-- MAIN -->
+<main id="main">
+
+<!-- ────────────────────────────────────────────────── -->
+<section id="overview">
+  <h2>What is Loom?</h2>
+  <p>Loom is a generative art environment for creating still images and animations driven by geometric subdivision, procedural rendering, and keyframe animation. It is designed for visual experimentation — each project is a composition of shapes, subdivision rules, and rendering styles that combine to produce imagery ranging from technical line drawings to richly textured organic forms.</p>
+
+  <div class="diagram">
+    <svg width="560" height="110" viewBox="0 0 560 110" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <defs>
+        <marker id="arr" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
+          <path d="M0,0 L0,6 L8,3 z" fill="#0e7fd4"/>
+        </marker>
+      </defs>
+      <!-- boxes -->
+      <rect x="10"  y="30" width="90" height="50" rx="6" fill="#252526" stroke="#3c3c3c"/>
+      <rect x="140" y="30" width="90" height="50" rx="6" fill="#252526" stroke="#3c3c3c"/>
+      <rect x="270" y="30" width="90" height="50" rx="6" fill="#252526" stroke="#3c3c3c"/>
+      <rect x="400" y="30" width="90" height="50" rx="6" fill="#252526" stroke="#0e7fd4"/>
+      <!-- arrows -->
+      <line x1="100" y1="55" x2="138" y2="55" stroke="#0e7fd4" stroke-width="1.5" marker-end="url(#arr)"/>
+      <line x1="230" y1="55" x2="268" y2="55" stroke="#0e7fd4" stroke-width="1.5" marker-end="url(#arr)"/>
+      <line x1="360" y1="55" x2="398" y2="55" stroke="#0e7fd4" stroke-width="1.5" marker-end="url(#arr)"/>
+      <!-- labels -->
+      <text x="55"  y="50" text-anchor="middle" font-size="11" fill="#cccccc" font-family="-apple-system">Geometry</text>
+      <text x="55"  y="65" text-anchor="middle" font-size="10" fill="#888" font-family="-apple-system">draw / import</text>
+      <text x="185" y="50" text-anchor="middle" font-size="11" fill="#cccccc" font-family="-apple-system">Subdivision</text>
+      <text x="185" y="65" text-anchor="middle" font-size="10" fill="#888" font-family="-apple-system">fracture shapes</text>
+      <text x="315" y="50" text-anchor="middle" font-size="11" fill="#cccccc" font-family="-apple-system">Rendering</text>
+      <text x="315" y="65" text-anchor="middle" font-size="10" fill="#888" font-family="-apple-system">style + animate</text>
+      <text x="445" y="50" text-anchor="middle" font-size="11" fill="#cccccc" font-family="-apple-system">Export</text>
+      <text x="445" y="65" text-anchor="middle" font-size="10" fill="#888" font-family="-apple-system">PNG · SVG · MP4</text>
+    </svg>
+    <figcaption>The four-stage pipeline from geometry through to output</figcaption>
+  </div>
+
+  <h3>Distinguishing features</h3>
+  <div class="card-grid">
+    <div class="card">
+      <div class="card-title">Subdivision engine</div>
+      <div class="card-desc">20+ algorithms — Quad, Tri, Split, Echo, Star — each with ratio, inset, and per-wall colour controls.</div>
+    </div>
+    <div class="card">
+      <div class="card-title">Animated rendering</div>
+      <div class="card-desc">Custom brush and stamp PNG patterns, stencil masking, opacity and colour animation on every renderer.</div>
+    </div>
+    <div class="card">
+      <div class="card-title">Procedural drivers</div>
+      <div class="card-desc">Noise, oscillator, jitter, and keyframe drivers can animate any transform or renderer property.</div>
+    </div>
+    <div class="card">
+      <div class="card-title">Morph targets</div>
+      <div class="card-desc">Smoothly interpolate between two geometry states with an animated morph-amount driver.</div>
+    </div>
+    <div class="card">
+      <div class="card-title">Sprite hierarchy</div>
+      <div class="card-desc">Parent–child sprite trees with selectable inherit masks for position, rotation, and scale.</div>
+    </div>
+    <div class="card">
+      <div class="card-title">Non-destructive bake</div>
+      <div class="card-desc">Preview subdivision live, then bake to a permanent polygon file when satisfied.</div>
+    </div>
+  </div>
+
+  <h3 id="overview-workflow">Core workflow</h3>
+  <ol class="steps">
+    <li>Create or open a project. The project folder holds all geometry files, brushes, stamps, and the <code>project_config.json</code>.</li>
+    <li>In the <strong>Geometry</strong> tab, draw or import polygon/curve shapes using the built-in editor.</li>
+    <li>In the <strong>Sprites</strong> tab, create sprite instances and assign your geometry. Set position, scale, and rotation. Establish parent–child hierarchies if needed.</li>
+    <li>In the <strong>Subdivision</strong> tab, define sets of subdivision parameters and assign them to sprites. Preview the subdivided result and bake when ready.</li>
+    <li>In the <strong>Rendering</strong> tab, create renderer sets — choose fill/stroke modes or brush/stamp patterns. Assign each renderer set to the sprites that should use it.</li>
+    <li>Add animation via the <strong>Sprites inspector</strong> or the <strong>Timeline</strong>. Use drivers (noise, oscillator, keyframe) for each property you want to animate.</li>
+    <li>Press <strong>Play</strong> (Space) to preview. Export as a still, SVG, or video from the toolbar.</li>
+  </ol>
+
+  <h3 id="overview-project">Project structure</h3>
+  <p>Every Loom project is a folder inside <code>~/.loom_projects/</code> (default) with the following layout:</p>
+  <table>
+    <thead><tr><th>Folder / File</th><th>Contents</th></tr></thead>
+    <tbody>
+      <tr><td><code>project_config.json</code></td><td>All sprites, renderers, subdivision sets, global settings</td></tr>
+      <tr><td><code>polygonSets/</code></td><td>XML and JSON geometry files loaded by sprites</td></tr>
+      <tr><td><code>brushes/</code></td><td>PNG brush pattern images</td></tr>
+      <tr><td><code>stamps/</code></td><td>PNG stamp pattern images</td></tr>
+      <tr><td><code>svgs/</code></td><td>Exported SVG wireframe files</td></tr>
+      <tr><td><code>renders/</code></td><td>PNG stills and exported video files</td></tr>
+    </tbody>
+  </table>
+</section>
+
+<!-- ────────────────────────────────────────────────── -->
+<section id="start">
+  <h2>Quick Start</h2>
+
+  <h3 id="start-new">New project</h3>
+  <ol class="steps">
+    <li>Choose <strong>File → New Project…</strong> (or <kbd>⌘N</kbd>). Enter a name in the dialog and click <strong>Create</strong>.</li>
+    <li>Loom creates the project folder and opens <code>project_config.json</code> with sensible defaults (800×800 canvas, 30 fps).</li>
+    <li>The window switches to the main layout — the five tab panels and playback toolbar become active.</li>
+  </ol>
+
+  <h3 id="start-open">Open an existing project</h3>
+  <ol class="steps">
+    <li>Choose <strong>File → Open Project…</strong> (or <kbd>⌘O</kbd>) and select the project folder, or click the <em>Open Loom Projects Folder</em> icon in the toolbar and double-click a project.</li>
+    <li>Loom reads <code>project_config.json</code> and reloads all geometry, renderers, and animation state.</li>
+    <li>Use <kbd>⌘R</kbd> or the reload button to re-read the config after making external edits.</li>
+  </ol>
+
+  <h3 id="start-playback">Playback controls</h3>
+  <p>The toolbar at the top of the window contains the playback controls:</p>
+  <table>
+    <thead><tr><th>Control</th><th>Action</th></tr></thead>
+    <tbody>
+      <tr><td>▶ / ⏸ (Space)</td><td>Play or pause the animation</td></tr>
+      <tr><td>■ Stop</td><td>Stop and return to frame 0</td></tr>
+      <tr><td>⟳ Loop</td><td>Toggle loop-forever / play-once</td></tr>
+      <tr><td>Frame counter</td><td>Displays the current frame number</td></tr>
+      <tr><td>Scrub bar</td><td>Drag to seek (enabled in Global settings)</td></tr>
+    </tbody>
+  </table>
+
+  <div class="tip"><strong>Tip:</strong> Enable the scrub bar in <strong>Global → Show Scrub Bar</strong> for a timeline slider beneath the toolbar. Dragging while playing pauses automatically and resumes when released.</div>
+</section>
+
+<!-- ────────────────────────────────────────────────── -->
+<section id="global">
+  <h2>Global Tab</h2>
+  <p>The Global tab configures project-wide settings that affect the canvas, output quality, and playback behaviour.</p>
+
+  <h3>Canvas</h3>
+  <table>
+    <thead><tr><th>Field</th><th>Description</th></tr></thead>
+    <tbody>
+      <tr><td>Name</td><td>Display name shown in the toolbar centre. Also used as the video export filename stem.</td></tr>
+      <tr><td>Width / Height</td><td>Canvas dimensions in pixels. Renderers and SVG export use these dimensions.</td></tr>
+      <tr><td>Quality</td><td>Multiplier applied to output resolution (e.g. 2× renders at twice the canvas size).</td></tr>
+    </tbody>
+  </table>
+
+  <h3>Colours</h3>
+  <table>
+    <thead><tr><th>Field</th><th>Description</th></tr></thead>
+    <tbody>
+      <tr><td>Background</td><td>Canvas background colour. RGBA — use alpha &lt; 1 for transparent still exports.</td></tr>
+      <tr><td>Border</td><td>Optional border drawn around the canvas edge.</td></tr>
+      <tr><td>Overlay</td><td>Colour composited over everything — useful for a global tint or fog effect.</td></tr>
+    </tbody>
+  </table>
+
+  <h3>Playback</h3>
+  <table>
+    <thead><tr><th>Field</th><th>Description</th></tr></thead>
+    <tbody>
+      <tr><td>Target FPS</td><td>Frames per second for playback and video export.</td></tr>
+      <tr><td>Duration</td><td>Total frames. Set to 0 to derive duration from the longest keyframe lane.</td></tr>
+      <tr><td>Animating</td><td>Master animation on/off toggle. When off, always renders frame 0.</td></tr>
+      <tr><td>Draw BG once</td><td>Optimization: draw the background image once and composite animated layers on top.</td></tr>
+      <tr><td>Show Scrub Bar</td><td>Reveals the seek slider beneath the playback toolbar.</td></tr>
+    </tbody>
+  </table>
+
+  <h3>Background image</h3>
+  <p>Drag in or select a PNG, JPEG, TIFF, BMP, or HEIC file to set a background image. Toggle <strong>Scale to canvas</strong> to stretch it to fill the canvas, or leave it at native resolution.</p>
+
+  <h3>3-D mode</h3>
+  <p>Enable <strong>3-D</strong> to activate the perspective camera. Set a <strong>View Angle</strong> in degrees (typical range 30°–90°) to control the field of view. Camera pan, zoom, and rotation can be animated via the Timeline.</p>
+
+  <h3>Notes</h3>
+  <p>A plain-text editor for project-level notes — algorithm descriptions, colour palette references, or render instructions. Not exported.</p>
+</section>
+
+<!-- ────────────────────────────────────────────────── -->
+<section id="geometry">
+  <h2>Geometry Tab</h2>
+  <p>The Geometry tab manages the polygon and curve files that define all shapes in your project. A <em>geometry document</em> holds one or more named layers, each containing polygons, curves, and points.</p>
+
+  <h3>Geometry list</h3>
+  <p>The left panel shows all registered geometry sources. Each row displays the file name and type indicators (polygon, curve, point icons) alongside a sprite-count badge. Click to select; double-click to rename. Right-click for <strong>Rename</strong>, <strong>Duplicate</strong>, and <strong>Delete</strong> options.</p>
+
+  <div class="tip"><strong>Tip:</strong> Geometry files are shared — multiple sprites can reference the same file with different subdivision sets and renderers applied.</div>
+
+  <h3>Action bar</h3>
+  <table>
+    <thead><tr><th>Button</th><th>Action</th></tr></thead>
+    <tbody>
+      <tr><td>Open Editor</td><td>Open the full geometry editor for the selected document.</td></tr>
+      <tr><td>Duplicate</td><td>Copy the selected geometry document, giving it a new name.</td></tr>
+      <tr><td>Import</td><td>Browse for an existing XML or JSON polygon file and register it in the project.</td></tr>
+    </tbody>
+  </table>
+
+  <h3 id="geometry-editor">Geometry Editor</h3>
+  <p>The editor opens as an overlay covering the canvas. It provides a full set of vector-drawing tools.</p>
+
+  <div class="diagram">
+    <svg width="520" height="140" viewBox="0 0 520 140" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <!-- toolbar -->
+      <rect x="10" y="10" width="500" height="28" rx="4" fill="#2d2d2e" stroke="#3c3c3c"/>
+      <text x="20" y="28" font-size="10" fill="#888" font-family="-apple-system">Tools</text>
+      <text x="72"  y="28" font-size="10" fill="#ccc" font-family="-apple-system">Points</text>
+      <text x="120" y="28" font-size="10" fill="#ccc" font-family="-apple-system">Edges</text>
+      <text x="166" y="28" font-size="10" fill="#ccc" font-family="-apple-system">Open Curve</text>
+      <text x="246" y="28" font-size="10" fill="#ccc" font-family="-apple-system">Polygon</text>
+      <text x="304" y="28" font-size="10" fill="#ccc" font-family="-apple-system">Freehand</text>
+      <text x="365" y="28" font-size="10" fill="#ccc" font-family="-apple-system">Knife</text>
+      <text x="410" y="28" font-size="10" fill="#ccc" font-family="-apple-system">Extrude</text>
+      <!-- canvas area -->
+      <rect x="10" y="46" width="380" height="84" rx="4" fill="#1e1e1e" stroke="#3c3c3c"/>
+      <text x="200" y="92" text-anchor="middle" font-size="11" fill="#555" font-family="-apple-system">Canvas</text>
+      <!-- layers panel -->
+      <rect x="398" y="46" width="112" height="84" rx="4" fill="#252526" stroke="#3c3c3c"/>
+      <text x="454" y="64" text-anchor="middle" font-size="10" fill="#888" font-family="-apple-system">Layers</text>
+      <rect x="408" y="70" width="92" height="16" rx="3" fill="#0e7fd420" stroke="#0e7fd4"/>
+      <text x="454" y="82" text-anchor="middle" font-size="9" fill="#ccc" font-family="-apple-system">Layer 1 (active)</text>
+      <rect x="408" y="90" width="92" height="16" rx="3" fill="#2d2d2e"/>
+      <text x="454" y="102" text-anchor="middle" font-size="9" fill="#888" font-family="-apple-system">Layer 2</text>
+    </svg>
+    <figcaption>Geometry editor layout — tool bar, canvas, and layers panel</figcaption>
+  </div>
+
+  <h4>Drawing tools</h4>
+  <table>
+    <thead><tr><th>Tool</th><th>Description</th></tr></thead>
+    <tbody>
+      <tr><td>Create Points</td><td>Click to place standalone control points.</td></tr>
+      <tr><td>Points</td><td>Select and drag existing anchor points.</td></tr>
+      <tr><td>Edges</td><td>Select and manipulate Bézier segments and control handles.</td></tr>
+      <tr><td>Open Curve</td><td>Draw open (non-closed) Bézier paths by clicking anchor positions.</td></tr>
+      <tr><td>Polygon</td><td>Draw closed Bézier polygons. Click to add anchors, double-click to close.</td></tr>
+      <tr><td>Point By Point</td><td>Manual vertex-by-vertex polygon entry with precise placement.</td></tr>
+      <tr><td>Freehand</td><td>Draw with the mouse or stylus — pressure data is recorded and used in SVG export.</td></tr>
+      <tr><td>Mesh Extend</td><td>Extend an edge outward — shows a live preview as you drag. Confirm anchors to commit.</td></tr>
+      <tr><td>Knife</td><td>Draw a cut line across polygons to split them. Toggle to cut all visible layers.</td></tr>
+      <tr><td>Extrude (Displacement)</td><td>Offset-extrude selected edges by a fixed distance.</td></tr>
+      <tr><td>Extrude (Scale)</td><td>Proportionally scale-extrude selected edges.</td></tr>
+    </tbody>
+  </table>
+
+  <h4>Canvas navigation</h4>
+  <ul>
+    <li>Use the <strong>+/−</strong> zoom buttons to double or halve the view scale.</li>
+    <li>Enable the <strong>Grid</strong> at three detail levels: Quadrants, Standard, and Fine.</li>
+    <li>Toggle <strong>Control Points</strong> to show or hide Bézier handles.</li>
+    <li>Use the <strong>Centre</strong> button to re-center the view on the geometry.</li>
+  </ul>
+
+  <h4>Selection and editing</h4>
+  <ul>
+    <li>Click to select individual points or segments; drag a region to multi-select.</li>
+    <li><strong>Anchor-only mode</strong> hides control handles so you edit only anchor positions.</li>
+    <li><strong>Auto-weld</strong> merges nearby points automatically (configurable tolerance).</li>
+    <li><strong>Undo / Redo</strong> via the toolbar buttons or standard keyboard shortcuts.</li>
+    <li><strong>Copy / Paste</strong> duplicates geometry relative to centroid position.</li>
+  </ul>
+
+  <h4>Transform pivot modes</h4>
+  <p>When transforming selected geometry, choose the pivot point:</p>
+  <table>
+    <thead><tr><th>Mode</th><th>Description</th></tr></thead>
+    <tbody>
+      <tr><td>Local centre</td><td>Pivot around the bounding-box centre of the selection.</td></tr>
+      <tr><td>Common centre</td><td>Pivot around the centroid of all visible geometry.</td></tr>
+      <tr><td>Absolute centre</td><td>Pivot around the canvas origin (0, 0).</td></tr>
+    </tbody>
+  </table>
+
+  <h3 id="geometry-layers">Layers</h3>
+  <p>Each geometry document supports multiple named layers. Use layers to separate shape groups — for example, keeping outline polygons on one layer and detail curves on another.</p>
+  <ul>
+    <li>Click a layer to make it active (new geometry is drawn on the active layer).</li>
+    <li>Toggle the eye icon to show/hide a layer; toggle the pencil icon to lock/unlock editing.</li>
+    <li>Double-click a layer name to rename it.</li>
+    <li>Add or remove layers with the <strong>+</strong> / <strong>−</strong> buttons in the layers panel.</li>
+  </ul>
+
+  <h3>File section (inspector)</h3>
+  <table>
+    <thead><tr><th>Control</th><th>Action</th></tr></thead>
+    <tbody>
+      <tr><td>Name</td><td>Document name used as the SVG export stem and display label.</td></tr>
+      <tr><td>Export (folder icon)</td><td>Save the active layer's geometry as an SVG wireframe to the project's <code>svgs/</code> folder.</td></tr>
+      <tr><td>Save (save icon)</td><td>Persist the document back to its <code>polygonSets/</code> JSON file.</td></tr>
+    </tbody>
+  </table>
+</section>
+
+<!-- ────────────────────────────────────────────────── -->
+<section id="sprites">
+  <h2>Sprites Tab</h2>
+  <p>Sprites are the fundamental render units in Loom. Each sprite references a geometry file and is assigned a subdivision set and a renderer set. The Sprites tab shows a hierarchical tree of all sprites organized into named sets.</p>
+
+  <h3>Sprite list</h3>
+  <p>Sprites are grouped into <em>sprite sets</em>. Click the chevron to collapse or expand a set. Drag sprites within the list to reorder them, or drag between sets to reassign. Use the search bar at the top to filter by sprite or set name.</p>
+
+  <p>Each sprite row shows:</p>
+  <ul>
+    <li>An <strong>enable checkbox</strong> — disabled sprites are not drawn.</li>
+    <li>The sprite <strong>name</strong> (double-click to rename).</li>
+    <li>A <strong>play icon</strong> if any animation driver is active.</li>
+    <li>For child sprites, <strong>P / R / S</strong> buttons to toggle parent transform inheritance.</li>
+  </ul>
+
+  <h3>Creating sprites</h3>
+  <ol class="steps">
+    <li>Click <strong>+</strong> in the set toolbar to add a new sprite set, or use the sprite <strong>+</strong> button to add a sprite to the selected set.</li>
+    <li>With the new sprite selected, open the inspector and assign a <strong>Geometry</strong> (polygon set file), a <strong>Renderer Set</strong>, and a <strong>Subdivision Set</strong>.</li>
+    <li>Set initial <strong>Position</strong>, <strong>Scale</strong>, and <strong>Rotation</strong> in the Transform section.</li>
+  </ol>
+
+  <h3 id="sprites-hierarchy">Hierarchy and inheritance</h3>
+  <p>Any sprite can be assigned a <strong>parent</strong> via the Hierarchy section in the inspector. Child transforms are applied relative to the parent. Use the P / R / S toggles to choose which parent transforms the child inherits:</p>
+  <table>
+    <thead><tr><th>Toggle</th><th>Effect when on</th></tr></thead>
+    <tbody>
+      <tr><td>P (Position)</td><td>Child offset is applied relative to the parent's world position.</td></tr>
+      <tr><td>R (Rotation)</td><td>Child rotation is added to the parent's world rotation.</td></tr>
+      <tr><td>S (Scale)</td><td>Child scale is multiplied by the parent's world scale.</td></tr>
+    </tbody>
+  </table>
+
+  <div class="tip"><strong>Tip:</strong> Set all three off to create a sprite that uses the parent only for logical grouping, with completely independent world-space transforms.</div>
+
+  <h3>Sprite inspector sections</h3>
+  <table>
+    <thead><tr><th>Section</th><th>Contents</th></tr></thead>
+    <tbody>
+      <tr><td>Sprite</td><td>Name, renderer set, subdivision set</td></tr>
+      <tr><td>Transform</td><td>X/Y position, X/Y scale, rotation in degrees</td></tr>
+      <tr><td>Animation</td><td>Per-property animation drivers (see <a href="#animation">Animation</a>)</td></tr>
+      <tr><td>Hierarchy</td><td>Parent selector, P/R/S inherit toggles</td></tr>
+    </tbody>
+  </table>
+</section>
+
+<!-- ────────────────────────────────────────────────── -->
+<section id="subdivision">
+  <h2>Subdivision Tab</h2>
+  <p>The Subdivision tab is where Loom's generative power lives. It manages <em>subdivision parameter sets</em> — ordered sequences of algorithms that progressively fracture geometry into more complex polygonal structures.</p>
+
+  <div class="diagram">
+    <svg width="480" height="100" viewBox="0 0 480 100" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <defs>
+        <marker id="arr2" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
+          <path d="M0,0 L0,6 L8,3 z" fill="#0e7fd4"/>
+        </marker>
+      </defs>
+      <!-- base quad -->
+      <rect x="20" y="25" width="60" height="50" fill="none" stroke="#3c3c3c" stroke-width="1.5"/>
+      <text x="50" y="90" text-anchor="middle" font-size="10" fill="#888" font-family="-apple-system">Base polygon</text>
+      <!-- arrow 1 -->
+      <line x1="86" y1="50" x2="118" y2="50" stroke="#0e7fd4" stroke-width="1.5" marker-end="url(#arr2)"/>
+      <text x="102" y="44" text-anchor="middle" font-size="9" fill="#555" font-family="-apple-system">Quad</text>
+      <!-- 4 quads -->
+      <rect x="122" y="25" width="28" height="25" fill="none" stroke="#3c3c3c" stroke-width="1.2"/>
+      <rect x="150" y="25" width="28" height="25" fill="none" stroke="#3c3c3c" stroke-width="1.2"/>
+      <rect x="122" y="50" width="28" height="25" fill="none" stroke="#3c3c3c" stroke-width="1.2"/>
+      <rect x="150" y="50" width="28" height="25" fill="none" stroke="#3c3c3c" stroke-width="1.2"/>
+      <text x="150" y="90" text-anchor="middle" font-size="10" fill="#888" font-family="-apple-system">4 quads</text>
+      <!-- arrow 2 -->
+      <line x1="186" y1="50" x2="218" y2="50" stroke="#0e7fd4" stroke-width="1.5" marker-end="url(#arr2)"/>
+      <text x="202" y="44" text-anchor="middle" font-size="9" fill="#555" font-family="-apple-system">Echo</text>
+      <!-- echoed -->
+      <rect x="222" y="28" width="22" height="19" fill="none" stroke="#3c3c3c" stroke-width="1"/>
+      <rect x="226" y="32" width="14" height="11" fill="none" stroke="#555" stroke-width="0.8"/>
+      <rect x="244" y="28" width="22" height="19" fill="none" stroke="#3c3c3c" stroke-width="1"/>
+      <rect x="248" y="32" width="14" height="11" fill="none" stroke="#555" stroke-width="0.8"/>
+      <rect x="222" y="53" width="22" height="19" fill="none" stroke="#3c3c3c" stroke-width="1"/>
+      <rect x="226" y="57" width="14" height="11" fill="none" stroke="#555" stroke-width="0.8"/>
+      <rect x="244" y="53" width="22" height="19" fill="none" stroke="#3c3c3c" stroke-width="1"/>
+      <rect x="248" y="57" width="14" height="11" fill="none" stroke="#555" stroke-width="0.8"/>
+      <text x="258" y="90" text-anchor="middle" font-size="10" fill="#888" font-family="-apple-system">+ insets</text>
+      <!-- arrow 3 -->
+      <line x1="278" y1="50" x2="310" y2="50" stroke="#0e7fd4" stroke-width="1.5" marker-end="url(#arr2)"/>
+      <text x="294" y="44" text-anchor="middle" font-size="9" fill="#555" font-family="-apple-system">Tri</text>
+      <!-- final triangulated -->
+      <polygon points="314,25 352,25 333,50" fill="none" stroke="#0e7fd4" stroke-width="1"/>
+      <polygon points="314,50 352,50 333,75" fill="none" stroke="#0e7fd4" stroke-width="1"/>
+      <polygon points="314,25 314,50 333,37" fill="none" stroke="#0e7fd4" stroke-width="1"/>
+      <polygon points="352,25 352,50 333,37" fill="none" stroke="#0e7fd4" stroke-width="1"/>
+      <text x="333" y="90" text-anchor="middle" font-size="10" fill="#888" font-family="-apple-system">triangulated</text>
+    </svg>
+    <figcaption>A two-step subdivision chain: Quad → Echo → Tri</figcaption>
+  </div>
+
+  <h3>Working with sets</h3>
+  <ol class="steps">
+    <li>Click <strong>+</strong> in the Sets toolbar to create a new subdivision set and give it a name.</li>
+    <li>Click <strong>+</strong> in the Parameters toolbar to add the first algorithm to the set.</li>
+    <li>Select the parameter row and adjust its settings in the inspector on the right: algorithm type, ratios, inset, visibility rules, and optional PTW/PTP geometric transforms.</li>
+    <li>Click the <strong>eye</strong> icon next to the set to preview the subdivided result on the canvas — the sprites assigned to this set update live.</li>
+    <li>When satisfied, click <strong>Apply</strong> in the Apply Bar to commit the set assignment to the selected sprite, or use the bake button to write the subdivided geometry to a permanent file.</li>
+  </ol>
+
+  <h3 id="subdivision-algorithms">Algorithms</h3>
+  <table>
+    <thead><tr><th>Algorithm</th><th>Behaviour</th></tr></thead>
+    <tbody>
+      <tr><td>Quad</td><td>Divides each polygon into four quadrilaterals using X and Y ratio lines.</td></tr>
+      <tr><td>QuadBord</td><td>Quad subdivision with an additional border polygon around the perimeter.</td></tr>
+      <tr><td>QuadBordEcho</td><td>QuadBord with an echo (inset) of the border polygon.</td></tr>
+      <tr><td>QuadBordDouble</td><td>Double-bordered quad variation.</td></tr>
+      <tr><td>QuadBordDoubleEcho</td><td>Double-bordered quad with echo insets.</td></tr>
+      <tr><td>Tri</td><td>Divides each polygon into triangles from its centroid.</td></tr>
+      <tr><td>TriBordA / B / C</td><td>Triangle subdivision with border variations (A = outer, B = inner, C = mixed).</td></tr>
+      <tr><td>TriBordAEcho / BEcho / CEcho</td><td>Bordered triangle variations with echo insets.</td></tr>
+      <tr><td>TriStar</td><td>Star-shaped triangulation from a central point.</td></tr>
+      <tr><td>TriStarFill</td><td>TriStar with filled interior polygon.</td></tr>
+      <tr><td>SplitVert</td><td>Splits each polygon with a vertical line at the X ratio position.</td></tr>
+      <tr><td>SplitHoriz</td><td>Splits each polygon with a horizontal line at the Y ratio position.</td></tr>
+      <tr><td>SplitDiag</td><td>Splits each polygon diagonally.</td></tr>
+      <tr><td>Echo</td><td>Produces an inset echo polygon inside each source polygon.</td></tr>
+      <tr><td>EchoAbsCenter</td><td>Echo pinned to the canvas absolute centre rather than the polygon centroid.</td></tr>
+    </tbody>
+  </table>
+
+  <h3>Parameter settings</h3>
+  <table>
+    <thead><tr><th>Parameter</th><th>Description</th></tr></thead>
+    <tbody>
+      <tr><td>Algorithm</td><td>The subdivision type (see above).</td></tr>
+      <tr><td>Ratio X / Y</td><td>Horizontal and vertical split positions (0–1 within the polygon).</td></tr>
+      <tr><td>Control X / Y</td><td>Bézier control ratios for curved subdivision edges.</td></tr>
+      <tr><td>Continuous</td><td>Propagate the same parameter index to all child polygons.</td></tr>
+      <tr><td>Visibility rule</td><td>Filter which polygons are rendered — all, random, every nth, etc.</td></tr>
+      <tr><td>Inset</td><td>Distance of the echo inset (for Echo and Bord variants).</td></tr>
+      <tr><td>Apply to border</td><td>Whether the inset also applies to the border polygon.</td></tr>
+      <tr><td>Enabled</td><td>Checkbox to temporarily disable a parameter without deleting it.</td></tr>
+    </tbody>
+  </table>
+
+  <h3 id="subdivision-ptw">PTW — Polygons Transform Whole</h3>
+  <p>PTW applies geometric transformations to entire output polygons as units. When enabled, each polygon produced by the subdivision step can be independently translated, scaled, and rotated by a randomly sampled amount within configurable ranges. This breaks the regularity of subdivided geometry, producing scattered, fragmented, or organically varied results from otherwise structured forms.</p>
+
+  <table>
+    <thead><tr><th>Parameter</th><th>Description</th></tr></thead>
+    <tbody>
+      <tr><td>Enabled</td><td>Master on/off toggle for the entire PTW block.</td></tr>
+      <tr><td>Whole</td><td>When on, the transform is applied to the whole polygon shape as a rigid body. When off, only positional displacement is applied.</td></tr>
+      <tr><td>Probability</td><td>Percentage chance (0–100) that the transform fires for each individual polygon. At 50%, roughly half the output polygons will be affected each frame.</td></tr>
+      <tr><td>Common centre</td><td>When on, all transforms use a single shared centre point rather than each polygon's own centroid. Useful for creating radial scatter effects.</td></tr>
+      <tr><td>Ran transl</td><td>Enable random translation. When off, no positional displacement is applied even if translation ranges are set.</td></tr>
+      <tr><td>Ran scale</td><td>Enable random scaling.</td></tr>
+      <tr><td>Ran rotate</td><td>Enable random rotation.</td></tr>
+      <tr><td>Transl X (mn/mx)</td><td>Min/max range for random displacement along the X axis.</td></tr>
+      <tr><td>Transl Y (mn/mx)</td><td>Min/max range for random displacement along the Y axis.</td></tr>
+      <tr><td>Scale X (mn/mx)</td><td>Min/max range for random X-axis scale factor.</td></tr>
+      <tr><td>Scale Y (mn/mx)</td><td>Min/max range for random Y-axis scale factor.</td></tr>
+      <tr><td>Rot range (mn/mx)</td><td>Min/max range for random rotation angle.</td></tr>
+    </tbody>
+  </table>
+
+  <div class="tip"><strong>Tip:</strong> Set Probability below 100 and Whole off with a small Transl range to add subtle positional noise to subdivided shapes without destroying their overall structure.</div>
+
+  <h3 id="subdivision-ptp">PTP — Polygons Transform Points</h3>
+  <p>PTP operates at the individual point level inside each output polygon. Rather than moving whole shapes, it deforms specific sets of Bézier anchor points and control handles — creating spikes, tears, curvature changes, and organic distortions. PTP is organised into five independent groups accessed via tabs, each targeting a different class of points within the polygon.</p>
+
+  <p>All five groups share a top-level <strong>Enabled</strong> toggle and <strong>Probability</strong> (applied per polygon). Each group has its own secondary probability.</p>
+
+  <div class="diagram">
+    <svg width="360" height="130" viewBox="0 0 360 130" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <!-- polygon outline -->
+      <polygon points="180,18 310,75 255,118 105,118 50,75" fill="none" stroke="#3c3c3c" stroke-width="1.5"/>
+      <!-- exterior anchors (Ext) -->
+      <circle cx="180" cy="18"  r="5" fill="#0e7fd4"/>
+      <circle cx="310" cy="75"  r="5" fill="#0e7fd4"/>
+      <circle cx="255" cy="118" r="5" fill="#0e7fd4"/>
+      <circle cx="105" cy="118" r="5" fill="#0e7fd4"/>
+      <circle cx="50"  cy="75"  r="5" fill="#0e7fd4"/>
+      <!-- central anchor (Cen) -->
+      <circle cx="180" cy="80" r="5" fill="#f0c040"/>
+      <!-- outer CPs (OCP) - shown on one edge -->
+      <circle cx="245" cy="46" r="3" fill="#aaaaaa" stroke="#555" stroke-width="0.8"/>
+      <circle cx="270" cy="62" r="3" fill="#aaaaaa" stroke="#555" stroke-width="0.8"/>
+      <line x1="310" y1="75" x2="245" y2="46" stroke="#555" stroke-width="0.6" stroke-dasharray="3,2"/>
+      <line x1="180" y1="18" x2="270" y2="62" stroke="#555" stroke-width="0.6" stroke-dasharray="3,2"/>
+      <!-- inner CPs (ICP) - shown on another edge -->
+      <circle cx="155" cy="100" r="3" fill="#888888" stroke="#555" stroke-width="0.8"/>
+      <circle cx="128" cy="100" r="3" fill="#888888" stroke="#555" stroke-width="0.8"/>
+      <line x1="180" y1="118" x2="155" y2="100" stroke="#555" stroke-width="0.6" stroke-dasharray="3,2"/>
+      <line x1="105" y1="118" x2="128" y2="100" stroke="#555" stroke-width="0.6" stroke-dasharray="3,2"/>
+      <!-- labels -->
+      <text x="192" y="13"  font-size="9" fill="#0e7fd4" font-family="-apple-system">Ext anchors</text>
+      <text x="186" y="93"  font-size="9" fill="#f0c040" font-family="-apple-system">Cen</text>
+      <text x="275" y="42"  font-size="9" fill="#aaa"    font-family="-apple-system">OCP</text>
+      <text x="120" y="96"  font-size="9" fill="#888"    font-family="-apple-system">ICP</text>
+    </svg>
+    <figcaption>Point groups targeted by PTP: exterior anchors (blue), central anchor (yellow), outer CPs (grey), inner CPs (dark grey). ALC targets anchors positioned near the polygon centre.</figcaption>
+  </div>
+
+  <h4>Ext — Exterior Anchors</h4>
+  <p>Displaces the outer anchor points of each polygon outward or inward — creating spikes, dents, or irregular protrusions. The target set can be all anchors, corners only, or midpoint anchors. Spike direction can be symmetrical, left-biased, right-biased, or random. Control point handles can optionally follow the displaced anchor with a configurable multiplier, and a squeeze option pulls handles toward the edge midpoint for sharper transitions.</p>
+  <table>
+    <thead><tr><th>Parameter</th><th>Description</th></tr></thead>
+    <tbody>
+      <tr><td>Probability</td><td>Chance this group fires per polygon.</td></tr>
+      <tr><td>Spike factor</td><td>Displacement magnitude. Positive values push outward; negative pull inward.</td></tr>
+      <tr><td>Which spike</td><td><strong>All</strong> — every anchor; <strong>Corners</strong> — corner anchors only; <strong>Middles</strong> — midpoint anchors only.</td></tr>
+      <tr><td>Spike type</td><td><strong>Symmetrical</strong> — balanced spike; <strong>Right / Left</strong> — asymmetric lean; <strong>Random</strong> — varies per anchor.</td></tr>
+      <tr><td>Spike axis</td><td>Constrain displacement to <strong>XY</strong> (both), <strong>X</strong>, or <strong>Y</strong> only.</td></tr>
+      <tr><td>Ran spike / Spike range</td><td>Randomise spike magnitude within min/max range.</td></tr>
+      <tr><td>CPs follow / CPs mult</td><td>Control handles track the displaced anchor. Multiplier scales how closely they follow.</td></tr>
+      <tr><td>Ran CPs follow / CPs follow range</td><td>Randomise the CP follow amount per anchor.</td></tr>
+      <tr><td>CPs squeeze / Squeeze factor</td><td>Pull control handles toward the edge midpoint, sharpening the spike base.</td></tr>
+      <tr><td>Ran squeeze / Squeeze range</td><td>Randomise squeeze amount per anchor.</td></tr>
+    </tbody>
+  </table>
+
+  <h4>Cen — Central Anchors</h4>
+  <p>Tears or displaces anchor points positioned near the polygon interior, pulling them in a specified direction and axis. An <em>all points follow</em> option propagates the tear displacement to the rest of the polygon's points, effectively shearing the whole shape. <em>Inverted follow</em> reverses this propagation direction.</p>
+  <table>
+    <thead><tr><th>Parameter</th><th>Description</th></tr></thead>
+    <tbody>
+      <tr><td>Probability</td><td>Chance this group fires per polygon.</td></tr>
+      <tr><td>Tear factor</td><td>Displacement magnitude of the tear.</td></tr>
+      <tr><td>Tear axis</td><td>Constrain tear to <strong>XY</strong>, <strong>X</strong>, <strong>Y</strong>, or <strong>Random</strong>.</td></tr>
+      <tr><td>Tear direction</td><td><strong>Diagonal / Left / Right / Random</strong> — directional bias of the tear.</td></tr>
+      <tr><td>Ran tear / Tear range</td><td>Randomise tear magnitude within min/max range.</td></tr>
+      <tr><td>CPs follow / CPs mult</td><td>Control handles follow the torn anchor.</td></tr>
+      <tr><td>Ran CPs follow / CPs follow range</td><td>Randomise CP follow amount.</td></tr>
+      <tr><td>All pts follow</td><td>All other polygon points also displace in the same direction as the tear.</td></tr>
+      <tr><td>Inverted follow</td><td>Reverse the direction of the all-points-follow displacement.</td></tr>
+    </tbody>
+  </table>
+
+  <h4>OCP — Outer Control Points</h4>
+  <p>Repositions the Bézier control handles on the exterior edges of the polygon to introduce curvature. Handles can be oriented perpendicular to the edge, or directed from the polygon centre outward. The <em>curve type</em> controls whether individual edges bow outward (puff) or inward (pinch), and how these alternate around the polygon perimeter.</p>
+  <table>
+    <thead><tr><th>Parameter</th><th>Description</th></tr></thead>
+    <tbody>
+      <tr><td>Probability</td><td>Chance this group fires per polygon.</td></tr>
+      <tr><td>Line ratio X / Y</td><td>Base position of the control handle along the edge (0 = start anchor, 1 = end anchor).</td></tr>
+      <tr><td>Ran ratio / Inner range / Outer range</td><td>Randomise ratio position within inner and outer min/max ranges.</td></tr>
+      <tr><td>Curve mode</td><td><strong>Perpendicular</strong> — handles project at 90° to the edge; <strong>From centre</strong> — handles point away from the polygon centroid.</td></tr>
+      <tr><td>Curve type</td><td><strong>Puff</strong> — all edges bow outward; <strong>Pinch</strong> — all edges bow inward; alternating combinations (Puff-Pinch-Puff-Pinch, etc.) create star or flower-like shapes.</td></tr>
+      <tr><td>Mult min / max</td><td>Curvature multiplier range — higher values produce more extreme bowing.</td></tr>
+      <tr><td>Ran mult / Mult range</td><td>Randomise the multiplier per edge within min/max range.</td></tr>
+      <tr><td>From ctr X / Y</td><td>For <em>From centre</em> mode: ratio offsets that control how far from the centroid the handle is placed.</td></tr>
+      <tr><td>Ran from ctr / From ctr A / B ranges</td><td>Randomise the from-centre position within two independent ranges.</td></tr>
+    </tbody>
+  </table>
+
+  <h4>ALC — Anchors Linked to Centre</h4>
+  <p>Tears anchor points that are geometrically linked to the polygon centre — pulling them toward an outside corner, the opposite corner, toward the centre itself, or randomly. Similar to Cen but directional tear types reference polygon structure (corners and edges) rather than a global axis.</p>
+  <table>
+    <thead><tr><th>Parameter</th><th>Description</th></tr></thead>
+    <tbody>
+      <tr><td>Probability</td><td>Chance this group fires per polygon.</td></tr>
+      <tr><td>Tear factor</td><td>Displacement magnitude.</td></tr>
+      <tr><td>Tear type</td><td><strong>Outside corner</strong> — pulls toward the nearest exterior corner; <strong>Opposite corner</strong> — pulls toward the far corner; <strong>Towards centre</strong> — pulls inward; <strong>Random</strong> — varies per anchor.</td></tr>
+      <tr><td>Ran tear / Tear range</td><td>Randomise tear magnitude within min/max range.</td></tr>
+      <tr><td>CPs follow / CPs mult</td><td>Control handles track the torn anchor.</td></tr>
+      <tr><td>Ran CPs follow / CPs follow range</td><td>Randomise CP follow amount.</td></tr>
+    </tbody>
+  </table>
+
+  <h4>ICP — Inner Control Points</h4>
+  <p>Controls the inward-facing Bézier handles on polygon edges. These can operate independently or reference the behaviour of the outer control points (OCP). The <em>refer outer</em> modes let inner handles mirror, exaggerate, or oppose what OCP has done, creating coordinated curvature effects from a single set of parameters. <em>Common line</em> aligns handles across even, odd, or randomly chosen edges.</p>
+  <table>
+    <thead><tr><th>Parameter</th><th>Description</th></tr></thead>
+    <tbody>
+      <tr><td>Probability</td><td>Chance this group fires per polygon.</td></tr>
+      <tr><td>Refer outer</td><td><strong>None</strong> — independent; <strong>Follow</strong> — mirrors OCP offset; <strong>Exaggerate</strong> — amplifies OCP offset; <strong>Counter</strong> — opposes OCP offset.</td></tr>
+      <tr><td>Inner mult X / Y</td><td>Multiplier applied to the inward handle position on X and Y axes.</td></tr>
+      <tr><td>Outer mult X / Y</td><td>Multiplier applied to the outward handle position on X and Y axes.</td></tr>
+      <tr><td>Inner ratio / Outer ratio</td><td>Base position ratios for inner and outer handles along the edge.</td></tr>
+      <tr><td>Ran ratio / Inner range / Outer range</td><td>Randomise ratios within independent inner and outer min/max ranges.</td></tr>
+      <tr><td>Common line</td><td><strong>Even / Odd</strong> — align handles on even or odd-indexed edges; <strong>Random</strong> — random per edge; <strong>None</strong> — no alignment.</td></tr>
+    </tbody>
+  </table>
+
+  <h3 id="subdivision-bake">Baking</h3>
+  <p>Baking converts the live-subdivided polygon output into a static polygon file stored in <code>polygonSets/</code>. This is useful when you want to use subdivided geometry as input for a further subdivision pass, or when you want to lock in a particular result.</p>
+  <ol class="steps">
+    <li>Select a sprite in the upper panel and select a subdivision set in the lower panel.</li>
+    <li>Preview the result using the eye icon. Confirm the output looks correct.</li>
+    <li>Click the <strong>flame (bake)</strong> button in the sets toolbar.</li>
+    <li>Loom writes the output polygons to <code>polygonSets/</code>, auto-registers the new file, and shows a confirmation with the polygon count.</li>
+  </ol>
+  <p>To export the subdivided geometry as an SVG wireframe without baking, click the <strong>folder-arrow</strong> (SVG export) button next to the bake button.</p>
+</section>
+
+<!-- ────────────────────────────────────────────────── -->
+<section id="rendering">
+  <h2>Rendering Tab</h2>
+  <p>The Rendering tab defines how sprites are visually drawn. <em>Renderer sets</em> hold one or more <em>renderers</em>; each renderer describes a drawing mode, colours, and optional animation. A sprite is assigned one renderer set and Loom picks from within that set according to the set's playback mode.</p>
+
+  <h3>Renderer set playback modes</h3>
+  <table>
+    <thead><tr><th>Mode</th><th>Behaviour</th></tr></thead>
+    <tbody>
+      <tr><td>Sequential</td><td>Renderers are applied in order — first renderer for frame 0, second for frame 1, etc.</td></tr>
+      <tr><td>Random</td><td>A renderer is picked at random each frame. Optionally bias towards a named preferred renderer at a specified probability.</td></tr>
+    </tbody>
+  </table>
+
+  <h3 id="rendering-modes">Rendering modes</h3>
+  <table>
+    <thead><tr><th>Mode</th><th>Description</th></tr></thead>
+    <tbody>
+      <tr><td>Points</td><td>Draws only the polygon vertices as dots. Controlled by <strong>Point Size</strong>.</td></tr>
+      <tr><td>Stroked</td><td>Outline only, no fill. Controlled by <strong>Stroke Colour</strong> and <strong>Stroke Width</strong>.</td></tr>
+      <tr><td>Filled</td><td>Solid fill, no outline. Controlled by <strong>Fill Colour</strong>.</td></tr>
+      <tr><td>Filled + Stroked</td><td>Both fill and outline drawn simultaneously.</td></tr>
+      <tr><td>Brushed</td><td>Stroke is rendered using a custom brush PNG pattern. Stroke width controls brush scale.</td></tr>
+      <tr><td>Stenciled</td><td>A mask image is used to reveal or block the stroke/fill area.</td></tr>
+      <tr><td>Stamped</td><td>A stamp PNG is tiled or placed along the polygon path with optional meander (random offset) for organic placement.</td></tr>
+    </tbody>
+  </table>
+
+  <h3 id="rendering-brush">Brushes and stamps</h3>
+  <p>Brushes and stamps are small PNG images stored in <code>brushes/</code> and <code>stamps/</code> respectively. Each renderer in Brushed or Stamped mode holds a list of brush/stamp names with individual enable checkboxes.</p>
+
+  <h4>Creating a brush or stamp</h4>
+  <ol class="steps">
+    <li>Click <strong>Open Brush Editor</strong> in the renderer inspector, or use the Brush Editor window directly.</li>
+    <li>Configure the grid size (rows × columns) and use the drawing tools to paint your pattern.</li>
+    <li>Use <strong>Draw</strong>, <strong>Erase</strong>, <strong>Image Draw</strong>, or <strong>Select / Deselect</strong> modes.</li>
+    <li>Adjust brush size, hardness, and opacity in the tool options panel.</li>
+    <li>Apply <strong>Flip</strong>, <strong>Rotate</strong>, <strong>Scale</strong>, or <strong>Invert</strong> transforms as needed.</li>
+    <li>Click <strong>Save</strong> (or <strong>Save As…</strong>) to write the PNG to the project's <code>brushes/</code> folder. It appears automatically in the brush list.</li>
+  </ol>
+
+  <h4>Meander (Stamped mode)</h4>
+  <p>Meander adds random positional jitter to each stamp placement. Set <strong>Meander X</strong> and <strong>Meander Y</strong> for the maximum displacement in pixels. Set a <strong>Seed</strong> to get a reproducible random sequence.</p>
+
+  <h3>Colour and animation</h3>
+  <p>Renderer colours can be static RGBA values or animated via drivers:</p>
+  <table>
+    <thead><tr><th>Property</th><th>Animation driver support</th></tr></thead>
+    <tbody>
+      <tr><td>Opacity</td><td>Yes — fade in/out, oscillate, keyframe.</td></tr>
+      <tr><td>Fill colour</td><td>Yes — animate RGBA over time.</td></tr>
+      <tr><td>Stroke colour</td><td>Yes — animate RGBA over time.</td></tr>
+      <tr><td>Stroke width</td><td>Yes — animate width over time (change amount driver).</td></tr>
+      <tr><td>Hold length</td><td>Frames to keep geometry drawn before clearing (ghost/trail effect).</td></tr>
+    </tbody>
+  </table>
+
+  <h3>Palette</h3>
+  <p>The inspector offers a <strong>Palette</strong> section for managing named colour swatches. Palettes can be saved to a JSON file and imported into other projects. This allows colour schemes to be shared across projects without manually re-entering values.</p>
+</section>
+
+<!-- ────────────────────────────────────────────────── -->
+<section id="animation">
+  <h2>Animation</h2>
+  <p>Loom animates sprite and renderer properties via <em>drivers</em> — self-contained generators that produce a value for each frame. Every animatable property (position, scale, rotation, opacity, morph amount, shape index) has its own driver.</p>
+
+  <h3 id="animation-drivers">Driver types</h3>
+  <table>
+    <thead><tr><th>Driver</th><th>Parameters</th><th>Behaviour</th></tr></thead>
+    <tbody>
+      <tr><td>Constant</td><td>Value</td><td>Returns the same value every frame. Effectively no animation.</td></tr>
+      <tr><td>Jitter</td><td>Amount, Seed</td><td>Random offset each frame from a seeded sequence. Amount controls the ± range.</td></tr>
+      <tr><td>Noise</td><td>Period, Amplitude, Seed</td><td>Smooth Perlin noise. Period is the frame-count wavelength; amplitude is the ± range.</td></tr>
+      <tr><td>Oscillator</td><td>Frequency, Phase, Waveform</td><td>Sine, triangle, or square wave. Frequency in cycles per second; phase in 0–1 turns.</td></tr>
+      <tr><td>Keyframe</td><td>Keyframe list, Loop mode</td><td>Interpolates between manually placed keyframes. Loop modes: None, Loop, Ping-Pong.</td></tr>
+    </tbody>
+  </table>
+
+  <h3 id="animation-timeline">Timeline</h3>
+  <p>The Timeline panel appears at the bottom of the window when a project is open. It shows keyframe lanes for every animated sprite property.</p>
+
+  <div class="diagram">
+    <svg width="520" height="90" viewBox="0 0 520 90" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <!-- panel bg -->
+      <rect x="0" y="0" width="520" height="90" fill="#252526" rx="0"/>
+      <!-- ruler -->
+      <rect x="0" y="0" width="520" height="18" fill="#2d2d2e"/>
+      <text x="10" y="13" font-size="9" fill="#666" font-family="-apple-system">0</text>
+      <text x="76" y="13" font-size="9" fill="#666" font-family="-apple-system">30</text>
+      <text x="146" y="13" font-size="9" fill="#666" font-family="-apple-system">60</text>
+      <text x="216" y="13" font-size="9" fill="#666" font-family="-apple-system">90</text>
+      <text x="286" y="13" font-size="9" fill="#666" font-family="-apple-system">120</text>
+      <!-- playhead -->
+      <line x1="110" y1="0" x2="110" y2="90" stroke="#0e7fd4" stroke-width="1"/>
+      <polygon points="106,0 114,0 110,6" fill="#0e7fd4"/>
+      <!-- lane 1 -->
+      <text x="4" y="33" font-size="9" fill="#888" font-family="-apple-system">Position X</text>
+      <circle cx="76"  cy="30" r="4" fill="#0e7fd4"/>
+      <circle cx="146" cy="30" r="4" fill="#0e7fd4"/>
+      <circle cx="286" cy="30" r="4" fill="#0e7fd4"/>
+      <line x1="76" y1="30" x2="146" y2="30" stroke="#0e7fd440" stroke-width="1"/>
+      <line x1="146" y1="30" x2="286" y2="30" stroke="#0e7fd440" stroke-width="1"/>
+      <!-- lane 2 -->
+      <text x="4" y="52" font-size="9" fill="#888" font-family="-apple-system">Rotation</text>
+      <circle cx="36"  cy="49" r="4" fill="#f0c040"/>
+      <circle cx="216" cy="49" r="4" fill="#f0c040"/>
+      <line x1="36" y1="49" x2="216" y2="49" stroke="#f0c04040" stroke-width="1"/>
+      <!-- lane 3 -->
+      <text x="4" y="72" font-size="9" fill="#888" font-family="-apple-system">Opacity</text>
+      <circle cx="36"  cy="69" r="4" fill="#888"/>
+      <circle cx="106" cy="69" r="4" fill="#888"/>
+      <circle cx="216" cy="69" r="4" fill="#888"/>
+    </svg>
+    <figcaption>Timeline panel showing three keyframe lanes and the playhead (blue line)</figcaption>
+  </div>
+
+  <h4>Working with keyframes</h4>
+  <ul>
+    <li>Select a sprite and switch to the Keyframe driver in the Animation section of the inspector.</li>
+    <li>Click <strong>+</strong> to add a keyframe at the current frame. The value defaults to the current property value.</li>
+    <li>Drag a keyframe diamond horizontally to change its frame position.</li>
+    <li>Select a keyframe and edit its <strong>Frame</strong> and <strong>Value</strong> fields in the inspector.</li>
+    <li>Set the <strong>Easing</strong> per keyframe (Linear, Ease In, Ease Out, Ease In-Out, or a custom curve).</li>
+    <li>Adjust the <strong>Loop Mode</strong> (None / Loop / Ping-Pong) on the driver to control what happens after the last keyframe.</li>
+  </ul>
+
+  <h4>Zoom and scroll</h4>
+  <p>Use the <strong>×1.5 / ÷1.5</strong> buttons to zoom the timeline ruler horizontally. Drag the timeline panel's top edge to resize it vertically (range 80–320 px).</p>
+
+  <h3 id="animation-camera">Camera animation</h3>
+  <p>The Timeline has a dedicated <strong>Camera</strong> section with three keyframe lanes:</p>
+  <table>
+    <thead><tr><th>Lane</th><th>Effect</th></tr></thead>
+    <tbody>
+      <tr><td>Pan X / Y</td><td>Translates the viewport by the given pixel offsets.</td></tr>
+      <tr><td>Zoom</td><td>Scales the viewport (1.0 = no zoom; 2.0 = 2× zoom).</td></tr>
+      <tr><td>Rotation</td><td>Rotates the entire canvas around its centre.</td></tr>
+    </tbody>
+  </table>
+
+  <h3 id="animation-morph">Morph targets</h3>
+  <p>Morphing smoothly interpolates a sprite's geometry between two states: the <em>base</em> geometry and a <em>morph target</em> geometry. The <strong>Morph Amount</strong> driver (0 = base, 1 = target) controls the blend.</p>
+  <ol class="steps">
+    <li>Create two geometry documents with the same topology (same point count and order).</li>
+    <li>Assign the base geometry to the sprite as normal.</li>
+    <li>In the inspector, set the <strong>Morph Target</strong> field to the second geometry document.</li>
+    <li>Enable a <strong>Morph Amount</strong> animation driver (Oscillator or Keyframe for smooth transitions).</li>
+    <li>Use <strong>Morph Lock</strong> on the target geometry document to prevent accidental edits.</li>
+  </ol>
+</section>
+
+<!-- ────────────────────────────────────────────────── -->
+<section id="export">
+  <h2>Export</h2>
+  <p>Loom can export the current rendered output as a PNG still, an SVG vector file, or an MP4/MOV video. All export options are accessible from the toolbar at the top of the window.</p>
+
+  <h3 id="export-still">Still image</h3>
+  <p>Click the <strong>photo</strong> icon in the toolbar to save the current frame as a PNG file. The file is written to <code>renders/stills/</code> with an auto-generated name based on the project name and a timestamp. Resolution is the canvas size multiplied by the Quality setting.</p>
+
+  <h3 id="export-svg">SVG export</h3>
+  <p>Loom has two SVG export paths:</p>
+  <table>
+    <thead><tr><th>Source</th><th>How to trigger</th><th>Contents</th></tr></thead>
+    <tbody>
+      <tr><td>Geometry Editor</td><td><strong>Export</strong> row in the File inspector section</td><td>Active layer's raw geometry as wireframe Bézier paths</td></tr>
+      <tr><td>Subdivision Tab</td><td>Folder-arrow icon next to the bake button</td><td>Subdivided polygon output as wireframe paths</td></tr>
+    </tbody>
+  </table>
+  <p>SVG files are written to the project's <code>svgs/</code> folder. If a file with the same stem already exists, a numbered suffix is appended automatically. Stroke width varies per path segment when pressure data is available (from freehand drawing).</p>
+
+  <h3 id="export-video">Video export</h3>
+  <ol class="steps">
+    <li>Click the <strong>movieclapper</strong> icon in the toolbar to open the Export Sheet.</li>
+    <li>Set the desired <strong>FPS</strong> (24, 25, 30, or 60).</li>
+    <li>Set the <strong>Duration</strong> in seconds, or leave at 0 to use the project duration.</li>
+    <li>Choose a <strong>Codec</strong>: H.264, HEVC (H.265), or ProRes 4444.</li>
+    <li>Toggle <strong>Restart from beginning</strong> if the playhead should reset before export starts.</li>
+    <li>Click <strong>Export…</strong>, choose a destination file, and wait for the progress indicator to complete.</li>
+  </ol>
+  <div class="note">The exported video resolution is canvas size × Quality multiplier. ProRes 4444 produces larger files but preserves alpha and is better for compositing workflows.</div>
+
+  <h3>Output folder</h3>
+  <p>Click the <strong>folder</strong> icon in the toolbar to open the most recently used renders folder in Finder. Loom remembers the last export directory across sessions.</p>
+</section>
+
+<!-- ────────────────────────────────────────────────── -->
+<section id="shortcuts">
+  <h2>Keyboard Shortcuts</h2>
+  <table>
+    <thead><tr><th>Shortcut</th><th>Action</th></tr></thead>
+    <tbody>
+      <tr><td><kbd>Space</kbd></td><td>Play / Pause</td></tr>
+      <tr><td><kbd>⌘N</kbd></td><td>New Project…</td></tr>
+      <tr><td><kbd>⌘O</kbd></td><td>Open Project…</td></tr>
+      <tr><td><kbd>⌘R</kbd></td><td>Reload project from disk</td></tr>
+      <tr><td><kbd>⌘Z</kbd></td><td>Undo (geometry editor)</td></tr>
+      <tr><td><kbd>⌘⇧Z</kbd></td><td>Redo (geometry editor)</td></tr>
+      <tr><td><kbd>⌘C</kbd></td><td>Copy selected geometry</td></tr>
+      <tr><td><kbd>⌘V</kbd></td><td>Paste geometry</td></tr>
+    </tbody>
+  </table>
+</section>
+
+<!-- ────────────────────────────────────────────────── -->
+<section id="fileformat">
+  <h2>File Formats</h2>
+  <table>
+    <thead><tr><th>Extension</th><th>Description</th></tr></thead>
+    <tbody>
+      <tr><td><code>.json</code> (project)</td><td>Main project configuration including all sprites, renderers, subdivision sets, and global settings.</td></tr>
+      <tr><td><code>.json</code> (geometry)</td><td>Editable geometry document — layers, polygons, Bézier control points, and pressure data.</td></tr>
+      <tr><td><code>.xml</code> (geometry)</td><td>Legacy polygon file format. Supported read-only in most contexts; bake output is also written as XML.</td></tr>
+      <tr><td><code>.svg</code></td><td>Exported wireframe vector files — one path per polygon, stroke width modulated by pressure data.</td></tr>
+      <tr><td><code>.png</code> (still)</td><td>Rasterised frame export at canvas × Quality resolution.</td></tr>
+      <tr><td><code>.png</code> (brush/stamp)</td><td>Small brush or stamp pattern image, typically 16–256 px square.</td></tr>
+      <tr><td><code>.mp4</code> / <code>.mov</code></td><td>Video export — H.264/HEVC wrapped in MPEG-4, or ProRes 4444 in MOV container.</td></tr>
+      <tr><td><code>.palette.json</code></td><td>Exported colour palette — a named array of RGBA swatches for use across projects.</td></tr>
+    </tbody>
+  </table>
+</section>
+
+</main>
+
+<script>
+// ── Sidebar active-link tracking ──────────────────────
+const links = document.querySelectorAll('.nav-link');
+const sections = document.querySelectorAll('section[id], h3[id], h4[id]');
+
+const observer = new IntersectionObserver(entries => {
+  entries.forEach(entry => {
+    if (entry.isIntersecting) {
+      const id = entry.target.id;
+      links.forEach(l => {
+        l.classList.toggle('active', l.getAttribute('href') === '#' + id);
+      });
+    }
+  });
+}, { rootMargin: '-20% 0px -70% 0px', threshold: 0 });
+
+sections.forEach(s => observer.observe(s));
+
+links.forEach(link => {
+  link.addEventListener('click', e => {
+    e.preventDefault();
+    const target = document.querySelector(link.getAttribute('href'));
+    if (target) target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  });
+});
+
+// ── Search ───────────────────────────────────────────
+const searchInput = document.getElementById('search');
+const countEl     = document.getElementById('search-count');
+const mainEl      = document.getElementById('main');
+let originalHTML  = null;
+
+function escapeRe(s) {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function clearHighlights() {
+  if (originalHTML !== null) {
+    mainEl.innerHTML = originalHTML;
+    originalHTML = null;
+    // re-observe
+    document.querySelectorAll('section[id], h3[id], h4[id]').forEach(s => observer.observe(s));
+  }
+  document.querySelectorAll('.search-hidden').forEach(el => el.classList.remove('search-hidden'));
+  countEl.textContent = '';
+}
+
+function doSearch(query) {
+  if (!query) { clearHighlights(); return; }
+
+  if (originalHTML === null) originalHTML = mainEl.innerHTML;
+
+  // Restore then re-search
+  mainEl.innerHTML = originalHTML;
+
+  const re = new RegExp(escapeRe(query), 'gi');
+  let count = 0;
+
+  function walkText(node) {
+    if (node.nodeType === Node.TEXT_NODE) {
+      const text = node.textContent;
+      if (re.test(text)) {
+        re.lastIndex = 0;
+        const frag = document.createDocumentFragment();
+        let last = 0, m;
+        while ((m = re.exec(text)) !== null) {
+          frag.appendChild(document.createTextNode(text.slice(last, m.index)));
+          const mark = document.createElement('mark');
+          mark.textContent = m[0];
+          frag.appendChild(mark);
+          last = re.lastIndex;
+          count++;
+        }
+        frag.appendChild(document.createTextNode(text.slice(last)));
+        node.parentNode.replaceChild(frag, node);
+        return;
+      }
+      re.lastIndex = 0;
+    } else if (node.nodeType === Node.ELEMENT_NODE && node.nodeName !== 'SCRIPT' && node.nodeName !== 'STYLE') {
+      Array.from(node.childNodes).forEach(walkText);
+    }
+  }
+  walkText(mainEl);
+
+  // Hide sections with no matches
+  document.querySelectorAll('#main > section').forEach(sec => {
+    const hasMatch = sec.querySelector('mark') !== null;
+    sec.classList.toggle('search-hidden', !hasMatch);
+  });
+
+  countEl.textContent = count > 0 ? `${count} match${count === 1 ? '' : 'es'}` : 'No matches';
+
+  // Scroll to first match
+  const first = mainEl.querySelector('mark');
+  if (first) first.scrollIntoView({ behavior: 'smooth', block: 'center' });
+}
+
+let debounceTimer;
+searchInput.addEventListener('input', () => {
+  clearTimeout(debounceTimer);
+  debounceTimer = setTimeout(() => doSearch(searchInput.value.trim()), 180);
+});
+searchInput.addEventListener('keydown', e => {
+  if (e.key === 'Escape') { searchInput.value = ''; clearHighlights(); }
+});
+</script>
+</body>
+</html>

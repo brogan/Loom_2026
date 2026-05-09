@@ -309,6 +309,17 @@ struct SubdivisionTabView: View {
             toolbarButton("flame", tooltip: "Bake selected set to polygon file") { bakeSelectedSet() }
                 .disabled(!canBake)
 
+            Button {
+                saveSelectedSetAsSVG()
+            } label: {
+                FolderExportIcon(strokeWidth: 1.0)
+                    .frame(width: 22, height: 20)
+                    .frame(width: 26, height: 26)
+            }
+            .buttonStyle(.plain)
+            .disabled(!canBake)
+            .help("Save subdivided geometry as SVG wireframe to svgs/")
+
             Spacer()
         }
         .padding(.horizontal, 4)
@@ -622,6 +633,71 @@ struct SubdivisionTabView: View {
 
         bakeAlert = BakeAlert(title: "Bake Complete",
                               message: "Saved \(result.count) polygon(s) to:\n\(filename)\n\nThe baked set '\(stem)' is now available in the Geometry tab.")
+    }
+
+    private func saveSelectedSetAsSVG() {
+        guard let setIdx    = controller.selectedSubdivisionIndex,
+              let cfg       = controller.projectConfig,
+              let projectURL = controller.projectURL,
+              setIdx < cfg.subdivisionConfig.paramsSets.count,
+              let spriteID  = controller.subdivSelectedSpriteID,
+              let sprite    = cfg.spriteConfig.library.allSprites.first(where: { $0.name == spriteID }),
+              let shape     = cfg.shapeConfig.library.shapeSets
+                  .first(where: { $0.name == sprite.shapeSetName })?
+                  .shapes.first(where: { $0.name == sprite.shapeName }),
+              let polyDef   = cfg.polygonConfig.library.polygonSets
+                  .first(where: { $0.name == shape.polygonSetName })
+        else { return }
+
+        let resolvedFolder = (polyDef.folder == "polygonSet" || polyDef.folder.isEmpty)
+            ? "polygonSets" : polyDef.folder
+        let sourceURL = projectURL
+            .appendingPathComponent(resolvedFolder)
+            .appendingPathComponent(polyDef.filename)
+
+        guard FileManager.default.fileExists(atPath: sourceURL.path) else {
+            bakeAlert = BakeAlert(title: "SVG Export Failed",
+                                  message: "Source polygon file not found:\n\(sourceURL.path)")
+            return
+        }
+
+        let polys: [Polygon2D]
+        do {
+            if sourceURL.pathExtension.lowercased() == "json" {
+                let doc = try EditableGeometryJSONLoader.load(url: sourceURL)
+                polys = try doc.runtimePolygons(
+                    targetLayerID:   polyDef.editableLayerID,
+                    targetLayerName: polyDef.editableLayerName
+                )
+            } else {
+                polys = try XMLPolygonLoader.load(url: sourceURL, normalise: false)
+            }
+        } catch {
+            bakeAlert = BakeAlert(title: "SVG Export Failed",
+                                  message: "Could not load polygon file:\n\(error.localizedDescription)")
+            return
+        }
+
+        let paramSet = cfg.subdivisionConfig.paramsSets[setIdx]
+        var rng      = SystemRandomNumberGenerator()
+        let result   = SubdivisionEngine.process(polygons: polys, paramSet: paramSet.params, rng: &rng)
+
+        let safePolyName = shape.polygonSetName.replacingOccurrences(of: " ", with: "_")
+        let safeSetName  = paramSet.name.replacingOccurrences(of: " ", with: "_")
+        let stem         = "\(safePolyName)_\(safeSetName)"
+        let svgsDir      = projectURL.appendingPathComponent("svgs")
+
+        let w = Double(cfg.globalConfig.width)
+        let h = Double(cfg.globalConfig.height)
+
+        do {
+            let url = try LoomSVGWriter.writeSVG(polygons: result, stem: stem, canvasSize: (w, h), to: svgsDir)
+            bakeAlert = BakeAlert(title: "SVG Saved",
+                                  message: "Saved \(result.count) polygon(s) to:\nsvgs/\(url.lastPathComponent)")
+        } catch {
+            bakeAlert = BakeAlert(title: "SVG Export Failed",
+                                  message: "Could not write SVG:\n\(error.localizedDescription)")
+        }
     }
 
     private func uniqueBakeFilename(base: String, in dir: URL) -> String {
