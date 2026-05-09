@@ -4616,6 +4616,33 @@ final class AppController: ObservableObject, @unchecked Sendable {
         }
     }
 
+    func importGeometry(from sourceURL: URL) {
+        guard let projectURL = projectURL else { return }
+        let stem     = sourceURL.deletingPathExtension().lastPathComponent
+        let ext      = sourceURL.pathExtension
+        let baseName = stem.isEmpty ? "imported_geometry" : stem
+        let finalName    = uniquePolygonSetName(baseName, excluding: "")
+        let destFilename = "\(sanitizedGeometryFilename(finalName)).\(ext.isEmpty ? "json" : ext)"
+        let directory    = projectURL.appendingPathComponent("polygonSets", isDirectory: true)
+        let destURL      = directory.appendingPathComponent(destFilename)
+        do {
+            try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+            try FileManager.default.copyItem(at: sourceURL, to: destURL)
+            updateProjectConfig { cfg in
+                let def = PolygonSetDef(
+                    name: finalName,
+                    folder: "polygonSets",
+                    filename: destFilename,
+                    polygonType: .splinePolygon
+                )
+                cfg.polygonConfig.library.polygonSets.append(def)
+            }
+            selectedGeometryKey = "polygonSets/\(finalName)"
+        } catch {
+            print("[Import] Failed to import geometry from \(sourceURL.lastPathComponent): \(error)")
+        }
+    }
+
     func renameGeometry(key: String, to newName: String) {
         let parts = key.split(separator: "/", maxSplits: 1)
         guard parts.count == 2 else { return }

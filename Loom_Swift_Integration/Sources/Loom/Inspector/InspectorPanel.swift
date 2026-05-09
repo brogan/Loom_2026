@@ -828,15 +828,10 @@ private struct GeometryEditorShellInspector: View {
                 }
                 iconRow {
                     iconButton(help: "Save geometry document", disabled: controller.geometryEditorDocument == nil) {
-                        SaveDocumentIcon()
+                        SaveToFolderIcon()
                     } action: {
                         controller.saveGeometryEditorDocument(named: geometryName)
                         geometryName = currentGeometryName
-                    }
-                    iconButton(help: "Reload geometry document from disk", disabled: controller.selectedGeometryKey == nil) {
-                        LoadDocumentIcon()
-                    } action: {
-                        controller.reloadGeometryEditorDocumentFromDisk()
                     }
                     Spacer()
                 }
@@ -1567,37 +1562,37 @@ private struct DeleteAllLayerGeometryIcon: View {
     }
 }
 
-private struct SaveDocumentIcon: View {
+private struct SaveToFolderIcon: View {
     var body: some View {
         GeometryReader { proxy in
-            let r = proxy.frame(in: .local)
-            let w = r.width; let h = r.height
-            let midX = r.minX + w * 0.50
-            let arrowTop = r.minY + h * 0.12
-            let arrowTip = r.minY + h * 0.72
-            let headHalf = w * 0.28
-            let lineY = r.minY + h * 0.88
-            // Shaft
+            let r  = proxy.frame(in: .local).insetBy(dx: 2, dy: 2)
+            let w  = r.width, h = r.height
+            // Folder outline: rectangle with tab at top-left
             Path { path in
-                path.move(to:    CGPoint(x: midX, y: arrowTop))
-                path.addLine(to: CGPoint(x: midX, y: arrowTip))
-            }
-            .stroke(style: StrokeStyle(lineWidth: 1.5))
-            // Arrowhead pointing down
-            Path { path in
-                path.move(to:    CGPoint(x: midX - headHalf, y: arrowTip - h*0.22))
-                path.addLine(to: CGPoint(x: midX,            y: arrowTip))
-                path.addLine(to: CGPoint(x: midX + headHalf, y: arrowTip - h*0.22))
+                path.move(to:    CGPoint(x: r.minX,          y: r.minY + h*0.30))
+                path.addLine(to: CGPoint(x: r.minX + w*0.28, y: r.minY + h*0.30))
+                path.addLine(to: CGPoint(x: r.minX + w*0.37, y: r.minY + h*0.42))
+                path.addLine(to: CGPoint(x: r.maxX,          y: r.minY + h*0.42))
+                path.addLine(to: CGPoint(x: r.maxX,          y: r.maxY))
+                path.addLine(to: CGPoint(x: r.minX,          y: r.maxY))
+                path.closeSubpath()
             }
             .stroke(style: StrokeStyle(lineWidth: 1.5, lineCap: .round, lineJoin: .round))
-            // Base line
+            // Downward arrow centred in folder body
+            let ax   = r.midX
+            let atop = r.minY + h * 0.50
+            let atip = r.maxY - h * 0.18
+            let hh   = w * 0.20
             Path { path in
-                path.move(to:    CGPoint(x: r.minX + w*0.10, y: lineY))
-                path.addLine(to: CGPoint(x: r.minX + w*0.90, y: lineY))
+                path.move(to:    CGPoint(x: ax,      y: atop))
+                path.addLine(to: CGPoint(x: ax,      y: atip))
+                path.move(to:    CGPoint(x: ax - hh, y: atip - hh))
+                path.addLine(to: CGPoint(x: ax,      y: atip))
+                path.addLine(to: CGPoint(x: ax + hh, y: atip - hh))
             }
-            .stroke(style: StrokeStyle(lineWidth: 1.5, lineCap: .round))
+            .stroke(style: StrokeStyle(lineWidth: 1.5, lineCap: .round, lineJoin: .round))
         }
-        .padding(2)
+        .padding(1)
     }
 }
 

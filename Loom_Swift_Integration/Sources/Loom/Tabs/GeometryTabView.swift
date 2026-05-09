@@ -132,7 +132,7 @@ struct GeometryTabView: View {
     // MARK: - Action bar
 
     private var actionBar: some View {
-        VStack(spacing: 6) {
+        VStack(spacing: 4) {
             Button("Open Editor") {
                 controller.enterGeometryEditor()
             }
@@ -140,19 +140,35 @@ struct GeometryTabView: View {
             .frame(maxWidth: .infinity)
 
             HStack {
-                Button("Rename") {
+                Button("Duplicate") {
                     if let key = controller.selectedGeometryKey {
-                        renameText = String(key.split(separator: "/", maxSplits: 1).last ?? "")
-                        showingRenameAlert = true
+                        controller.duplicateGeometry(key: key)
                     }
                 }
                 .disabled(controller.selectedGeometryKey == nil)
 
                 Spacer()
 
-                Button("Duplicate") {
+                Button("Import") {
+                    let panel = NSOpenPanel()
+                    panel.title = "Import Geometry"
+                    panel.message = "Select a geometry file to import into this project"
+                    panel.allowsMultipleSelection = false
+                    panel.canChooseDirectories = false
+                    panel.directoryURL = AppController.defaultProjectsDirectory
+                    panel.allowedContentTypes = [.json]
+                    panel.begin { response in
+                        guard response == .OK, let url = panel.url else { return }
+                        controller.importGeometry(from: url)
+                    }
+                }
+            }
+
+            HStack {
+                Button("Rename") {
                     if let key = controller.selectedGeometryKey {
-                        controller.duplicateGeometry(key: key)
+                        renameText = String(key.split(separator: "/", maxSplits: 1).last ?? "")
+                        showingRenameAlert = true
                     }
                 }
                 .disabled(controller.selectedGeometryKey == nil)
