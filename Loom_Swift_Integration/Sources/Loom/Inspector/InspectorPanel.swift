@@ -546,7 +546,7 @@ private struct GeometryEditorShellInspector: View {
                         help: "Anchor-only edit: drag anchors without moving their control points",
                         selected: controller.geometryEditorAnchorOnlyEdit
                     ) {
-                        Image(systemName: "crosshair").font(.system(size: 15))
+                        CrosshairAnchorIcon()
                     } action: {
                         controller.geometryEditorAnchorOnlyEdit.toggle()
                     }
@@ -1628,6 +1628,26 @@ private struct LoadDocumentIcon: View {
             Path { path in
                 path.move(to:    CGPoint(x: r.minX + w*0.10, y: lineY))
                 path.addLine(to: CGPoint(x: r.minX + w*0.90, y: lineY))
+            }
+            .stroke(style: StrokeStyle(lineWidth: 1.5, lineCap: .round))
+        }
+        .padding(2)
+    }
+}
+
+private struct CrosshairAnchorIcon: View {
+    var body: some View {
+        GeometryReader { proxy in
+            let rect = proxy.frame(in: .local)
+            let cx = rect.midX, cy = rect.midY
+            let r   = min(rect.width, rect.height) * 0.27
+            let gap = min(rect.width, rect.height) * 0.07
+            Path { path in
+                path.addEllipse(in: CGRect(x: cx - r, y: cy - r, width: r * 2, height: r * 2))
+                path.move(to: CGPoint(x: cx, y: rect.minY + 2));   path.addLine(to: CGPoint(x: cx, y: cy - r - gap))
+                path.move(to: CGPoint(x: cx, y: cy + r + gap));    path.addLine(to: CGPoint(x: cx, y: rect.maxY - 2))
+                path.move(to: CGPoint(x: rect.minX + 2, y: cy));   path.addLine(to: CGPoint(x: cx - r - gap, y: cy))
+                path.move(to: CGPoint(x: cx + r + gap, y: cy));    path.addLine(to: CGPoint(x: rect.maxX - 2, y: cy))
             }
             .stroke(style: StrokeStyle(lineWidth: 1.5, lineCap: .round))
         }

@@ -19,6 +19,7 @@ struct SpritesInspector: View {
             if sprite.animation.drivers != nil {
                 DriverSectionsView(setIdx: setIdx, spriteIdx: spriteIdx)
                     .environmentObject(controller)
+                    .id("\(setIdx):\(spriteIdx)")
             }
             hierarchySection(sprite: sprite, setIdx: setIdx, spriteIdx: spriteIdx)
         })
@@ -370,7 +371,7 @@ private struct DriverSectionsView: View {
 
     var body: some View {
         let db = driversBinding()
-        Group {
+        VStack(alignment: .leading, spacing: 0) {
             VectorDriverEditor(label: "Position", driver: db.position, isCollapsed: $posCollapsed)
             VectorDriverEditor(label: "Scale",    driver: db.scale,    isCollapsed: $sclCollapsed)
             DoubleDriverEditor(label: "Rotation", driver: db.rotation, isCollapsed: $rotCollapsed)
@@ -380,7 +381,6 @@ private struct DriverSectionsView: View {
             shapeVariantsSection
         }
         .onAppear { syncCollapsed() }
-        .onChange(of: "\(setIdx):\(spriteIdx)") { _, _ in syncCollapsed() }
     }
 
     // MARK: - Morph Targets
