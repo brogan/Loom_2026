@@ -827,7 +827,7 @@ private struct GeometryEditorShellInspector: View {
                         .frame(width: 130)
                 }
                 iconRow {
-                    iconButton(help: "Save geometry document", disabled: controller.geometryEditorDocument == nil) {
+                    iconButton(help: "Save geometry document", disabled: controller.geometryEditorDocument == nil, size: 30) {
                         SaveToFolderIcon()
                     } action: {
                         controller.saveGeometryEditorDocument(named: geometryName)
@@ -987,12 +987,13 @@ private struct GeometryEditorShellInspector: View {
         help: String,
         disabled: Bool = false,
         selected: Bool = false,
+        size: CGFloat = 22,
         @ViewBuilder content: () -> Content,
         action: @escaping () -> Void = {}
     ) -> some View {
         Button(action: action) {
             content()
-                .frame(width: 22, height: 22)
+                .frame(width: size, height: size)
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)

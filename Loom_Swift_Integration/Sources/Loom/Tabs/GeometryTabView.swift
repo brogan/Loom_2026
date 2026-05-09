@@ -139,10 +139,19 @@ struct GeometryTabView: View {
             .disabled(controller.selectedGeometryKey == nil)
             .frame(maxWidth: .infinity)
 
+            Button("Duplicate") {
+                if let key = controller.selectedGeometryKey {
+                    controller.duplicateGeometry(key: key)
+                }
+            }
+            .disabled(controller.selectedGeometryKey == nil)
+            .frame(maxWidth: .infinity, alignment: .leading)
+
             HStack {
-                Button("Duplicate") {
+                Button("Rename") {
                     if let key = controller.selectedGeometryKey {
-                        controller.duplicateGeometry(key: key)
+                        renameText = String(key.split(separator: "/", maxSplits: 1).last ?? "")
+                        showingRenameAlert = true
                     }
                 }
                 .disabled(controller.selectedGeometryKey == nil)
@@ -162,16 +171,6 @@ struct GeometryTabView: View {
                         controller.importGeometry(from: url)
                     }
                 }
-            }
-
-            HStack {
-                Button("Rename") {
-                    if let key = controller.selectedGeometryKey {
-                        renameText = String(key.split(separator: "/", maxSplits: 1).last ?? "")
-                        showingRenameAlert = true
-                    }
-                }
-                .disabled(controller.selectedGeometryKey == nil)
 
                 Spacer()
 
