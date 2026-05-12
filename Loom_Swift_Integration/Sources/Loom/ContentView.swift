@@ -9,6 +9,7 @@ struct ContentView: View {
     @State private var seekFrame:         Int? = nil
     @State private var spritesPreviewMode: Bool = false
     @State private var newProjectName: String = "MyProject"
+    @State private var renderProgress: Double? = nil
 
     var body: some View {
         if controller.engine != nil {
@@ -43,7 +44,24 @@ struct ContentView: View {
                     .environmentObject(controller)
             }
         }
+        .alert(
+            controller.geometryEditorLeaveWarningTitle,
+            isPresented: $controller.showingGeometryEditorLeaveWarning
+        ) {
+            Button("Save & Leave") {
+                controller.saveAndContinueAfterGeometryEditorWarning()
+            }
+            Button("Discard Changes", role: .destructive) {
+                controller.discardAndContinueAfterGeometryEditorWarning()
+            }
+            Button("Cancel", role: .cancel) {
+                controller.cancelGeometryEditorLeaveWarning()
+            }
+        } message: {
+            Text(controller.geometryEditorLeaveWarningMessage)
+        }
         .onChange(of: controller.projectURL) { _, _ in currentFrame = 0; seekFrame = nil; spritesPreviewMode = false }
+        .onChange(of: currentFrame) { _, frame in controller.currentTimelineFrame = frame }
     }
 
     // MARK: - Tab bar
@@ -52,7 +70,7 @@ struct ContentView: View {
         HStack(spacing: 0) {
             ForEach(AppTab.allCases, id: \.self) { tab in
                 Button {
-                    controller.selectedTab = tab
+                    controller.requestTabSelection(tab)
                 } label: {
                     HStack(spacing: 5) {
                         Image(systemName: tab.systemImage)
@@ -75,6 +93,16 @@ struct ContentView: View {
                 .buttonStyle(.plain)
             }
             Spacer()
+            if let renderProgress {
+                Text("Rendering \(Int((renderProgress * 100).rounded()))%")
+                    .font(.system(size: 11, design: .monospaced))
+                    .foregroundStyle(.secondary)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 3)
+                    .background(Color.primary.opacity(0.06))
+                    .clipShape(RoundedRectangle(cornerRadius: 4))
+                    .accessibilityLabel("Rendering progress")
+            }
         }
         .padding(.horizontal, 8)
         .frame(height: 34)
@@ -168,8 +196,12 @@ struct ContentView: View {
                     engine:              engine,
                     playbackState:       controller.isExporting ? .paused : controller.playbackState,
                     seekFrame:           seekFrame,
-                    onFrameTick:         { currentFrame = $0 },
-                    onAnimationComplete: { controller.animationDidComplete() }
+                    onFrameTick:         {
+                        currentFrame = $0
+                        controller.currentTimelineFrame = $0
+                    },
+                    onAnimationComplete: { controller.animationDidComplete() },
+                    onRenderProgress:    { renderProgress = $0 }
                 )
                 .aspectRatio(aspect, contentMode: .fit)
             }

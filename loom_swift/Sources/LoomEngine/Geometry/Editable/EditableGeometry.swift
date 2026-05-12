@@ -119,6 +119,7 @@ public struct EditableClosedPolygon: Codable, Equatable, Identifiable, Sendable 
     public var points: [EditableCubicPoint]
     public var segments: [EditableCubicSegment]
     public var pressures: [Double]
+    public var segmentPressureProfiles: [EditableGeometryID: [Double]]?
     public var isVisible: Bool
     public var parametricSource: EditableParametricSource?
 
@@ -128,6 +129,7 @@ public struct EditableClosedPolygon: Codable, Equatable, Identifiable, Sendable 
         points: [EditableCubicPoint] = [],
         segments: [EditableCubicSegment] = [],
         pressures: [Double] = [],
+        segmentPressureProfiles: [EditableGeometryID: [Double]]? = nil,
         isVisible: Bool = true,
         parametricSource: EditableParametricSource? = nil
     ) {
@@ -136,6 +138,7 @@ public struct EditableClosedPolygon: Codable, Equatable, Identifiable, Sendable 
         self.points = points
         self.segments = segments
         self.pressures = pressures
+        self.segmentPressureProfiles = segmentPressureProfiles
         self.isVisible = isVisible
         self.parametricSource = parametricSource
     }
@@ -153,6 +156,7 @@ public struct EditableClosedPolygon: Codable, Equatable, Identifiable, Sendable 
         self.points = []
         self.segments = []
         self.pressures = polygon.pressures
+        self.segmentPressureProfiles = nil
         self.isVisible = polygon.visible
         self.parametricSource = nil
 
@@ -204,6 +208,10 @@ public struct EditableClosedPolygon: Codable, Equatable, Identifiable, Sendable 
             replacePointReferences(from: lastEnd, to: firstStart)
             points.removeAll { $0.id == lastEnd }
         }
+        self.segmentPressureProfiles = editablePressureProfiles(
+            polygon.pressureProfiles,
+            segments: segments
+        )
     }
 
     public init(name: String, anchors: [Vector2D]) throws {
@@ -216,6 +224,7 @@ public struct EditableClosedPolygon: Codable, Equatable, Identifiable, Sendable 
         self.points = []
         self.segments = []
         self.pressures = Array(repeating: 1.0, count: anchors.count)
+        self.segmentPressureProfiles = nil
         self.isVisible = true
         self.parametricSource = nil
 
@@ -468,8 +477,12 @@ public struct EditableClosedPolygon: Codable, Equatable, Identifiable, Sendable 
             pointIDMap[point.id] = copiedID
             return EditableCubicPoint(id: copiedID, position: point.position, kind: point.kind)
         }
+        var segmentIDMap: [EditableGeometryID: EditableGeometryID] = [:]
         let copiedSegments = segments.map { segment in
-            EditableCubicSegment(
+            let copiedID = EditableGeometryID()
+            segmentIDMap[segment.id] = copiedID
+            return EditableCubicSegment(
+                id: copiedID,
                 startAnchorID: pointIDMap[segment.startAnchorID] ?? segment.startAnchorID,
                 controlOutID: pointIDMap[segment.controlOutID] ?? segment.controlOutID,
                 controlInID: pointIDMap[segment.controlInID] ?? segment.controlInID,
@@ -481,6 +494,7 @@ public struct EditableClosedPolygon: Codable, Equatable, Identifiable, Sendable 
             points: copiedPoints,
             segments: copiedSegments,
             pressures: pressures,
+            segmentPressureProfiles: remappedPressureProfiles(using: segmentIDMap),
             isVisible: isVisible,
             parametricSource: parametricSource
         )
@@ -592,7 +606,47 @@ public struct EditableClosedPolygon: Codable, Equatable, Identifiable, Sendable 
                 encoded.append(position.editorToRuntimeWorld())
             }
         }
-        return Polygon2D(points: encoded, type: .spline, pressures: pressures, visible: isVisible)
+        return Polygon2D(
+            points: encoded,
+            type: .spline,
+            pressures: pressures,
+            pressureProfiles: runtimePressureProfiles(),
+            visible: isVisible
+        )
+    }
+
+    public func pressureProfile(for segmentID: EditableGeometryID) -> [Double]? {
+        segmentPressureProfiles?[segmentID]
+    }
+
+    public mutating func setPressureProfile(_ samples: [Double]?, for segmentID: EditableGeometryID) {
+        if let samples, !samples.isEmpty {
+            var profiles = segmentPressureProfiles ?? [:]
+            profiles[segmentID] = samples
+            segmentPressureProfiles = profiles
+        } else {
+            segmentPressureProfiles?[segmentID] = nil
+            if segmentPressureProfiles?.isEmpty == true {
+                segmentPressureProfiles = nil
+            }
+        }
+    }
+
+    private func runtimePressureProfiles() -> [[Double]]? {
+        guard let segmentPressureProfiles, !segmentPressureProfiles.isEmpty else { return nil }
+        let profiles = segments.map { segment in segmentPressureProfiles[segment.id] ?? [] }
+        return profiles.contains { !$0.isEmpty } ? profiles : nil
+    }
+
+    private func remappedPressureProfiles(using segmentIDMap: [EditableGeometryID: EditableGeometryID]) -> [EditableGeometryID: [Double]]? {
+        guard let segmentPressureProfiles, !segmentPressureProfiles.isEmpty else { return nil }
+        var remapped: [EditableGeometryID: [Double]] = [:]
+        for (oldID, samples) in segmentPressureProfiles {
+            if let newID = segmentIDMap[oldID] {
+                remapped[newID] = samples
+            }
+        }
+        return remapped.isEmpty ? nil : remapped
     }
 
     private mutating func replacePointReferences(from oldID: EditableGeometryID, to newID: EditableGeometryID) {
@@ -632,6 +686,7 @@ public struct EditableOpenCurve: Codable, Equatable, Identifiable, Sendable {
     public var points: [EditableCubicPoint]
     public var segments: [EditableCubicSegment]
     public var pressures: [Double]
+    public var segmentPressureProfiles: [EditableGeometryID: [Double]]?
     public var isVisible: Bool
 
     public init(
@@ -640,6 +695,7 @@ public struct EditableOpenCurve: Codable, Equatable, Identifiable, Sendable {
         points: [EditableCubicPoint] = [],
         segments: [EditableCubicSegment] = [],
         pressures: [Double] = [],
+        segmentPressureProfiles: [EditableGeometryID: [Double]]? = nil,
         isVisible: Bool = true
     ) {
         self.id = id
@@ -647,6 +703,7 @@ public struct EditableOpenCurve: Codable, Equatable, Identifiable, Sendable {
         self.points = points
         self.segments = segments
         self.pressures = pressures
+        self.segmentPressureProfiles = segmentPressureProfiles
         self.isVisible = isVisible
     }
 
@@ -656,6 +713,7 @@ public struct EditableOpenCurve: Codable, Equatable, Identifiable, Sendable {
         self.points = []
         self.segments = []
         self.pressures = Array(repeating: 1.0, count: max(0, anchors.count - 1))
+        self.segmentPressureProfiles = nil
         self.isVisible = isVisible
 
         guard anchors.count >= 2 else { return }
@@ -695,6 +753,7 @@ public struct EditableOpenCurve: Codable, Equatable, Identifiable, Sendable {
         self.points = []
         self.segments = []
         self.pressures = polygon.pressures
+        self.segmentPressureProfiles = nil
         self.isVisible = polygon.visible
 
         var previousEndAnchorID: EditableGeometryID?
@@ -734,6 +793,10 @@ public struct EditableOpenCurve: Codable, Equatable, Identifiable, Sendable {
             )
             previousEndAnchorID = endAnchor.id
         }
+        self.segmentPressureProfiles = editablePressureProfiles(
+            polygon.pressureProfiles,
+            segments: segments
+        )
     }
 
     public var anchorIDs: [EditableGeometryID] {
@@ -824,8 +887,12 @@ public struct EditableOpenCurve: Codable, Equatable, Identifiable, Sendable {
             pointIDMap[point.id] = copiedID
             return EditableCubicPoint(id: copiedID, position: point.position, kind: point.kind)
         }
+        var segmentIDMap: [EditableGeometryID: EditableGeometryID] = [:]
         let copiedSegments = segments.map { segment in
-            EditableCubicSegment(
+            let copiedID = EditableGeometryID()
+            segmentIDMap[segment.id] = copiedID
+            return EditableCubicSegment(
+                id: copiedID,
                 startAnchorID: pointIDMap[segment.startAnchorID] ?? segment.startAnchorID,
                 controlOutID: pointIDMap[segment.controlOutID] ?? segment.controlOutID,
                 controlInID: pointIDMap[segment.controlInID] ?? segment.controlInID,
@@ -837,6 +904,7 @@ public struct EditableOpenCurve: Codable, Equatable, Identifiable, Sendable {
             points: copiedPoints,
             segments: copiedSegments,
             pressures: pressures,
+            segmentPressureProfiles: remappedPressureProfiles(using: segmentIDMap),
             isVisible: isVisible
         )
     }
@@ -850,23 +918,31 @@ public struct EditableOpenCurve: Codable, Equatable, Identifiable, Sendable {
         else { return nil }
         var closedPoints = points
         var closedSegments = segments
-        let delta = first - last
-        let controlOut = EditableCubicPoint(position: last + delta * (1.0 / 3.0), kind: .control)
-        let controlIn = EditableCubicPoint(position: last + delta * (2.0 / 3.0), kind: .control)
-        closedPoints.append(contentsOf: [controlOut, controlIn])
-        closedSegments.append(
-            EditableCubicSegment(
-                startAnchorID: lastID,
-                controlOutID: controlOut.id,
-                controlInID: controlIn.id,
-                endAnchorID: firstID
+
+        if first.distance(to: last) <= 1e-8, let finalSegmentIndex = closedSegments.indices.last {
+            closedSegments[finalSegmentIndex].endAnchorID = firstID
+            closedPoints.removeAll { $0.id == lastID }
+        } else {
+            let delta = first - last
+            let controlOut = EditableCubicPoint(position: last + delta * (1.0 / 3.0), kind: .control)
+            let controlIn = EditableCubicPoint(position: last + delta * (2.0 / 3.0), kind: .control)
+            closedPoints.append(contentsOf: [controlOut, controlIn])
+            closedSegments.append(
+                EditableCubicSegment(
+                    startAnchorID: lastID,
+                    controlOutID: controlOut.id,
+                    controlInID: controlIn.id,
+                    endAnchorID: firstID
+                )
             )
-        )
+        }
+
         return EditableClosedPolygon(
             name: name ?? self.name,
             points: closedPoints,
             segments: closedSegments,
-            pressures: Array(repeating: 1.0, count: closedSegments.count),
+            pressures: pressures.normalizedPressureValues(count: closedSegments.count),
+            segmentPressureProfiles: segmentPressureProfiles,
             isVisible: isVisible
         )
     }
@@ -883,7 +959,47 @@ public struct EditableOpenCurve: Codable, Equatable, Identifiable, Sendable {
                 encoded.append(position.editorToRuntimeWorld())
             }
         }
-        return Polygon2D(points: encoded, type: .openSpline, pressures: pressures, visible: isVisible)
+        return Polygon2D(
+            points: encoded,
+            type: .openSpline,
+            pressures: pressures,
+            pressureProfiles: runtimePressureProfiles(),
+            visible: isVisible
+        )
+    }
+
+    public func pressureProfile(for segmentID: EditableGeometryID) -> [Double]? {
+        segmentPressureProfiles?[segmentID]
+    }
+
+    public mutating func setPressureProfile(_ samples: [Double]?, for segmentID: EditableGeometryID) {
+        if let samples, !samples.isEmpty {
+            var profiles = segmentPressureProfiles ?? [:]
+            profiles[segmentID] = samples
+            segmentPressureProfiles = profiles
+        } else {
+            segmentPressureProfiles?[segmentID] = nil
+            if segmentPressureProfiles?.isEmpty == true {
+                segmentPressureProfiles = nil
+            }
+        }
+    }
+
+    private func runtimePressureProfiles() -> [[Double]]? {
+        guard let segmentPressureProfiles, !segmentPressureProfiles.isEmpty else { return nil }
+        let profiles = segments.map { segment in segmentPressureProfiles[segment.id] ?? [] }
+        return profiles.contains { !$0.isEmpty } ? profiles : nil
+    }
+
+    private func remappedPressureProfiles(using segmentIDMap: [EditableGeometryID: EditableGeometryID]) -> [EditableGeometryID: [Double]]? {
+        guard let segmentPressureProfiles, !segmentPressureProfiles.isEmpty else { return nil }
+        var remapped: [EditableGeometryID: [Double]] = [:]
+        for (oldID, samples) in segmentPressureProfiles {
+            if let newID = segmentIDMap[oldID] {
+                remapped[newID] = samples
+            }
+        }
+        return remapped.isEmpty ? nil : remapped
     }
 
     public func prunedToReferencedPoints() -> EditableOpenCurve {
@@ -919,18 +1035,34 @@ public struct EditableStandalonePoint: Codable, Equatable, Identifiable, Sendabl
     public var id: EditableGeometryID
     public var name: String
     public var position: Vector2D
+    public var pressure: Double
     public var isVisible: Bool
 
     public init(
         id: EditableGeometryID = EditableGeometryID(),
         name: String,
         position: Vector2D,
+        pressure: Double = 1.0,
         isVisible: Bool = true
     ) {
         self.id = id
         self.name = name
         self.position = position
+        self.pressure = pressure
         self.isVisible = isVisible
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case id, name, position, pressure, isVisible
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decodeIfPresent(EditableGeometryID.self, forKey: .id) ?? EditableGeometryID()
+        name = try container.decode(String.self, forKey: .name)
+        position = try container.decode(Vector2D.self, forKey: .position)
+        pressure = try container.decodeIfPresent(Double.self, forKey: .pressure) ?? 1.0
+        isVisible = try container.decodeIfPresent(Bool.self, forKey: .isVisible) ?? true
     }
 
     public func translated(by delta: Vector2D) -> EditableStandalonePoint {
@@ -943,12 +1075,13 @@ public struct EditableStandalonePoint: Codable, Equatable, Identifiable, Sendabl
         EditableStandalonePoint(
             name: name ?? self.name,
             position: position,
+            pressure: pressure,
             isVisible: isVisible
         )
     }
 
     public func toPolygon2D() -> Polygon2D {
-        Polygon2D(points: [position.editorToRuntimeWorld()], type: .point, visible: isVisible)
+        Polygon2D(points: [position.editorToRuntimeWorld()], type: .point, pressures: [pressure], visible: isVisible)
     }
 }
 
@@ -1327,4 +1460,26 @@ public struct EditableGeometryHistory: Equatable, Sendable {
         }
         return next
     }
+}
+
+private extension Array where Element == Double {
+    func normalizedPressureValues(count: Int) -> [Double] {
+        guard count > 0 else { return [] }
+        guard !isEmpty else { return Array(repeating: 1.0, count: count) }
+        if self.count == count { return self }
+        if self.count > count { return Array(prefix(count)) }
+        return self + Array(repeating: last ?? 1.0, count: count - self.count)
+    }
+}
+
+private func editablePressureProfiles(
+    _ profiles: [[Double]]?,
+    segments: [EditableCubicSegment]
+) -> [EditableGeometryID: [Double]]? {
+    guard let profiles, !profiles.isEmpty else { return nil }
+    var result: [EditableGeometryID: [Double]] = [:]
+    for (index, segment) in segments.enumerated() where index < profiles.count && !profiles[index].isEmpty {
+        result[segment.id] = profiles[index]
+    }
+    return result.isEmpty ? nil : result
 }

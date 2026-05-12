@@ -104,8 +104,8 @@ final class LoomEngineRenderPixelTests: XCTestCase {
         return (r: Int(buf[idx]), g: Int(buf[idx + 1]), b: Int(buf[idx + 2]))
     }
 
-    /// Frame 0 (before any advance): background is white (255,255,255).
-    /// No overlay is applied (matches Scala reference — drawOverlay is commented out).
+    /// Frame 0 (before any advance): background is white and the legacy XML
+    /// overlay default is treated as transparent.
     ///
     /// We sample a corner pixel (10,10) which is far from any sprite geometry
     /// (all Test_052 sprites are positioned at/near the canvas centre).
@@ -114,23 +114,21 @@ final class LoomEngineRenderPixelTests: XCTestCase {
         let image  = try XCTUnwrap(engine.makeFrame())
         let px     = pixel(at: 10, 10, of: image)
 
-        // Corner should be white — no overlay, no sprite here.
-        XCTAssertEqual(px.r, 255, accuracy: 5, "corner pixel should be white (background only, no overlay)")
+        XCTAssertEqual(px.r, 255, accuracy: 5, "corner pixel should be white with transparent default overlay")
         XCTAssertEqual(px.g, 255, accuracy: 5)
         XCTAssertEqual(px.b, 255, accuracy: 5)
     }
 
     /// In accumulation mode (drawBackgroundOnce = true) repeated makeFrame() calls
     /// draw sprites on top of the same persistent canvas.  A corner pixel far from
-    /// any sprite should remain white across calls because nothing overwrites it.
+    /// any sprite should remain stable across calls when the scene has not advanced.
     func testAccumulationModeCornerStaysWhite() throws {
         var engine = try LoomEngine(projectDirectory: fixtureDir052)
         let img1   = try XCTUnwrap(engine.makeFrame())
         let img2   = try XCTUnwrap(engine.makeFrame())
         let px1    = pixel(at: 10, 10, of: img1)
         let px2    = pixel(at: 10, 10, of: img2)
-        // No overlay — corner untouched by sprites should stay white.
-        XCTAssertEqual(px2.r, px1.r, accuracy: 5, "corner pixel should stay white in accumulation mode (no overlay)")
+        XCTAssertEqual(px2.r, px1.r, accuracy: 5, "corner pixel should stay stable in accumulation mode")
         XCTAssertEqual(px2.g, px1.g, accuracy: 5)
         XCTAssertEqual(px2.b, px1.b, accuracy: 5)
     }
@@ -154,7 +152,7 @@ final class LoomEngineRenderIntoTests: XCTestCase {
     }
 
     func testRenderIntoDoesNotCrash() throws {
-        let engine       = try LoomEngine(projectDirectory: fixtureDir052)
+        var engine       = try LoomEngine(projectDirectory: fixtureDir052)
         let (ctx, buf)   = makeCanvas()
         defer { buf.deallocate() }
         engine.render(into: ctx)   // must not crash
@@ -164,7 +162,7 @@ final class LoomEngineRenderIntoTests: XCTestCase {
     /// any pre-existing transform.  Verify that calling it on a fresh context
     /// (no transform) still produces a non-white result (overlay is always applied).
     func testRenderIntoFillsCanvas() throws {
-        let engine     = try LoomEngine(projectDirectory: fixtureDir052)
+        var engine     = try LoomEngine(projectDirectory: fixtureDir052)
         let (ctx, buf) = makeCanvas()
         defer { buf.deallocate() }
         engine.render(into: ctx)
@@ -172,11 +170,8 @@ final class LoomEngineRenderIntoTests: XCTestCase {
         let w = 1080
         let cx = w / 2, cy = w / 2
         let idx = (cy * w + cx) * 4
-        // The canvas was pre-filled with 255; render(into:) draws the background (white).
-        // Sprites near the centre may or may not cover this exact pixel, but at minimum
-        // the background fill should have run — channel should still be white (no overlay).
-        // We just verify render didn't crash and the context was touched (value is still 255
-        // for an untouched corner).
+        // Sprites near the centre may or may not cover this exact pixel; this verifies
+        // render completed without corrupting the buffer.
         XCTAssertGreaterThanOrEqual(Int(buf[idx]), 0, "render(into:) completed without corrupting the buffer")
     }
 }

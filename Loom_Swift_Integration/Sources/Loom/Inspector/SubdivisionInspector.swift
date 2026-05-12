@@ -7,6 +7,7 @@ struct SubdivisionInspector: View {
     @State private var activePTPTab: PTPTab = .exterior
     @State private var generalCollapsed  = false
     @State private var insetCollapsed    = false
+    @State private var pressureCollapsed = false
     @State private var ptwCollapsed      = false
     @State private var ptpCollapsed      = false
 
@@ -65,6 +66,7 @@ struct SubdivisionInspector: View {
         if param.subdivisionType.usesInsetTransform {
             insetSection(setIdx: setIdx, paramIdx: paramIdx)
         }
+        pressureSection(setIdx: setIdx, paramIdx: paramIdx)
         ptwSection(setIdx: setIdx, paramIdx: paramIdx)
         ptpSection(setIdx: setIdx, paramIdx: paramIdx)
     }
@@ -127,6 +129,34 @@ struct SubdivisionInspector: View {
                 FloatEntryField(value: bindP(setIdx, paramIdx, \.insetTransform.rotation),
                                 width: 80, fractionDigits: 4)
                 Text("rad").font(.system(size: 11)).foregroundStyle(.secondary)
+            }
+        }
+    }
+
+    // MARK: - Pressure Sensitivity
+
+    private func pressureSection(setIdx: Int, paramIdx: Int) -> some View {
+        InspectorSection("PS", isCollapsed: $pressureCollapsed) {
+            InspectorField("Mode") {
+                Picker("", selection: bindP(setIdx, paramIdx, \.pressureSubdivisionMode)) {
+                    ForEach(PressureSubdivisionMode.allCases, id: \.self) { mode in
+                        Text(mode.label).tag(mode)
+                    }
+                }
+                .labelsHidden()
+                .frame(maxWidth: 130)
+            }
+            if controller.projectConfig?.subdivisionConfig
+                .paramsSets[safe: setIdx]?.params[safe: paramIdx]?.pressureSubdivisionMode == .random {
+                InspectorField("Groups") {
+                    HStack(spacing: 6) {
+                        ForEach(0..<5, id: \.self) { idx in
+                            Toggle("\(idx + 1)", isOn: bindPressureRandomGroup(setIdx, paramIdx, idx))
+                                .toggleStyle(.checkbox)
+                                .font(.system(size: 10))
+                        }
+                    }
+                }
             }
         }
     }
@@ -607,6 +637,31 @@ struct SubdivisionInspector: View {
                     guard setIdx < cfg.subdivisionConfig.paramsSets.count,
                           paramIdx < cfg.subdivisionConfig.paramsSets[setIdx].params.count else { return }
                     cfg.subdivisionConfig.paramsSets[setIdx].params[paramIdx][keyPath: kp] = v
+                }
+            }
+        )
+    }
+
+    private func bindPressureRandomGroup(_ setIdx: Int, _ paramIdx: Int, _ groupIndex: Int) -> Binding<Bool> {
+        let ctl = controller
+        return Binding(
+            get: {
+                guard groupIndex >= 0, groupIndex < 5 else { return false }
+                let groups = ctl.projectConfig?.subdivisionConfig
+                    .paramsSets[safe: setIdx]?.params[safe: paramIdx]?.pressureRandomGroups ?? SubdivisionParams().pressureRandomGroups
+                return SubdivisionParams.normalizedPressureRandomGroups(groups)[groupIndex]
+            },
+            set: { value in
+                ctl.updateProjectConfig { cfg in
+                    guard setIdx < cfg.subdivisionConfig.paramsSets.count,
+                          paramIdx < cfg.subdivisionConfig.paramsSets[setIdx].params.count,
+                          groupIndex >= 0, groupIndex < 5 else { return }
+                    var groups = SubdivisionParams.normalizedPressureRandomGroups(
+                        cfg.subdivisionConfig.paramsSets[setIdx].params[paramIdx].pressureRandomGroups
+                    )
+                    groups[groupIndex] = value
+                    cfg.subdivisionConfig.paramsSets[setIdx].params[paramIdx].pressureRandomGroups =
+                        SubdivisionParams.normalizedPressureRandomGroups(groups)
                 }
             }
         )

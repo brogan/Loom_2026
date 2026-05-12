@@ -1,5 +1,21 @@
 import Foundation
 
+public enum PressureSubdivisionMode: String, CaseIterable, Codable, Sendable {
+    case none
+    case spatial
+    case inheritPath
+    case random
+
+    public var label: String {
+        switch self {
+        case .none:        return "None"
+        case .spatial:     return "Spatial"
+        case .inheritPath: return "Inherit Path"
+        case .random:      return "Random"
+        }
+    }
+}
+
 /// Configuration for one generation of polygon subdivision.
 ///
 /// A named, ordered list of `SubdivisionParams` (one per generation) constitutes
@@ -32,6 +48,13 @@ public struct SubdivisionParams: Equatable, Codable, Sendable {
     // MARK: - Visibility
 
     public var visibilityRule: VisibilityRule
+
+    // MARK: - Pressure sensitivity
+
+    /// How pressure-sensitive source geometry is carried into subdivided children.
+    public var pressureSubdivisionMode: PressureSubdivisionMode
+    /// Random pressure library groups 1...5. Used only when `pressureSubdivisionMode == .random`.
+    public var pressureRandomGroups: [Bool]
 
     // MARK: - Whole-polygon transform (Phase 3+)
 
@@ -86,6 +109,8 @@ public struct SubdivisionParams: Equatable, Codable, Sendable {
         ranMiddle: Bool                       = false,
         ranDiv: Double                        = 100,
         visibilityRule: VisibilityRule        = .all,
+        pressureSubdivisionMode: PressureSubdivisionMode = .spatial,
+        pressureRandomGroups: [Bool]          = [true, true, true, true, true],
         polysTransform: Bool                  = true,
         polysTranformWhole: Bool              = false,
         pTW_probability: Double               = 100,
@@ -93,7 +118,7 @@ public struct SubdivisionParams: Equatable, Codable, Sendable {
         pTW_randomTranslation: Bool           = false,
         pTW_randomScale: Bool                 = false,
         pTW_randomRotation: Bool              = false,
-        pTW_transform: InsetTransform         = .default,
+        pTW_transform: InsetTransform         = .identity,
         pTW_randomCentreDivisor: Double       = 100,
         pTW_randomTranslationRange: VectorRange = .zero,
         pTW_randomScaleRange: VectorRange     = .one,
@@ -112,6 +137,8 @@ public struct SubdivisionParams: Equatable, Codable, Sendable {
         self.ranMiddle                  = ranMiddle
         self.ranDiv                     = ranDiv
         self.visibilityRule             = visibilityRule
+        self.pressureSubdivisionMode    = pressureSubdivisionMode
+        self.pressureRandomGroups       = Self.normalizedPressureRandomGroups(pressureRandomGroups)
         self.polysTransform             = polysTransform
         self.polysTranformWhole         = polysTranformWhole
         self.pTW_probability            = pTW_probability
@@ -129,11 +156,92 @@ public struct SubdivisionParams: Equatable, Codable, Sendable {
         self.ptpTransformSet            = ptpTransformSet
     }
 
+    private enum CodingKeys: String, CodingKey {
+        case name, enabled, subdivisionType, lineRatios, controlPointRatios, continuous, insetTransform
+        case ranMiddle, ranDiv, visibilityRule
+        case pressureSubdivisionMode, pressureRandomGroups
+        case polysTransform, polysTranformWhole, pTW_probability, pTW_commonCentre
+        case pTW_randomTranslation, pTW_randomScale, pTW_randomRotation, pTW_transform
+        case pTW_randomCentreDivisor, pTW_randomTranslationRange, pTW_randomScaleRange, pTW_randomRotationRange
+        case polysTransformPoints, pTP_probability, ptpTransformSet
+    }
+
+    public init(from decoder: Decoder) throws {
+        let defaults = SubdivisionParams()
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        self.init(
+            name: try c.decodeIfPresent(String.self, forKey: .name) ?? defaults.name,
+            enabled: try c.decodeIfPresent(Bool.self, forKey: .enabled) ?? defaults.enabled,
+            subdivisionType: try c.decodeIfPresent(SubdivisionType.self, forKey: .subdivisionType) ?? defaults.subdivisionType,
+            lineRatios: try c.decodeIfPresent(Vector2D.self, forKey: .lineRatios) ?? defaults.lineRatios,
+            controlPointRatios: try c.decodeIfPresent(Vector2D.self, forKey: .controlPointRatios) ?? defaults.controlPointRatios,
+            continuous: try c.decodeIfPresent(Bool.self, forKey: .continuous) ?? defaults.continuous,
+            insetTransform: try c.decodeIfPresent(InsetTransform.self, forKey: .insetTransform) ?? defaults.insetTransform,
+            ranMiddle: try c.decodeIfPresent(Bool.self, forKey: .ranMiddle) ?? defaults.ranMiddle,
+            ranDiv: try c.decodeIfPresent(Double.self, forKey: .ranDiv) ?? defaults.ranDiv,
+            visibilityRule: try c.decodeIfPresent(VisibilityRule.self, forKey: .visibilityRule) ?? defaults.visibilityRule,
+            pressureSubdivisionMode: try c.decodeIfPresent(PressureSubdivisionMode.self, forKey: .pressureSubdivisionMode) ?? defaults.pressureSubdivisionMode,
+            pressureRandomGroups: try c.decodeIfPresent([Bool].self, forKey: .pressureRandomGroups) ?? defaults.pressureRandomGroups,
+            polysTransform: try c.decodeIfPresent(Bool.self, forKey: .polysTransform) ?? defaults.polysTransform,
+            polysTranformWhole: try c.decodeIfPresent(Bool.self, forKey: .polysTranformWhole) ?? defaults.polysTranformWhole,
+            pTW_probability: try c.decodeIfPresent(Double.self, forKey: .pTW_probability) ?? defaults.pTW_probability,
+            pTW_commonCentre: try c.decodeIfPresent(Bool.self, forKey: .pTW_commonCentre) ?? defaults.pTW_commonCentre,
+            pTW_randomTranslation: try c.decodeIfPresent(Bool.self, forKey: .pTW_randomTranslation) ?? defaults.pTW_randomTranslation,
+            pTW_randomScale: try c.decodeIfPresent(Bool.self, forKey: .pTW_randomScale) ?? defaults.pTW_randomScale,
+            pTW_randomRotation: try c.decodeIfPresent(Bool.self, forKey: .pTW_randomRotation) ?? defaults.pTW_randomRotation,
+            pTW_transform: try c.decodeIfPresent(InsetTransform.self, forKey: .pTW_transform) ?? defaults.pTW_transform,
+            pTW_randomCentreDivisor: try c.decodeIfPresent(Double.self, forKey: .pTW_randomCentreDivisor) ?? defaults.pTW_randomCentreDivisor,
+            pTW_randomTranslationRange: try c.decodeIfPresent(VectorRange.self, forKey: .pTW_randomTranslationRange) ?? defaults.pTW_randomTranslationRange,
+            pTW_randomScaleRange: try c.decodeIfPresent(VectorRange.self, forKey: .pTW_randomScaleRange) ?? defaults.pTW_randomScaleRange,
+            pTW_randomRotationRange: try c.decodeIfPresent(FloatRange.self, forKey: .pTW_randomRotationRange) ?? defaults.pTW_randomRotationRange,
+            polysTransformPoints: try c.decodeIfPresent(Bool.self, forKey: .polysTransformPoints) ?? defaults.polysTransformPoints,
+            pTP_probability: try c.decodeIfPresent(Double.self, forKey: .pTP_probability) ?? defaults.pTP_probability,
+            ptpTransformSet: try c.decodeIfPresent(PTPTransformSet.self, forKey: .ptpTransformSet) ?? defaults.ptpTransformSet
+        )
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encode(name, forKey: .name)
+        try c.encode(enabled, forKey: .enabled)
+        try c.encode(subdivisionType, forKey: .subdivisionType)
+        try c.encode(lineRatios, forKey: .lineRatios)
+        try c.encode(controlPointRatios, forKey: .controlPointRatios)
+        try c.encode(continuous, forKey: .continuous)
+        try c.encode(insetTransform, forKey: .insetTransform)
+        try c.encode(ranMiddle, forKey: .ranMiddle)
+        try c.encode(ranDiv, forKey: .ranDiv)
+        try c.encode(visibilityRule, forKey: .visibilityRule)
+        try c.encode(pressureSubdivisionMode, forKey: .pressureSubdivisionMode)
+        try c.encode(pressureRandomGroups, forKey: .pressureRandomGroups)
+        try c.encode(polysTransform, forKey: .polysTransform)
+        try c.encode(polysTranformWhole, forKey: .polysTranformWhole)
+        try c.encode(pTW_probability, forKey: .pTW_probability)
+        try c.encode(pTW_commonCentre, forKey: .pTW_commonCentre)
+        try c.encode(pTW_randomTranslation, forKey: .pTW_randomTranslation)
+        try c.encode(pTW_randomScale, forKey: .pTW_randomScale)
+        try c.encode(pTW_randomRotation, forKey: .pTW_randomRotation)
+        try c.encode(pTW_transform, forKey: .pTW_transform)
+        try c.encode(pTW_randomCentreDivisor, forKey: .pTW_randomCentreDivisor)
+        try c.encode(pTW_randomTranslationRange, forKey: .pTW_randomTranslationRange)
+        try c.encode(pTW_randomScaleRange, forKey: .pTW_randomScaleRange)
+        try c.encode(pTW_randomRotationRange, forKey: .pTW_randomRotationRange)
+        try c.encode(polysTransformPoints, forKey: .polysTransformPoints)
+        try c.encode(pTP_probability, forKey: .pTP_probability)
+        try c.encodeIfPresent(ptpTransformSet, forKey: .ptpTransformSet)
+    }
+
     // MARK: - Convenience
 
     /// The effective split ratio for side `index`, respecting `continuous` mode.
     public func splitRatio(forSideIndex index: Int) -> Double {
         if continuous && index % 2 != 0 { return lineRatios.y }
         return lineRatios.x
+    }
+
+    public static func normalizedPressureRandomGroups(_ groups: [Bool]) -> [Bool] {
+        let padded = groups + Array(repeating: false, count: max(0, 5 - groups.count))
+        let firstFive = Array(padded.prefix(5))
+        return firstFive.contains(true) ? firstFive : [true, true, true, true, true]
     }
 }

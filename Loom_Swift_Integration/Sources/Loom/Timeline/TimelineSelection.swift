@@ -4,7 +4,7 @@ import LoomEngine
 // MARK: - TimelineLane
 
 enum TimelineLane: Int, CaseIterable {
-    case position = 0, scale, rotation, morph, shape
+    case position = 0, scale, rotation, morph, opacity, shape
 
     var label: String {
         switch self {
@@ -12,6 +12,7 @@ enum TimelineLane: Int, CaseIterable {
         case .scale:    return "Scale"
         case .rotation: return "Rotation"
         case .morph:    return "Morph"
+        case .opacity:  return "Opacity"
         case .shape:    return "Shape"
         }
     }
@@ -22,6 +23,7 @@ enum TimelineLane: Int, CaseIterable {
         case .scale:    return .green
         case .rotation: return .orange
         case .morph:    return .purple
+        case .opacity:  return .pink
         case .shape:    return .mint
         }
     }
@@ -32,6 +34,7 @@ enum TimelineLane: Int, CaseIterable {
         case .scale:    return drivers.scale.keyframes.map(\.frame)
         case .rotation: return drivers.rotation.keyframes.map(\.frame)
         case .morph:    return drivers.morph.keyframes.map(\.frame)
+        case .opacity:  return drivers.opacity.keyframes.map(\.frame)
         case .shape:    return drivers.shape.keyframes.map(\.frame)
         }
     }

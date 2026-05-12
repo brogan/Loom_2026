@@ -65,6 +65,7 @@ public enum MorphInterpolator {
                 points:    blended,
                 type:      f.type,
                 pressures: f.pressures,
+                pressureProfiles: f.pressureProfiles,
                 visible:   f.visible
             )
         }

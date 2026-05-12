@@ -9,6 +9,9 @@ struct RenderingInspector: View {
     // Collapse state — primary sections default open, secondary default closed
     @State private var renderersCollapsed    = false
     @State private var rendererCollapsed     = false
+    @State private var fillColorDriverCollapsed = true
+    @State private var strokeColorDriverCollapsed = true
+    @State private var strokeWidthDriverCollapsed = true
     @State private var brushCollapsed        = false
     @State private var meanderCollapsed      = true
     @State private var stampCollapsed        = false
@@ -28,6 +31,7 @@ struct RenderingInspector: View {
             if let itemIdx = controller.selectedRendererItemIndex,
                let renderer = set.renderers[safe: itemIdx] {
                 rendererEditor(renderer: renderer, setIdx: setIdx, itemIdx: itemIdx)
+                rendererDriversSection(renderer: renderer, setIdx: setIdx, itemIdx: itemIdx)
                 switch renderer.mode {
                 case .brushed:
                     brushConfigSection(setIdx: setIdx, itemIdx: itemIdx,
@@ -142,6 +146,29 @@ struct RenderingInspector: View {
                     .frame(width: 50)
                 Text("frames").font(.system(size: 10)).foregroundStyle(.secondary)
             }
+        }
+    }
+
+    // MARK: - Renderer drivers
+
+    @ViewBuilder
+    private func rendererDriversSection(renderer: Renderer, setIdx: Int, itemIdx: Int) -> some View {
+        VStack(alignment: .leading, spacing: 0) {
+            ColorDriverEditor(
+                label: "Fill Color Driver",
+                driver: bindRendererFillColorDriver(setIdx, itemIdx, fallback: renderer.fillColor),
+                isCollapsed: $fillColorDriverCollapsed
+            )
+            ColorDriverEditor(
+                label: "Stroke Color Driver",
+                driver: bindRendererStrokeColorDriver(setIdx, itemIdx, fallback: renderer.strokeColor),
+                isCollapsed: $strokeColorDriverCollapsed
+            )
+            DoubleDriverEditor(
+                label: "Stroke Width Driver",
+                driver: bindRendererStrokeWidthDriver(setIdx, itemIdx, fallback: renderer.strokeWidth),
+                isCollapsed: $strokeWidthDriverCollapsed
+            )
         }
     }
 
@@ -482,6 +509,7 @@ struct RenderingInspector: View {
             Picker("", selection: scale) {
                 Text("Poly").tag(ChangeScale.poly)
                 Text("Sprite").tag(ChangeScale.sprite)
+                Text("Point").tag(ChangeScale.point)
                 Text("Global").tag(ChangeScale.global)
             }
             .labelsHidden().frame(maxWidth: 110)
@@ -526,6 +554,7 @@ struct RenderingInspector: View {
             Picker("", selection: scale) {
                 Text("Poly").tag(ChangeScale.poly)
                 Text("Sprite").tag(ChangeScale.sprite)
+                Text("Point").tag(ChangeScale.point)
                 Text("Global").tag(ChangeScale.global)
             }
             .labelsHidden().frame(maxWidth: 110)
@@ -619,6 +648,76 @@ struct RenderingInspector: View {
                           itemIdx < cfg.renderingConfig.library.rendererSets[setIdx].renderers.count
                     else { return }
                     cfg.renderingConfig.library.rendererSets[setIdx].renderers[itemIdx][keyPath: kp] = v
+                }
+            }
+        )
+    }
+
+    private func bindRendererStrokeWidthDriver(_ setIdx: Int,
+                                               _ itemIdx: Int,
+                                               fallback: Double) -> Binding<DoubleDriver> {
+        let ctl = controller
+        return Binding(
+            get: {
+                ctl.projectConfig?.renderingConfig.library
+                    .rendererSets[safe: setIdx]?.renderers[safe: itemIdx]?
+                    .drivers?.strokeWidth ?? DoubleDriver.constant(fallback)
+            },
+            set: { v in
+                ctl.updateProjectConfig { cfg in
+                    guard setIdx < cfg.renderingConfig.library.rendererSets.count,
+                          itemIdx < cfg.renderingConfig.library.rendererSets[setIdx].renderers.count
+                    else { return }
+                    if cfg.renderingConfig.library.rendererSets[setIdx]
+                        .renderers[itemIdx].drivers == nil {
+                        cfg.renderingConfig.library.rendererSets[setIdx]
+                            .renderers[itemIdx].drivers = RendererDrivers(strokeWidth: DoubleDriver.constant(fallback))
+                    }
+                    cfg.renderingConfig.library.rendererSets[setIdx]
+                        .renderers[itemIdx].drivers!.strokeWidth = v
+                }
+            }
+        )
+    }
+
+    private func bindRendererFillColorDriver(_ setIdx: Int,
+                                             _ itemIdx: Int,
+                                             fallback: LoomColor) -> Binding<ColorDriver> {
+        bindRendererColorDriver(setIdx, itemIdx, keyPath: \.fillColor, fallback: fallback)
+    }
+
+    private func bindRendererStrokeColorDriver(_ setIdx: Int,
+                                               _ itemIdx: Int,
+                                               fallback: LoomColor) -> Binding<ColorDriver> {
+        bindRendererColorDriver(setIdx, itemIdx, keyPath: \.strokeColor, fallback: fallback)
+    }
+
+    private func bindRendererColorDriver(_ setIdx: Int,
+                                         _ itemIdx: Int,
+                                         keyPath: WritableKeyPath<RendererDrivers, ColorDriver?>,
+                                         fallback: LoomColor) -> Binding<ColorDriver> {
+        let ctl = controller
+        return Binding(
+            get: {
+                ctl.projectConfig?.renderingConfig.library
+                    .rendererSets[safe: setIdx]?.renderers[safe: itemIdx]?
+                    .drivers?[keyPath: keyPath] ?? ColorDriver.constant(fallback)
+            },
+            set: { v in
+                ctl.updateProjectConfig { cfg in
+                    guard setIdx < cfg.renderingConfig.library.rendererSets.count,
+                          itemIdx < cfg.renderingConfig.library.rendererSets[setIdx].renderers.count
+                    else { return }
+                    if cfg.renderingConfig.library.rendererSets[setIdx]
+                        .renderers[itemIdx].drivers == nil {
+                        let renderer = cfg.renderingConfig.library.rendererSets[setIdx].renderers[itemIdx]
+                        cfg.renderingConfig.library.rendererSets[setIdx]
+                            .renderers[itemIdx].drivers = RendererDrivers(
+                                strokeWidth: DoubleDriver.constant(renderer.strokeWidth)
+                            )
+                    }
+                    cfg.renderingConfig.library.rendererSets[setIdx]
+                        .renderers[itemIdx].drivers![keyPath: keyPath] = v
                 }
             }
         )

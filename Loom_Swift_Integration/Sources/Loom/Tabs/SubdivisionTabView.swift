@@ -8,6 +8,10 @@ struct SubdivisionTabView: View {
     // Expansion state for the subdivision sets tree (index-based so renames don't lose state)
     @State private var expandedSets: Set<Int> = []
     @State private var bakeAlert: BakeAlert?  = nil
+    @State private var paramRenameTarget: ParamRenameTarget? = nil
+    @State private var paramRenameDraft = ""
+
+    private let setsToolbarHeight: CGFloat = 78
 
     var body: some View {
         GeometryReader { geo in
@@ -25,18 +29,21 @@ struct SubdivisionTabView: View {
                     .frame(height: max(0, geo.size.height * 0.62
                                        - (shouldShowApplyBar ? 32 : 0)
                                        - 1   // divider
-                                       - 30  // toolbar
+                                       - setsToolbarHeight
                     ))
 
                 Divider()
                 setsToolbar
-                    .frame(height: 30)
+                    .frame(height: setsToolbarHeight)
             }
         }
         .onAppear { autoSelectFirstSprite() }
         .alert(item: $bakeAlert) { a in
             Alert(title: Text(a.title), message: Text(a.message),
                   dismissButton: .default(Text("OK")))
+        }
+        .sheet(item: $paramRenameTarget) { target in
+            paramRenameSheet(target)
         }
     }
 
@@ -286,53 +293,114 @@ struct SubdivisionTabView: View {
     // MARK: - Sets toolbar
 
     private var setsToolbar: some View {
-        HStack(spacing: 0) {
-            // Set-level buttons
-            toolbarButton("plus", tooltip: "New set")         { addSet() }
-            toolbarButton("minus", tooltip: "Delete set")     { deleteSelectedSet() }
-                .disabled(controller.selectedSubdivisionIndex == nil)
-            toolbarButton("plus.square.on.square", tooltip: "Duplicate set") { duplicateSelectedSet() }
-                .disabled(controller.selectedSubdivisionIndex == nil)
-
-            Divider().frame(height: 14).padding(.horizontal, 4)
-
-            // Param-level buttons
-            toolbarButton("plus.circle", tooltip: "Add param") { addParam() }
-                .disabled(controller.selectedSubdivisionIndex == nil)
-            toolbarButton("minus.circle", tooltip: "Delete param") { deleteSelectedParam() }
-                .disabled(controller.selectedSubdivisionParamIndex == nil)
-            toolbarButton("arrow.triangle.2.circlepath", tooltip: "Duplicate param") { duplicateSelectedParam() }
-                .disabled(controller.selectedSubdivisionParamIndex == nil)
-
-            Divider().frame(height: 14).padding(.horizontal, 4)
-
-            toolbarButton("flame", tooltip: "Bake selected set to polygon file") { bakeSelectedSet() }
-                .disabled(!canBake)
-
-            Button {
-                saveSelectedSetAsSVG()
-            } label: {
-                FolderExportIcon(strokeWidth: 1.0)
-                    .frame(width: 22, height: 20)
-                    .frame(width: 26, height: 26)
+        VStack(alignment: .leading, spacing: 0) {
+            HStack(spacing: 0) {
+                Text("Sets")
+                    .font(.system(size: 10, weight: .semibold))
+                    .foregroundStyle(.secondary)
+                    .frame(width: 42, alignment: .leading)
+                toolbarButton("plus", tooltip: "New set") { addSet() }
+                toolbarButton("minus", tooltip: "Delete set") { deleteSelectedSet() }
+                    .disabled(controller.selectedSubdivisionIndex == nil)
+                toolbarButton("plus.square.on.square", tooltip: "Duplicate set") { duplicateSelectedSet() }
+                    .disabled(controller.selectedSubdivisionIndex == nil)
+                Spacer()
             }
-            .buttonStyle(.plain)
-            .disabled(!canBake)
-            .help("Save subdivided geometry as SVG wireframe to svgs/")
+            .frame(height: 24)
 
-            Spacer()
+            HStack(spacing: 0) {
+                Spacer().frame(width: 28)
+                Text("Params")
+                    .font(.system(size: 10, weight: .semibold))
+                    .foregroundStyle(.secondary)
+                    .frame(width: 42, alignment: .leading)
+                toolbarButton("plus.circle", tooltip: "Add param") { addParam() }
+                    .disabled(controller.selectedSubdivisionIndex == nil)
+                toolbarButton("minus.circle", tooltip: "Delete param") { deleteSelectedParam() }
+                    .disabled(controller.selectedSubdivisionParamIndex == nil)
+                toolbarButton("arrow.triangle.2.circlepath", tooltip: "Duplicate param") { duplicateSelectedParam() }
+                    .disabled(controller.selectedSubdivisionParamIndex == nil)
+                toolbarIconButton(tooltip: "Rename param") {
+                    Image(systemName: "pencil")
+                        .font(.system(size: 12))
+                        .rotationEffect(.degrees(-25))
+                } action: {
+                    beginRenameSelectedParam()
+                }
+                .disabled(controller.selectedSubdivisionParamIndex == nil)
+                Spacer()
+            }
+            .frame(height: 24)
+
+            HStack(spacing: 0) {
+                Text("Output")
+                    .font(.system(size: 10, weight: .semibold))
+                    .foregroundStyle(.secondary)
+                    .frame(width: 42, alignment: .leading)
+                toolbarButton("flame", tooltip: "Bake selected set to polygon file") { bakeSelectedSet() }
+                    .disabled(!canBake)
+                Button {
+                    saveSelectedSetAsSVG()
+                } label: {
+                    SVGExportIcon()
+                        .frame(width: 28, height: 20)
+                        .frame(width: 30, height: 26)
+                }
+                .buttonStyle(.plain)
+                .disabled(!canBake)
+                .help("Save subdivided geometry as SVG wireframe to svgs/")
+                Spacer()
+            }
+            .frame(height: 24)
         }
-        .padding(.horizontal, 4)
+        .padding(.horizontal, 6)
+        .padding(.vertical, 3)
     }
 
     private func toolbarButton(_ icon: String, tooltip: String, action: @escaping () -> Void) -> some View {
+        toolbarIconButton(tooltip: tooltip) {
+            Image(systemName: icon).font(.system(size: 12))
+        } action: {
+            action()
+        }
+    }
+
+    private func toolbarIconButton<Label: View>(
+        tooltip: String,
+        @ViewBuilder label: () -> Label,
+        action: @escaping () -> Void
+    ) -> some View {
         Button(action: action) {
-            Image(systemName: icon)
-                .font(.system(size: 12))
-                .frame(width: 26, height: 26)
+            label()
+                .frame(width: 26, height: 24)
         }
         .buttonStyle(.plain)
         .help(tooltip)
+    }
+
+    private func paramRenameSheet(_ target: ParamRenameTarget) -> some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Rename Parameter")
+                .font(.system(size: 14, weight: .semibold))
+            TextField("Name", text: $paramRenameDraft)
+                .textFieldStyle(.roundedBorder)
+                .frame(width: 240)
+            HStack {
+                Spacer()
+                Button("Cancel") {
+                    paramRenameTarget = nil
+                }
+                Button("Rename") {
+                    renameParam(target)
+                }
+                .keyboardShortcut(.defaultAction)
+            }
+        }
+        .padding(18)
+        .frame(width: 300)
+        .onAppear {
+            paramRenameDraft = currentParamName(target) ?? ""
+        }
     }
 
     // MARK: - Interaction handlers
@@ -533,6 +601,33 @@ struct SubdivisionTabView: View {
             config.subdivisionConfig.paramsSets[setIdx].params.insert(copy, at: paramIdx + 1)
         }
         controller.selectedSubdivisionParamIndex = paramIdx + 1
+    }
+
+    private func beginRenameSelectedParam() {
+        guard let setIdx = controller.selectedSubdivisionIndex,
+              let paramIdx = controller.selectedSubdivisionParamIndex,
+              let cfg = controller.projectConfig,
+              setIdx < cfg.subdivisionConfig.paramsSets.count,
+              paramIdx < cfg.subdivisionConfig.paramsSets[setIdx].params.count
+        else { return }
+        paramRenameDraft = cfg.subdivisionConfig.paramsSets[setIdx].params[paramIdx].name
+        paramRenameTarget = ParamRenameTarget(setIdx: setIdx, paramIdx: paramIdx)
+    }
+
+    private func currentParamName(_ target: ParamRenameTarget) -> String? {
+        controller.projectConfig?.subdivisionConfig
+            .paramsSets[safe: target.setIdx]?.params[safe: target.paramIdx]?.name
+    }
+
+    private func renameParam(_ target: ParamRenameTarget) {
+        let newName = paramRenameDraft.trimmingCharacters(in: .whitespacesAndNewlines)
+        controller.updateProjectConfig { config in
+            guard target.setIdx < config.subdivisionConfig.paramsSets.count,
+                  target.paramIdx < config.subdivisionConfig.paramsSets[target.setIdx].params.count
+            else { return }
+            config.subdivisionConfig.paramsSets[target.setIdx].params[target.paramIdx].name = newName
+        }
+        paramRenameTarget = nil
     }
 
     // MARK: - Bake
@@ -791,6 +886,13 @@ private struct BakeAlert: Identifiable {
     let id      = UUID()
     let title:   String
     let message: String
+}
+
+private struct ParamRenameTarget: Identifiable {
+    let setIdx: Int
+    let paramIdx: Int
+
+    var id: String { "\(setIdx)-\(paramIdx)" }
 }
 
 // MARK: - Subdivision type display name

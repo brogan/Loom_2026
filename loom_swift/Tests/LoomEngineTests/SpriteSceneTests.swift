@@ -316,5 +316,159 @@ final class SpriteSceneRenderTests: XCTestCase {
         let idx = (row * width + 50) * 4
         XCTAssertLessThan(Int(buf[idx]), 255, "centre pixel should not be white — polygon covers it")
     }
-}
 
+    func testPolyScaleFillChangeAppliesPerPolygon() throws {
+        let left = Polygon2D(
+            points: [
+                Vector2D(x: -0.45, y:  0.20),
+                Vector2D(x: -0.05, y:  0.20),
+                Vector2D(x: -0.05, y: -0.20),
+                Vector2D(x: -0.45, y: -0.20),
+            ],
+            type: .line
+        )
+        let right = Polygon2D(
+            points: [
+                Vector2D(x: 0.05, y:  0.20),
+                Vector2D(x: 0.45, y:  0.20),
+                Vector2D(x: 0.45, y: -0.20),
+                Vector2D(x: 0.05, y: -0.20),
+            ],
+            type: .line
+        )
+
+        let red = LoomColor(r: 255, g: 0, b: 0, a: 255)
+        let blue = LoomColor(r: 0, g: 0, b: 255, a: 255)
+        let change = FillColorChange(
+            enabled: true,
+            kind: .sequential,
+            motion: .up,
+            cycle: .constant,
+            scale: .poly,
+            palette: [red, blue],
+            pauseMax: 0
+        )
+        let renderer = Renderer(
+            mode: .filled,
+            fillColor: .black,
+            changes: RendererChanges(fillColor: change)
+        )
+        let rendSet = RendererSet(name: "test", renderers: [renderer])
+        let spriteDef = SpriteDef(name: "test", position: .zero, scale: Vector2D(x: 1, y: 1),
+                                  animation: .disabled)
+        let instance = SpriteInstance(def: spriteDef,
+                                      basePolygons: [left, right],
+                                      morphTargetPolygons: [],
+                                      rendererSet: rendSet,
+                                      subdivisionParams: [],
+                                      state: SpriteState.initial(for: rendSet))
+        var scene = SpriteScene(instances: [instance])
+        var rng = SeededRNG(seed: 42)
+
+        let width = 100
+        let height = 100
+        let buf = UnsafeMutablePointer<UInt8>.allocate(capacity: width * height * 4)
+        defer { buf.deallocate() }
+        buf.initialize(repeating: 255, count: width * height * 4)
+        let ctx = CGContext(
+            data: buf, width: width, height: height,
+            bitsPerComponent: 8, bytesPerRow: width * 4,
+            space: CGColorSpaceCreateDeviceRGB(),
+            bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+        )!
+        ctx.translateBy(x: 0, y: CGFloat(height))
+        ctx.scaleBy(x: 1, y: -1)
+
+        let vt = ViewTransform(canvasSize: CGSize(width: width, height: height))
+        scene.render(into: ctx, viewTransform: vt, using: &rng)
+
+        let row = height - 50
+        let leftIdx = (row * width + 25) * 4
+        let rightIdx = (row * width + 75) * 4
+        XCTAssertGreaterThan(Int(buf[leftIdx]), 200)
+        XCTAssertLessThan(Int(buf[leftIdx + 2]), 80)
+        XCTAssertLessThan(Int(buf[rightIdx]), 80)
+        XCTAssertGreaterThan(Int(buf[rightIdx + 2]), 200)
+    }
+
+    func testAllPlaybackUsesEachRendererOwnPolyFillChangeState() throws {
+        let left = Polygon2D(
+            points: [
+                Vector2D(x: -0.45, y:  0.20),
+                Vector2D(x: -0.05, y:  0.20),
+                Vector2D(x: -0.05, y: -0.20),
+                Vector2D(x: -0.45, y: -0.20),
+            ],
+            type: .line
+        )
+        let right = Polygon2D(
+            points: [
+                Vector2D(x: 0.05, y:  0.20),
+                Vector2D(x: 0.45, y:  0.20),
+                Vector2D(x: 0.45, y: -0.20),
+                Vector2D(x: 0.05, y: -0.20),
+            ],
+            type: .line
+        )
+
+        var brushConfig = BrushConfig()
+        brushConfig.brushNames = ["missing.png"]
+        let brushRenderer = Renderer(name: "brush", mode: .brushed, strokeColor: .black, brushConfig: brushConfig)
+
+        let red = LoomColor(r: 255, g: 0, b: 0, a: 255)
+        let blue = LoomColor(r: 0, g: 0, b: 255, a: 255)
+        let fillChange = FillColorChange(
+            enabled: true,
+            kind: .sequential,
+            motion: .up,
+            cycle: .constant,
+            scale: .poly,
+            palette: [red, blue],
+            pauseMax: 0
+        )
+        let fillRenderer = Renderer(
+            name: "fill",
+            mode: .filled,
+            fillColor: .black,
+            changes: RendererChanges(fillColor: fillChange)
+        )
+        var playback = RendererPlaybackConfig()
+        playback.mode = .all
+        let rendSet = RendererSet(name: "test", playbackConfig: playback, renderers: [brushRenderer, fillRenderer])
+        let spriteDef = SpriteDef(name: "test", position: .zero, scale: Vector2D(x: 1, y: 1),
+                                  animation: .disabled)
+        let instance = SpriteInstance(def: spriteDef,
+                                      basePolygons: [left, right],
+                                      morphTargetPolygons: [],
+                                      rendererSet: rendSet,
+                                      subdivisionParams: [],
+                                      state: SpriteState.initial(for: rendSet))
+        var scene = SpriteScene(instances: [instance])
+        var rng = SeededRNG(seed: 42)
+
+        let width = 100
+        let height = 100
+        let buf = UnsafeMutablePointer<UInt8>.allocate(capacity: width * height * 4)
+        defer { buf.deallocate() }
+        buf.initialize(repeating: 255, count: width * height * 4)
+        let ctx = CGContext(
+            data: buf, width: width, height: height,
+            bitsPerComponent: 8, bytesPerRow: width * 4,
+            space: CGColorSpaceCreateDeviceRGB(),
+            bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+        )!
+        ctx.translateBy(x: 0, y: CGFloat(height))
+        ctx.scaleBy(x: 1, y: -1)
+
+        let vt = ViewTransform(canvasSize: CGSize(width: width, height: height))
+        scene.render(into: ctx, viewTransform: vt, brushImages: [:], using: &rng)
+
+        let row = height - 50
+        let leftIdx = (row * width + 25) * 4
+        let rightIdx = (row * width + 75) * 4
+        XCTAssertGreaterThan(Int(buf[leftIdx]), 200)
+        XCTAssertLessThan(Int(buf[leftIdx + 2]), 80)
+        XCTAssertLessThan(Int(buf[rightIdx]), 80)
+        XCTAssertGreaterThan(Int(buf[rightIdx + 2]), 200)
+    }
+}

@@ -86,6 +86,76 @@ private final class TestCanvas {
     var hasAnyNonWhitePixel: Bool { !isAllWhite }
 }
 
+private func makeWhiteBrushMask(size: Int = 3) -> CGImage {
+    let bytesPerRow = size
+    let buffer = UnsafeMutablePointer<UInt8>.allocate(capacity: size * bytesPerRow)
+    buffer.initialize(repeating: 255, count: size * bytesPerRow)
+    defer { buffer.deallocate() }
+
+    let context = CGContext(
+        data: buffer,
+        width: size,
+        height: size,
+        bitsPerComponent: 8,
+        bytesPerRow: bytesPerRow,
+        space: CGColorSpaceCreateDeviceGray(),
+        bitmapInfo: CGImageAlphaInfo.none.rawValue
+    )!
+    return context.makeImage()!
+}
+
+private func makeOpaqueRGBABrushSource(size: Int = 5) -> CGImage {
+    let context = CGContext(
+        data: nil,
+        width: size,
+        height: size,
+        bitsPerComponent: 8,
+        bytesPerRow: 0,
+        space: CGColorSpaceCreateDeviceRGB(),
+        bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+    )!
+    context.setFillColor(red: 0, green: 0, blue: 0, alpha: 1)
+    context.fill(CGRect(x: 0, y: 0, width: size, height: size))
+    context.setFillColor(red: 1, green: 1, blue: 1, alpha: 1)
+    context.fill(CGRect(x: 2, y: 2, width: 1, height: 1))
+    return context.makeImage()!
+}
+
+private func makeAlphaBrushSource(size: Int = 5) -> CGImage {
+    let context = CGContext(
+        data: nil,
+        width: size,
+        height: size,
+        bitsPerComponent: 8,
+        bytesPerRow: 0,
+        space: CGColorSpaceCreateDeviceRGB(),
+        bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+    )!
+    context.clear(CGRect(x: 0, y: 0, width: size, height: size))
+    context.setFillColor(red: 0, green: 0, blue: 0, alpha: 1)
+    context.fill(CGRect(x: 2, y: 2, width: 1, height: 1))
+    return context.makeImage()!
+}
+
+private func grayPixel(_ image: CGImage, x: Int, y: Int) -> UInt8 {
+    let width = image.width
+    let height = image.height
+    let buffer = UnsafeMutablePointer<UInt8>.allocate(capacity: width * height)
+    buffer.initialize(repeating: 0, count: width * height)
+    defer { buffer.deallocate() }
+    let context = CGContext(
+        data: buffer,
+        width: width,
+        height: height,
+        bitsPerComponent: 8,
+        bytesPerRow: width,
+        space: CGColorSpaceCreateDeviceGray(),
+        bitmapInfo: CGImageAlphaInfo.none.rawValue
+    )!
+    context.draw(image, in: CGRect(x: 0, y: 0, width: width, height: height))
+    return buffer[y * width + x]
+}
+
 // MARK: - LoomColorCGTests
 
 final class LoomColorCGTests: XCTestCase {
@@ -115,6 +185,79 @@ final class LoomColorCGTests: XCTestCase {
         XCTAssertEqual(comps[1], 102.0 / 255.0, accuracy: 0.001)
         XCTAssertEqual(comps[2], 153.0 / 255.0, accuracy: 0.001)
         XCTAssertEqual(comps[3], 204.0 / 255.0, accuracy: 0.001)
+    }
+}
+
+// MARK: - BrushMaskTests
+
+final class BrushMaskTests: XCTestCase {
+
+    func testBrushMaskImageUsesLuminanceNotOpaqueRGBAAlpha() {
+        let source = makeOpaqueRGBABrushSource()
+        let mask = LoomEngine.brushMaskImage(from: source)
+
+        XCTAssertNotNil(mask)
+        XCTAssertLessThan(grayPixel(mask!, x: 0, y: 0), 10)
+        XCTAssertGreaterThan(grayPixel(mask!, x: 2, y: 2), 245)
+    }
+
+    func testBrushMaskImageUsesAlphaWhenBrushHasTransparentPixels() {
+        let source = makeAlphaBrushSource()
+        let mask = LoomEngine.brushMaskImage(from: source)
+
+        XCTAssertNotNil(mask)
+        XCTAssertLessThan(grayPixel(mask!, x: 0, y: 0), 10)
+        XCTAssertGreaterThan(grayPixel(mask!, x: 2, y: 2), 245)
+    }
+}
+
+// MARK: - BrushProgressiveStateTests
+
+final class BrushProgressiveStateTests: XCTestCase {
+
+    func testProgressiveBrushAdvancesOnlyPartOfPathPerFrame() {
+        let edge = BrushEdge(
+            kind: .line,
+            points: [Vector2D(x: 10, y: 50), Vector2D(x: 110, y: 50)],
+            length: 100,
+            pressureStart: 1,
+            pressureEnd: 1
+        )
+        var config = BrushConfig()
+        config.drawMode = .progressive
+        config.stampSpacing = 10
+        config.stampsPerFrame = 2
+        config.agentCount = 1
+        config.followTangent = false
+        config.perpendicularJitterMin = 0
+        config.perpendicularJitterMax = 0
+        config.scaleMin = 1
+        config.scaleMax = 1
+        config.opacityMin = 1
+        config.opacityMax = 1
+        config.brushNames = ["default.png"]
+
+        var state = BrushProgressiveState(
+            edges: [edge],
+            agentCount: 1,
+            config: config,
+            elapsedFrames: 0
+        )
+        let canvas = TestCanvas(width: 120, height: 80)
+
+        BrushStampEngine.drawProgressiveStamps(
+            agentIndex: 0,
+            state: &state,
+            config: config,
+            color: .black,
+            context: canvas.context,
+            brushImages: ["default.png": makeWhiteBrushMask()]
+        )
+
+        XCTAssertEqual(state.agents[0].currentEdgeIndex, 0)
+        XCTAssertEqual(state.agents[0].currentT, 0.2, accuracy: 0.0001)
+        XCTAssertFalse(state.agents[0].completed)
+        XCTAssertTrue(canvas.hasAnyNonWhitePixel)
     }
 }
 

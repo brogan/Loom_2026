@@ -1,4 +1,5 @@
 import XCTest
+import Foundation
 @testable import LoomEngine
 
 final class EditableGeometryTests: XCTestCase {
@@ -715,5 +716,69 @@ final class EditableGeometryTests: XCTestCase {
         XCTAssertTrue(relationalIDs.contains(polygonA.segments[1].controlOutID))
         XCTAssertTrue(relationalIDs.contains(polygonB.segments[0].controlOutID))
         XCTAssertTrue(relationalIDs.contains(polygonB.segments[2].controlInID))
+    }
+
+    func testClosingOpenCurvePreservesPressureValues() throws {
+        var curve = EditableOpenCurve(name: "Freehand", anchors: [
+            Vector2D(x: 0, y: 0),
+            Vector2D(x: 1, y: 0),
+            Vector2D(x: 1, y: 1)
+        ])
+        curve.pressures = [0.2, 0.45, 0.8]
+
+        let polygon = try XCTUnwrap(curve.closingToPolygon())
+
+        XCTAssertEqual(polygon.segments.count, 3)
+        XCTAssertEqual(polygon.pressures, [0.2, 0.45, 0.8])
+    }
+
+    func testClosingOpenCurveWithCoincidentEndpointsDoesNotAddZeroLengthSegment() throws {
+        var curve = EditableOpenCurve(name: "Welded Freehand", anchors: [
+            Vector2D(x: 0, y: 0),
+            Vector2D(x: 1, y: 0),
+            Vector2D(x: 1, y: 1),
+            Vector2D(x: 0, y: 0)
+        ])
+        curve.pressures = [0.2, 0.45, 0.8, 0.3]
+
+        let polygon = try XCTUnwrap(curve.closingToPolygon())
+
+        XCTAssertEqual(polygon.segments.count, 3)
+        XCTAssertEqual(polygon.pressures, [0.2, 0.45, 0.8])
+        XCTAssertEqual(polygon.segments.last?.endAnchorID, polygon.anchorIDs.first)
+    }
+
+    func testClosedPolygonXMLPreservesPressureValues() throws {
+        let poly = sampleSpline()
+        let xml = XMLPolygonWriter.polygonSetXML([poly], name: "Pressure")
+
+        XCTAssertTrue(xml.contains("pressure=\"0.250000\""))
+        XCTAssertTrue(xml.contains("pressure=\"0.750000\""))
+
+        let loaded = try XMLPolygonLoader.load(data: Data(xml.utf8), normalise: false)
+
+        XCTAssertEqual(loaded.count, 1)
+        XCTAssertEqual(loaded[0].type, .spline)
+        XCTAssertEqual(loaded[0].pressures, [0.25, 0.75])
+    }
+
+    func testOpenCurveXMLPreservesTerminalPressureValue() throws {
+        let poly = Polygon2D(
+            points: [
+                Vector2D(x: 0, y: 0),
+                Vector2D(x: 0.2, y: 0),
+                Vector2D(x: 0.8, y: 0),
+                Vector2D(x: 1, y: 0)
+            ],
+            type: .openSpline,
+            pressures: [0.2, 0.9]
+        )
+        let xml = XMLPolygonWriter.polygonSetXML([poly], name: "OpenPressure")
+
+        let loaded = try XMLPolygonLoader.load(data: Data(xml.utf8), normalise: false)
+
+        XCTAssertEqual(loaded.count, 1)
+        XCTAssertEqual(loaded[0].type, .openSpline)
+        XCTAssertEqual(loaded[0].pressures, [0.2, 0.9])
     }
 }

@@ -40,7 +40,7 @@ public enum PostCompletionMode: String, Codable, Sendable {
 /// for the project's `qualityMultiple`.
 public struct BrushConfig: Equatable, Codable, Sendable {
     /// Filenames of brush PNG images relative to `<project>/brushes/`.
-    public var brushNames:              [String]          = ["default.png"]
+    public var brushNames:              [String]          = ["circle.png"]
     public var drawMode:                BrushDrawMode     = .fullPath
     public var stampSpacing:            Double            = 4.0
     public var spacingEasing:           String            = "LINEAR"

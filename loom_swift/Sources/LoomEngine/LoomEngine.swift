@@ -58,6 +58,7 @@ public struct LoomEngine: @unchecked Sendable {
     /// In accumulation mode each `makeFrame()` call renders onto the same canvas,
     /// so the overlay color progressively fades old content (Loom's trail effect).
     private var accumulationCanvas: AccumulationCanvas?
+    private var brushProgressiveStates: [String: BrushProgressiveState] = [:]
 
     // MARK: - Init
 
@@ -88,6 +89,7 @@ public struct LoomEngine: @unchecked Sendable {
         self.frameCount         = 0
         self.elapsedFrames      = 0.0
         self.accumulationCanvas = nil
+        self.brushProgressiveStates = [:]
     }
 
     // MARK: - Public accessors
@@ -154,6 +156,7 @@ public struct LoomEngine: @unchecked Sendable {
         frameCount             = frame
         elapsedFrames          = globalElapsed
         accumulationCanvas     = nil        // force fresh render at seek position
+        brushProgressiveStates = [:]
         sceneAdvancedThisFrame = true
         var rng = SystemRandomNumberGenerator()
         for i in scene.instances.indices {
@@ -190,7 +193,7 @@ public struct LoomEngine: @unchecked Sendable {
     /// When calling `render(into:)` directly (rather than via `makeFrame()`),
     /// the background is drawn whenever `drawBackgroundOnce` is false, or on
     /// the first advance cycle (`frameCount == 1`).
-    public func render(into context: CGContext) {
+    public mutating func render(into context: CGContext) {
         let drawBg = !config.globalConfig.drawBackgroundOnce || frameCount <= 1
         renderImpl(into: context, drawBackground: drawBg)
     }
@@ -224,7 +227,7 @@ public struct LoomEngine: @unchecked Sendable {
 
     // MARK: - Private render implementation
 
-    private func renderImpl(into context: CGContext, drawBackground: Bool) {
+    private mutating func renderImpl(into context: CGContext, drawBackground: Bool) {
         let w = viewTransform.canvasSize.width
         let h = viewTransform.canvasSize.height
         // Apply animated camera to a fresh ViewTransform each frame.
@@ -251,18 +254,43 @@ public struct LoomEngine: @unchecked Sendable {
 
         // ── 2. Sprite pass ───────────────────────────────────────────────────
         // Snapshot RNG so repeated render() calls produce identical output for
-        // the same frame (render is non-mutating; subdivision consumes RNG).
+        // the same frame; subdivision consumes RNG locally.
         var spriteRNG = rng
         scene.render(into: context, viewTransform: activeTransform,
                      brushImages: brushImages, stampImages: stampImages,
-                     elapsedFrames: elapsedFrames, using: &spriteRNG)
+                     elapsedFrames: elapsedFrames,
+                     progressiveBrushStates: &brushProgressiveStates,
+                     progressiveBrushEnabled: config.globalConfig.animating,
+                     using: &spriteRNG)
 
-        // ── 3. Overlay pass ──────────────────────────────────────────────────
-        // NOTE: overlayColor is loaded from XML but Scala's MySketch.draw never
-        // calls drawOverlay, so the overlay is effectively unused in the reference
-        // implementation.  Skipped here to match Scala output.  When a proper
-        // trail/fade effect is needed this is where it belongs.
+        // ── 3. Overlay / border pass ─────────────────────────────────────────
+        drawOverlayAndBorder(into: context, width: w, height: h)
 
+        context.restoreGState()
+    }
+
+    private func drawOverlayAndBorder(into context: CGContext, width w: Double, height h: Double) {
+        let overlay = config.globalConfig.overlayColor
+        if overlay.a > 0 {
+            context.saveGState()
+            context.setFillColor(overlay.cgColor)
+            context.fill(CGRect(x: 0, y: 0, width: w, height: h))
+            context.restoreGState()
+        }
+
+        let borderWidth = max(0.0, config.globalConfig.borderWidth)
+        guard borderWidth > 0 else { return }
+
+        context.saveGState()
+        context.setStrokeColor(config.globalConfig.borderColor.cgColor)
+        context.setLineWidth(CGFloat(borderWidth))
+        let inset = borderWidth / 2.0
+        context.stroke(CGRect(
+            x: inset,
+            y: inset,
+            width: max(0.0, w - borderWidth),
+            height: max(0.0, h - borderWidth)
+        ))
         context.restoreGState()
     }
 
@@ -291,7 +319,7 @@ public struct LoomEngine: @unchecked Sendable {
     }
 
     /// Creates and renders to a fresh canvas each call (independent-frame mode).
-    private func makeFreshFrame(width w: Int, height h: Int) -> CGImage? {
+    private mutating func makeFreshFrame(width w: Int, height h: Int) -> CGImage? {
         let bytesPerRow = w * 4
         let buf = UnsafeMutablePointer<UInt8>.allocate(capacity: h * bytesPerRow)
         defer { buf.deallocate() }
@@ -348,7 +376,9 @@ public struct LoomEngine: @unchecked Sendable {
 
     /// Load all PNG files from `<projectDirectory>/brushes/`.
     private static func loadBrushImages(projectDirectory: URL) -> [String: CGImage] {
-        loadPNGImages(directory: projectDirectory.appendingPathComponent("brushes"))
+        loadPNGImages(directory: projectDirectory.appendingPathComponent("brushes")).compactMapValues {
+            brushMaskImage(from: $0)
+        }
     }
 
     /// Load all PNG files from `directory`, keyed by filename.
@@ -366,6 +396,69 @@ public struct LoomEngine: @unchecked Sendable {
             result[url.lastPathComponent] = img
         }
         return result
+    }
+
+    /// Convert brush PNGs into luminance masks before CoreGraphics clipping.
+    ///
+    /// Brush images may be saved as either true greyscale PNGs or opaque RGBA
+    /// black/white PNGs. `clip(to:mask:)` can otherwise treat RGBA alpha as the
+    /// mask and tint the full rectangular image, producing a visible square.
+    static func brushMaskImage(from image: CGImage) -> CGImage? {
+        let w = image.width
+        let h = image.height
+        guard w > 0, h > 0 else { return nil }
+        let rgbaBytesPerRow = w * 4
+        let rgba = UnsafeMutablePointer<UInt8>.allocate(capacity: h * rgbaBytesPerRow)
+        rgba.initialize(repeating: 0, count: h * rgbaBytesPerRow)
+        defer { rgba.deallocate() }
+
+        guard let rgbaCtx = CGContext(
+            data: rgba,
+            width: w,
+            height: h,
+            bitsPerComponent: 8,
+            bytesPerRow: rgbaBytesPerRow,
+            space: CGColorSpaceCreateDeviceRGB(),
+            bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+        ) else { return nil }
+        rgbaCtx.draw(image, in: CGRect(x: 0, y: 0, width: w, height: h))
+
+        var hasTransparentPixels = false
+        for i in stride(from: 3, to: h * rgbaBytesPerRow, by: 4) where rgba[i] < 250 {
+            hasTransparentPixels = true
+            break
+        }
+
+        let maskBytesPerRow = w
+        let mask = UnsafeMutablePointer<UInt8>.allocate(capacity: h * maskBytesPerRow)
+        mask.initialize(repeating: 0, count: h * maskBytesPerRow)
+        defer { mask.deallocate() }
+
+        for y in 0..<h {
+            for x in 0..<w {
+                let src = y * rgbaBytesPerRow + x * 4
+                let dst = y * maskBytesPerRow + x
+                if hasTransparentPixels {
+                    mask[dst] = rgba[src + 3]
+                } else {
+                    let r = Double(rgba[src])
+                    let g = Double(rgba[src + 1])
+                    let b = Double(rgba[src + 2])
+                    mask[dst] = UInt8(max(0, min(255, Int((0.299 * r + 0.587 * g + 0.114 * b).rounded()))))
+                }
+            }
+        }
+
+        guard let maskCtx = CGContext(
+            data: mask,
+            width: w,
+            height: h,
+            bitsPerComponent: 8,
+            bytesPerRow: maskBytesPerRow,
+            space: CGColorSpaceCreateDeviceGray(),
+            bitmapInfo: CGImageAlphaInfo.none.rawValue
+        ) else { return nil }
+        return maskCtx.makeImage()
     }
 
     /// Pre-blur brush images for every unique `blurRadius > 0` found in `config`.

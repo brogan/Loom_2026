@@ -70,16 +70,16 @@ public enum RegularPolygonGenerator {
     private static func rotatePolygon(_ poly: Polygon2D, degrees: Double) -> Polygon2D {
         let r = degrees * .pi / 180.0
         let pts = poly.points.map { rotate($0, by: r) }
-        return Polygon2D(points: pts, type: poly.type, pressures: poly.pressures)
+        return Polygon2D(points: pts, type: poly.type, pressures: poly.pressures, pressureProfiles: poly.pressureProfiles)
     }
 
     private static func scalePolygon(_ poly: Polygon2D, sx: Double, sy: Double) -> Polygon2D {
         let pts = poly.points.map { Vector2D(x: $0.x * sx, y: $0.y * sy) }
-        return Polygon2D(points: pts, type: poly.type, pressures: poly.pressures)
+        return Polygon2D(points: pts, type: poly.type, pressures: poly.pressures, pressureProfiles: poly.pressureProfiles)
     }
 
     private static func translatePolygon(_ poly: Polygon2D, dx: Double, dy: Double) -> Polygon2D {
         let pts = poly.points.map { Vector2D(x: $0.x + dx, y: $0.y + dy) }
-        return Polygon2D(points: pts, type: poly.type, pressures: poly.pressures)
+        return Polygon2D(points: pts, type: poly.type, pressures: poly.pressures, pressureProfiles: poly.pressureProfiles)
     }
 }

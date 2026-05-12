@@ -108,6 +108,22 @@ final class PolygonTransformsMasterSwitchTests: XCTestCase {
 
 final class PTWDeterministicTransformTests: XCTestCase {
 
+    func testDefaultWholeTransformLeavesPolygonUnchanged() {
+        var params = SubdivisionParams()
+        params.polysTransform = true
+        params.polysTranformWhole = true
+
+        let poly = makeSquare()
+        var rng = SeededRNG52(seed: 1)
+        let result = PolygonTransforms.apply([poly], params: params, rng: &rng)
+
+        XCTAssertEqual(result[0].points.count, poly.points.count)
+        for (a, b) in zip(poly.points, result[0].points) {
+            XCTAssertEqual(a.x, b.x, accuracy: 1e-10)
+            XCTAssertEqual(a.y, b.y, accuracy: 1e-10)
+        }
+    }
+
     func testIdentityTransformLeavesPolygonUnchanged() {
         var params = baseParams()
         params.polysTransform     = true

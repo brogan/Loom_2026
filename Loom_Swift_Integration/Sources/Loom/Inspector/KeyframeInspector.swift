@@ -45,6 +45,10 @@ struct KeyframeInspector: View {
             InspectorField("Amount") {
                 FloatEntryField(value: doubleValueBinding(sel), width: 65, fractionDigits: 3, fontSize: 12)
             }
+        case .opacity:
+            InspectorField("Alpha") {
+                FloatEntryField(value: doubleValueBinding(sel), width: 65, fractionDigits: 3, fontSize: 12)
+            }
         case .shape:
             InspectorField("Index") {
                 TextField("", value: shapeIndexBinding(sel), format: .number)
@@ -97,6 +101,10 @@ struct KeyframeInspector: View {
                             guard sel.keyframeIdx < drivers.morph.keyframes.count else { return }
                             drivers.morph.keyframes[sel.keyframeIdx].frame = newFrame
                             drivers.morph.keyframes.sort { $0.frame < $1.frame }
+                        case .opacity:
+                            guard sel.keyframeIdx < drivers.opacity.keyframes.count else { return }
+                            drivers.opacity.keyframes[sel.keyframeIdx].frame = newFrame
+                            drivers.opacity.keyframes.sort { $0.frame < $1.frame }
                         case .shape:
                             guard sel.keyframeIdx < drivers.shape.keyframes.count else { return }
                             drivers.shape.keyframes[sel.keyframeIdx].frame = newFrame
@@ -131,6 +139,7 @@ struct KeyframeInspector: View {
                 switch sel.lane {
                 case .rotation: return drivers.rotation.keyframes[safe: sel.keyframeIdx]?.value ?? 0
                 case .morph:    return drivers.morph.keyframes[safe: sel.keyframeIdx]?.value ?? 0
+                case .opacity:  return drivers.opacity.keyframes[safe: sel.keyframeIdx]?.value ?? 1
                 default:        return 0
                 }
             },
@@ -144,6 +153,9 @@ struct KeyframeInspector: View {
                         case .morph:
                             guard sel.keyframeIdx < drivers.morph.keyframes.count else { return }
                             drivers.morph.keyframes[sel.keyframeIdx].value = v
+                        case .opacity:
+                            guard sel.keyframeIdx < drivers.opacity.keyframes.count else { return }
+                            drivers.opacity.keyframes[sel.keyframeIdx].value = v
                         default: break
                         }
                     }
@@ -248,6 +260,7 @@ struct KeyframeInspector: View {
                 case .scale:    return drivers.scale.keyframes[safe: sel.keyframeIdx]?.easing ?? .linear
                 case .rotation: return drivers.rotation.keyframes[safe: sel.keyframeIdx]?.easing ?? .linear
                 case .morph:    return drivers.morph.keyframes[safe: sel.keyframeIdx]?.easing ?? .linear
+                case .opacity:  return drivers.opacity.keyframes[safe: sel.keyframeIdx]?.easing ?? .linear
                 case .shape:    return drivers.shape.keyframes[safe: sel.keyframeIdx]?.easing ?? .linear
                 }
             },
@@ -267,6 +280,9 @@ struct KeyframeInspector: View {
                         case .morph:
                             guard sel.keyframeIdx < drivers.morph.keyframes.count else { return }
                             drivers.morph.keyframes[sel.keyframeIdx].easing = e
+                        case .opacity:
+                            guard sel.keyframeIdx < drivers.opacity.keyframes.count else { return }
+                            drivers.opacity.keyframes[sel.keyframeIdx].easing = e
                         case .shape:
                             guard sel.keyframeIdx < drivers.shape.keyframes.count else { return }
                             drivers.shape.keyframes[sel.keyframeIdx].easing = e

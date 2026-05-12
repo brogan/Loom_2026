@@ -24,6 +24,8 @@ public enum ChangeCycle: String, Codable, Sendable, CaseIterable {
 public enum ChangeScale: String, Codable, Sendable, CaseIterable {
     case poly   = "POLY"
     case sprite = "SPRITE"
+    case point  = "POINT"
+    /// Legacy/back-compat value from early Swift configs. Treat like sprite-level.
     case global = "GLOBAL"
 }
 
@@ -131,6 +133,25 @@ public struct RendererChanges: Equatable, Codable, Sendable {
     }
 }
 
+// MARK: - Renderer drivers
+
+/// Continuous/keyframed renderer parameters evaluated against global frame time.
+public struct RendererDrivers: Equatable, Codable, Sendable {
+    public var fillColor: ColorDriver?
+    public var strokeColor: ColorDriver?
+    public var strokeWidth: DoubleDriver = .one
+
+    public init(
+        fillColor: ColorDriver? = nil,
+        strokeColor: ColorDriver? = nil,
+        strokeWidth: DoubleDriver = .one
+    ) {
+        self.fillColor = fillColor
+        self.strokeColor = strokeColor
+        self.strokeWidth = strokeWidth
+    }
+}
+
 // MARK: - Renderer mode
 
 /// Rendering output mode for a `Renderer`.
@@ -177,6 +198,8 @@ public struct Renderer: Equatable, Codable, Sendable {
     public var holdLength: Int
     /// Animated render-parameter changes. Empty when the renderer is static.
     public var changes: RendererChanges
+    /// Continuous/keyframed render-parameter drivers. Nil for static legacy renderers.
+    public var drivers: RendererDrivers?
     /// Non-nil when `mode == .brushed`.
     public var brushConfig: BrushConfig?
     /// Non-nil when `mode == .stamped` (or `.stenciled`).
@@ -192,6 +215,7 @@ public struct Renderer: Equatable, Codable, Sendable {
         pointSize: Double         = 2.0,
         holdLength: Int           = 1,
         changes: RendererChanges  = RendererChanges(),
+        drivers: RendererDrivers? = nil,
         brushConfig: BrushConfig?   = nil,
         stencilConfig: StencilConfig? = nil
     ) {
@@ -199,6 +223,7 @@ public struct Renderer: Equatable, Codable, Sendable {
         self.strokeWidth = strokeWidth; self.strokeColor = strokeColor
         self.fillColor = fillColor; self.pointSize = pointSize
         self.holdLength = holdLength; self.changes = changes
+        self.drivers = drivers
         self.brushConfig = brushConfig; self.stencilConfig = stencilConfig
     }
 }

@@ -11,6 +11,7 @@ struct RenderSurfaceView: NSViewRepresentable, Equatable {
     var seekFrame:            Int?            = nil
     var onFrameTick:          (Int) -> Void    = { _ in }
     var onAnimationComplete:  (() -> Void)?    = nil
+    var onRenderProgress:     (Double?) -> Void = { _ in }
 
     // SwiftUI uses == to decide whether to call updateNSView.
     // Closures aren't Equatable; we only diff on the properties that actually drive
@@ -24,6 +25,7 @@ struct RenderSurfaceView: NSViewRepresentable, Equatable {
     func makeNSView(context: Context) -> RenderSurfaceNSView {
         let view = RenderSurfaceNSView(engine: engine, onFrameTick: onFrameTick)
         view.onAnimationComplete = onAnimationComplete
+        view.onRenderProgress    = onRenderProgress
         applyState(playbackState, to: view, isInitial: true)
         return view
     }
@@ -31,6 +33,7 @@ struct RenderSurfaceView: NSViewRepresentable, Equatable {
     func updateNSView(_ nsView: RenderSurfaceNSView, context: Context) {
         nsView.onFrameTick         = onFrameTick
         nsView.onAnimationComplete = onAnimationComplete
+        nsView.onRenderProgress    = onRenderProgress
         if nsView.engine !== engine {
             nsView.replaceEngine(engine)
             applyState(playbackState, to: nsView, isInitial: false)
@@ -77,6 +80,7 @@ final class RenderSurfaceNSView: NSView {
 
     var onFrameTick:          (Int) -> Void
     var onAnimationComplete:  (() -> Void)?
+    var onRenderProgress:     (Double?) -> Void = { _ in }
     var appliedPlaybackState: PlaybackState = .stopped
     var lastSeekFrame:        Int?          = nil
 
@@ -132,12 +136,16 @@ final class RenderSurfaceNSView: NSView {
         let gen = renderGeneration
         renderQueue.async { [weak self] in
             guard let self else { return }
+            DispatchQueue.main.async { [weak self] in self?.onRenderProgress(0.10) }
             self.engine.seek(toFrame: frame)
+            DispatchQueue.main.async { [weak self] in self?.onRenderProgress(0.35) }
             guard let img = self.engine.makeFrame() else { return }
             DispatchQueue.main.async { [weak self] in
                 guard let self, self.renderGeneration == gen else { return }
+                self.onRenderProgress(1.0)
                 self.onFrameTick(frame)
                 self.updateLayer(with: img)
+                self.onRenderProgress(nil)
             }
         }
     }
@@ -152,10 +160,13 @@ final class RenderSurfaceNSView: NSView {
         renderQueue.async { [weak self] in
             guard let self else { return }
             self.engine = newEngine
+            DispatchQueue.main.async { [weak self] in self?.onRenderProgress(0.20) }
             guard let frame = self.engine.makeFrame() else { return }
             DispatchQueue.main.async { [weak self] in
                 guard let self, self.renderGeneration == gen else { return }
+                self.onRenderProgress(1.0)
                 self.updateLayer(with: frame)
+                self.onRenderProgress(nil)
             }
         }
     }
@@ -168,10 +179,13 @@ final class RenderSurfaceNSView: NSView {
         renderQueue.async { [weak self] in
             guard let self else { return }
             try? self.engine.reset()
+            DispatchQueue.main.async { [weak self] in self?.onRenderProgress(0.20) }
             guard let frame = self.engine.makeFrame() else { return }
             DispatchQueue.main.async { [weak self] in
                 guard let self, self.renderGeneration == gen else { return }
+                self.onRenderProgress(1.0)
                 self.updateLayer(with: frame)
+                self.onRenderProgress(nil)
             }
         }
     }
@@ -193,11 +207,16 @@ final class RenderSurfaceNSView: NSView {
 
         renderQueue.async { [weak self] in
             guard let self else { return }
+            DispatchQueue.main.async { [weak self] in self?.onRenderProgress(0.10) }
             self.engine.update(deltaTime: totalDt)
+            DispatchQueue.main.async { [weak self] in self?.onRenderProgress(0.30) }
             let frameNum = self.engine.currentFrame
             let isDone   = self.checkAnimationDone()
             guard let frame = self.engine.makeFrame() else {
-                DispatchQueue.main.async { [weak self] in self?.renderPending = false }
+                DispatchQueue.main.async { [weak self] in
+                    self?.renderPending = false
+                    self?.onRenderProgress(nil)
+                }
                 return
             }
             DispatchQueue.main.async { [weak self] in
@@ -205,12 +224,15 @@ final class RenderSurfaceNSView: NSView {
                 // Discard stale renders produced before a replaceEngine/reset.
                 guard self.renderGeneration == gen else {
                     self.renderPending = false
+                    self.onRenderProgress(nil)
                     return
                 }
                 self.renderPending = false
+                self.onRenderProgress(1.0)
                 self.onFrameTick(frameNum)
                 if isDone { self.stopRendering(); self.onAnimationComplete?() }
                 self.updateLayer(with: frame)
+                self.onRenderProgress(nil)
             }
         }
     }

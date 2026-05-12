@@ -365,6 +365,7 @@ private struct DriverSectionsView: View {
     @State private var sclCollapsed = true
     @State private var rotCollapsed = true
     @State private var mphCollapsed = true
+    @State private var opacCollapsed = true
     @State private var shpCollapsed = true
     @State private var mtCollapsed  = true
     @State private var svCollapsed  = true
@@ -376,6 +377,7 @@ private struct DriverSectionsView: View {
             VectorDriverEditor(label: "Scale",    driver: db.scale,    isCollapsed: $sclCollapsed)
             DoubleDriverEditor(label: "Rotation", driver: db.rotation, isCollapsed: $rotCollapsed)
             DoubleDriverEditor(label: "Morph",    driver: db.morph,    isCollapsed: $mphCollapsed)
+            DoubleDriverEditor(label: "Opacity",  driver: db.opacity,  isCollapsed: $opacCollapsed)
             DoubleDriverEditor(label: "Shape",    driver: db.shape,    isCollapsed: $shpCollapsed)
             morphTargetsSection
             shapeVariantsSection
@@ -481,6 +483,7 @@ private struct DriverSectionsView: View {
         sclCollapsed = !isVectorInUse(d.scale, identity: Vector2D(x: 1, y: 1))
         rotCollapsed = !isDoubleInUse(d.rotation)
         mphCollapsed = !isDoubleInUse(d.morph)
+        opacCollapsed = !isDoubleInUse(d.opacity, identity: 1)
         shpCollapsed = !isDoubleInUse(d.shape)
         let sprite   = controller.projectConfig?.spriteConfig.library
                            .spriteSets[safe: setIdx]?.sprites[safe: spriteIdx]
@@ -494,8 +497,8 @@ private struct DriverSectionsView: View {
             .animation.drivers
     }
 
-    private func isDoubleInUse(_ d: DoubleDriver) -> Bool {
-        d.mode != .constant || !d.keyframes.isEmpty || d.base != 0
+    private func isDoubleInUse(_ d: DoubleDriver, identity: Double = 0) -> Bool {
+        d.mode != .constant || !d.keyframes.isEmpty || d.base != identity
     }
 
     private func isVectorInUse(_ d: VectorDriver, identity: Vector2D) -> Bool {

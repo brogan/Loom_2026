@@ -81,11 +81,16 @@ public enum TransformAnimator {
                                              globalElapsed: globalElapsed,
                                              targetFPS: targetFPS,
                                              spriteIndex: spriteIndex)
+        let opacity = DriverEvaluator.evaluate(drivers.opacity,
+                                               globalElapsed: globalElapsed,
+                                               targetFPS: targetFPS,
+                                               spriteIndex: spriteIndex)
         return SpriteTransform(
             positionOffset: pos,
             scale:          scl,
             rotation:       rot,
-            morphAmount:    morph
+            morphAmount:    morph,
+            opacity:        opacity
         )
     }
 

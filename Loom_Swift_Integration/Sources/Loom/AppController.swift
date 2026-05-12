@@ -17,6 +17,7 @@ enum GeometryEditorTool: String {
     case meshExtend = "Mesh Extend"
     case knife = "Knife"
     case freehand = "Freehand"
+    case pressureTrace = "Pressure Trace"
     case displacementExtrude = "Extrude (Displacement)"
     case scaleExtrude = "Extrude (Scale)"
 }
@@ -98,6 +99,12 @@ struct GeometryEditorLayer: Identifiable, Equatable {
     }
 }
 
+enum GeometryEditorSaveState: Equatable {
+    case unchanged
+    case unsaved
+    case saved
+}
+
 @MainActor
 final class AppController: ObservableObject, @unchecked Sendable {
 
@@ -113,6 +120,7 @@ final class AppController: ObservableObject, @unchecked Sendable {
     // MARK: - Published: navigation
 
     @Published var selectedTab: AppTab = .global
+    @Published var showingGeometryEditorLeaveWarning: Bool = false
 
     // MARK: - Published: per-tab selection
 
@@ -120,22 +128,23 @@ final class AppController: ObservableObject, @unchecked Sendable {
     @Published var appStatusMessage:              String  = "Ready"
     @Published var isGeometryEditorActive:        Bool    = false
     @Published var geometryEditorTool:            GeometryEditorTool = .points
-    @Published var geometryEditorDocument:        EditableGeometryDocument? = nil {
-        didSet { geometryEditorIsModified = true }
-    }
+    @Published var geometryEditorDocument:        EditableGeometryDocument? = nil { didSet { refreshGeometryEditorSaveState() } }
     @Published private(set) var geometryEditorIsModified: Bool = false
+    @Published private(set) var geometryEditorSaveState: GeometryEditorSaveState = .unchanged
     @Published var geometryEditorLoadError:       String? = nil
     @Published var geometryEditorReloadNonce:     Int     = 0
     @Published var geometryEditorSelection:       EditableGeometrySelection = .empty
     @Published var geometryEditorHistory:         EditableGeometryHistory = EditableGeometryHistory()
-    @Published var geometryEditorDraftPoints:     [Vector2D] = []
-    @Published var geometryEditorFreehandPoints:  [Vector2D] = []
+    @Published var geometryEditorDraftPoints:     [Vector2D] = [] { didSet { refreshGeometryEditorSaveState() } }
+    @Published var geometryEditorFreehandPoints:  [Vector2D] = [] { didSet { refreshGeometryEditorSaveState() } }
     @Published var geometryEditorFreehandPressures: [Double] = []
     @Published var geometryEditorFreehandDetail:  Double = 0.2
-    @Published var geometryEditorMeshExtendDraft: GeometryMeshExtendDraft? = nil
+    @Published var geometryEditorPressureTracePoints: [Vector2D] = [] { didSet { refreshGeometryEditorSaveState() } }
+    @Published var geometryEditorPressureTracePressures: [Double] = []
+    @Published var geometryEditorMeshExtendDraft: GeometryMeshExtendDraft? = nil { didSet { refreshGeometryEditorSaveState() } }
     @Published var geometryEditorKnifeLine:       GeometryKnifeLine? = nil
     @Published var geometryEditorKnifeCutsAllVisibleLayers: Bool = false
-    @Published var geometryEditorExtrudeDraft:    GeometryExtrudeDraft? = nil
+    @Published var geometryEditorExtrudeDraft:    GeometryExtrudeDraft? = nil { didSet { refreshGeometryEditorSaveState() } }
     @Published var geometryEditorClipboard:       GeometryClipboardEntry? = nil
     @Published var geometryEditorLastClickPosition: Vector2D = .zero
     @Published var geometryEditorViewZoom:        Double = 1.0
@@ -143,7 +152,7 @@ final class AppController: ObservableObject, @unchecked Sendable {
     @Published var geometryEditorShowsGrid:       Bool = true
     @Published var geometryEditorShowsControlPoints: Bool = true
     @Published var geometryEditorGridDetail:      GeometryEditorGridDetail = .standard
-    @Published var geometryEditorLayers:          [GeometryEditorLayer] = [GeometryEditorLayer(name: "Layer 1")]
+    @Published var geometryEditorLayers:          [GeometryEditorLayer] = [GeometryEditorLayer(name: "Layer 1")] { didSet { refreshGeometryEditorSaveState() } }
     @Published var geometryEditorAnchorOnlyEdit:  Bool = false
     @Published var geometryEditorAutoWeld:        Bool = true
     @Published var geometryEditorWeldTolerance:   Double = 0.5
@@ -154,6 +163,7 @@ final class AppController: ObservableObject, @unchecked Sendable {
     @Published var selectedSpriteID:              String? = nil
     @Published var selectedTimelineKF:            TimelineKFSelection? = nil
     @Published var selectedCameraKF:              CameraKFSelection?   = nil
+    @Published var currentTimelineFrame:          Int                  = 0
     @Published var loopPlayback:                  Bool                 = true
     @Published var showScrubBar:                  Bool                 = false
     @Published var selectedRendererIndex:         Int?    = nil
@@ -200,6 +210,10 @@ final class AppController: ObservableObject, @unchecked Sendable {
     private var animationCompleted: Bool = false
     private var geometryTransformGestureBase: EditableGeometrySnapshot?
     private var geometryEditorPendingAutoWeldPairs: [(EditableGeometryID, EditableGeometryID)] = []
+    private var geometryEditorCleanFingerprint: String?
+    private var geometryEditorCleanKey: String?
+    private var geometryEditorHasSavedCleanState: Bool = false
+    private var pendingGeometryEditorLeaveTab: AppTab?
 
     private struct GeometrySegmentReference {
         var layerIndex: Int
@@ -225,6 +239,11 @@ final class AppController: ObservableObject, @unchecked Sendable {
         var globalT: Double { Double(segmentIndex) + t }
     }
 
+    enum GeometryEditorCleanSource {
+        case loaded
+        case saved
+    }
+
     // MARK: - Init
 
     init() {
@@ -241,6 +260,65 @@ final class AppController: ObservableObject, @unchecked Sendable {
         fn(&config)
         projectConfig = config          // immediate: fires @Published for UI reactivity
         scheduleConfigCommit(config)    // debounced save + reload
+    }
+
+    func requestTabSelection(_ tab: AppTab) {
+        guard tab != selectedTab else { return }
+        if selectedTab == .geometry,
+           isGeometryEditorActive,
+           geometryEditorRequiresLeaveWarning {
+            pendingGeometryEditorLeaveTab = tab
+            showingGeometryEditorLeaveWarning = true
+            return
+        }
+        selectedTab = tab
+    }
+
+    func requestExitGeometryEditor() {
+        if geometryEditorRequiresLeaveWarning {
+            pendingGeometryEditorLeaveTab = nil
+            showingGeometryEditorLeaveWarning = true
+        } else {
+            exitGeometryEditor()
+        }
+    }
+
+    var geometryEditorLeaveWarningTitle: String {
+        geometryEditorDocumentIsPersisted ? "Unsaved Geometry Changes" : "Geometry Not Saved"
+    }
+
+    var geometryEditorLeaveWarningMessage: String {
+        if geometryEditorDocumentIsPersisted {
+            return "\"\(currentPolygonSetName ?? "Geometry")\" has changes that have not been saved."
+        }
+        return "This geometry has not been saved yet. Save it before leaving, or discard your work."
+    }
+
+    func saveAndContinueAfterGeometryEditorWarning() {
+        if saveGeometryEditorDocument(named: "") {
+            continueAfterGeometryEditorWarning(exitEditor: true)
+        }
+    }
+
+    func discardAndContinueAfterGeometryEditorWarning() {
+        continueAfterGeometryEditorWarning(exitEditor: true)
+    }
+
+    func cancelGeometryEditorLeaveWarning() {
+        pendingGeometryEditorLeaveTab = nil
+        showingGeometryEditorLeaveWarning = false
+    }
+
+    private func continueAfterGeometryEditorWarning(exitEditor: Bool) {
+        let destination = pendingGeometryEditorLeaveTab
+        pendingGeometryEditorLeaveTab = nil
+        showingGeometryEditorLeaveWarning = false
+        if exitEditor || destination != nil {
+            exitGeometryEditor()
+        }
+        if let destination {
+            selectedTab = destination
+        }
     }
 
     /// Writes config to disk on a background queue then rebuilds the engine on the main queue.
@@ -381,12 +459,12 @@ final class AppController: ObservableObject, @unchecked Sendable {
     func setGeometryEditorDocument(
         _ document: EditableGeometryDocument?,
         loadError: String? = nil,
-        resetHistory: Bool = false
+        resetHistory: Bool = false,
+        cleanSource: GeometryEditorCleanSource? = nil
     ) {
         var prunedDocument = document
         prunedDocument?.pruneWeldGroups()
-        geometryEditorDocument = prunedDocument   // didSet marks modified
-        geometryEditorIsModified = false           // loading is not a user edit
+        geometryEditorDocument = prunedDocument
         geometryEditorLoadError = loadError
         if resetHistory {
             geometryEditorHistory = EditableGeometryHistory()
@@ -398,6 +476,63 @@ final class AppController: ObservableObject, @unchecked Sendable {
             geometryEditorSelection = .empty
             geometryEditorHistory = EditableGeometryHistory()
         }
+        if let cleanSource {
+            establishGeometryEditorCleanBaseline(source: cleanSource)
+        } else {
+            refreshGeometryEditorSaveState()
+        }
+    }
+
+    private var geometryEditorRequiresLeaveWarning: Bool {
+        geometryEditorSaveState == .unsaved
+    }
+
+    private var geometryEditorHasUnsavedDraft: Bool {
+        !geometryEditorDraftPoints.isEmpty ||
+        !geometryEditorFreehandPoints.isEmpty ||
+        !geometryEditorPressureTracePoints.isEmpty ||
+        geometryEditorMeshExtendDraft != nil ||
+        geometryEditorExtrudeDraft != nil
+    }
+
+    private func establishGeometryEditorCleanBaseline(source: GeometryEditorCleanSource) {
+        let previousKey = geometryEditorCleanKey
+        let previousHadSaved = geometryEditorHasSavedCleanState
+        geometryEditorCleanFingerprint = geometryEditorFingerprint()
+        geometryEditorCleanKey = selectedGeometryKey
+        geometryEditorHasSavedCleanState = source == .saved || (previousHadSaved && previousKey == selectedGeometryKey)
+        refreshGeometryEditorSaveState()
+    }
+
+    private func refreshGeometryEditorSaveState() {
+        guard geometryEditorDocument != nil else {
+            geometryEditorCleanFingerprint = nil
+            geometryEditorCleanKey = nil
+            geometryEditorHasSavedCleanState = false
+            geometryEditorIsModified = false
+            geometryEditorSaveState = .unchanged
+            return
+        }
+
+        let currentFingerprint = geometryEditorFingerprint()
+        let hasUnsavedChanges = geometryEditorHasUnsavedDraft ||
+            currentFingerprint != geometryEditorCleanFingerprint ||
+            selectedGeometryKey != geometryEditorCleanKey
+        geometryEditorIsModified = hasUnsavedChanges
+        if hasUnsavedChanges {
+            geometryEditorSaveState = .unsaved
+        } else {
+            geometryEditorSaveState = geometryEditorHasSavedCleanState ? .saved : .unchanged
+        }
+    }
+
+    private func geometryEditorFingerprint() -> String? {
+        guard var document = geometryEditorDocument else { return nil }
+        applyLayerPanelState(to: &document)
+        document.pruneWeldGroups()
+        document.activeLayerID = nil
+        guard let data = try? EditableGeometryJSONLoader.encode(document) else { return nil }
+        return String(data: data, encoding: .utf8) ?? data.base64EncodedString()
     }
 
     func toggleSelectedGeometryEditorLayerVisibility() {
@@ -522,7 +657,7 @@ final class AppController: ObservableObject, @unchecked Sendable {
         if geometryEditorDocument == nil {
             var document = EditableGeometryDocument(name: "Untitled Polygon")
             document.ensureActiveLayer()
-            setGeometryEditorDocument(document)
+            setGeometryEditorDocument(document, cleanSource: .loaded)
         }
     }
 
@@ -546,6 +681,7 @@ final class AppController: ObservableObject, @unchecked Sendable {
         geometryEditorTool = tool
         geometryEditorDraftPoints.removeAll()
         clearGeometryFreehandStroke()
+        clearGeometryPressureTraceStroke()
         cancelGeometryMeshExtendDraft()
         cancelGeometryKnifeLine()
         geometryEditorSelection = .empty
@@ -564,7 +700,7 @@ final class AppController: ObservableObject, @unchecked Sendable {
         if geometryEditorDocument == nil {
             var document = EditableGeometryDocument(name: "Untitled Geometry")
             document.ensureActiveLayer()
-            setGeometryEditorDocument(document)
+            setGeometryEditorDocument(document, cleanSource: .loaded)
         }
     }
 
@@ -648,7 +784,7 @@ final class AppController: ObservableObject, @unchecked Sendable {
         if geometryEditorDocument == nil {
             var document = EditableGeometryDocument(name: "Untitled Polygon")
             document.ensureActiveLayer()
-            setGeometryEditorDocument(document)
+            setGeometryEditorDocument(document, cleanSource: .loaded)
         }
     }
 
@@ -1035,6 +1171,385 @@ final class AppController: ObservableObject, @unchecked Sendable {
             let rawIndex = Int(round(Double(index) * Double(rawPressures.count - 1) / Double(count - 1)))
             return normalizedPressure(rawPressures[min(max(rawIndex, 0), rawPressures.count - 1)])
         }
+    }
+
+    var canPressureTraceSelectedGeometry: Bool {
+        guard let document = geometryEditorDocument,
+              let layerID = geometryEditorSelection.layerID,
+              let layer = document.layers.first(where: { $0.id == layerID }),
+              layer.isVisible,
+              layer.isEditable
+        else { return false }
+        if layer.polygons.contains(where: {
+            geometryEditorSelection.polygonIDs.contains($0.id) ||
+            $0.segments.contains { geometryEditorSelection.segmentIDs.contains($0.id) } ||
+            $0.points.contains { point in geometryEditorSelection.pointIDs.contains(point.id) && point.kind == .anchor }
+        }) { return true }
+        if layer.openCurves.contains(where: {
+            geometryEditorSelection.openCurveIDs.contains($0.id) ||
+            $0.segments.contains { geometryEditorSelection.segmentIDs.contains($0.id) } ||
+            $0.points.contains { point in geometryEditorSelection.pointIDs.contains(point.id) && point.kind == .anchor }
+        }) { return true }
+        return layer.points.contains {
+            geometryEditorSelection.standalonePointIDs.contains($0.id) ||
+            geometryEditorSelection.pointIDs.contains($0.id)
+        }
+    }
+
+    func startPressureTraceGeometryEdit() {
+        guard canPressureTraceSelectedGeometry else {
+            postStatus("Select geometry before pressure tracing")
+            return
+        }
+        geometryEditorTool = .pressureTrace
+        geometryEditorDraftPoints.removeAll()
+        clearGeometryFreehandStroke()
+        clearGeometryPressureTraceStroke()
+        cancelGeometryMeshExtendDraft()
+        cancelGeometryKnifeLine()
+    }
+
+    func beginGeometryPressureTrace(at point: Vector2D, pressure: Double = 1.0) {
+        guard geometryEditorTool == .pressureTrace, canPressureTraceSelectedGeometry else { return }
+        geometryEditorPressureTracePoints = [point]
+        geometryEditorPressureTracePressures = [normalizedPressure(pressure)]
+    }
+
+    func appendGeometryPressureTracePoint(_ point: Vector2D, pressure: Double = 1.0) {
+        guard geometryEditorTool == .pressureTrace, canPressureTraceSelectedGeometry else { return }
+        if let last = geometryEditorPressureTracePoints.last,
+           last.distance(to: point) < 0.003 {
+            return
+        }
+        geometryEditorPressureTracePoints.append(point)
+        geometryEditorPressureTracePressures.append(normalizedPressure(pressure))
+    }
+
+    func finaliseGeometryPressureTrace() {
+        guard geometryEditorTool == .pressureTrace,
+              canPressureTraceSelectedGeometry,
+              geometryEditorPressureTracePoints.count >= 2,
+              var document = geometryEditorDocument,
+              let layerID = geometryEditorSelection.layerID,
+              let layerIndex = document.layers.firstIndex(where: { $0.id == layerID })
+        else {
+            clearGeometryPressureTraceStroke()
+            return
+        }
+
+        let tracePoints = geometryEditorPressureTracePoints
+        let tracePressures = geometryEditorPressureTracePressures
+        clearGeometryPressureTraceStroke()
+        recordGeometryEditorUndoSnapshot()
+
+        var changed = false
+        let selectedPointIDs = geometryEditorSelection.pointIDs
+        let selectedSegmentIDs = geometryEditorSelection.segmentIDs
+        for polygonIndex in document.layers[layerIndex].polygons.indices {
+            var polygon = document.layers[layerIndex].polygons[polygonIndex]
+            let objectSelected = geometryEditorSelection.polygonIDs.contains(polygon.id)
+            let pointMap = Dictionary(uniqueKeysWithValues: polygon.points.map { ($0.id, $0.position) })
+            let anchorIDs = polygon.segments.map(\.startAnchorID)
+            let selectedAnchors = Set(anchorIDs).intersection(selectedPointIDs)
+            let selectedSegments = polygon.segments.filter { selectedSegmentIDs.contains($0.id) }
+            guard objectSelected || !selectedAnchors.isEmpty || !selectedSegments.isEmpty else { continue }
+            var pressures = normalizedPressureValues(polygon.pressures, count: polygon.segments.count)
+            for (pressureIndex, anchorID) in anchorIDs.enumerated() {
+                let segmentSelected = selectedSegments.contains { segment in
+                    segment.startAnchorID == anchorID || segment.endAnchorID == anchorID
+                }
+                let shouldTraceAnchor = !selectedSegmentIDs.isEmpty
+                    ? segmentSelected
+                    : (objectSelected || selectedAnchors.contains(anchorID))
+                guard shouldTraceAnchor,
+                      let anchor = polygon.point(id: anchorID)
+                else { continue }
+                pressures[pressureIndex] = pressureForTracePoint(anchor.position, tracePoints: tracePoints, tracePressures: tracePressures)
+                changed = true
+            }
+            if objectSelected {
+                for segment in polygon.segments {
+                    if let profile = pressureProfileForSegment(
+                        segment,
+                        pointMap: pointMap,
+                        tracePoints: tracePoints,
+                        tracePressures: tracePressures
+                    ) {
+                        polygon.setPressureProfile(profile, for: segment.id)
+                        changed = true
+                    }
+                }
+            }
+            if !selectedSegments.isEmpty {
+                for segment in selectedSegments {
+                    guard let segmentIndex = polygon.segments.firstIndex(where: { $0.id == segment.id }),
+                          let endAnchor = polygon.point(id: segment.endAnchorID)
+                    else { continue }
+                    let endIndex = (segmentIndex + 1) % max(1, polygon.segments.count)
+                    pressures[endIndex] = pressureForTracePoint(endAnchor.position, tracePoints: tracePoints, tracePressures: tracePressures)
+                    if let profile = pressureProfileForSegment(
+                        segment,
+                        pointMap: pointMap,
+                        tracePoints: tracePoints,
+                        tracePressures: tracePressures
+                    ) {
+                        polygon.setPressureProfile(profile, for: segment.id)
+                    }
+                    changed = true
+                }
+            }
+            polygon.pressures = pressures
+            document.layers[layerIndex].polygons[polygonIndex] = polygon
+        }
+
+        for curveIndex in document.layers[layerIndex].openCurves.indices {
+            var curve = document.layers[layerIndex].openCurves[curveIndex]
+            let objectSelected = geometryEditorSelection.openCurveIDs.contains(curve.id)
+            let pointMap = Dictionary(uniqueKeysWithValues: curve.points.map { ($0.id, $0.position) })
+            var anchorIDs: [EditableGeometryID] = []
+            if let first = curve.segments.first?.startAnchorID {
+                anchorIDs.append(first)
+            }
+            anchorIDs.append(contentsOf: curve.segments.map(\.endAnchorID))
+            let selectedAnchors = Set(anchorIDs).intersection(selectedPointIDs)
+            let selectedSegments = curve.segments.filter { selectedSegmentIDs.contains($0.id) }
+            guard objectSelected || !selectedAnchors.isEmpty || !selectedSegments.isEmpty else { continue }
+            var pressures = normalizedPressureValues(curve.pressures, count: anchorIDs.count)
+            for (pressureIndex, anchorID) in anchorIDs.enumerated() {
+                let segmentSelected = selectedSegments.contains { segment in
+                    segment.startAnchorID == anchorID || segment.endAnchorID == anchorID
+                }
+                let shouldTraceAnchor = !selectedSegmentIDs.isEmpty
+                    ? segmentSelected
+                    : (objectSelected || selectedAnchors.contains(anchorID))
+                guard shouldTraceAnchor,
+                      let anchor = curve.point(id: anchorID)
+                else { continue }
+                pressures[pressureIndex] = pressureForTracePoint(anchor.position, tracePoints: tracePoints, tracePressures: tracePressures)
+                changed = true
+            }
+            if objectSelected {
+                for segment in curve.segments {
+                    if let profile = pressureProfileForSegment(
+                        segment,
+                        pointMap: pointMap,
+                        tracePoints: tracePoints,
+                        tracePressures: tracePressures
+                    ) {
+                        curve.setPressureProfile(profile, for: segment.id)
+                        changed = true
+                    }
+                }
+            }
+            if !selectedSegments.isEmpty {
+                for segment in selectedSegments {
+                    if let profile = pressureProfileForSegment(
+                        segment,
+                        pointMap: pointMap,
+                        tracePoints: tracePoints,
+                        tracePressures: tracePressures
+                    ) {
+                        curve.setPressureProfile(profile, for: segment.id)
+                        changed = true
+                    }
+                }
+            }
+            curve.pressures = pressures
+            document.layers[layerIndex].openCurves[curveIndex] = curve
+        }
+
+        for pointIndex in document.layers[layerIndex].points.indices {
+            var point = document.layers[layerIndex].points[pointIndex]
+            guard geometryEditorSelection.standalonePointIDs.contains(point.id) ||
+                    selectedPointIDs.contains(point.id)
+            else { continue }
+            point.pressure = pressureForTracePoint(point.position, tracePoints: tracePoints, tracePressures: tracePressures)
+            document.layers[layerIndex].points[pointIndex] = point
+            changed = true
+        }
+
+        if changed {
+            setGeometryEditorDocument(document)
+            postStatus("Applied pressure trace")
+        } else {
+            postStatus("Pressure trace: no selected anchors or points")
+        }
+    }
+
+    var canClearPressureSelectedGeometry: Bool {
+        canPressureTraceSelectedGeometry
+    }
+
+    func clearPressureForSelectedGeometry() {
+        guard canClearPressureSelectedGeometry,
+              var document = geometryEditorDocument,
+              let layerID = geometryEditorSelection.layerID,
+              let layerIndex = document.layers.firstIndex(where: { $0.id == layerID })
+        else { return }
+
+        recordGeometryEditorUndoSnapshot()
+        var changed = false
+        let selectedPointIDs = geometryEditorSelection.pointIDs
+        let selectedSegmentIDs = geometryEditorSelection.segmentIDs
+
+        for polygonIndex in document.layers[layerIndex].polygons.indices {
+            var polygon = document.layers[layerIndex].polygons[polygonIndex]
+            let objectSelected = geometryEditorSelection.polygonIDs.contains(polygon.id)
+            let anchorIDs = polygon.segments.map(\.startAnchorID)
+            let selectedAnchors = Set(anchorIDs).intersection(selectedPointIDs)
+            let selectedSegments = polygon.segments.filter { selectedSegmentIDs.contains($0.id) }
+            guard objectSelected || !selectedAnchors.isEmpty || !selectedSegments.isEmpty else { continue }
+            var pressures = normalizedPressureValues(polygon.pressures, count: polygon.segments.count)
+            for (pressureIndex, anchorID) in anchorIDs.enumerated() {
+                let segmentSelected = selectedSegments.contains { segment in
+                    segment.startAnchorID == anchorID || segment.endAnchorID == anchorID
+                }
+                let shouldClearAnchor = !selectedSegmentIDs.isEmpty
+                    ? segmentSelected
+                    : (objectSelected || selectedAnchors.contains(anchorID))
+                guard shouldClearAnchor else { continue }
+                pressures[pressureIndex] = 1.0
+                changed = true
+            }
+            if objectSelected {
+                for segment in polygon.segments {
+                    polygon.setPressureProfile(nil, for: segment.id)
+                    changed = true
+                }
+            }
+            if !selectedSegments.isEmpty {
+                for segment in selectedSegments {
+                    guard let segmentIndex = polygon.segments.firstIndex(where: { $0.id == segment.id }) else { continue }
+                    pressures[(segmentIndex + 1) % max(1, polygon.segments.count)] = 1.0
+                    polygon.setPressureProfile(nil, for: segment.id)
+                    changed = true
+                }
+            }
+            polygon.pressures = pressures
+            document.layers[layerIndex].polygons[polygonIndex] = polygon
+        }
+
+        for curveIndex in document.layers[layerIndex].openCurves.indices {
+            var curve = document.layers[layerIndex].openCurves[curveIndex]
+            let objectSelected = geometryEditorSelection.openCurveIDs.contains(curve.id)
+            var anchorIDs: [EditableGeometryID] = []
+            if let first = curve.segments.first?.startAnchorID {
+                anchorIDs.append(first)
+            }
+            anchorIDs.append(contentsOf: curve.segments.map(\.endAnchorID))
+            let selectedAnchors = Set(anchorIDs).intersection(selectedPointIDs)
+            let selectedSegments = curve.segments.filter { selectedSegmentIDs.contains($0.id) }
+            guard objectSelected || !selectedAnchors.isEmpty || !selectedSegments.isEmpty else { continue }
+            var pressures = normalizedPressureValues(curve.pressures, count: anchorIDs.count)
+            for (pressureIndex, anchorID) in anchorIDs.enumerated() {
+                let segmentSelected = selectedSegments.contains { segment in
+                    segment.startAnchorID == anchorID || segment.endAnchorID == anchorID
+                }
+                let shouldClearAnchor = !selectedSegmentIDs.isEmpty
+                    ? segmentSelected
+                    : (objectSelected || selectedAnchors.contains(anchorID))
+                guard shouldClearAnchor else { continue }
+                pressures[pressureIndex] = 1.0
+                changed = true
+            }
+            if objectSelected {
+                for segment in curve.segments {
+                    curve.setPressureProfile(nil, for: segment.id)
+                    changed = true
+                }
+            }
+            if !selectedSegments.isEmpty {
+                for segment in selectedSegments {
+                    curve.setPressureProfile(nil, for: segment.id)
+                    changed = true
+                }
+            }
+            curve.pressures = pressures
+            document.layers[layerIndex].openCurves[curveIndex] = curve
+        }
+
+        for pointIndex in document.layers[layerIndex].points.indices {
+            var point = document.layers[layerIndex].points[pointIndex]
+            guard geometryEditorSelection.standalonePointIDs.contains(point.id) ||
+                    selectedPointIDs.contains(point.id)
+            else { continue }
+            point.pressure = 1.0
+            document.layers[layerIndex].points[pointIndex] = point
+            changed = true
+        }
+
+        if changed {
+            setGeometryEditorDocument(document)
+            postStatus("Cleared pressure")
+        } else {
+            postStatus("Clear pressure: no selected anchors or points")
+        }
+    }
+
+    func clearGeometryPressureTraceStroke() {
+        geometryEditorPressureTracePoints.removeAll()
+        geometryEditorPressureTracePressures.removeAll()
+    }
+
+    private func pressureForTracePoint(
+        _ point: Vector2D,
+        tracePoints: [Vector2D],
+        tracePressures: [Double]
+    ) -> Double {
+        guard !tracePoints.isEmpty else { return 1.0 }
+        var bestIndex = 0
+        var bestDistance = Double.greatestFiniteMagnitude
+        for (index, tracePoint) in tracePoints.enumerated() {
+            let distance = point.distance(to: tracePoint)
+            if distance < bestDistance {
+                bestDistance = distance
+                bestIndex = index
+            }
+        }
+        let pressure = bestIndex < tracePressures.count ? tracePressures[bestIndex] : tracePressures.last ?? 1.0
+        return normalizedPressure(pressure)
+    }
+
+    private func pressureProfileForSegment(
+        _ segment: EditableCubicSegment,
+        pointMap: [EditableGeometryID: Vector2D],
+        tracePoints: [Vector2D],
+        tracePressures: [Double],
+        sampleCount: Int = 16
+    ) -> [Double]? {
+        guard sampleCount >= 2,
+              let a0 = pointMap[segment.startAnchorID],
+              let c0 = pointMap[segment.controlOutID],
+              let c1 = pointMap[segment.controlInID],
+              let a1 = pointMap[segment.endAnchorID]
+        else { return nil }
+        return (0..<sampleCount).map { index in
+            let t = Double(index) / Double(sampleCount - 1)
+            let point = cubicPoint(a0, c0, c1, a1, t: t)
+            return pressureForTracePoint(point, tracePoints: tracePoints, tracePressures: tracePressures)
+        }
+    }
+
+    private func cubicPoint(
+        _ a0: Vector2D,
+        _ c0: Vector2D,
+        _ c1: Vector2D,
+        _ a1: Vector2D,
+        t: Double
+    ) -> Vector2D {
+        let u = 1.0 - t
+        return a0 * (u * u * u)
+            + c0 * (3.0 * u * u * t)
+            + c1 * (3.0 * u * t * t)
+            + a1 * (t * t * t)
+    }
+
+    private func normalizedPressureValues(_ values: [Double], count: Int) -> [Double] {
+        guard count > 0 else { return [] }
+        guard !values.isEmpty else { return Array(repeating: 1.0, count: count) }
+        if values.count == count { return values.map(normalizedPressure) }
+        if values.count > count { return Array(values.prefix(count)).map(normalizedPressure) }
+        return values.map(normalizedPressure) + Array(repeating: normalizedPressure(values.last ?? 1.0), count: count - values.count)
     }
 
     var canFinaliseGeometryDraftPolygon: Bool {
@@ -1741,14 +2256,15 @@ final class AppController: ObservableObject, @unchecked Sendable {
         setGeometryEditorDocument(document)
     }
 
-    func saveGeometryEditorDocument(named requestedName: String) {
+    @discardableResult
+    func saveGeometryEditorDocument(named requestedName: String) -> Bool {
         guard var document = geometryEditorDocument,
               let projectURL,
               let key = selectedGeometryKey
-        else { return }
+        else { return false }
 
         let parts = key.split(separator: "/", maxSplits: 1)
-        guard parts.count == 2, String(parts[0]) == "polygonSets" else { return }
+        guard parts.count == 2, String(parts[0]) == "polygonSets" else { return false }
         let oldName = String(parts[1])
         let requested = requestedName.trimmingCharacters(in: .whitespacesAndNewlines)
         let fallback = document.name.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -1773,12 +2289,14 @@ final class AppController: ObservableObject, @unchecked Sendable {
                     cfg.polygonConfig.library.polygonSets[index].regularParams = nil
                 }
             }
-            setGeometryEditorDocument(document)
             selectedGeometryKey = "polygonSets/\(finalName)"
+            setGeometryEditorDocument(document, cleanSource: .saved)
             geometryEditorLoadError = nil
             geometryEditorReloadNonce += 1
+            return true
         } catch {
             geometryEditorLoadError = error.localizedDescription
+            return false
         }
     }
 
@@ -4418,10 +4936,18 @@ final class AppController: ObservableObject, @unchecked Sendable {
         max(engine?.maxAnimationFrames ?? 0, 300)
     }
 
+    var canPlay: Bool {
+        engine?.globalConfig.animating == true
+    }
+
     // MARK: - Playback
 
     func play() {
         guard engine != nil else { return }
+        guard canPlay else {
+            playbackState = .stopped
+            return
+        }
         pausedBySentinel = false
         if animationCompleted {
             animationCompleted = false
@@ -4574,7 +5100,7 @@ final class AppController: ObservableObject, @unchecked Sendable {
             enterGeometryEditor()
             var document = EditableGeometryDocument(name: createdName)
             document.ensureActiveLayer()
-            setGeometryEditorDocument(document, resetHistory: true)
+            setGeometryEditorDocument(document, resetHistory: true, cleanSource: .loaded)
         }
     }
 
@@ -4754,6 +5280,7 @@ final class AppController: ObservableObject, @unchecked Sendable {
 
     private func loadEngine(from url: URL) {
         do {
+            DefaultBrushes.write(to: url.appendingPathComponent("brushes"))
             engine        = try Engine(projectDirectory: url)
             projectConfig = try? ProjectLoader.load(projectDirectory: url)
             loadError     = nil

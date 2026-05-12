@@ -105,7 +105,9 @@ public enum SVGExporter {
             return Vector2D(x: wx * hw + tx, y: wy * hh + ty)
         }
         return Polygon2D(points: pts, type: polygon.type,
-                         pressures: polygon.pressures, visible: polygon.visible)
+                         pressures: polygon.pressures,
+                         pressureProfiles: polygon.pressureProfiles,
+                         visible: polygon.visible)
     }
 
     // MARK: - Path builders

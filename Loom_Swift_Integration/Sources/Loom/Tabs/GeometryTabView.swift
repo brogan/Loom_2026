@@ -705,11 +705,11 @@ struct GeometryMainView: View {
                     targetLayerID: layerTarget?.id,
                     targetLayerName: layerTarget?.name
                 )
-                controller.setGeometryEditorDocument(editableDocument, resetHistory: true)
+                controller.setGeometryEditorDocument(editableDocument, resetHistory: true, cleanSource: .loaded)
             } else {
                 loadedPolygons = try resolvePolygons(key: key)
                 let editableDocument = try makeEditableDocument(key: key, polygons: loadedPolygons)
-                controller.setGeometryEditorDocument(editableDocument, resetHistory: true)
+                controller.setGeometryEditorDocument(editableDocument, resetHistory: true, cleanSource: .loaded)
             }
             loadError = nil
         } catch {
@@ -826,8 +826,6 @@ private struct GeometryEditorMainShell: View {
     let document: EditableGeometryDocument?
     let loadError: String?
 
-    @State private var showingUnsavedAlert = false
-
     var body: some View {
         VStack(spacing: 0) {
             HStack(spacing: 12) {
@@ -857,39 +855,9 @@ private struct GeometryEditorMainShell: View {
                 .help(locked ? "Morph target locked: only vertex positions can be edited. Click to unlock." : "Click to designate as morph target (locks topology)")
                 .buttonStyle(.plain)
                 Button("Default Geometry View") {
-                    if controller.geometryEditorIsModified {
-                        showingUnsavedAlert = true
-                    } else {
-                        controller.exitGeometryEditor()
-                    }
+                    controller.requestExitGeometryEditor()
                 }
                 .font(.system(size: 12))
-            }
-            .alert(
-                controller.geometryEditorDocumentIsPersisted ? "Unsaved Changes" : "Geometry Not Saved",
-                isPresented: $showingUnsavedAlert
-            ) {
-                if controller.geometryEditorDocumentIsPersisted {
-                    Button("Save & Exit") {
-                        controller.saveGeometryEditorDocument(named: "")
-                        controller.exitGeometryEditor()
-                    }
-                    Button("Discard Changes", role: .destructive) {
-                        controller.exitGeometryEditor()
-                    }
-                    Button("Cancel", role: .cancel) { }
-                } else {
-                    Button("Return to Name & Save", role: .cancel) { }
-                    Button("Discard Changes", role: .destructive) {
-                        controller.exitGeometryEditor()
-                    }
-                }
-            } message: {
-                if controller.geometryEditorDocumentIsPersisted {
-                    Text("\"\(currentGeometryName)\" has unsaved changes. Save before leaving the editor?")
-                } else {
-                    Text("This geometry has not been saved yet. Return to the editor to name and save it, or discard your work.")
-                }
             }
             .padding(.horizontal, 14)
             .padding(.vertical, 8)
@@ -1083,6 +1051,15 @@ private struct EditableGeometryCanvas: View {
                                 controller.appendGeometryFreehandPoint(point, pressure: pressure)
                             }
 
+                        case .pressureTrace:
+                            let point = unproject(value.location, canvasSize: canvasSize)
+                            let pressure = currentPressure()
+                            if controller.geometryEditorPressureTracePoints.isEmpty {
+                                controller.beginGeometryPressureTrace(at: point, pressure: pressure)
+                            } else {
+                                controller.appendGeometryPressureTracePoint(point, pressure: pressure)
+                            }
+
                         case .meshExtend:
                             let point = unproject(value.location, canvasSize: canvasSize)
                             if controller.geometryEditorMeshExtendDraft == nil {
@@ -1143,6 +1120,8 @@ private struct EditableGeometryCanvas: View {
                             controller.appendGeometryDraftPoint(unproject(value.location, canvasSize: canvasSize))
                         case .freehand:
                             controller.finaliseGeometryFreehandStroke()
+                        case .pressureTrace:
+                            controller.finaliseGeometryPressureTrace()
                         case .meshExtend:
                             if controller.geometryEditorMeshExtendDraft == nil,
                                let target = hitTestSegment(at: value.location, canvasSize: canvasSize) {
@@ -1354,6 +1333,7 @@ private struct EditableGeometryCanvas: View {
             drawDraft(ctx: ctx, project: projectPoint)
             drawMeshExtendPreview(ctx: ctx, project: projectPoint)
             drawFreehandPreview(ctx: ctx, project: projectPoint)
+            drawPressureTracePreview(ctx: ctx, project: projectPoint)
         }
         drawKnifeLine(ctx: ctx, project: projectPoint)
         drawExtrudePreview(ctx: ctx, project: projectPoint)
@@ -1417,6 +1397,9 @@ private struct EditableGeometryCanvas: View {
         let strokeColor = isEditable
             ? Color(red: 0.36, green: 0.82, blue: 0.50)
             : Color.gray.opacity(0.7)
+        let pressureColor = isEditable
+            ? Color.orange
+            : Color.gray.opacity(0.7)
         let handleColor = isEditable
             ? Color(red: 0.24, green: 0.50, blue: 0.34).opacity(0.7)
             : Color.gray.opacity(0.35)
@@ -1465,7 +1448,20 @@ private struct EditableGeometryCanvas: View {
             ctx.stroke(path, with: .color(Color.white.opacity(0.8)), lineWidth: 3.0)
         }
         ctx.stroke(weldedPath, with: .color(weldedEdgeColor.opacity(0.95)), lineWidth: 3.1)
-        ctx.stroke(path, with: .color(strokeColor), lineWidth: isEditable ? 1.6 : 1.2)
+        if hasPressureVariation(polygon.pressures) || hasPressureProfileVariation(polygon.segmentPressureProfiles) {
+            drawPressureSegments(
+                segments: polygon.segments,
+                pointMap: pointMap,
+                pressures: polygon.pressures,
+                pressureProfile: { polygon.pressureProfile(for: $0) },
+                closed: true,
+                ctx: ctx,
+                project: project,
+                color: pressureColor
+            )
+        } else {
+            ctx.stroke(path, with: .color(strokeColor), lineWidth: isEditable ? 1.6 : 1.2)
+        }
         drawSelectedSegments(
             polygon: polygon,
             pointMap: pointMap,
@@ -1487,6 +1483,9 @@ private struct EditableGeometryCanvas: View {
         let pointMap = Dictionary(uniqueKeysWithValues: curve.points.map { ($0.id, $0.position) })
         let strokeColor = isEditable
             ? Color(red: 0.36, green: 0.82, blue: 0.50)
+            : Color.gray.opacity(0.7)
+        let pressureColor = isEditable
+            ? Color.orange
             : Color.gray.opacity(0.7)
         let handleColor = isEditable
             ? Color(red: 0.24, green: 0.50, blue: 0.34).opacity(0.7)
@@ -1529,7 +1528,20 @@ private struct EditableGeometryCanvas: View {
             ctx.stroke(path, with: .color(Color.white.opacity(0.8)), lineWidth: 3.0)
         }
         ctx.stroke(weldedPath, with: .color(weldedEdgeColor.opacity(0.95)), lineWidth: 3.1)
-        ctx.stroke(path, with: .color(strokeColor), lineWidth: isEditable ? 1.6 : 1.2)
+        if hasPressureVariation(curve.pressures) || hasPressureProfileVariation(curve.segmentPressureProfiles) {
+            drawPressureSegments(
+                segments: curve.segments,
+                pointMap: pointMap,
+                pressures: curve.pressures,
+                pressureProfile: { curve.pressureProfile(for: $0) },
+                closed: false,
+                ctx: ctx,
+                project: project,
+                color: pressureColor
+            )
+        } else {
+            ctx.stroke(path, with: .color(strokeColor), lineWidth: isEditable ? 1.6 : 1.2)
+        }
         drawSelectedOpenCurveSegments(
             curve: curve,
             pointMap: pointMap,
@@ -1540,6 +1552,98 @@ private struct EditableGeometryCanvas: View {
         for point in curve.points where point.kind == .anchor || controller.geometryEditorShowsControlPoints {
             drawPoint(point, isEditable: isEditable, ctx: ctx, at: project(point.position))
         }
+    }
+
+    private func drawPressureSegments(
+        segments: [EditableCubicSegment],
+        pointMap: [EditableGeometryID: Vector2D],
+        pressures: [Double],
+        pressureProfile: (EditableGeometryID) -> [Double]?,
+        closed: Bool,
+        ctx: GraphicsContext,
+        project: (Vector2D) -> CGPoint,
+        color: Color
+    ) {
+        guard !segments.isEmpty else { return }
+        for (index, segment) in segments.enumerated() {
+            guard let a0 = pointMap[segment.startAnchorID],
+                  let c0 = pointMap[segment.controlOutID],
+                  let c1 = pointMap[segment.controlInID],
+                  let a1 = pointMap[segment.endAnchorID]
+            else { continue }
+            let p0 = pressureValue(pressures, at: index)
+            let p1: Double
+            if closed {
+                p1 = pressureValue(pressures, at: (index + 1) % max(1, segments.count))
+            } else {
+                p1 = pressureValue(pressures, at: index + 1)
+            }
+            let pressure = max(0.05, min(1.0, (p0 + p1) * 0.5))
+            if let profile = pressureProfile(segment.id), profile.count >= 2 {
+                drawProfiledCubicSegment(
+                    a0: a0,
+                    c0: c0,
+                    c1: c1,
+                    a1: a1,
+                    pressures: profile,
+                    ctx: ctx,
+                    project: project,
+                    color: color
+                )
+            } else {
+                var segmentPath = Path()
+                segmentPath.move(to: project(a0))
+                segmentPath.addCurve(to: project(a1), control1: project(c0), control2: project(c1))
+                ctx.stroke(
+                    segmentPath,
+                    with: .color(color.opacity(0.48 + pressure * 0.52)),
+                    style: StrokeStyle(lineWidth: 0.8 + CGFloat(pressure) * 3.2, lineCap: .round, lineJoin: .round)
+                )
+            }
+        }
+    }
+
+    private func drawProfiledCubicSegment(
+        a0: Vector2D,
+        c0: Vector2D,
+        c1: Vector2D,
+        a1: Vector2D,
+        pressures: [Double],
+        ctx: GraphicsContext,
+        project: (Vector2D) -> CGPoint,
+        color: Color
+    ) {
+        let count = pressures.count
+        guard count >= 2 else { return }
+        for index in 0..<(count - 1) {
+            let t0 = Double(index) / Double(count - 1)
+            let t1 = Double(index + 1) / Double(count - 1)
+            let p0 = cubicPoint(a0, c0, c1, a1, t: t0)
+            let p1 = cubicPoint(a0, c0, c1, a1, t: t1)
+            let pressure = max(0.05, min(1.0, (pressures[index] + pressures[index + 1]) * 0.5))
+            var path = Path()
+            path.move(to: project(p0))
+            path.addLine(to: project(p1))
+            ctx.stroke(
+                path,
+                with: .color(color.opacity(0.48 + pressure * 0.52)),
+                style: StrokeStyle(lineWidth: 0.8 + CGFloat(pressure) * 3.2, lineCap: .round, lineJoin: .round)
+            )
+        }
+    }
+
+    private func hasPressureVariation(_ pressures: [Double]) -> Bool {
+        pressures.contains { abs($0 - 1.0) > 0.01 }
+    }
+
+    private func hasPressureProfileVariation(_ profiles: [EditableGeometryID: [Double]]?) -> Bool {
+        profiles?.values.contains { hasPressureVariation($0) } ?? false
+    }
+
+    private func pressureValue(_ pressures: [Double], at index: Int) -> Double {
+        guard !pressures.isEmpty else { return 1.0 }
+        let clamped = min(max(index, 0), pressures.count - 1)
+        return max(0.05, min(1.0, pressures[clamped]))
     }
 
     private func drawPoint(_ point: EditableCubicPoint, isEditable: Bool, ctx: GraphicsContext, at location: CGPoint) {
@@ -1586,8 +1690,11 @@ private struct EditableGeometryCanvas: View {
         project: (Vector2D) -> CGPoint
     ) {
         let location = project(point.position)
-        let color = isEditable ? Color.yellow : Color.gray.opacity(0.75)
-        let radius: CGFloat = 4.0
+        let pressure = max(0.05, min(1.0, point.pressure))
+        let color = isEditable && abs(pressure - 1.0) > 0.01
+            ? Color.orange
+            : (isEditable ? Color.yellow : Color.gray.opacity(0.75))
+        let radius: CGFloat = 3.0 + CGFloat(pressure) * 3.0
         ctx.stroke(
             Path(ellipseIn: CGRect(
                 x: location.x - radius - 2,
@@ -1757,16 +1864,15 @@ private struct EditableGeometryCanvas: View {
     private func drawFreehandPreview(ctx: GraphicsContext, project: (Vector2D) -> CGPoint) {
         let points = controller.geometryEditorFreehandPoints
         guard points.count >= 2 else { return }
-        var path = Path()
-        path.move(to: project(points[0]))
-        for point in points.dropFirst() {
-            path.addLine(to: project(point))
-        }
         let hasPressure = controller.geometryEditorFreehandPressures.contains { $0 < 0.99 }
-        ctx.stroke(
-            path,
-            with: .color(hasPressure ? Color(red: 0.95, green: 0.58, blue: 1.0) : Color(red: 0.36, green: 0.82, blue: 0.50)),
-            style: StrokeStyle(lineWidth: hasPressure ? 3.0 : 1.7, lineCap: .round, lineJoin: .round)
+        drawPressurePolyline(
+            points: points,
+            pressures: controller.geometryEditorFreehandPressures,
+            ctx: ctx,
+            project: project,
+            color: hasPressure ? Color(red: 0.95, green: 0.58, blue: 1.0) : Color(red: 0.36, green: 0.82, blue: 0.50),
+            baseWidth: hasPressure ? 0.9 : 1.7,
+            widthRange: hasPressure ? 3.2 : 0.0
         )
         if points.count > 5,
            let last = points.last,
@@ -1776,6 +1882,43 @@ private struct EditableGeometryCanvas: View {
                 Path(ellipseIn: CGRect(x: start.x - 8, y: start.y - 8, width: 16, height: 16)),
                 with: .color(Color(red: 0.95, green: 0.58, blue: 1.0)),
                 lineWidth: 1.4
+            )
+        }
+    }
+
+    private func drawPressureTracePreview(ctx: GraphicsContext, project: (Vector2D) -> CGPoint) {
+        drawPressurePolyline(
+            points: controller.geometryEditorPressureTracePoints,
+            pressures: controller.geometryEditorPressureTracePressures,
+            ctx: ctx,
+            project: project,
+            color: Color(red: 1.0, green: 0.42, blue: 0.22),
+            baseWidth: 0.8,
+            widthRange: 4.0
+        )
+    }
+
+    private func drawPressurePolyline(
+        points: [Vector2D],
+        pressures: [Double],
+        ctx: GraphicsContext,
+        project: (Vector2D) -> CGPoint,
+        color: Color,
+        baseWidth: CGFloat,
+        widthRange: CGFloat
+    ) {
+        guard points.count >= 2 else { return }
+        for index in 0..<(points.count - 1) {
+            let p0 = pressureValue(pressures, at: index)
+            let p1 = pressureValue(pressures, at: index + 1)
+            let pressure = CGFloat((p0 + p1) * 0.5)
+            var path = Path()
+            path.move(to: project(points[index]))
+            path.addLine(to: project(points[index + 1]))
+            ctx.stroke(
+                path,
+                with: .color(color.opacity(0.48 + Double(pressure) * 0.52)),
+                style: StrokeStyle(lineWidth: baseWidth + pressure * widthRange, lineCap: .round, lineJoin: .round)
             )
         }
     }
@@ -2470,6 +2613,20 @@ private struct EditableGeometryCanvas: View {
             x: a * p0.x + b * p1.x + c * p2.x + d * p3.x,
             y: a * p0.y + b * p1.y + c * p2.y + d * p3.y
         )
+    }
+
+    private func cubicPoint(
+        _ p0: Vector2D,
+        _ p1: Vector2D,
+        _ p2: Vector2D,
+        _ p3: Vector2D,
+        t: Double
+    ) -> Vector2D {
+        let mt = 1.0 - t
+        return p0 * (mt * mt * mt)
+            + p1 * (3.0 * mt * mt * t)
+            + p2 * (3.0 * mt * t * t)
+            + p3 * (t * t * t)
     }
 
     private func distanceToSegment(_ point: CGPoint, _ a: CGPoint, _ b: CGPoint) -> CGFloat {

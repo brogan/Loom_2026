@@ -182,19 +182,28 @@ public enum RenderEngine {
         qualityMultiple: Int = 1
     ) {
         let pts = polygon.points
-        let r   = CGFloat(renderer.pointSize) * CGFloat(qualityMultiple) / 2.0
+        let baseRadius = CGFloat(renderer.pointSize) * CGFloat(qualityMultiple) / 2.0
 
-        let anchors: [Vector2D]
+        let anchors: [(point: Vector2D, pressure: Double)]
         switch polygon.type {
         case .spline, .openSpline:
-            anchors = stride(from: 0, to: pts.count, by: 4).map { pts[$0] }
+            anchors = stride(from: 0, to: pts.count, by: 4).enumerated().map { anchorIndex, pointIndex in
+                let pressure = anchorIndex < polygon.pressures.count ? polygon.pressures[anchorIndex] : 1.0
+                return (pts[pointIndex], pressure)
+            }
         default:
-            anchors = pts
+            anchors = pts.enumerated().map { index, point in
+                let pressure = index < polygon.pressures.count ? polygon.pressures[index] : 1.0
+                return (point, pressure)
+            }
         }
 
         context.saveGState()
         context.setFillColor(renderer.strokeColor.cgColor)
-        for pt in anchors {
+        for anchor in anchors {
+            let pressure = max(0.05, min(1.0, anchor.pressure))
+            let r = baseRadius * CGFloat(0.25 + pressure * 0.75)
+            let pt = anchor.point
             let sp   = transform.worldToScreen(pt)
             let rect = CGRect(x: sp.x - r, y: sp.y - r, width: r * 2, height: r * 2)
             context.fillEllipse(in: rect)

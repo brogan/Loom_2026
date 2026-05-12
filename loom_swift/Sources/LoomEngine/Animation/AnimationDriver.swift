@@ -30,6 +30,17 @@ public struct VectorKeyframe: Codable, Equatable, Sendable {
     }
 }
 
+/// One keyframe on an RGBA colour track.
+public struct ColorKeyframe: Codable, Equatable, Sendable {
+    public var frame: Int
+    public var value: LoomColor
+    public var easing: EasingType
+
+    public init(frame: Int = 0, value: LoomColor = .black, easing: EasingType = .linear) {
+        self.frame = frame; self.value = value; self.easing = easing
+    }
+}
+
 // MARK: - DoubleDriver
 //
 // Produces a scalar value each frame.  The `mode` field selects the evaluation
@@ -149,6 +160,35 @@ public struct VectorDriver: Codable, Equatable, Sendable {
     }
 }
 
+// MARK: - ColorDriver
+
+public struct ColorDriver: Codable, Equatable, Sendable {
+    public enum Mode: String, Codable, CaseIterable, Equatable, Sendable {
+        case constant, keyframe
+    }
+
+    public var mode: Mode = .constant
+    public var base: LoomColor = .black
+    public var loopMode: LoopMode = .loop
+    public var keyframes: [ColorKeyframe] = []
+
+    public init(
+        mode: Mode = .constant,
+        base: LoomColor = .black,
+        loopMode: LoopMode = .loop,
+        keyframes: [ColorKeyframe] = []
+    ) {
+        self.mode = mode
+        self.base = base
+        self.loopMode = loopMode
+        self.keyframes = keyframes
+    }
+
+    public static func constant(_ color: LoomColor) -> ColorDriver {
+        ColorDriver(mode: .constant, base: color)
+    }
+}
+
 // MARK: - DriverEvaluator
 
 /// Stateless evaluation of DoubleDriver and VectorDriver at a given global elapsed frame count.
@@ -236,6 +276,23 @@ public enum DriverEvaluator {
             guard !driver.keyframes.isEmpty else { return driver.base }
             return evalVectorKFs(driver.keyframes,
                                  elapsed: globalElapsed, loop: driver.loopMode)
+        }
+    }
+
+    // MARK: Color
+
+    public static func evaluate(
+        _ driver: ColorDriver,
+        globalElapsed: Double
+    ) -> LoomColor {
+        switch driver.mode {
+        case .constant:
+            return driver.base
+        case .keyframe:
+            guard !driver.keyframes.isEmpty else { return driver.base }
+            return evalColorKFs(driver.keyframes,
+                                elapsed: globalElapsed,
+                                loop: driver.loopMode)
         }
     }
 
@@ -372,5 +429,37 @@ public enum DriverEvaluator {
             return Vector2D.lerp(lo.value, hi.value, t: t)
         }
         return kfs.last!.value
+    }
+
+    private static func evalColorKFs(
+        _ kfs: [ColorKeyframe], elapsed: Double, loop: LoopMode
+    ) -> LoomColor {
+        guard !kfs.isEmpty else { return .black }
+        guard kfs.count > 1 else { return kfs[0].value }
+        let sorted = kfs.sorted { $0.frame < $1.frame }
+        let n = normalizeElapsed(elapsed, total: sorted.last!.frame, loop: loop)
+        if n <= Double(sorted.first!.frame) { return sorted.first!.value }
+        if n >= Double(sorted.last!.frame)  { return sorted.last!.value }
+        for i in 0..<(sorted.count - 1) {
+            let lo = sorted[i], hi = sorted[i + 1]
+            guard Double(lo.frame) <= n, n <= Double(hi.frame) else { continue }
+            let span = Double(hi.frame - lo.frame)
+            let t = EasingMath.ease(span > 0 ? (n - Double(lo.frame)) / span : 0, type: lo.easing)
+            return lerpColor(lo.value, hi.value, t: t)
+        }
+        return sorted.last!.value
+    }
+
+    private static func lerpColor(_ a: LoomColor, _ b: LoomColor, t: Double) -> LoomColor {
+        let c = max(0, min(1, t))
+        func channel(_ x: Int, _ y: Int) -> Int {
+            Int((Double(x) + (Double(y) - Double(x)) * c).rounded())
+        }
+        return LoomColor(
+            r: channel(a.r, b.r),
+            g: channel(a.g, b.g),
+            b: channel(a.b, b.b),
+            a: channel(a.a, b.a)
+        )
     }
 }

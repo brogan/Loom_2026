@@ -16,21 +16,25 @@ public enum RenderStateEngine {
     public static func resolve(
         renderer: Renderer,
         state: RendererAnimationState,
-        changes: RendererChanges
+        changes: RendererChanges,
+        scales: Set<ChangeScale>? = nil
     ) -> Renderer {
         var r = renderer
 
         if let change = changes.fillColor, change.enabled,
+           scales?.contains(change.scale) ?? true,
            let s = state.fillColorState, s.index < change.palette.count {
             r.fillColor = change.palette[s.index]
         }
 
         if let change = changes.strokeColor, change.enabled,
+           scales?.contains(change.scale) ?? true,
            let s = state.strokeColorState, s.index < change.palette.count {
             r.strokeColor = change.palette[s.index]
         }
 
         if let change = changes.strokeWidth, change.enabled,
+           scales?.contains(change.scale) ?? true,
            let s = state.strokeWidthState, s.index < change.sizePalette.count {
             r.strokeWidth = change.sizePalette[s.index]
         }
@@ -48,6 +52,7 @@ public enum RenderStateEngine {
         state: RendererAnimationState,
         changes: RendererChanges,
         stencilConfig: StencilConfig? = nil,
+        scales: Set<ChangeScale>? = nil,
         using rng: inout RNG
     ) -> RendererAnimationState {
         let oc = stencilConfig?.opacityChange
@@ -55,18 +60,22 @@ public enum RenderStateEngine {
             fillColorState:   advanceState(state.fillColorState,
                                            change: changes.fillColor,
                                            paletteCount: changes.fillColor?.palette.count ?? 0,
+                                           scales: scales,
                                            using: &rng),
             strokeColorState: advanceState(state.strokeColorState,
                                            change: changes.strokeColor,
                                            paletteCount: changes.strokeColor?.palette.count ?? 0,
+                                           scales: scales,
                                            using: &rng),
             strokeWidthState: advanceState(state.strokeWidthState,
                                            change: changes.strokeWidth,
                                            paletteCount: changes.strokeWidth?.sizePalette.count ?? 0,
+                                           scales: scales,
                                            using: &rng),
             stencilOpacityState: advanceState(state.stencilOpacityState,
                                               change: oc,
                                               paletteCount: oc?.sizePalette.count ?? 0,
+                                              scales: scales,
                                               using: &rng)
         )
     }
@@ -77,9 +86,13 @@ public enum RenderStateEngine {
         _ current: PaletteIndexState?,
         change: C?,
         paletteCount: Int,
+        scales: Set<ChangeScale>?,
         using rng: inout RNG
     ) -> PaletteIndexState? {
         guard let current, let change, change.isEnabled, paletteCount > 0 else {
+            return current
+        }
+        if let scales, !scales.contains(change.changeScale) {
             return current
         }
 
@@ -142,6 +155,7 @@ private protocol ChangeProtocol {
     var changeKind:    ChangeKind   { get }
     var changeMotion:  ChangeMotion { get }
     var changeCycle:   ChangeCycle  { get }
+    var changeScale:   ChangeScale  { get }
     var pauseMaxValue: Int          { get }
 }
 
@@ -150,6 +164,7 @@ extension FillColorChange: ChangeProtocol {
     var changeKind:    ChangeKind   { kind }
     var changeMotion:  ChangeMotion { motion }
     var changeCycle:   ChangeCycle  { cycle }
+    var changeScale:   ChangeScale  { scale }
     var pauseMaxValue: Int          { pauseMax }
 }
 
@@ -158,6 +173,7 @@ extension StrokeColorChange: ChangeProtocol {
     var changeKind:    ChangeKind   { kind }
     var changeMotion:  ChangeMotion { motion }
     var changeCycle:   ChangeCycle  { cycle }
+    var changeScale:   ChangeScale  { scale }
     var pauseMaxValue: Int          { pauseMax }
 }
 
@@ -166,6 +182,7 @@ extension StrokeWidthChange: ChangeProtocol {
     var changeKind:    ChangeKind   { kind }
     var changeMotion:  ChangeMotion { motion }
     var changeCycle:   ChangeCycle  { cycle }
+    var changeScale:   ChangeScale  { scale }
     var pauseMaxValue: Int          { pauseMax }
 }
 
@@ -174,5 +191,6 @@ extension StencilOpacityChange: ChangeProtocol {
     var changeKind:    ChangeKind   { kind }
     var changeMotion:  ChangeMotion { motion }
     var changeCycle:   ChangeCycle  { cycle }
+    var changeScale:   ChangeScale  { scale }
     var pauseMaxValue: Int          { pauseMax }
 }

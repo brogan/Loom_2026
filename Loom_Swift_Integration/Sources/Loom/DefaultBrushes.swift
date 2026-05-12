@@ -6,6 +6,7 @@ import UniformTypeIdentifiers
 enum DefaultBrushes {
 
     static func write(to directory: URL) {
+        try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         guard let cs = CGColorSpace(name: CGColorSpace.sRGB) else { return }
         let bitmapInfo = CGBitmapInfo(rawValue: CGImageAlphaInfo.premultipliedLast.rawValue)
         let size = 64
@@ -16,12 +17,24 @@ enum DefaultBrushes {
         }
 
         func savePNG(_ image: CGImage, name: String) {
-            let url = directory.appendingPathComponent(name) as CFURL
+            let url = directory.appendingPathComponent(name)
+            guard !FileManager.default.fileExists(atPath: url.path) else {
+                writeMetaIfMissing(for: url, size: size)
+                return
+            }
             guard let dest = CGImageDestinationCreateWithURL(
-                url, UTType.png.identifier as CFString, 1, nil
+                url as CFURL, UTType.png.identifier as CFString, 1, nil
             ) else { return }
             CGImageDestinationAddImage(dest, image, nil)
-            CGImageDestinationFinalize(dest)
+            if CGImageDestinationFinalize(dest) {
+                writeMetaIfMissing(for: url, size: size)
+            }
+        }
+
+        func writeMetaIfMissing(for url: URL, size: Int) {
+            let metaURL = url.appendingPathExtension("meta.json")
+            guard !FileManager.default.fileExists(atPath: metaURL.path) else { return }
+            try? saveMetaJSON(forFile: url, gridW: size, gridH: size, outW: size, outH: size)
         }
 
         // circle.png — hard-edged white circle on black
@@ -30,7 +43,10 @@ enum DefaultBrushes {
             ctx.fill(CGRect(x: 0, y: 0, width: size, height: size))
             ctx.setFillColor(red: 1, green: 1, blue: 1, alpha: 1)
             ctx.fillEllipse(in: CGRect(x: 4, y: 4, width: size - 8, height: size - 8))
-            if let img = ctx.makeImage() { savePNG(img, name: "circle.png") }
+            if let img = ctx.makeImage() {
+                savePNG(img, name: "circle.png")
+                savePNG(img, name: "default.png")
+            }
         }
 
         // soft_circle.png — radial gradient white-to-black

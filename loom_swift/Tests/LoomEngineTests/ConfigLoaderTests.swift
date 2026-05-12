@@ -37,14 +37,17 @@ final class GlobalConfigTests: XCTestCase {
     func testGlobalConfigColors() throws {
         let cfg = try XMLConfigLoader.loadGlobalConfig(url: configFile("global_config.xml"))
         XCTAssertEqual(cfg.borderColor, LoomColor(r: 0, g: 0, b: 0, a: 255))
+        XCTAssertEqual(cfg.borderWidth, 0.0)
         XCTAssertEqual(cfg.backgroundColor, LoomColor(r: 255, g: 255, b: 255, a: 255))
-        XCTAssertEqual(cfg.overlayColor.a, 170, "overlay alpha should be 170")
+        XCTAssertEqual(cfg.overlayColor, .clear, "legacy black overlay default should load as transparent")
     }
 
     func testGlobalConfigDefaults() {
         let cfg = GlobalConfig.default
         XCTAssertEqual(cfg.width, 1080)
         XCTAssertEqual(cfg.qualityMultiple, 1)
+        XCTAssertEqual(cfg.borderWidth, 0.0)
+        XCTAssertEqual(cfg.overlayColor, .clear)
         XCTAssertTrue(cfg.subdividing)
     }
 

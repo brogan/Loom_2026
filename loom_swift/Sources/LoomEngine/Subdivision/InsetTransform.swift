@@ -14,6 +14,12 @@ public struct InsetTransform: Equatable, Codable, Sendable {
         rotation: 0
     )
 
+    public static let identity = InsetTransform(
+        translation: .zero,
+        scale: Vector2D(x: 1, y: 1),
+        rotation: 0
+    )
+
     public init(translation: Vector2D, scale: Vector2D, rotation: Double) {
         self.translation = translation
         self.scale = scale

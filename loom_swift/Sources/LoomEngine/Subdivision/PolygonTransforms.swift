@@ -92,7 +92,9 @@ enum PolygonTransforms {
         // 2. Deterministic inset transform (scale + translate + rotate around pivot).
         var pts = poly.points.map { params.pTW_transform.apply(to: $0, around: effectivePivot) }
         var result = Polygon2D(points: pts, type: poly.type,
-                                pressures: poly.pressures, visible: poly.visible)
+                               pressures: poly.pressures,
+                               pressureProfiles: poly.pressureProfiles,
+                               visible: poly.visible)
 
         // 3. Random translation.
         if params.pTW_randomTranslation {
@@ -156,7 +158,9 @@ enum PolygonTransforms {
                 return pt.translated(by: Vector2D(x: tx, y: ty))
             }
             return Polygon2D(points: pts, type: poly.type,
-                             pressures: poly.pressures, visible: poly.visible)
+                             pressures: poly.pressures,
+                             pressureProfiles: poly.pressureProfiles,
+                             visible: poly.visible)
         }
     }
 
@@ -199,7 +203,9 @@ enum PolygonTransforms {
         }
 
         return Polygon2D(points: pts, type: poly.type,
-                         pressures: poly.pressures, visible: poly.visible)
+                         pressures: poly.pressures,
+                         pressureProfiles: poly.pressureProfiles,
+                         visible: poly.visible)
     }
 
     /// Spike exterior anchor pairs away from the centre reference point.
@@ -710,7 +716,9 @@ enum PolygonTransforms {
             pts[ci + 1] = buffer[base + 2]  // pts[9]
             pts[ci + 2] = buffer[base + 3]  // pts[10]
             return Polygon2D(points: pts, type: poly.type,
-                             pressures: poly.pressures, visible: poly.visible)
+                             pressures: poly.pressures,
+                             pressureProfiles: poly.pressureProfiles,
+                             visible: poly.visible)
         }
     }
 

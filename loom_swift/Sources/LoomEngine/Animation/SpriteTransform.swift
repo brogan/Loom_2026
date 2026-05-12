@@ -23,16 +23,21 @@ public struct SpriteTransform: Equatable, Sendable {
     /// Integer part selects the *from* target (0 = base); fractional part blends toward the next.
     public var morphAmount: Double
 
+    /// Whole-sprite alpha multiplier. Clamped by the renderer when applied.
+    public var opacity: Double
+
     public init(
         positionOffset: Vector2D = .zero,
         scale: Vector2D          = Vector2D(x: 1, y: 1),
         rotation: Double         = 0,
-        morphAmount: Double      = 0
+        morphAmount: Double      = 0,
+        opacity: Double          = 1
     ) {
         self.positionOffset = positionOffset
         self.scale          = scale
         self.rotation       = rotation
         self.morphAmount    = morphAmount
+        self.opacity        = opacity
     }
 
     /// Identity transform — no translation, unit scale, no rotation, base geometry.

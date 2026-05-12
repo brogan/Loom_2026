@@ -468,12 +468,14 @@ public struct SpriteScene: Sendable {
     ///   - brushImages:    CGImages keyed by filename, used for `RendererMode.brushed` sprites.
     ///   - elapsedFrames:  Accumulated fractional frame count (= elapsed seconds × targetFPS),
     ///                     forwarded to the brush meander phase for frame-rate-independent animation.
-    public func render<RNG: RandomNumberGenerator>(
+    func render<RNG: RandomNumberGenerator>(
         into context: CGContext,
         viewTransform: ViewTransform,
         brushImages: [String: CGImage] = [:],
         stampImages: [String: CGImage] = [:],
         elapsedFrames: Double = 0,
+        progressiveBrushStates: inout [String: BrushProgressiveState],
+        progressiveBrushEnabled: Bool = false,
         using rng: inout RNG
     ) {
         // Pre-compute world transforms (position, rotation, scale) for every sprite
@@ -491,8 +493,32 @@ public struct SpriteScene: Sendable {
             renderInstance(instance, spriteIndex: i, parentWorld: parentWorld,
                            into: context, viewTransform: viewTransform,
                            brushImages: brushImages, stampImages: stampImages,
-                           elapsedFrames: elapsedFrames, using: &rng)
+                           elapsedFrames: elapsedFrames,
+                           progressiveBrushStates: &progressiveBrushStates,
+                           progressiveBrushEnabled: progressiveBrushEnabled,
+                           using: &rng)
         }
+    }
+
+    public func render<RNG: RandomNumberGenerator>(
+        into context: CGContext,
+        viewTransform: ViewTransform,
+        brushImages: [String: CGImage] = [:],
+        stampImages: [String: CGImage] = [:],
+        elapsedFrames: Double = 0,
+        using rng: inout RNG
+    ) {
+        var progressiveBrushStates: [String: BrushProgressiveState] = [:]
+        render(
+            into: context,
+            viewTransform: viewTransform,
+            brushImages: brushImages,
+            stampImages: stampImages,
+            elapsedFrames: elapsedFrames,
+            progressiveBrushStates: &progressiveBrushStates,
+            progressiveBrushEnabled: false,
+            using: &rng
+        )
     }
 
     // MARK: - Parent-child world transform
@@ -591,6 +617,8 @@ public struct SpriteScene: Sendable {
         brushImages: [String: CGImage],
         stampImages: [String: CGImage],
         elapsedFrames: Double,
+        progressiveBrushStates: inout [String: BrushProgressiveState],
+        progressiveBrushEnabled: Bool,
         using rng: inout RNG
     ) {
         // ── Gate check ───────────────────────────────────────────────────────
@@ -671,29 +699,63 @@ public struct SpriteScene: Sendable {
 
         // 4. Determine which renderers to apply
         let activeRenderers = resolveActiveRenderers(for: activeInstance)
+        let spriteOpacity = max(0, min(1, activeInstance.state.transform.opacity))
+        guard spriteOpacity > 0 else { return }
 
         // 5. Draw
         // When scaleImage is false, pixel-valued style properties (stroke widths,
         // point sizes, brush/stencil pixel metrics) are kept at their logical-pixel
         // values rather than being scaled up by the quality multiple.
         let effectiveQuality = scaleImage ? qualityMultiple : 1
+        context.saveGState()
+        context.setAlpha(CGFloat(spriteOpacity))
+        defer { context.restoreGState() }
 
-        for renderer in activeRenderers {
-            let resolved = resolveRendererChanges(renderer, instance: activeInstance)
+        for (rendererIndex, renderer) in activeRenderers {
+            let changed = resolveRendererChanges(renderer, rendererIndex: rendererIndex, instance: activeInstance,
+                                                 scales: [.sprite, .global])
+            let resolved = resolveRendererDrivers(changed, spriteIndex: spriteIndex, elapsedFrames: elapsedFrames)
+            var elementState = rendererAnimationState(for: activeInstance, rendererIndex: rendererIndex)
 
             if resolved.mode == .brushed, let brushCfg = resolved.brushConfig {
                 // Brush mode: stamp images along perturbed edge paths.
                 let scaledBrush = effectiveQuality > 1
                     ? brushCfg.scaled(by: Double(effectiveQuality)) : brushCfg
                 let edges = BrushEdge.extractEdges(from: transformed, viewTransform: viewTransform)
-                BrushStampEngine.drawFullPath(
-                    edges:         edges,
-                    config:        scaledBrush,
-                    color:         resolved.strokeColor,
-                    context:       context,
-                    elapsedFrames: elapsedFrames,
-                    brushImages:   brushImages
-                )
+                if scaledBrush.drawMode == .progressive && progressiveBrushEnabled {
+                    let key = "\(activeInstance.def.name)|\(renderer.name)"
+                    if progressiveBrushStates[key] == nil || activeInstance.state.drawCycle == 0 {
+                        progressiveBrushStates[key] = BrushProgressiveState(
+                            edges: edges,
+                            agentCount: scaledBrush.agentCount,
+                            config: scaledBrush,
+                            elapsedFrames: elapsedFrames
+                        )
+                    }
+                    if var state = progressiveBrushStates[key] {
+                        for agentIndex in state.agents.indices {
+                            BrushStampEngine.drawProgressiveStamps(
+                                agentIndex: agentIndex,
+                                state: &state,
+                                config: scaledBrush,
+                                color: resolved.strokeColor,
+                                context: context,
+                                brushImages: brushImages
+                            )
+                        }
+                        state.checkCompletion(mode: scaledBrush.postCompletionMode)
+                        progressiveBrushStates[key] = state
+                    }
+                } else {
+                    BrushStampEngine.drawFullPath(
+                        edges:         edges,
+                        config:        scaledBrush,
+                        color:         resolved.strokeColor,
+                        context:       context,
+                        elapsedFrames: elapsedFrames,
+                        brushImages:   brushImages
+                    )
+                }
             } else if (resolved.mode == .stamped || resolved.mode == .stenciled),
                       let stencilCfg = resolved.stencilConfig {
                 // Stamp mode: place stamp images at each discrete point position.
@@ -719,12 +781,98 @@ public struct SpriteScene: Sendable {
                 }
             } else {
                 for polygon in transformed {
-                    RenderEngine.draw(polygon,
-                                      renderer:        resolved,
-                                      into:            context,
-                                      transform:       viewTransform,
-                                      qualityMultiple: effectiveQuality)
+                    let polyResolved = RenderStateEngine.resolve(
+                        renderer: resolved,
+                        state:    elementState,
+                        changes:  renderer.changes,
+                        scales:   [.poly]
+                    )
+                    let drivenPolyResolved = resolveRendererDrivers(polyResolved,
+                                                                    spriteIndex: spriteIndex,
+                                                                    elapsedFrames: elapsedFrames)
+                    if drivenPolyResolved.mode == .points {
+                        drawPointsWithElementChanges(
+                            polygon,
+                            renderer:        drivenPolyResolved,
+                            baseChanges:     renderer.changes,
+                            state:           elementState,
+                            into:            context,
+                            transform:       viewTransform,
+                            qualityMultiple: effectiveQuality,
+                            spriteIndex:      spriteIndex,
+                            elapsedFrames:    elapsedFrames,
+                            using:           &rng
+                        )
+                    } else {
+                        RenderEngine.draw(polygon,
+                                          renderer:        drivenPolyResolved,
+                                          into:            context,
+                                          transform:       viewTransform,
+                                          qualityMultiple: effectiveQuality)
+                    }
+                    elementState = RenderStateEngine.advance(
+                        state:   elementState,
+                        changes: renderer.changes,
+                        scales:  [.poly],
+                        using:   &rng
+                    )
                 }
+            }
+        }
+    }
+
+    private func drawPointsWithElementChanges<RNG: RandomNumberGenerator>(
+        _ polygon: Polygon2D,
+        renderer: Renderer,
+        baseChanges: RendererChanges,
+        state: RendererAnimationState,
+        into context: CGContext,
+        transform: ViewTransform,
+        qualityMultiple: Int,
+        spriteIndex: Int,
+        elapsedFrames: Double,
+        using rng: inout RNG
+    ) {
+        var pointState = state
+        for anchor in pointAnchors(in: polygon) {
+            let pointRenderer = RenderStateEngine.resolve(
+                renderer: renderer,
+                state: pointState,
+                changes: baseChanges,
+                scales: [.point]
+            )
+            let drivenPointRenderer = resolveRendererDrivers(
+                pointRenderer,
+                spriteIndex: spriteIndex,
+                elapsedFrames: elapsedFrames
+            )
+            RenderEngine.draw(
+                Polygon2D(points: [anchor.point], type: .point, pressures: [anchor.pressure], visible: polygon.visible),
+                renderer: drivenPointRenderer,
+                into: context,
+                transform: transform,
+                qualityMultiple: qualityMultiple
+            )
+            pointState = RenderStateEngine.advance(
+                state: pointState,
+                changes: baseChanges,
+                scales: [.point],
+                using: &rng
+            )
+        }
+    }
+
+    private func pointAnchors(in polygon: Polygon2D) -> [(point: Vector2D, pressure: Double)] {
+        switch polygon.type {
+        case .spline, .openSpline:
+            return stride(from: 0, to: polygon.points.count, by: 4).enumerated().map { anchorIndex, pointIndex in
+                let pressure = anchorIndex < polygon.pressures.count ? polygon.pressures[anchorIndex] : 1.0
+                return (polygon.points[pointIndex], pressure)
+            }
+        default:
+            return polygon.points.enumerated().map { index, point in
+                let pressure = index < polygon.pressures.count ? polygon.pressures[index] : 1.0
+                return (point, pressure)
             }
         }
     }
@@ -814,7 +962,9 @@ public struct SpriteScene: Sendable {
             return Vector2D(x: wx * hw + txPx, y: wy * hh + tyPx)
         }
         return Polygon2D(points: pts, type: polygon.type,
-                         pressures: polygon.pressures, visible: polygon.visible)
+                         pressures: polygon.pressures,
+                         pressureProfiles: polygon.pressureProfiles,
+                         visible: polygon.visible)
     }
 
     /// Resolve a step index into a shape-sequence array position, applying loop / once / ping-pong.
@@ -834,30 +984,66 @@ public struct SpriteScene: Sendable {
 
     // MARK: - Renderer-set helpers
 
-    private func resolveActiveRenderers(for instance: SpriteInstance) -> [Renderer] {
+    private func resolveActiveRenderers(for instance: SpriteInstance) -> [(index: Int, renderer: Renderer)] {
         let set = instance.rendererSet
         guard !set.renderers.isEmpty else { return [] }
 
         switch set.playbackConfig.mode {
         case .all:
-            return set.renderers.filter { $0.enabled }
+            return set.renderers.enumerated().compactMap { idx, renderer in
+                renderer.enabled ? (idx, renderer) : nil
+            }
         default:
             let idx = min(instance.state.activeRendererIndex, set.renderers.count - 1)
             let r = set.renderers[idx]
-            return r.enabled ? [r] : []
+            return r.enabled ? [(idx, r)] : []
         }
     }
 
-    private func resolveRendererChanges(_ renderer: Renderer, instance: SpriteInstance) -> Renderer {
-        let idx    = min(instance.state.activeRendererIndex,
-                         instance.rendererSet.renderers.count - 1)
+    private func rendererAnimationState(for instance: SpriteInstance, rendererIndex: Int? = nil) -> RendererAnimationState {
+        guard !instance.rendererSet.renderers.isEmpty else { return RendererAnimationState() }
+        let requestedIndex = rendererIndex ?? instance.state.activeRendererIndex
+        let idx    = min(max(requestedIndex, 0), instance.rendererSet.renderers.count - 1)
         let states = instance.state.rendererAnimationStates
-        guard idx < states.count else { return renderer }
+        guard idx < states.count else { return RendererAnimationState() }
+        return states[idx]
+    }
 
+    private func resolveRendererChanges(_ renderer: Renderer,
+                                        rendererIndex: Int? = nil,
+                                        instance: SpriteInstance,
+                                        scales: Set<ChangeScale>? = nil) -> Renderer {
         return RenderStateEngine.resolve(
             renderer: renderer,
-            state:    states[idx],
-            changes:  renderer.changes
+            state:    rendererAnimationState(for: instance, rendererIndex: rendererIndex),
+            changes:  renderer.changes,
+            scales:   scales
         )
+    }
+
+    private func resolveRendererDrivers(_ renderer: Renderer,
+                                        spriteIndex: Int,
+                                        elapsedFrames: Double) -> Renderer {
+        guard let drivers = renderer.drivers else { return renderer }
+        var resolved = renderer
+        if let fillColor = drivers.fillColor {
+            resolved.fillColor = DriverEvaluator.evaluate(
+                fillColor,
+                globalElapsed: elapsedFrames
+            )
+        }
+        if let strokeColor = drivers.strokeColor {
+            resolved.strokeColor = DriverEvaluator.evaluate(
+                strokeColor,
+                globalElapsed: elapsedFrames
+            )
+        }
+        resolved.strokeWidth = max(0, DriverEvaluator.evaluate(
+            drivers.strokeWidth,
+            globalElapsed: elapsedFrames,
+            targetFPS: targetFPS,
+            spriteIndex: spriteIndex
+        ))
+        return resolved
     }
 }

@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 import LoomEngine
 
@@ -5,6 +6,8 @@ import LoomEngine
 
 /// Collapsible inspector section for a single scalar animation driver.
 struct DoubleDriverEditor: View {
+    @EnvironmentObject private var controller: AppController
+
     let label: String
     @Binding var driver: DoubleDriver
     @Binding var isCollapsed: Bool
@@ -66,7 +69,11 @@ struct DoubleDriverEditor: View {
                 .labelsHidden()
                 .frame(maxWidth: 100)
             }
-            DoubleKeyframeTable(keyframes: $driver.keyframes)
+            DoubleKeyframeTable(
+                keyframes: $driver.keyframes,
+                firstFrame: controller.currentTimelineFrame,
+                firstValue: driver.base
+            )
         }
     }
 
@@ -88,6 +95,8 @@ struct DoubleDriverEditor: View {
 
 /// Collapsible inspector section for a single 2-D vector animation driver.
 struct VectorDriverEditor: View {
+    @EnvironmentObject private var controller: AppController
+
     let label: String
     @Binding var driver: VectorDriver
     @Binding var isCollapsed: Bool
@@ -149,7 +158,11 @@ struct VectorDriverEditor: View {
                 .labelsHidden()
                 .frame(maxWidth: 100)
             }
-            VectorKeyframeTable(keyframes: $driver.keyframes)
+            VectorKeyframeTable(
+                keyframes: $driver.keyframes,
+                firstFrame: controller.currentTimelineFrame,
+                firstValue: driver.base
+            )
         }
     }
 
@@ -178,6 +191,8 @@ struct VectorDriverEditor: View {
 
 struct DoubleKeyframeTable: View {
     @Binding var keyframes: [DoubleKeyframe]
+    var firstFrame: Int
+    var firstValue: Double
 
     var body: some View {
         VStack(alignment: .leading, spacing: 1) {
@@ -215,8 +230,8 @@ struct DoubleKeyframeTable: View {
 
             Button {
                 keyframes.append(DoubleKeyframe(
-                    frame:  (keyframes.last?.frame ?? 0) + 30,
-                    value:  keyframes.last?.value ?? 0,
+                    frame:  keyframes.isEmpty ? max(0, firstFrame) : (keyframes.last?.frame ?? 0) + 30,
+                    value:  keyframes.last?.value ?? firstValue,
                     easing: .linear
                 ))
             } label: {
@@ -234,6 +249,8 @@ struct DoubleKeyframeTable: View {
 
 struct VectorKeyframeTable: View {
     @Binding var keyframes: [VectorKeyframe]
+    var firstFrame: Int
+    var firstValue: Vector2D
 
     var body: some View {
         VStack(alignment: .leading, spacing: 1) {
@@ -273,8 +290,8 @@ struct VectorKeyframeTable: View {
 
             Button {
                 keyframes.append(VectorKeyframe(
-                    frame:  (keyframes.last?.frame ?? 0) + 30,
-                    value:  keyframes.last?.value ?? .zero,
+                    frame:  keyframes.isEmpty ? max(0, firstFrame) : (keyframes.last?.frame ?? 0) + 30,
+                    value:  keyframes.last?.value ?? firstValue,
                     easing: .linear
                 ))
             } label: {
@@ -285,6 +302,127 @@ struct VectorKeyframeTable: View {
             .padding(.horizontal, 12)
             .padding(.vertical, 3)
         }
+    }
+}
+
+// MARK: - ColorDriverEditor
+
+struct ColorDriverEditor: View {
+    @EnvironmentObject private var controller: AppController
+
+    let label: String
+    @Binding var driver: ColorDriver
+    @Binding var isCollapsed: Bool
+
+    var body: some View {
+        InspectorSection(label, isCollapsed: $isCollapsed) {
+            InspectorField("Mode") {
+                Picker("", selection: $driver.mode) {
+                    ForEach(ColorDriver.Mode.allCases, id: \.self) { m in
+                        Text(m.label).tag(m)
+                    }
+                }
+                .labelsHidden()
+                .frame(maxWidth: 120)
+            }
+            switch driver.mode {
+            case .constant:
+                LoomColorField(label: "Value", color: $driver.base)
+            case .keyframe:
+                InspectorField("Loop") {
+                    Picker("", selection: $driver.loopMode) {
+                        ForEach(LoopMode.allCases, id: \.self) { m in
+                            Text(m.label).tag(m)
+                        }
+                    }
+                    .labelsHidden()
+                    .frame(maxWidth: 100)
+                }
+                ColorKeyframeTable(
+                    keyframes: $driver.keyframes,
+                    firstFrame: controller.currentTimelineFrame,
+                    firstValue: driver.base
+                )
+            }
+        }
+    }
+}
+
+struct ColorKeyframeTable: View {
+    @Binding var keyframes: [ColorKeyframe]
+    var firstFrame: Int
+    var firstValue: LoomColor
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 1) {
+            HStack(spacing: 0) {
+                Text("Frame").font(.system(size: 9)).foregroundStyle(.tertiary).frame(width: 46, alignment: .leading)
+                Text("Color").font(.system(size: 9)).foregroundStyle(.tertiary).frame(width: 54, alignment: .leading)
+                Text("Ease").font(.system(size: 9)).foregroundStyle(.tertiary).frame(minWidth: 0, maxWidth: .infinity, alignment: .leading)
+            }
+            .padding(.horizontal, 12)
+            .padding(.bottom, 1)
+
+            ForEach(keyframes.indices, id: \.self) { i in
+                HStack(spacing: 4) {
+                    TextField("", value: $keyframes[i].frame, format: .number)
+                        .textFieldStyle(.squareBorder)
+                        .font(.system(size: 10, design: .monospaced))
+                        .frame(width: 40)
+                    ColorPicker("", selection: colorBinding(i), supportsOpacity: true)
+                        .labelsHidden()
+                        .frame(width: 42, height: 22)
+                    Picker("", selection: $keyframes[i].easing) {
+                        ForEach(EasingType.allCases, id: \.self) { e in
+                            Text(e.shortLabel).tag(e)
+                        }
+                    }
+                    .labelsHidden()
+                    .frame(minWidth: 0, maxWidth: .infinity)
+                    Button { keyframes.remove(at: i) } label: {
+                        Image(systemName: "minus.circle").font(.system(size: 11))
+                    }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(.secondary)
+                    .frame(width: 18)
+                }
+                .padding(.horizontal, 12)
+            }
+
+            Button {
+                keyframes.append(ColorKeyframe(
+                    frame: keyframes.isEmpty ? max(0, firstFrame) : (keyframes.last?.frame ?? 0) + 30,
+                    value: keyframes.last?.value ?? firstValue,
+                    easing: .linear
+                ))
+            } label: {
+                Label("Add keyframe", systemImage: "plus").font(.system(size: 11))
+            }
+            .buttonStyle(.plain)
+            .foregroundStyle(.secondary)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 3)
+        }
+    }
+
+    private func colorBinding(_ index: Int) -> Binding<Color> {
+        Binding {
+            let c = keyframes[safe: index]?.value ?? .black
+            return Color(red: c.rF, green: c.gF, blue: c.bF, opacity: c.aF)
+        } set: { newColor in
+            guard index < keyframes.count else { return }
+            let ns = NSColor(newColor).usingColorSpace(.deviceRGB) ?? NSColor.black
+            keyframes[index].value = LoomColor(
+                r: clamp255(ns.redComponent),
+                g: clamp255(ns.greenComponent),
+                b: clamp255(ns.blueComponent),
+                a: clamp255(ns.alphaComponent)
+            )
+        }
+    }
+
+    private func clamp255(_ v: CGFloat) -> Int {
+        Int(max(0, min(255, (v * 255 + 0.5).rounded(.down))))
     }
 }
 
@@ -310,6 +448,15 @@ private extension VectorDriver.Mode {
         case .noise:      return "Noise"
         case .oscillator: return "Oscillator"
         case .keyframe:   return "Keyframe"
+        }
+    }
+}
+
+private extension ColorDriver.Mode {
+    var label: String {
+        switch self {
+        case .constant: return "Constant"
+        case .keyframe: return "Keyframe"
         }
     }
 }

@@ -994,4 +994,123 @@ final class SubdivisionEngineTests: XCTestCase {
             print("Level-3 poly[\(i)] anchors: \(anchors.map { "(\(String(format:"%.4f",  $0.x)), \(String(format:"%.4f", $0.y)))" }.joined(separator: ", "))")
         }
     }
+
+    func testSubdivisionSkipsPressurePropagationWhenNoPressureVariationExists() {
+        var rng = SystemRandomNumberGenerator()
+        let result = SubdivisionEngine.subdivide(
+            polygon: makeSquare(),
+            params: SubdivisionParams(subdivisionType: .quad),
+            rng: &rng
+        )
+
+        XCTAssertFalse(result.isEmpty)
+        XCTAssertTrue(result.allSatisfy { $0.pressures.isEmpty })
+    }
+
+    func testSubdivisionPropagatesPressureVariationToChildren() {
+        var poly = makeSquare()
+        poly.pressures = [0.2, 1.0, 0.55, 0.85]
+        var rng = SystemRandomNumberGenerator()
+
+        let result = SubdivisionEngine.subdivide(
+            polygon: poly,
+            params: SubdivisionParams(subdivisionType: .quad),
+            rng: &rng
+        )
+
+        XCTAssertFalse(result.isEmpty)
+        for child in result {
+            XCTAssertEqual(child.pressures.count, child.points.count / 4)
+            XCTAssertTrue(child.pressures.contains { abs($0 - 1.0) > 1e-6 })
+        }
+    }
+
+    func testRecursiveSubdivisionCarriesPressureBeyondFirstGeneration() {
+        var poly = makeSquare()
+        poly.pressures = [0.15, 0.95, 0.4, 0.8]
+        let params = SubdivisionParams(subdivisionType: .quad)
+        var rng = SystemRandomNumberGenerator()
+
+        let result = SubdivisionEngine.process(
+            polygons: [poly],
+            paramSet: [params, params],
+            rng: &rng
+        )
+
+        XCTAssertFalse(result.isEmpty)
+        XCTAssertTrue(result.allSatisfy { !$0.pressures.isEmpty })
+        XCTAssertTrue(result.flatMap(\.pressures).contains { abs($0 - 1.0) > 1e-6 })
+    }
+
+    func testPressureSubdivisionNoneDropsPressureOnChildren() {
+        var poly = makeSquare()
+        poly.pressures = [0.15, 0.95, 0.4, 0.8]
+        poly.pressureProfiles = [
+            [0.15, 0.3, 0.6, 0.95],
+            [0.95, 0.7, 0.5, 0.4],
+            [0.4, 0.55, 0.7, 0.8],
+            [0.8, 0.5, 0.25, 0.15],
+        ]
+        let params = SubdivisionParams(subdivisionType: .quad, pressureSubdivisionMode: .none)
+        var rng = SystemRandomNumberGenerator()
+
+        let result = SubdivisionEngine.subdivide(polygon: poly, params: params, rng: &rng)
+
+        XCTAssertFalse(result.isEmpty)
+        XCTAssertTrue(result.allSatisfy { $0.pressures.isEmpty })
+        XCTAssertTrue(result.allSatisfy { $0.pressureProfiles == nil })
+    }
+
+    func testPressureSubdivisionInheritPathAddsDenseProfilesToChildren() {
+        var poly = makeSquare()
+        poly.pressures = [0.15, 0.95, 0.4, 0.8]
+        poly.pressureProfiles = [
+            [0.15, 0.25, 0.75, 0.95],
+            [0.95, 0.7, 0.5, 0.4],
+            [0.4, 0.6, 0.7, 0.8],
+            [0.8, 0.6, 0.3, 0.15],
+        ]
+        let params = SubdivisionParams(subdivisionType: .quad, pressureSubdivisionMode: .inheritPath)
+        var rng = SystemRandomNumberGenerator()
+
+        let result = SubdivisionEngine.subdivide(polygon: poly, params: params, rng: &rng)
+
+        XCTAssertFalse(result.isEmpty)
+        for child in result {
+            let sideCount = child.points.count / 4
+            XCTAssertEqual(child.pressures.count, sideCount)
+            XCTAssertEqual(child.pressureProfiles?.count, sideCount)
+            XCTAssertTrue(child.pressureProfiles?.allSatisfy { $0.count == 16 } ?? false)
+            XCTAssertTrue(child.pressureProfiles?.flatMap { $0 }.contains { abs($0 - 1.0) > 1e-6 } ?? false)
+        }
+    }
+
+    func testPressureSubdivisionRandomAddsProfilesFromSelectedGroups() {
+        let params = SubdivisionParams(
+            subdivisionType: .quad,
+            pressureSubdivisionMode: .random,
+            pressureRandomGroups: [false, false, false, false, true]
+        )
+        var rng = SystemRandomNumberGenerator()
+
+        let result = SubdivisionEngine.subdivide(polygon: makeSquare(), params: params, rng: &rng)
+
+        XCTAssertFalse(result.isEmpty)
+        for child in result {
+            XCTAssertEqual(child.pressureProfiles?.count, child.points.count / 4)
+            XCTAssertTrue(child.pressureProfiles?.allSatisfy { $0.count == 16 } ?? false)
+            XCTAssertTrue(child.pressureProfiles?.flatMap { $0 }.allSatisfy { $0 >= 0.05 && $0 <= 1.0 } ?? false)
+            XCTAssertTrue(child.pressureProfiles?.flatMap { $0 }.contains { abs($0 - 1.0) > 1e-6 } ?? false)
+        }
+    }
+
+    func testSubdivisionParamsDecodesMissingPressureFieldsWithDefaults() throws {
+        let data = #"{"name":"old"}"#.data(using: .utf8)!
+
+        let params = try JSONDecoder().decode(SubdivisionParams.self, from: data)
+
+        XCTAssertEqual(params.name, "old")
+        XCTAssertEqual(params.pressureSubdivisionMode, .spatial)
+        XCTAssertEqual(params.pressureRandomGroups, [true, true, true, true, true])
+    }
 }

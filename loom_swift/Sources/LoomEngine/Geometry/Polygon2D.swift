@@ -18,17 +18,23 @@ public struct Polygon2D: Equatable, Codable, Sendable {
     /// Empty when pressure data is unavailable — treated as 1.0 throughout.
     public var pressures: [Double]
 
+    /// Optional dense pressure samples per segment, sampled from segment start
+    /// to segment end. When present, these override linear anchor interpolation.
+    public var pressureProfiles: [[Double]]?
+
     public var visible: Bool
 
     public init(
         points: [Vector2D],
         type: PolygonType,
         pressures: [Double] = [],
+        pressureProfiles: [[Double]]? = nil,
         visible: Bool = true
     ) {
         self.points = points
         self.type = type
         self.pressures = pressures
+        self.pressureProfiles = pressureProfiles
         self.visible = visible
     }
 
@@ -53,6 +59,7 @@ public struct Polygon2D: Equatable, Codable, Sendable {
             points: points.map { $0.translated(by: v) },
             type: type,
             pressures: pressures,
+            pressureProfiles: pressureProfiles,
             visible: visible
         )
     }
@@ -68,6 +75,7 @@ public struct Polygon2D: Equatable, Codable, Sendable {
             },
             type: type,
             pressures: pressures,
+            pressureProfiles: pressureProfiles,
             visible: visible
         )
     }
@@ -83,6 +91,7 @@ public struct Polygon2D: Equatable, Codable, Sendable {
             points: points.map { $0.rotated(by: angle, around: centre) },
             type: type,
             pressures: pressures,
+            pressureProfiles: pressureProfiles,
             visible: visible
         )
     }
@@ -90,6 +99,6 @@ public struct Polygon2D: Equatable, Codable, Sendable {
     // MARK: - Visibility
 
     public func withVisibility(_ isVisible: Bool) -> Polygon2D {
-        Polygon2D(points: points, type: type, pressures: pressures, visible: isVisible)
+        Polygon2D(points: points, type: type, pressures: pressures, pressureProfiles: pressureProfiles, visible: isVisible)
     }
 }

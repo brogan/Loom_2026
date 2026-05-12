@@ -29,6 +29,7 @@ struct RunControlBar: View {
                 mediaButton("stop.fill", help: "Stop") {
                     controller.stop()
                     currentFrame = 0
+                    controller.currentTimelineFrame = 0
                 }
                 .disabled(controller.engine == nil || controller.isExporting)
 
@@ -37,7 +38,7 @@ struct RunControlBar: View {
                     controller.playbackState == .playing ? controller.pause() : controller.play()
                 }
                 .keyboardShortcut(" ", modifiers: [])
-                .disabled(controller.engine == nil || controller.isExporting)
+                .disabled(controller.engine == nil || controller.isExporting || !controller.canPlay)
 
                 Button {
                     controller.loopPlayback.toggle()
@@ -180,4 +181,3 @@ struct RunControlBar: View {
     }
 
 }
-

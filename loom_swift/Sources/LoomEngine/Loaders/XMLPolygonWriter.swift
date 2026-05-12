@@ -30,7 +30,26 @@ public enum XMLPolygonWriter {
                 xml += "    <curve>\n"
                 for j in 0..<4 {
                     let p = poly.points[base + j]
-                    xml += String(format: "      <point x=\"%.6f\" y=\"%.6f\"/>\n", p.x, p.y)
+                    let pressure: Double?
+                    if j == 0 {
+                        pressure = side < poly.pressures.count ? poly.pressures[side] : nil
+                    } else if poly.type == .openSpline, j == 3 {
+                        let endPressureIndex = side + 1
+                        pressure = endPressureIndex < poly.pressures.count ? poly.pressures[endPressureIndex] : nil
+                    } else {
+                        pressure = nil
+                    }
+
+                    if let pressure {
+                        xml += String(
+                            format: "      <point x=\"%.6f\" y=\"%.6f\" pressure=\"%.6f\"/>\n",
+                            p.x,
+                            p.y,
+                            pressure
+                        )
+                    } else {
+                        xml += String(format: "      <point x=\"%.6f\" y=\"%.6f\"/>\n", p.x, p.y)
+                    }
                 }
                 xml += "    </curve>\n"
             }

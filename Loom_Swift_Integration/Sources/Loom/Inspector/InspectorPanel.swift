@@ -568,6 +568,26 @@ private struct GeometryEditorShellInspector: View {
                     Spacer()
                 }
                 iconRow {
+                    iconButton(
+                        help: "Pressure Trace: trace over selected geometry to add pressure sensitivity",
+                        disabled: !controller.canPressureTraceSelectedGeometry || morphLocked,
+                        selected: controller.geometryEditorTool == .pressureTrace
+                    ) {
+                        PressureTraceIcon()
+                    } action: {
+                        controller.startPressureTraceGeometryEdit()
+                    }
+                    iconButton(
+                        help: "Clear pressure sensitivity from selected geometry",
+                        disabled: !controller.canClearPressureSelectedGeometry || morphLocked
+                    ) {
+                        Image(systemName: "eraser").font(.system(size: 15))
+                    } action: {
+                        controller.clearPressureForSelectedGeometry()
+                    }
+                    Spacer()
+                }
+                iconRow {
                     iconButton(help: "Cut selected objects", disabled: !controller.canCutCopySelectedGeometry || morphLocked) {
                         Image(systemName: "scissors").font(.system(size: 15))
                     } action: {
@@ -830,6 +850,7 @@ private struct GeometryEditorShellInspector: View {
                     svgExportButton
                 }
                 InspectorField("Save") {
+                    GeometryEditorSaveStateIndicator(state: controller.geometryEditorSaveState)
                     iconButton(help: "Save geometry document", disabled: controller.geometryEditorDocument == nil, size: 30) {
                         SaveToFolderIcon()
                     } action: {
@@ -961,8 +982,8 @@ private struct GeometryEditorShellInspector: View {
         return Button {
             controller.saveGeometryLayerAsSVG()
         } label: {
-            FolderExportIcon()
-                .frame(width: 22, height: 22)
+            SVGExportIcon()
+                .frame(width: 24, height: 18)
         }
         .buttonStyle(.plain)
         .foregroundStyle(disabled ? Color.secondary.opacity(0.4) : Color.secondary)
@@ -1067,6 +1088,33 @@ private struct PointCircleIcon: View {
         ZStack {
             Circle().stroke(lineWidth: 1.5)
             Circle().fill().frame(width: 4, height: 4)
+        }
+        .padding(4)
+    }
+}
+
+private struct PressureTraceIcon: View {
+    var body: some View {
+        GeometryReader { proxy in
+            let w = proxy.size.width
+            let h = proxy.size.height
+            Path { path in
+                path.move(to: CGPoint(x: w * 0.12, y: h * 0.68))
+                path.addCurve(
+                    to: CGPoint(x: w * 0.88, y: h * 0.34),
+                    control1: CGPoint(x: w * 0.32, y: h * 0.18),
+                    control2: CGPoint(x: w * 0.58, y: h * 0.88)
+                )
+            }
+            .stroke(style: StrokeStyle(lineWidth: 2.0, lineCap: .round))
+            Circle()
+                .fill()
+                .frame(width: w * 0.18, height: w * 0.18)
+                .position(x: w * 0.72, y: h * 0.42)
+            Circle()
+                .stroke(lineWidth: 1.2)
+                .frame(width: w * 0.32, height: w * 0.32)
+                .position(x: w * 0.72, y: h * 0.42)
         }
         .padding(4)
     }
@@ -1613,12 +1661,56 @@ private struct SaveToFolderIcon: View {
     }
 }
 
+private struct GeometryEditorSaveStateIndicator: View {
+    let state: GeometryEditorSaveState
+
+    var body: some View {
+        Circle()
+            .fill(fillColor)
+            .stroke(Color.primary.opacity(0.55), lineWidth: 1.2)
+            .frame(width: 10, height: 10)
+            .help(helpText)
+    }
+
+    private var fillColor: Color {
+        switch state {
+        case .unchanged:
+            return .clear
+        case .unsaved:
+            return Color.orange
+        case .saved:
+            return Color.green
+        }
+    }
+
+    private var helpText: String {
+        switch state {
+        case .unchanged:
+            return "No geometry changes since opening"
+        case .unsaved:
+            return "Unsaved geometry changes"
+        case .saved:
+            return "Geometry saved"
+        }
+    }
+}
+
 /// Folder outline with a diagonal arrow from the folder centre toward the upper-right corner.
 struct FolderExportIcon: View {
     var strokeWidth: CGFloat = 1.5
+    var compactFolder: Bool = false
+    var showsInterlockedSVG: Bool = false
+
     var body: some View {
         GeometryReader { proxy in
-            let r = proxy.frame(in: .local).insetBy(dx: 2, dy: 2)
+            let outer = proxy.frame(in: .local).insetBy(dx: 2, dy: 2)
+            let folderWidth = compactFolder ? outer.width * 0.76 : outer.width
+            let r = CGRect(
+                x: outer.minX + (outer.width - folderWidth) * 0.5,
+                y: outer.minY,
+                width: folderWidth,
+                height: outer.height
+            )
             let w = r.width, h = r.height
             // Folder outline
             Path { path in
@@ -1631,26 +1723,51 @@ struct FolderExportIcon: View {
                 path.closeSubpath()
             }
             .stroke(style: StrokeStyle(lineWidth: strokeWidth, lineCap: .round, lineJoin: .round))
-            // Diagonal arrow: folder-body centre → upper-right
-            let tailX = r.midX - w * 0.06
-            let tailY = r.minY + h * 0.76
-            let tipX  = r.maxX - w * 0.13
-            let tipY  = r.minY + h * 0.53
-            let dx = tipX - tailX, dy = tipY - tailY
-            let len = (dx*dx + dy*dy).squareRoot()
-            let ux = dx / len, uy = dy / len
-            let px = -uy,      py = ux
-            let hw = w * 0.16
-            Path { path in
-                path.move(to:    CGPoint(x: tailX, y: tailY))
-                path.addLine(to: CGPoint(x: tipX,  y: tipY))
-                path.move(to:    CGPoint(x: tipX - ux*hw + px*hw*0.65, y: tipY - uy*hw + py*hw*0.65))
-                path.addLine(to: CGPoint(x: tipX,  y: tipY))
-                path.addLine(to: CGPoint(x: tipX - ux*hw - px*hw*0.65, y: tipY - uy*hw - py*hw*0.65))
+
+            if showsInterlockedSVG {
+                let textY = r.minY + h * 0.48
+                Text("S")
+                    .font(.system(size: max(7, h * 0.35), weight: .bold, design: .rounded))
+                    .position(x: r.midX - w * 0.16, y: textY)
+                Text("G")
+                    .font(.system(size: max(7, h * 0.35), weight: .bold, design: .rounded))
+                    .position(x: r.midX + w * 0.16, y: textY)
+                Text("V")
+                    .font(.system(size: max(10, h * 0.72), weight: .bold, design: .rounded))
+                    .position(x: r.midX, y: r.minY + h * 0.62)
+            } else {
+                // Diagonal arrow: folder-body centre → upper-right
+                let tailX = r.midX - w * 0.06
+                let tailY = r.minY + h * 0.76
+                let tipX  = r.maxX - w * 0.13
+                let tipY  = r.minY + h * 0.53
+                let dx = tipX - tailX, dy = tipY - tailY
+                let len = (dx*dx + dy*dy).squareRoot()
+                let ux = dx / len, uy = dy / len
+                let px = -uy,      py = ux
+                let hw = w * 0.16
+                Path { path in
+                    path.move(to:    CGPoint(x: tailX, y: tailY))
+                    path.addLine(to: CGPoint(x: tipX,  y: tipY))
+                    path.move(to:    CGPoint(x: tipX - ux*hw + px*hw*0.65, y: tipY - uy*hw + py*hw*0.65))
+                    path.addLine(to: CGPoint(x: tipX,  y: tipY))
+                    path.addLine(to: CGPoint(x: tipX - ux*hw - px*hw*0.65, y: tipY - uy*hw - py*hw*0.65))
+                }
+                .stroke(style: StrokeStyle(lineWidth: strokeWidth, lineCap: .round, lineJoin: .round))
             }
-            .stroke(style: StrokeStyle(lineWidth: strokeWidth, lineCap: .round, lineJoin: .round))
         }
         .padding(1)
+    }
+}
+
+struct SVGExportIcon: View {
+    var body: some View {
+        Text("SVG")
+            .font(.system(size: 10, weight: .bold, design: .rounded))
+            .monospaced()
+            .minimumScaleFactor(0.7)
+            .lineLimit(1)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 }
 
@@ -2109,7 +2226,7 @@ private struct QuickSetupSection: View {
     // Set names use baseStem so users can give shared containers a generic label.
     // Item names (shape, sprite, renderer) remain source-specific so each layer
     // is distinguishable within its set.
-    private var recommendedSubdivSetName: String { "\(baseStem)_Subdivide" }
+    private var recommendedSubdivSetName: String { "\(baseStem)_SubSet" }
     private var recommendedQuickSetupSubdivSetName: String {
         if sourceIsCleanParametricRegularPolygon {
             return Self.noSubdivisionName
@@ -2118,10 +2235,10 @@ private struct QuickSetupSection: View {
     }
     private var recommendedShapeSetName: String { "\(baseStem)_Shapes" }
     private var recommendedShapeName: String { "\(sourceNameStem)_Shape" }
-    private var recommendedSpriteSetName: String { "\(baseStem)_Sprites" }
+    private var recommendedSpriteSetName: String { "\(baseStem)_SprtSet" }
     private var recommendedSpriteName: String { "\(sourceNameStem)_Sprite" }
-    private var recommendedRendererSetName: String { "\(baseStem)_Renderers" }
-    private var recommendedRendererName: String { "\(sourceNameStem)_Renderer" }
+    private var recommendedRendererSetName: String { "\(baseStem)_RenSet" }
+    private var recommendedRendererName: String { "\(sourceNameStem)_Ren" }
     private var recommendedQuickSetupRendererMode: RendererMode {
         sourceIsCleanParametricRegularPolygon ? .stroked : qsRendererMode
     }

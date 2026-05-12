@@ -209,9 +209,12 @@ public enum XMLPolygonLoader {
                 let x = pt.doubleAttr("x")
                 let y = pt.doubleAttr("y")
                 points.append(Vector2D(x: x, y: normalise ? -y : y))
-                // Pressure is on anchor points (index 0) only
-                if idx == 0 && isFirstCurve {
-                    pressures.append(pt.doubleAttr("pressure", default: 1.0))
+                if polyType == .openSpline {
+                    if idx == 0 && isFirstCurve {
+                        pressures.append(pt.doubleAttr("pressure", default: 1.0))
+                    } else if idx == 3 {
+                        pressures.append(pt.doubleAttr("pressure", default: 1.0))
+                    }
                 } else if idx == 0 {
                     pressures.append(pt.doubleAttr("pressure", default: 1.0))
                 }

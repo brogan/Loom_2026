@@ -13,7 +13,6 @@ struct GlobalInspector: View {
             colorsSection
             playbackSection
             noteSection
-            threeDSection
             statusSection
         } else {
             Text("No project open")
@@ -112,6 +111,10 @@ struct GlobalInspector: View {
         InspectorSection("Colors") {
             LoomColorField(label: "Background", color: bindColor(\.backgroundColor))
             LoomColorField(label: "Border",     color: bindColor(\.borderColor))
+            InspectorField("Border width") {
+                FloatEntryField(value: bind(\.borderWidth), width: 50, fractionDigits: 1)
+                Text("px").font(.system(size: 11)).foregroundStyle(.secondary)
+            }
             LoomColorField(label: "Overlay",    color: bindColor(\.overlayColor))
         }
     }
@@ -151,21 +154,6 @@ struct GlobalInspector: View {
                 .overlay(RoundedRectangle(cornerRadius: 4).stroke(Color.secondary.opacity(0.3), lineWidth: 0.5))
                 .padding(.horizontal, 12)
                 .padding(.bottom, 8)
-        }
-    }
-
-    private var threeDSection: some View {
-        InspectorSection("3-D") {
-            InspectorField("Enabled") {
-                Toggle("", isOn: bind(\.threeD)).labelsHidden()
-            }
-            InspectorField("View angle") {
-                TextField("", value: bind(\.cameraViewAngle), format: .number)
-                    .textFieldStyle(.squareBorder)
-                    .font(.system(size: 12, design: .monospaced))
-                    .frame(width: 50)
-                Text("°").font(.system(size: 11)).foregroundStyle(.secondary)
-            }
         }
     }
 

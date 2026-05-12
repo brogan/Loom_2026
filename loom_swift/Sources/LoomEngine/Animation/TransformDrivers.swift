@@ -17,6 +17,8 @@ public struct TransformDrivers: Codable, Equatable, Sendable {
     /// Morph blend amount (same encoding as legacy `morphAmount` — integer part
     /// selects morph target index (1-based), fractional part blends toward next).
     public var morph:    DoubleDriver = .zero
+    /// Whole-sprite alpha multiplier. 1 = fully opaque, 0 = invisible.
+    public var opacity:  DoubleDriver = .one
     /// Sprite-replacement index.  Step-evaluated integer selects the active
     /// variant: 0 = self (base sprite), 1+ = spriteVariants[index−1].
     /// Defaults to loopMode .once so sequences don't wrap back to 0.
@@ -27,12 +29,14 @@ public struct TransformDrivers: Codable, Equatable, Sendable {
         scale:    VectorDriver = .identity,
         rotation: DoubleDriver = .zero,
         morph:    DoubleDriver = .zero,
+        opacity:  DoubleDriver = .one,
         shape:    DoubleDriver = DoubleDriver(mode: .constant, base: 0, loopMode: .once)
     ) {
         self.position = position
         self.scale    = scale
         self.rotation = rotation
         self.morph    = morph
+        self.opacity  = opacity
         self.shape    = shape
     }
 
@@ -47,6 +51,7 @@ public struct TransformDrivers: Codable, Equatable, Sendable {
         scale        = try c.decodeIfPresent(VectorDriver.self, forKey: .scale)    ?? .identity
         rotation     = try c.decodeIfPresent(DoubleDriver.self, forKey: .rotation) ?? .zero
         morph        = try c.decodeIfPresent(DoubleDriver.self, forKey: .morph)    ?? .zero
+        opacity      = try c.decodeIfPresent(DoubleDriver.self, forKey: .opacity)  ?? .one
         shape        = try c.decodeIfPresent(DoubleDriver.self, forKey: .shape)    ?? DoubleDriver(mode: .constant, base: 0, loopMode: .once)
     }
 }

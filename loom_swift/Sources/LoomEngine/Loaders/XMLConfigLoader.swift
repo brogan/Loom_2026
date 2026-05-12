@@ -98,8 +98,12 @@ public enum XMLConfigLoader {
         c.drawBackgroundOnce = root.childBool("DrawBackgroundOnce", default: c.drawBackgroundOnce)
         c.fullscreen         = root.childBool("Fullscreen", default: c.fullscreen)
         c.borderColor        = root.childColor("BorderColor", default: c.borderColor)
+        c.borderWidth        = root.childDouble("BorderWidth", default: c.borderWidth)
         c.backgroundColor    = root.childColor("BackgroundColor", default: c.backgroundColor)
         c.overlayColor       = root.childColor("OverlayColor", default: c.overlayColor)
+        if c.overlayColor == LoomColor(r: 0, g: 0, b: 0, a: 170) {
+            c.overlayColor = .clear
+        }
         c.backgroundImagePath = root.childText("BackgroundImage", default: c.backgroundImagePath)
         c.threeD             = root.childBool("ThreeD", default: c.threeD)
         c.cameraViewAngle    = root.childInt("CameraViewAngle", default: c.cameraViewAngle)
@@ -311,6 +315,17 @@ public enum XMLConfigLoader {
         p.lineRatios         = node.childVec2("LineRatios",         default: p.lineRatios)
         p.controlPointRatios = node.childVec2("ControlPointRatios", default: p.controlPointRatios)
         p.continuous         = node.childBool("Continuous",         default: p.continuous)
+        let psMode = node.childText("PressureSubdivisionMode", default: "")
+        if !psMode.isEmpty {
+            p.pressureSubdivisionMode = PressureSubdivisionMode(rawValue: psMode)
+                ?? PressureSubdivisionMode.allCases.first { $0.label == psMode }
+                ?? p.pressureSubdivisionMode
+        }
+        if let psGroupsNode = node.child(named: "PressureRandomGroups") {
+            p.pressureRandomGroups = SubdivisionParams.normalizedPressureRandomGroups((1...5).map { index in
+                psGroupsNode.boolAttr("g\(index)", default: true)
+            })
+        }
         p.polysTransform     = node.childBool("PolysTransform",     default: p.polysTransform)
         p.polysTranformWhole = node.childBool("PolysTransformWhole",default: p.polysTranformWhole)
         p.pTW_probability    = node.childDouble("PTW_Probability",  default: p.pTW_probability)
@@ -329,7 +344,7 @@ public enum XMLConfigLoader {
 
         // PTW deterministic transform (same shape as InsetTransform)
         if let tNode = node.child(named: "PTW_Transform") {
-            p.pTW_transform = parseInsetTransform(tNode)
+            p.pTW_transform = parseInsetTransform(tNode, defaultScale: Vector2D(x: 1, y: 1))
         }
 
         p.pTW_randomCentreDivisor = node.childDouble("PTW_RandomCentreDivisor",
@@ -500,9 +515,10 @@ public enum XMLConfigLoader {
         return VectorRange(x: x, y: y)
     }
 
-    private static func parseInsetTransform(_ node: XMLNode) -> InsetTransform {
+    private static func parseInsetTransform(_ node: XMLNode,
+                                            defaultScale: Vector2D = Vector2D(x: 0.5, y: 0.5)) -> InsetTransform {
         let translation = node.childVec2("Translation")
-        let scale       = node.childVec2("Scale", default: Vector2D(x: 0.5, y: 0.5))
+        let scale       = node.childVec2("Scale", default: defaultScale)
         // Rotation element uses x attribute as the angle in radians
         let rotation    = node.child(named: "Rotation").map { $0.doubleAttr("x") } ?? 0.0
         return InsetTransform(translation: translation, scale: scale, rotation: rotation)

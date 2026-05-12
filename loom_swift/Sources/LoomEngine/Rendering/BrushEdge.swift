@@ -15,6 +15,23 @@ public struct BrushEdge {
     public let length:        Double
     public let pressureStart: Double
     public let pressureEnd:   Double
+    public let pressureProfile: [Double]
+
+    public init(
+        kind: EdgeKind,
+        points: [Vector2D],
+        length: Double,
+        pressureStart: Double,
+        pressureEnd: Double,
+        pressureProfile: [Double] = []
+    ) {
+        self.kind = kind
+        self.points = points
+        self.length = length
+        self.pressureStart = pressureStart
+        self.pressureEnd = pressureEnd
+        self.pressureProfile = pressureProfile
+    }
 }
 
 // MARK: - BrushEdge extraction
@@ -46,12 +63,24 @@ extension BrushEdge {
                     guard !seen.contains(key) else { continue }
                     seen.insert(key)
                     let len = approximateSplineLength(a0, c0, c1, a1, samples: 10)
-                    let ps  = i     < poly.pressures.count ? poly.pressures[i]     : 1.0
-                    let pe  = (i+1) < poly.pressures.count ? poly.pressures[i + 1] : 1.0
+                    let ps  = i < poly.pressures.count ? poly.pressures[i] : 1.0
+                    let nextPressureIndex = i + 1
+                    let pe: Double
+                    if nextPressureIndex < poly.pressures.count {
+                        pe = poly.pressures[nextPressureIndex]
+                    } else if poly.type == .spline, !poly.pressures.isEmpty {
+                        pe = poly.pressures[0]
+                    } else {
+                        pe = 1.0
+                    }
                     let screenPts = [a0, c0, c1, a1]
                         .map { Vector2D(x: Double($0.x), y: Double($0.y)) }
+                    let profile = i < (poly.pressureProfiles?.count ?? 0)
+                        ? poly.pressureProfiles?[i] ?? []
+                        : []
                     edges.append(BrushEdge(kind: .spline, points: screenPts,
-                                           length: len, pressureStart: ps, pressureEnd: pe))
+                                           length: len, pressureStart: ps, pressureEnd: pe,
+                                           pressureProfile: profile))
                 }
 
             case .line:
@@ -65,7 +94,8 @@ extension BrushEdge {
                     let len = hypot(p1.x - p0.x, p1.y - p0.y)
                     let screenPts = [p0, p1].map { Vector2D(x: Double($0.x), y: Double($0.y)) }
                     edges.append(BrushEdge(kind: .line, points: screenPts,
-                                           length: len, pressureStart: 1.0, pressureEnd: 1.0))
+                                           length: len, pressureStart: 1.0, pressureEnd: 1.0,
+                                           pressureProfile: []))
                 }
 
             default:
@@ -83,6 +113,20 @@ extension BrushEdge {
         let ka = "\(r(Double(a.x))),\(r(Double(a.y)))"
         let kb = "\(r(Double(b.x))),\(r(Double(b.y)))"
         return ka < kb ? "\(ka)|\(kb)" : "\(kb)|\(ka)"
+    }
+
+    public func pressure(at t: Double) -> Double {
+        guard pressureProfile.count >= 2 else {
+            return pressureStart + (pressureEnd - pressureStart) * t
+        }
+        let clamped = max(0.0, min(1.0, t))
+        let scaled = clamped * Double(pressureProfile.count - 1)
+        let lower = Int(floor(scaled))
+        let upper = min(pressureProfile.count - 1, lower + 1)
+        let localT = scaled - Double(lower)
+        let p0 = pressureProfile[lower]
+        let p1 = pressureProfile[upper]
+        return p0 + (p1 - p0) * localT
     }
 
     private static func approximateSplineLength(

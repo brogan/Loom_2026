@@ -12,8 +12,9 @@ public struct GlobalConfig: Equatable, Codable, Sendable {
     public var drawBackgroundOnce: Bool  = false
     public var fullscreen: Bool          = false
     public var borderColor: LoomColor    = .black
+    public var borderWidth: Double       = 0.0
     public var backgroundColor: LoomColor = .white
-    public var overlayColor: LoomColor   = LoomColor(r: 0, g: 0, b: 0, a: 170)
+    public var overlayColor: LoomColor   = .clear
     public var backgroundImagePath: String = ""
     public var threeD: Bool              = false
     public var cameraViewAngle: Int      = 120
@@ -45,8 +46,9 @@ public struct GlobalConfig: Equatable, Codable, Sendable {
         drawBackgroundOnce = try c.decodeIfPresent(Bool.self,          forKey: .drawBackgroundOnce) ?? false
         fullscreen         = try c.decodeIfPresent(Bool.self,          forKey: .fullscreen)         ?? false
         borderColor        = try c.decodeIfPresent(LoomColor.self,     forKey: .borderColor)        ?? .black
+        borderWidth        = try c.decodeIfPresent(Double.self,        forKey: .borderWidth)        ?? 0.0
         backgroundColor    = try c.decodeIfPresent(LoomColor.self,     forKey: .backgroundColor)    ?? .white
-        overlayColor       = try c.decodeIfPresent(LoomColor.self,     forKey: .overlayColor)       ?? LoomColor(r: 0, g: 0, b: 0, a: 170)
+        overlayColor       = try c.decodeIfPresent(LoomColor.self,     forKey: .overlayColor)       ?? .clear
         backgroundImagePath = try c.decodeIfPresent(String.self,       forKey: .backgroundImagePath) ?? ""
         threeD             = try c.decodeIfPresent(Bool.self,          forKey: .threeD)             ?? false
         cameraViewAngle    = try c.decodeIfPresent(Int.self,           forKey: .cameraViewAngle)    ?? 120

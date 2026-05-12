@@ -565,6 +565,10 @@ struct TimelinePanel: View {
                     guard kfIdx < drivers.morph.keyframes.count else { return }
                     drivers.morph.keyframes[kfIdx].frame = newFrame
                     drivers.morph.keyframes.sort { $0.frame < $1.frame }
+                case .opacity:
+                    guard kfIdx < drivers.opacity.keyframes.count else { return }
+                    drivers.opacity.keyframes[kfIdx].frame = newFrame
+                    drivers.opacity.keyframes.sort { $0.frame < $1.frame }
                 case .shape:
                     guard kfIdx < drivers.shape.keyframes.count else { return }
                     drivers.shape.keyframes[kfIdx].frame = newFrame
@@ -601,6 +605,10 @@ struct TimelinePanel: View {
                     let v = interpolateDouble(drivers.morph.keyframes, at: frame, neutral: 0)
                     drivers.morph.keyframes.append(DoubleKeyframe(frame: frame, value: v, easing: .linear))
                     drivers.morph.keyframes.sort { $0.frame < $1.frame }
+                case .opacity:
+                    let v = interpolateDouble(drivers.opacity.keyframes, at: frame, neutral: 1)
+                    drivers.opacity.keyframes.append(DoubleKeyframe(frame: frame, value: v, easing: .linear))
+                    drivers.opacity.keyframes.sort { $0.frame < $1.frame }
                 case .shape:
                     let v = interpolateDouble(drivers.shape.keyframes, at: frame, neutral: 0)
                     drivers.shape.keyframes.append(DoubleKeyframe(frame: frame, value: v, easing: .linear))
@@ -634,6 +642,9 @@ struct TimelinePanel: View {
                 case .morph:
                     guard kfIdx < drivers.morph.keyframes.count else { return }
                     drivers.morph.keyframes.remove(at: kfIdx)
+                case .opacity:
+                    guard kfIdx < drivers.opacity.keyframes.count else { return }
+                    drivers.opacity.keyframes.remove(at: kfIdx)
                 case .shape:
                     guard kfIdx < drivers.shape.keyframes.count else { return }
                     drivers.shape.keyframes.remove(at: kfIdx)
@@ -839,6 +850,7 @@ struct TimelinePanel: View {
         drivers.scale.keyframes.forEach    { frames.insert($0.frame) }
         drivers.rotation.keyframes.forEach { frames.insert($0.frame) }
         drivers.morph.keyframes.forEach    { frames.insert($0.frame) }
+        drivers.opacity.keyframes.forEach  { frames.insert($0.frame) }
         drivers.shape.keyframes.forEach    { frames.insert($0.frame) }
         return frames.sorted()
     }
