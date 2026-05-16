@@ -242,6 +242,27 @@ public struct Renderer: Equatable, Codable, Sendable {
         self.drivers = drivers
         self.brushConfig = brushConfig; self.stencilConfig = stencilConfig
     }
+
+    private enum CodingKeys: String, CodingKey {
+        case name, enabled, mode, strokeWidth, strokeColor, fillColor,
+             pointSize, holdLength, changes, drivers, brushConfig, stencilConfig
+    }
+
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        name          = try c.decodeIfPresent(String.self,          forKey: .name)         ?? ""
+        enabled       = try c.decodeIfPresent(Bool.self,            forKey: .enabled)      ?? true
+        mode          = try c.decodeIfPresent(RendererMode.self,    forKey: .mode)         ?? .stroked
+        strokeWidth   = try c.decodeIfPresent(Double.self,          forKey: .strokeWidth)  ?? 1.0
+        strokeColor   = try c.decodeIfPresent(LoomColor.self,       forKey: .strokeColor)  ?? .black
+        fillColor     = try c.decodeIfPresent(LoomColor.self,       forKey: .fillColor)    ?? .black
+        pointSize     = try c.decodeIfPresent(Double.self,          forKey: .pointSize)    ?? 2.0
+        holdLength    = try c.decodeIfPresent(Int.self,             forKey: .holdLength)   ?? 1
+        changes       = try c.decodeIfPresent(RendererChanges.self, forKey: .changes)      ?? RendererChanges()
+        drivers       = try c.decodeIfPresent(RendererDrivers.self, forKey: .drivers)
+        brushConfig   = try c.decodeIfPresent(BrushConfig.self,     forKey: .brushConfig)
+        stencilConfig = try c.decodeIfPresent(StencilConfig.self,   forKey: .stencilConfig)
+    }
 }
 
 /// A named collection of renderers with playback configuration.
@@ -253,6 +274,17 @@ public struct RendererSet: Equatable, Codable, Sendable {
     public init(name: String, playbackConfig: RendererPlaybackConfig = .init(), renderers: [Renderer] = []) {
         self.name = name; self.playbackConfig = playbackConfig; self.renderers = renderers
     }
+
+    private enum CodingKeys: String, CodingKey {
+        case name, playbackConfig, renderers
+    }
+
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        name         = try c.decodeIfPresent(String.self,                  forKey: .name)         ?? ""
+        playbackConfig = try c.decodeIfPresent(RendererPlaybackConfig.self, forKey: .playbackConfig) ?? RendererPlaybackConfig()
+        renderers    = try c.decodeIfPresent([Renderer].self,              forKey: .renderers)    ?? []
+    }
 }
 
 /// All renderer sets loaded from `rendering.xml`.
@@ -262,6 +294,16 @@ public struct RendererSetLibrary: Equatable, Codable, Sendable {
 
     public init(name: String = "", rendererSets: [RendererSet] = []) {
         self.name = name; self.rendererSets = rendererSets
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case name, rendererSets
+    }
+
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        name         = try c.decodeIfPresent(String.self,          forKey: .name)         ?? ""
+        rendererSets = try c.decodeIfPresent([RendererSet].self,   forKey: .rendererSets) ?? []
     }
 
     /// Look up a renderer set by name. Returns `nil` when not found.
