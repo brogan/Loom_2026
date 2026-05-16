@@ -18,6 +18,7 @@ enum GeometryEditorTool: String {
     case knife = "Knife"
     case freehand = "Freehand"
     case pressureTrace = "Pressure Trace"
+    case panView = "Pan View"
     case displacementExtrude = "Extrude (Displacement)"
     case scaleExtrude = "Extrude (Scale)"
 }
@@ -111,6 +112,7 @@ final class AppController: ObservableObject, @unchecked Sendable {
     // MARK: - Published: engine + project
 
     @Published private(set) var engine:             Engine?
+    @Published private(set) var engineCanvasSize:   CGSize = CGSize(width: 1, height: 1)
     @Published private(set) var projectConfig:  ProjectConfig?
     @Published private(set) var projectURL:     URL?
     @Published private(set) var loadError:      String?
@@ -152,6 +154,10 @@ final class AppController: ObservableObject, @unchecked Sendable {
     @Published var geometryEditorShowsGrid:       Bool = true
     @Published var geometryEditorShowsControlPoints: Bool = true
     @Published var geometryEditorGridDetail:      GeometryEditorGridDetail = .standard
+    @Published var geometryEditorReferenceImage:  NSImage? = nil
+    @Published var geometryEditorReferenceImageURL: URL? = nil
+    @Published var geometryEditorShowsReferenceImage: Bool = true
+    @Published var geometryEditorReferenceImageOpacity: Double = 0.34
     @Published var geometryEditorLayers:          [GeometryEditorLayer] = [GeometryEditorLayer(name: "Layer 1")] { didSet { refreshGeometryEditorSaveState() } }
     @Published var geometryEditorAnchorOnlyEdit:  Bool = false
     @Published var geometryEditorAutoWeld:        Bool = true
@@ -162,9 +168,11 @@ final class AppController: ObservableObject, @unchecked Sendable {
     @Published var selectedSubdivisionParamIndex: Int?    = nil   // within selected set
     @Published var selectedSpriteID:              String? = nil
     @Published var selectedTimelineKF:            TimelineKFSelection? = nil
+    @Published var selectedRendererTimelineKF:    RendererTimelineKFSelection? = nil
     @Published var selectedCameraKF:              CameraKFSelection?   = nil
     @Published var currentTimelineFrame:          Int                  = 0
     @Published var loopPlayback:                  Bool                 = true
+    @Published var hoverHelpText:                 String               = ""
     @Published var showScrubBar:                  Bool                 = false
     @Published var selectedRendererIndex:         Int?    = nil
     @Published var selectedRendererItemIndex:     Int?    = nil   // within selected set
@@ -225,10 +233,20 @@ final class AppController: ObservableObject, @unchecked Sendable {
         var segment: EditableCubicSegment
     }
 
+    private struct GeometryPointReference {
+        var id: EditableGeometryID
+        var position: Vector2D
+    }
+
     private struct GeometryWeldThresholds {
         var midpointDistance: Double
         var endpointPairDistance: Double
         var minimumDirectionDot: Double
+    }
+
+    private struct GeometrySegmentEndpoints {
+        var start: Vector2D
+        var end: Vector2D
     }
 
     private struct GeometryKnifeIntersection {
@@ -237,6 +255,11 @@ final class AppController: ObservableObject, @unchecked Sendable {
         var point: Vector2D
 
         var globalT: Double { Double(segmentIndex) + t }
+    }
+
+    private struct GeometryWeldPointSnapshot {
+        var id: EditableGeometryID
+        var position: Vector2D
     }
 
     enum GeometryEditorCleanSource {
@@ -466,6 +489,9 @@ final class AppController: ObservableObject, @unchecked Sendable {
         prunedDocument?.pruneWeldGroups()
         geometryEditorDocument = prunedDocument
         geometryEditorLoadError = loadError
+        if let loadError {
+            LoomLogger.warning("Geometry editor load error: \(loadError)")
+        }
         if resetHistory {
             geometryEditorHistory = EditableGeometryHistory()
         }
@@ -678,6 +704,15 @@ final class AppController: ObservableObject, @unchecked Sendable {
             startKnifeGeometryCut()
             return
         }
+        if tool == .panView {
+            geometryEditorTool = .panView
+            geometryEditorDraftPoints.removeAll()
+            clearGeometryFreehandStroke()
+            clearGeometryPressureTraceStroke()
+            cancelGeometryMeshExtendDraft()
+            cancelGeometryKnifeLine()
+            return
+        }
         geometryEditorTool = tool
         geometryEditorDraftPoints.removeAll()
         clearGeometryFreehandStroke()
@@ -688,10 +723,6 @@ final class AppController: ObservableObject, @unchecked Sendable {
     }
 
     func startStandalonePointGeometryCreation() {
-        if geometryEditorTool == .standalonePoints {
-            geometryEditorTool = .points
-            return
-        }
         geometryEditorTool = .standalonePoints
         geometryEditorDraftPoints.removeAll()
         clearGeometryFreehandStroke()
@@ -771,11 +802,6 @@ final class AppController: ObservableObject, @unchecked Sendable {
     }
 
     func startMeshExtendGeometryCreation() {
-        if geometryEditorTool == .meshExtend {
-            geometryEditorTool = .edges
-            cancelGeometryMeshExtendDraft()
-            return
-        }
         geometryEditorTool = .meshExtend
         geometryEditorDraftPoints.removeAll()
         clearGeometryFreehandStroke()
@@ -789,11 +815,6 @@ final class AppController: ObservableObject, @unchecked Sendable {
     }
 
     func startKnifeGeometryCut() {
-        if geometryEditorTool == .knife {
-            geometryEditorTool = .polygons
-            cancelGeometryKnifeLine()
-            return
-        }
         geometryEditorTool = .knife
         geometryEditorKnifeCutsAllVisibleLayers = false
         geometryEditorDraftPoints.removeAll()
@@ -831,11 +852,6 @@ final class AppController: ObservableObject, @unchecked Sendable {
     // MARK: - Extrude tools
 
     func startDisplacementExtrude() {
-        if geometryEditorTool == .displacementExtrude {
-            geometryEditorTool = .edges
-            cancelGeometryExtrudeDraft()
-            return
-        }
         geometryEditorTool = .displacementExtrude
         geometryEditorDraftPoints.removeAll()
         clearGeometryFreehandStroke()
@@ -845,11 +861,6 @@ final class AppController: ObservableObject, @unchecked Sendable {
     }
 
     func startScaleExtrude() {
-        if geometryEditorTool == .scaleExtrude {
-            geometryEditorTool = .edges
-            cancelGeometryExtrudeDraft()
-            return
-        }
         geometryEditorTool = .scaleExtrude
         geometryEditorDraftPoints.removeAll()
         clearGeometryFreehandStroke()
@@ -1135,7 +1146,6 @@ final class AppController: ObservableObject, @unchecked Sendable {
             ) else { return }
             document.layers[layerIndex].polygons.append(polygon)
             geometryEditorSelection = EditableGeometrySelection(layerID: activeLayerID, polygonIDs: [polygon.id])
-            geometryEditorTool = .polygons
         } else {
             let name = "Freehand Curve \(document.layers[layerIndex].openCurves.count + 1)"
             guard let curve = editableOpenCurve(
@@ -1146,7 +1156,6 @@ final class AppController: ObservableObject, @unchecked Sendable {
             ) else { return }
             document.layers[layerIndex].openCurves.append(curve)
             geometryEditorSelection = EditableGeometrySelection(layerID: activeLayerID, openCurveIDs: [curve.id])
-            geometryEditorTool = .openCurves
         }
         selectedGeometryEditorLayerID = activeLayerID
         setGeometryEditorDocument(document)
@@ -2327,8 +2336,10 @@ final class AppController: ObservableObject, @unchecked Sendable {
             let h = Double(config.globalConfig.height)
             let url = try LoomSVGWriter.writeSVG(polygons: polys, stem: stem, canvasSize: (w, h), to: svgsDir)
             appStatusMessage = "SVG saved: \(url.lastPathComponent)"
+            LoomLogger.info("Geometry editor SVG saved: \(url.path)")
         } catch {
             appStatusMessage = "SVG export failed: \(error.localizedDescription)"
+            LoomLogger.error("Geometry editor SVG export failed", error: error)
         }
     }
 
@@ -2652,6 +2663,7 @@ final class AppController: ObservableObject, @unchecked Sendable {
 
     func postStatus(_ message: String) {
         appStatusMessage = message
+        LoomLogger.info("Status: \(message)")
     }
 
     var canUndoGeometryEdit: Bool {
@@ -2767,6 +2779,13 @@ final class AppController: ObservableObject, @unchecked Sendable {
         }
         if geometryEditorSelection.segmentIDs.count == 1 {
             return layer.polygons.contains { geometryEditorSelection.polygonIDs.contains($0.id) }
+        }
+        if geometryEditorSelection.pointIDs.isEmpty,
+           geometryEditorSelection.segmentIDs.count == 2 {
+            let layerIndex = document.layers.firstIndex(where: { $0.id == layerID })
+            if let layerIndex, selectedInternalHealPair(in: document, layerIndex: layerIndex) != nil {
+                return true
+            }
         }
         return false
     }
@@ -3141,6 +3160,18 @@ final class AppController: ObservableObject, @unchecked Sendable {
         }
     }
 
+    private func translateAnchorPointIDs(
+        _ seedIDs: Set<EditableGeometryID>,
+        by delta: Vector2D,
+        in document: inout EditableGeometryDocument
+    ) {
+        guard !seedIDs.isEmpty else { return }
+        for pointID in document.relationalPointIDs(startingWith: seedIDs) {
+            guard let point = document.point(id: pointID), point.kind == .anchor else { continue }
+            document.setPointPosition(id: pointID, to: point.position + delta)
+        }
+    }
+
     private func duplicateOffsetDistance(for points: [Vector2D]) -> Double {
         guard !points.isEmpty else { return 0.08 }
         let minX = points.map(\.x).min() ?? 0
@@ -3157,6 +3188,38 @@ final class AppController: ObservableObject, @unchecked Sendable {
 
     func zoomGeometryEditorOut() {
         geometryEditorViewZoom = max(geometryEditorViewZoom / 1.25, 0.25)
+    }
+
+    func panGeometryEditorView(screenDelta: CGSize, canvasSize: CGFloat) {
+        let scale = (canvasSize / 1040) * CGFloat(geometryEditorViewZoom)
+        guard scale > 0 else { return }
+        geometryEditorViewCentre = geometryEditorViewCentre - Vector2D(
+            x: Double(screenDelta.width / (1000 * scale)),
+            y: Double(screenDelta.height / (1000 * scale))
+        )
+    }
+
+    func loadGeometryEditorReferenceImage() {
+        let panel = NSOpenPanel()
+        panel.title = "Choose Geometry Reference Image"
+        panel.allowedContentTypes = [.png, .jpeg, .tiff, .bmp, .heic]
+        panel.allowsMultipleSelection = false
+        panel.canChooseDirectories = false
+        panel.canChooseFiles = true
+        guard panel.runModal() == .OK,
+              let url = panel.url,
+              let image = NSImage(contentsOf: url)
+        else { return }
+        geometryEditorReferenceImage = image
+        geometryEditorReferenceImageURL = url
+        geometryEditorShowsReferenceImage = true
+        postStatus("Loaded reference image")
+    }
+
+    func clearGeometryEditorReferenceImage() {
+        geometryEditorReferenceImage = nil
+        geometryEditorReferenceImageURL = nil
+        postStatus("Cleared reference image")
     }
 
     func centreGeometryEditorViewOnSelectionOrLayer() {
@@ -3334,6 +3397,40 @@ final class AppController: ObservableObject, @unchecked Sendable {
         geometryTransformGestureBase = nil
     }
 
+    var isGeometrySelectionDragGestureActive: Bool {
+        geometryTransformGestureBase != nil
+    }
+
+    func beginGeometrySelectionDragGesture() {
+        guard geometryTransformGestureBase == nil,
+              let document = geometryEditorDocument
+        else { return }
+        let snapshot = EditableGeometrySnapshot(document: document, selection: geometryEditorSelection)
+        geometryTransformGestureBase = snapshot
+        geometryEditorHistory.record(snapshot)
+    }
+
+    func updateGeometrySelectionDragGesture(delta: Vector2D) {
+        updateGeometryTransformGesture { [delta] document, selection in
+            guard let layerID = selection.layerID,
+                  let layerIndex = document.layers.firstIndex(where: { $0.id == layerID })
+            else { return }
+            let layer = document.layers[layerIndex]
+            let seedIDs = selectedTransformSeedPointIDs(in: layer, selection: selection)
+            guard !seedIDs.isEmpty else { return }
+            clearParametricSourceForSelectedPolygons(in: &document, selection: selection)
+            if geometryEditorAnchorOnlyEdit {
+                translateAnchorPointIDs(seedIDs, by: delta, in: &document)
+            } else {
+                translateRelationalPointIDs(seedIDs, by: delta, in: &document)
+            }
+        }
+    }
+
+    func endGeometrySelectionDragGesture() {
+        geometryTransformGestureBase = nil
+    }
+
     private func updateGeometryTransformGesture(
         transform: (inout EditableGeometryDocument, EditableGeometrySelection) -> Void
     ) {
@@ -3504,6 +3601,25 @@ final class AppController: ObservableObject, @unchecked Sendable {
         setGeometryEditorDocument(document)
     }
 
+    func moveSelectedGeometryPoints(by delta: Vector2D) {
+        guard var document = geometryEditorDocument,
+              let layerID = geometryEditorSelection.layerID,
+              layerCanEdit(layerID),
+              let layerIndex = document.layers.firstIndex(where: { $0.id == layerID }),
+              !geometryEditorSelection.pointIDs.isEmpty
+        else { return }
+
+        let seedIDs = selectedTransformSeedPointIDs(in: document.layers[layerIndex], selection: geometryEditorSelection)
+        guard !seedIDs.isEmpty else { return }
+        clearParametricSourceForSelectedPolygons(in: &document, selection: geometryEditorSelection)
+        if geometryEditorAnchorOnlyEdit {
+            translateAnchorPointIDs(seedIDs, by: delta, in: &document)
+        } else {
+            translateRelationalPointIDs(seedIDs, by: delta, in: &document)
+        }
+        setGeometryEditorDocument(document)
+    }
+
     func moveSelectedGeometryPolygons(by delta: Vector2D) {
         guard var document = geometryEditorDocument,
               let layerID = geometryEditorSelection.layerID,
@@ -3565,7 +3681,11 @@ final class AppController: ObservableObject, @unchecked Sendable {
 
         let seedIDs = selectedGeometrySegmentPointIDs(in: document.layers[layerIndex], selection: geometryEditorSelection)
         clearParametricSourceForSelectedPolygons(in: &document, selection: geometryEditorSelection)
-        translateRelationalPointIDs(seedIDs, by: delta, in: &document)
+        if geometryEditorAnchorOnlyEdit {
+            translateAnchorPointIDs(seedIDs, by: delta, in: &document)
+        } else {
+            translateRelationalPointIDs(seedIDs, by: delta, in: &document)
+        }
         setGeometryEditorDocument(document)
     }
 
@@ -3776,6 +3896,7 @@ final class AppController: ObservableObject, @unchecked Sendable {
         var cutCount = 0
         var selectedPolygonIDs = Set<EditableGeometryID>()
         var selectedCurveIDs = Set<EditableGeometryID>()
+        let weldSnapshot = snapshotWeldPoints(in: document)
 
         let targetLayerID = geometryEditorKnifeCutsAllVisibleLayers ? nil : selectedGeometryEditorLayerID
         guard geometryEditorKnifeCutsAllVisibleLayers || targetLayerID != nil else {
@@ -3824,6 +3945,7 @@ final class AppController: ObservableObject, @unchecked Sendable {
             return
         }
         recordGeometryEditorUndoSnapshot()
+        restoreWelds(from: weldSnapshot, in: &document)
         setGeometryEditorDocument(document)
         geometryEditorSelection = EditableGeometrySelection(
             layerID: selectedGeometryEditorLayerID,
@@ -3831,6 +3953,48 @@ final class AppController: ObservableObject, @unchecked Sendable {
             openCurveIDs: selectedCurveIDs
         )
         postStatus("Knife cut \(cutCount) item(s)")
+    }
+
+    private func snapshotWeldPoints(in document: EditableGeometryDocument) -> [[GeometryWeldPointSnapshot]] {
+        document.weldGroups.compactMap { group in
+            let points = group.pointIDs.compactMap { pointID -> GeometryWeldPointSnapshot? in
+                guard let position = document.point(id: pointID)?.position else { return nil }
+                return GeometryWeldPointSnapshot(id: pointID, position: position)
+            }
+            return points.count > 1 ? points : nil
+        }
+    }
+
+    private func restoreWelds(
+        from snapshot: [[GeometryWeldPointSnapshot]],
+        in document: inout EditableGeometryDocument
+    ) {
+        guard !snapshot.isEmpty else { return }
+        let allPoints = editableGeometryPointReferences(in: document)
+        let tolerance = 0.000_08
+        for group in snapshot {
+            var restoredIDs = Set<EditableGeometryID>()
+            for oldPoint in group {
+                let matches = allPoints.filter { $0.position.distance(to: oldPoint.position) <= tolerance }
+                restoredIDs.formUnion(matches.map(\.id))
+            }
+            if restoredIDs.count > 1 {
+                document.weldPoints(restoredIDs)
+            }
+        }
+        document.pruneWeldGroups()
+    }
+
+    private func editableGeometryPointReferences(in document: EditableGeometryDocument) -> [GeometryPointReference] {
+        document.layers.flatMap { layer in
+            layer.polygons.flatMap { polygon in
+                polygon.points.map { GeometryPointReference(id: $0.id, position: $0.position) }
+            } +
+            layer.openCurves.flatMap { curve in
+                curve.points.map { GeometryPointReference(id: $0.id, position: $0.position) }
+            } +
+            layer.points.map { GeometryPointReference(id: $0.id, position: $0.position) }
+        }
     }
 
     private func geometryKnifeCanCutLayer(
@@ -4198,10 +4362,11 @@ final class AppController: ObservableObject, @unchecked Sendable {
 
     private var currentWeldThresholds: GeometryWeldThresholds {
         let value = min(max(geometryEditorWeldTolerance, 0), 1)
+        let eased = value * value
         return GeometryWeldThresholds(
-            midpointDistance: 0.03 + value * 0.09,
-            endpointPairDistance: 0.06 + value * 0.14,
-            minimumDirectionDot: 0.92 - value * 0.37
+            midpointDistance: 0.004 + eased * 0.116,
+            endpointPairDistance: 0.006 + eased * 0.194,
+            minimumDirectionDot: 0.98 - value * 0.43
         )
     }
 
@@ -4360,6 +4525,12 @@ final class AppController: ObservableObject, @unchecked Sendable {
             return
         }
 
+        if geometryEditorSelection.pointIDs.isEmpty,
+           geometryEditorSelection.segmentIDs.count == 2,
+           healSelectedInternalPolygonEdges(in: &document, layerIndex: layerIndex) {
+            return
+        }
+
         if geometryEditorSelection.pointIDs.count == 1 {
             deleteSelectedGeometryAnchor(in: &document, layerIndex: layerIndex)
             return
@@ -4368,6 +4539,138 @@ final class AppController: ObservableObject, @unchecked Sendable {
         if geometryEditorSelection.segmentIDs.count == 1 {
             deleteSelectedGeometrySegment(in: &document, layerIndex: layerIndex)
         }
+    }
+
+    private func healSelectedInternalPolygonEdges(
+        in document: inout EditableGeometryDocument,
+        layerIndex: Int
+    ) -> Bool {
+        guard let pair = selectedInternalHealPair(in: document, layerIndex: layerIndex),
+              document.layers[layerIndex].polygons.indices.contains(pair.first.itemIndex),
+              document.layers[layerIndex].polygons.indices.contains(pair.second.itemIndex)
+        else { return false }
+
+        let firstPolygon = document.layers[layerIndex].polygons[pair.first.itemIndex]
+        let secondPolygon = document.layers[layerIndex].polygons[pair.second.itemIndex]
+        guard let firstBoundary = firstPolygon.deletingSegment(id: pair.first.segment.id),
+              let secondBoundary = secondPolygon.deletingSegment(id: pair.second.segment.id),
+              let mergedSegments = mergedBoundarySegments(
+                first: orderedEditorSegments(for: firstBoundary),
+                second: orderedEditorSegments(for: secondBoundary)
+              ),
+              let mergedPolygon = editableClosedPolygon(
+                name: healedPolygonName(firstPolygon.name, secondPolygon.name),
+                segments: mergedSegments,
+                isVisible: firstPolygon.isVisible || secondPolygon.isVisible
+              )
+        else { return false }
+
+        let weldSnapshot = snapshotWeldPoints(in: document)
+        let selectedLayerID = document.layers[layerIndex].id
+        recordGeometryEditorUndoSnapshot()
+        document.layers[layerIndex].polygons.removeAll { polygon in
+            polygon.id == firstPolygon.id || polygon.id == secondPolygon.id
+        }
+        document.layers[layerIndex].polygons.append(mergedPolygon)
+        geometryEditorSelection = EditableGeometrySelection(
+            layerID: selectedLayerID,
+            polygonIDs: [mergedPolygon.id]
+        )
+        restoreWelds(from: weldSnapshot, in: &document)
+        setGeometryEditorDocument(document)
+        postStatus("Healed selected internal edge")
+        return true
+    }
+
+    private func selectedInternalHealPair(
+        in document: EditableGeometryDocument,
+        layerIndex: Int
+    ) -> (first: GeometrySegmentReference, second: GeometrySegmentReference)? {
+        guard document.layers.indices.contains(layerIndex),
+              geometryEditorSelection.pointIDs.isEmpty,
+              geometryEditorSelection.segmentIDs.count == 2
+        else { return nil }
+
+        let selectedSegmentIDs = geometryEditorSelection.segmentIDs
+        let references = editableGeometrySegmentReferences(in: document).filter { reference in
+            reference.layerIndex == layerIndex &&
+            reference.isPolygon &&
+            selectedSegmentIDs.contains(reference.segment.id) &&
+            geometryEditorSelection.polygonIDs.contains(reference.itemID)
+        }
+        guard references.count == 2,
+              references[0].itemID != references[1].itemID,
+              internalHealEdgesMatch(references[0], references[1], in: document.layers[layerIndex])
+        else { return nil }
+        return (references[0], references[1])
+    }
+
+    private func internalHealEdgesMatch(
+        _ first: GeometrySegmentReference,
+        _ second: GeometrySegmentReference,
+        in layer: EditableGeometryLayer
+    ) -> Bool {
+        guard let firstEndpoints = segmentEndpoints(first, in: layer),
+              let secondEndpoints = segmentEndpoints(second, in: layer)
+        else { return false }
+
+        let tolerance = max(0.001, currentWeldThresholds.endpointPairDistance * 0.2)
+        let same = firstEndpoints.start.distance(to: secondEndpoints.start) +
+            firstEndpoints.end.distance(to: secondEndpoints.end)
+        let reversed = firstEndpoints.start.distance(to: secondEndpoints.end) +
+            firstEndpoints.end.distance(to: secondEndpoints.start)
+        return min(same, reversed) <= tolerance
+    }
+
+    private func segmentEndpoints(
+        _ reference: GeometrySegmentReference,
+        in layer: EditableGeometryLayer
+    ) -> GeometrySegmentEndpoints? {
+        guard reference.isPolygon,
+              layer.polygons.indices.contains(reference.itemIndex)
+        else { return nil }
+        let polygon = layer.polygons[reference.itemIndex]
+        guard let start = polygon.point(id: reference.segment.startAnchorID)?.position,
+              let end = polygon.point(id: reference.segment.endAnchorID)?.position
+        else { return nil }
+        return GeometrySegmentEndpoints(start: start, end: end)
+    }
+
+    private func mergedBoundarySegments(
+        first: [[Vector2D]],
+        second: [[Vector2D]]
+    ) -> [[Vector2D]]? {
+        let candidates = [
+            (first, second),
+            (first, reversedPathSegments(second)),
+            (reversedPathSegments(first), second),
+            (reversedPathSegments(first), reversedPathSegments(second))
+        ]
+        let tolerance = 0.002
+        for (firstPath, secondPath) in candidates {
+            guard let firstStart = firstPath.first?.first,
+                  let firstEnd = firstPath.last?.last,
+                  let secondStart = secondPath.first?.first,
+                  let secondEnd = secondPath.last?.last
+            else { continue }
+            if firstEnd.distance(to: secondStart) <= tolerance &&
+                secondEnd.distance(to: firstStart) <= tolerance {
+                return firstPath + secondPath
+            }
+        }
+        return nil
+    }
+
+    private func reversedPathSegments(_ segments: [[Vector2D]]) -> [[Vector2D]] {
+        segments.reversed().map { segment in
+            guard segment.count == 4 else { return segment }
+            return [segment[3], segment[2], segment[1], segment[0]]
+        }
+    }
+
+    private func healedPolygonName(_ first: String, _ second: String) -> String {
+        guard first != second else { return "\(first) Healed" }
+        return "\(first) + \(second)"
     }
 
     private func deleteSelectedGeometryAnchor(in document: inout EditableGeometryDocument, layerIndex: Int) {
@@ -4899,6 +5202,7 @@ final class AppController: ObservableObject, @unchecked Sendable {
             open(projectDirectory: url)
         } catch {
             loadError = "Could not create project: \(error.localizedDescription)"
+            LoomLogger.error("Could not create project at \(url.path)", error: error)
         }
     }
 
@@ -4910,6 +5214,7 @@ final class AppController: ObservableObject, @unchecked Sendable {
     }
 
     func open(projectDirectory: URL) {
+        LoomLogger.info("Opening project: \(projectDirectory.path)")
         projectURL         = projectDirectory
         loadError          = nil
         animationCompleted = false
@@ -4922,6 +5227,7 @@ final class AppController: ObservableObject, @unchecked Sendable {
 
     func reload() {
         guard let url = projectURL else { return }
+        LoomLogger.info("Reloading project: \(url.path)")
         loadError          = nil
         animationCompleted = false
         loadEngine(from: url)
@@ -4996,6 +5302,11 @@ final class AppController: ObservableObject, @unchecked Sendable {
 
     func endExport(error: Error? = nil) {
         exportError = error.map { $0.localizedDescription }
+        if let error {
+            LoomLogger.error("Export ended with error", error: error)
+        } else {
+            LoomLogger.info("Export ended successfully")
+        }
         isExporting = false
     }
 
@@ -5016,7 +5327,12 @@ final class AppController: ObservableObject, @unchecked Sendable {
         }
         panel.begin { [weak self] response in
             guard response == .OK, let url = panel.url else { return }
-            try? SVGExporter.exportSVG(engine: engine, to: url)
+            do {
+                try SVGExporter.exportSVG(engine: engine, to: url)
+                LoomLogger.info("Saved SVG: \(url.path)")
+            } catch {
+                LoomLogger.error("SVG export failed", error: error)
+            }
             self?.lastRenderOutputType = .still
         }
     }
@@ -5034,7 +5350,12 @@ final class AppController: ObservableObject, @unchecked Sendable {
         panel.directoryURL         = stillRendersDirectory()
         panel.begin { [weak self] response in
             guard response == .OK, let url = panel.url else { return }
-            try? StillExporter.exportPNG(engine: engine, to: url)
+            do {
+                try StillExporter.exportPNG(engine: engine, to: url)
+                LoomLogger.info("Saved still: \(url.path)")
+            } catch {
+                LoomLogger.error("Still export failed", error: error)
+            }
             self?.lastRenderOutputType = .still
         }
     }
@@ -5209,7 +5530,7 @@ final class AppController: ObservableObject, @unchecked Sendable {
             }
             selectedGeometryKey = "polygonSets/\(finalName)"
         } catch {
-            print("[Import] Failed to import geometry from \(sourceURL.lastPathComponent): \(error)")
+            LoomLogger.error("Failed to import geometry from \(sourceURL.lastPathComponent)", error: error)
         }
     }
 
@@ -5281,13 +5602,18 @@ final class AppController: ObservableObject, @unchecked Sendable {
     private func loadEngine(from url: URL) {
         do {
             DefaultBrushes.write(to: url.appendingPathComponent("brushes"))
-            engine        = try Engine(projectDirectory: url)
+            let loadedEngine = try Engine(projectDirectory: url)
+            engineCanvasSize = loadedEngine.canvasSize
+            engine        = loadedEngine
             projectConfig = try? ProjectLoader.load(projectDirectory: url)
             loadError     = nil
+            LoomLogger.info("Loaded engine: \(url.path)")
         } catch {
             engine        = nil
+            engineCanvasSize = CGSize(width: 1, height: 1)
             projectConfig = nil
             loadError     = error.localizedDescription
+            LoomLogger.error("Could not load engine from \(url.path)", error: error)
         }
     }
 

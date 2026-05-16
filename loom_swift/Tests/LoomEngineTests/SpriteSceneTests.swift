@@ -317,6 +317,75 @@ final class SpriteSceneRenderTests: XCTestCase {
         XCTAssertLessThan(Int(buf[idx]), 255, "centre pixel should not be white — polygon covers it")
     }
 
+    func testSpriteGeometryKeepsProportionsOnNonSquareCanvas() throws {
+        let poly = Polygon2D(
+            points: [
+                Vector2D(x: -0.4, y:  0.4),
+                Vector2D(x:  0.4, y:  0.4),
+                Vector2D(x:  0.4, y: -0.4),
+                Vector2D(x: -0.4, y: -0.4),
+            ],
+            type: .line
+        )
+        let renderer = Renderer(mode: .filled, fillColor: .black)
+        let rendSet = RendererSet(name: "test", renderers: [renderer])
+        let spriteDef = SpriteDef(
+            name: "test",
+            position: .zero,
+            scale: Vector2D(x: 1, y: 1),
+            animation: .disabled
+        )
+        let instance = SpriteInstance(
+            def: spriteDef,
+            basePolygons: [poly],
+            morphTargetPolygons: [],
+            rendererSet: rendSet,
+            subdivisionParams: [],
+            state: SpriteState.initial(for: rendSet)
+        )
+        var scene = SpriteScene(instances: [instance])
+        var rng = SystemRandomNumberGenerator()
+        scene.advance(deltaTime: 1.0 / 30.0, targetFPS: 30.0, using: &rng)
+
+        let width = 200
+        let height = 100
+        let buf = UnsafeMutablePointer<UInt8>.allocate(capacity: width * height * 4)
+        defer { buf.deallocate() }
+        buf.initialize(repeating: 255, count: width * height * 4)
+        let ctx = CGContext(
+            data: buf, width: width, height: height,
+            bitsPerComponent: 8, bytesPerRow: width * 4,
+            space: CGColorSpaceCreateDeviceRGB(),
+            bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+        )!
+        ctx.translateBy(x: 0, y: CGFloat(height))
+        ctx.scaleBy(x: 1, y: -1)
+
+        let vt = ViewTransform(canvasSize: CGSize(width: width, height: height))
+        scene.render(into: ctx, viewTransform: vt, using: &rng)
+
+        var minX = width
+        var maxX = 0
+        var minY = height
+        var maxY = 0
+        for y in 0..<height {
+            for x in 0..<width {
+                let idx = (y * width + x) * 4
+                if buf[idx] < 250 {
+                    minX = min(minX, x)
+                    maxX = max(maxX, x)
+                    minY = min(minY, y)
+                    maxY = max(maxY, y)
+                }
+            }
+        }
+
+        let drawnWidth = maxX - minX + 1
+        let drawnHeight = maxY - minY + 1
+        XCTAssertEqual(drawnWidth, drawnHeight, accuracy: 2,
+                       "non-square canvases should not stretch sprite geometry")
+    }
+
     func testPolyScaleFillChangeAppliesPerPolygon() throws {
         let left = Polygon2D(
             points: [

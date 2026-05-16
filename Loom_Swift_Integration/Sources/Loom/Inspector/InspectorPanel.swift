@@ -15,6 +15,10 @@ struct InspectorPanel: View {
                     KeyframeInspector()
                         .environmentObject(controller)
                 }
+                if controller.selectedRendererTimelineKF != nil {
+                    KeyframeInspector()
+                        .environmentObject(controller)
+                }
                 if controller.selectedCameraKF != nil {
                     CameraKeyframeInspector()
                         .environmentObject(controller)
@@ -80,18 +84,21 @@ struct InspectorPanel: View {
 
 struct InspectorSection<Content: View>: View {
     let title: String
+    private let isHighlighted: Bool
     private let content: Content
     private let collapseState: Binding<Bool>?
 
-    init(_ title: String, @ViewBuilder content: () -> Content) {
-        self.title        = title
-        self.content      = content()
+    init(_ title: String, isHighlighted: Bool = false, @ViewBuilder content: () -> Content) {
+        self.title         = title
+        self.isHighlighted = isHighlighted
+        self.content       = content()
         self.collapseState = nil
     }
 
-    init(_ title: String, isCollapsed: Binding<Bool>, @ViewBuilder content: () -> Content) {
-        self.title        = title
-        self.content      = content()
+    init(_ title: String, isCollapsed: Binding<Bool>, isHighlighted: Bool = false, @ViewBuilder content: () -> Content) {
+        self.title         = title
+        self.isHighlighted = isHighlighted
+        self.content       = content()
         self.collapseState = isCollapsed
     }
 
@@ -129,6 +136,7 @@ struct InspectorSection<Content: View>: View {
             }
             Divider().padding(.top, collapsed ? 0 : 4)
         }
+        .background(isHighlighted ? Color.accentColor.opacity(0.08) : Color.clear)
     }
 }
 
@@ -409,8 +417,6 @@ private struct GeometryEditorShellInspector: View {
     @State private var multiplyCollapsed = false
     @State private var transformCollapsed = false
     @State private var viewCollapsed = false
-    @State private var deleteCollapsed = false
-    @State private var fileCollapsed = false
     @State private var parametricCollapsed = false
     @State private var scaleAxis = "XY"
     @State private var scaleSliderValue = 0.0
@@ -421,13 +427,16 @@ private struct GeometryEditorShellInspector: View {
         let morphLocked = controller.isCurrentGeometryMorphTargetLocked
         VStack(alignment: .leading, spacing: 0) {
             InspectorSection("Geometry Editor") {
-                InspectorRow(label: "Mode", value: "closed polygons")
+                geometryNameAndSaveRow
+                InspectorRow(label: "Mode", value: geometryModeLabel)
                 InspectorRow(label: "Tool", value: controller.geometryEditorTool.rawValue)
                 InspectorRow(label: "Anchors", value: "\(controller.selectedGeometryAnchorCount)")
                 if morphLocked {
                     InspectorRow(label: "Lock", value: "Morph target — topology locked")
                 }
             }
+
+            geometryUtilitySection(morphLocked: morphLocked)
 
             if let parameters = controller.selectedRegularPolygonParameters {
                 InspectorSection("Regular Polygon", isCollapsed: $parametricCollapsed) {
@@ -446,9 +455,6 @@ private struct GeometryEditorShellInspector: View {
                     } action: {
                         controller.startStandalonePointGeometryCreation()
                     }
-                    Spacer()
-                }
-                iconRow {
                     iconButton(help: "Create oval") {
                         OvalGeometryIcon()
                     } action: {
@@ -531,6 +537,7 @@ private struct GeometryEditorShellInspector: View {
                     }
                     Slider(value: $controller.geometryEditorFreehandDetail, in: 0...1)
                         .help("Freehand detail")
+                        .modifier(LoomHoverHelp("Freehand detail"))
                 }
             }
             .disabled(morphLocked)
@@ -538,7 +545,7 @@ private struct GeometryEditorShellInspector: View {
             InspectorSection("Edit", isCollapsed: $editCollapsed) {
                 iconRow {
                     iconButton(help: "Edit points", selected: controller.geometryEditorTool == .points) {
-                        PointCircleIcon()
+                        EditPointsIcon()
                     } action: {
                         controller.startGeometryEditMode(.points)
                     }
@@ -568,26 +575,6 @@ private struct GeometryEditorShellInspector: View {
                     Spacer()
                 }
                 iconRow {
-                    iconButton(
-                        help: "Pressure Trace: trace over selected geometry to add pressure sensitivity",
-                        disabled: !controller.canPressureTraceSelectedGeometry || morphLocked,
-                        selected: controller.geometryEditorTool == .pressureTrace
-                    ) {
-                        PressureTraceIcon()
-                    } action: {
-                        controller.startPressureTraceGeometryEdit()
-                    }
-                    iconButton(
-                        help: "Clear pressure sensitivity from selected geometry",
-                        disabled: !controller.canClearPressureSelectedGeometry || morphLocked
-                    ) {
-                        Image(systemName: "eraser").font(.system(size: 15))
-                    } action: {
-                        controller.clearPressureForSelectedGeometry()
-                    }
-                    Spacer()
-                }
-                iconRow {
                     iconButton(help: "Cut selected objects", disabled: !controller.canCutCopySelectedGeometry || morphLocked) {
                         Image(systemName: "scissors").font(.system(size: 15))
                     } action: {
@@ -611,6 +598,9 @@ private struct GeometryEditorShellInspector: View {
                     } action: {
                         controller.centreGeometryEditorViewOnSelectionOrLayer()
                     }
+                    Divider()
+                        .frame(height: 18)
+                        .padding(.horizontal, 3)
                     iconButton(help: "Snap selected anchors to grid, leaving control points unchanged") {
                         AnchorSnapIcon()
                     } action: {
@@ -629,11 +619,22 @@ private struct GeometryEditorShellInspector: View {
                     Spacer()
                 }
                 iconRow {
-                    iconTextButton("Undo", help: "Undo", disabled: !controller.canUndoGeometryEdit) {
-                        controller.undoGeometryEdit()
+                    iconButton(
+                        help: "Pressure Trace: trace over selected geometry to add pressure sensitivity",
+                        disabled: !controller.canPressureTraceSelectedGeometry || morphLocked,
+                        selected: controller.geometryEditorTool == .pressureTrace
+                    ) {
+                        PressureTraceIcon()
+                    } action: {
+                        controller.startPressureTraceGeometryEdit()
                     }
-                    iconTextButton("Redo", help: "Redo", disabled: !controller.canRedoGeometryEdit) {
-                        controller.redoGeometryEdit()
+                    iconButton(
+                        help: "Clear pressure sensitivity from selected geometry",
+                        disabled: !controller.canClearPressureSelectedGeometry || morphLocked
+                    ) {
+                        Image(systemName: "eraser").font(.system(size: 15))
+                    } action: {
+                        controller.clearPressureForSelectedGeometry()
                     }
                     Spacer()
                 }
@@ -644,6 +645,7 @@ private struct GeometryEditorShellInspector: View {
                     Toggle("", isOn: $controller.geometryEditorAutoWeld)
                         .labelsHidden()
                         .help("Auto weld")
+                        .modifier(LoomHoverHelp("Auto weld"))
                     iconButton(help: "Weld selected points or edges", disabled: !controller.canWeldSelectedGeometry) {
                         Image(systemName: "link.badge.plus").font(.system(size: 15))
                     } action: {
@@ -657,6 +659,7 @@ private struct GeometryEditorShellInspector: View {
                     Slider(value: $controller.geometryEditorWeldTolerance, in: 0...1)
                         .frame(width: 58)
                         .help("Weld tolerance: left is stricter, right accepts looser edge matches")
+                        .modifier(LoomHoverHelp("Weld tolerance: left is stricter, right accepts looser edge matches"))
                     iconButton(help: "Break welds on selected geometry", disabled: !controller.canUnweldSelectedGeometry) {
                         ExplodeWeldIcon()
                     } action: {
@@ -674,7 +677,25 @@ private struct GeometryEditorShellInspector: View {
                         controller.duplicateSelectedGeometry()
                     }
                     iconButton(
-                        help: "Knife: drag a cut line through polygons or open curves. Click again to leave knife mode.",
+                        help: "Displacement extrude: select edges, polygons, or open curves, then drag to push a copy sideways and stitch quads back to the originals. Choose another tool to leave extrude mode.",
+                        disabled: !controller.selectedGeometryEditorLayerCanEditForUI,
+                        selected: controller.geometryEditorTool == .displacementExtrude
+                    ) {
+                        DisplacementExtrudeIcon()
+                    } action: {
+                        controller.startDisplacementExtrude()
+                    }
+                    iconButton(
+                        help: "Scale extrude: select edges, polygons, or open curves, then drag right/up to grow an outer ring or left/down for an inner ring, stitched to the originals. Choose another tool to leave extrude mode.",
+                        disabled: !controller.selectedGeometryEditorLayerCanEditForUI,
+                        selected: controller.geometryEditorTool == .scaleExtrude
+                    ) {
+                        ScaleExtrudeIcon()
+                    } action: {
+                        controller.startScaleExtrude()
+                    }
+                    iconButton(
+                        help: "Knife: drag a cut line through polygons or open curves. Choose another tool to leave knife mode.",
                         disabled: !controller.selectedGeometryEditorLayerCanEditForUI,
                         selected: controller.geometryEditorTool == .knife
                     ) {
@@ -690,27 +711,6 @@ private struct GeometryEditorShellInspector: View {
                         KnifeLayerStackIcon()
                     } action: {
                         controller.geometryEditorKnifeCutsAllVisibleLayers.toggle()
-                    }
-                    Spacer()
-                }
-                iconRow {
-                    iconButton(
-                        help: "Displacement extrude: select edges, polygons, or open curves, then drag to push a copy sideways and stitch quads back to the originals. Click again to leave extrude mode.",
-                        disabled: !controller.selectedGeometryEditorLayerCanEditForUI,
-                        selected: controller.geometryEditorTool == .displacementExtrude
-                    ) {
-                        DisplacementExtrudeIcon()
-                    } action: {
-                        controller.startDisplacementExtrude()
-                    }
-                    iconButton(
-                        help: "Scale extrude: select edges, polygons, or open curves, then drag right/up to grow an outer ring or left/down for an inner ring, stitched to the originals. Click again to leave extrude mode.",
-                        disabled: !controller.selectedGeometryEditorLayerCanEditForUI,
-                        selected: controller.geometryEditorTool == .scaleExtrude
-                    ) {
-                        ScaleExtrudeIcon()
-                    } action: {
-                        controller.startScaleExtrude()
                     }
                     Spacer()
                 }
@@ -740,7 +740,22 @@ private struct GeometryEditorShellInspector: View {
                     .pickerStyle(.segmented)
                     .frame(width: 120)
                 }
-                InspectorField("Pivot") {
+                iconRow {
+                    Image(systemName: "arrow.up.left.and.arrow.down.right")
+                        .font(.system(size: 12))
+                        .foregroundStyle(.secondary)
+                        .help("Scale")
+                        .modifier(LoomHoverHelp("Scale"))
+                    Slider(
+                        value: $scaleSliderValue,
+                        in: -100...100,
+                        onEditingChanged: handleScaleSliderEditing
+                    )
+                    .disabled(!controller.canTransformSelectedGeometry)
+                    .help("Scale")
+                    .modifier(LoomHoverHelp("Scale"))
+                }
+                InspectorField("Rotation Pivot") {
                     Picker("", selection: $transformPivot) {
                         Text("Local").tag(GeometryTransformPivot.localCentre)
                         Text("Common").tag(GeometryTransformPivot.commonCentre)
@@ -750,23 +765,11 @@ private struct GeometryEditorShellInspector: View {
                     .frame(width: 120)
                 }
                 iconRow {
-                    Image(systemName: "arrow.up.left.and.arrow.down.right")
-                        .font(.system(size: 12))
-                        .foregroundStyle(.secondary)
-                        .help("Scale")
-                    Slider(
-                        value: $scaleSliderValue,
-                        in: -100...100,
-                        onEditingChanged: handleScaleSliderEditing
-                    )
-                    .disabled(!controller.canTransformSelectedGeometry)
-                    .help("Scale")
-                }
-                iconRow {
                     Image(systemName: "rotate.right")
                         .font(.system(size: 12))
                         .foregroundStyle(.secondary)
                         .help("Rotate")
+                        .modifier(LoomHoverHelp("Rotate"))
                     Slider(
                         value: $rotateSliderValue,
                         in: -100...100,
@@ -774,6 +777,7 @@ private struct GeometryEditorShellInspector: View {
                     )
                     .disabled(!controller.canTransformSelectedGeometry)
                     .help("Rotate")
+                    .modifier(LoomHoverHelp("Rotate"))
                 }
             }
 
@@ -788,6 +792,14 @@ private struct GeometryEditorShellInspector: View {
                         Image(systemName: "minus.magnifyingglass").font(.system(size: 15))
                     } action: {
                         controller.zoomGeometryEditorOut()
+                    }
+                    iconButton(
+                        help: "Pan view: drag the canvas to move the editor view",
+                        selected: controller.geometryEditorTool == .panView
+                    ) {
+                        Image(systemName: "hand.raised.fill").font(.system(size: 15))
+                    } action: {
+                        controller.startGeometryEditMode(.panView)
                     }
                     iconButton(
                         help: "Show or hide grid",
@@ -807,6 +819,36 @@ private struct GeometryEditorShellInspector: View {
                     }
                     Spacer()
                 }
+                iconRow {
+                    iconButton(help: "Load reference image") {
+                        Image(systemName: "photo").font(.system(size: 15))
+                    } action: {
+                        controller.loadGeometryEditorReferenceImage()
+                    }
+                    iconButton(
+                        help: "Show or hide reference image",
+                        disabled: controller.geometryEditorReferenceImage == nil,
+                        selected: controller.geometryEditorShowsReferenceImage
+                    ) {
+                        Image(systemName: "photo.on.rectangle").font(.system(size: 15))
+                    } action: {
+                        controller.geometryEditorShowsReferenceImage.toggle()
+                    }
+                    Slider(value: $controller.geometryEditorReferenceImageOpacity, in: 0...1)
+                        .frame(width: 58)
+                        .disabled(controller.geometryEditorReferenceImage == nil)
+                        .help("Reference image opacity")
+                        .modifier(LoomHoverHelp("Reference image opacity"))
+                    iconButton(
+                        help: "Clear reference image",
+                        disabled: controller.geometryEditorReferenceImage == nil
+                    ) {
+                        Image(systemName: "xmark.circle").font(.system(size: 15))
+                    } action: {
+                        controller.clearGeometryEditorReferenceImage()
+                    }
+                    Spacer()
+                }
                 HStack(spacing: 7) {
                     Picker("", selection: $controller.geometryEditorGridDetail) {
                         ForEach(GeometryEditorGridDetail.allCases) { detail in
@@ -817,48 +859,13 @@ private struct GeometryEditorShellInspector: View {
                     .pickerStyle(.menu)
                     .frame(width: 86)
                     .help("Grid detail")
+                    .modifier(LoomHoverHelp("Grid detail"))
                     Spacer()
                 }
                 .padding(.horizontal, 12)
                 .padding(.vertical, 3)
             }
 
-            InspectorSection("Delete", isCollapsed: $deleteCollapsed) {
-                iconRow {
-                    iconButton(help: "Delete selected geometry", disabled: !controller.canDeleteSelectedGeometry || morphLocked) {
-                        DeleteSelectedGeometryIcon()
-                    } action: {
-                        controller.deleteSelectedGeometry()
-                    }
-                    iconButton(help: "Delete all geometry in active layer", disabled: !controller.canDeleteAllLayerGeometry || morphLocked) {
-                        DeleteAllLayerGeometryIcon()
-                    } action: {
-                        controller.deleteAllLayerGeometry()
-                    }
-                    Spacer()
-                }
-            }
-
-            InspectorSection("File", isCollapsed: $fileCollapsed) {
-                InspectorField("Name") {
-                    TextField("", text: $geometryName)
-                        .textFieldStyle(.squareBorder)
-                        .font(.system(size: 12))
-                        .frame(width: 130)
-                }
-                InspectorField("Export") {
-                    svgExportButton
-                }
-                InspectorField("Save") {
-                    GeometryEditorSaveStateIndicator(state: controller.geometryEditorSaveState)
-                    iconButton(help: "Save geometry document", disabled: controller.geometryEditorDocument == nil, size: 30) {
-                        SaveToFolderIcon()
-                    } action: {
-                        controller.saveGeometryEditorDocument(named: geometryName)
-                        geometryName = currentGeometryName
-                    }
-                }
-            }
         }
         .onAppear { geometryName = currentGeometryName }
         .onChange(of: controller.selectedGeometryKey) { _, _ in
@@ -881,6 +888,128 @@ private struct GeometryEditorShellInspector: View {
             if rotateSliderValue != 0 {
                 controller.updateRotateTransformGesture(sliderValue: rotateSliderValue, pivot: transformPivot)
             }
+        }
+    }
+
+    private var geometryModeLabel: String {
+        guard let document = controller.geometryEditorDocument else { return "no file" }
+        let selectedLayer = controller.selectedGeometryEditorLayerID.flatMap { id in
+            document.layers.first { $0.id == id }
+        } ?? document.layers.first { $0.id == document.activeLayerID }
+
+        guard let layer = selectedLayer else { return "no layer" }
+
+        var parts: [String] = []
+        if !layer.polygons.isEmpty { parts.append("closed polygons") }
+        if !layer.openCurves.isEmpty { parts.append("open curves") }
+        if !layer.points.isEmpty { parts.append("points") }
+        return parts.isEmpty ? "empty layer" : parts.joined(separator: " + ")
+    }
+
+    private func geometryUtilitySection(morphLocked: Bool) -> some View {
+        VStack(spacing: 0) {
+            Divider()
+            HStack(spacing: 8) {
+                HStack(spacing: 7) {
+                    iconButton(help: "Undo", disabled: !controller.canUndoGeometryEdit) {
+                        Image(systemName: "arrow.uturn.backward").font(.system(size: 15))
+                    } action: {
+                        controller.undoGeometryEdit()
+                    }
+                    iconButton(help: "Redo", disabled: !controller.canRedoGeometryEdit) {
+                        Image(systemName: "arrow.uturn.forward").font(.system(size: 15))
+                    } action: {
+                        controller.redoGeometryEdit()
+                    }
+                }
+
+                Divider().frame(height: 20)
+
+                Spacer(minLength: 0)
+
+                HStack(spacing: 7) {
+                    iconButton(help: "Delete selected geometry", disabled: !controller.canDeleteSelectedGeometry || morphLocked) {
+                        DeleteSelectedGeometryIcon()
+                    } action: {
+                        controller.deleteSelectedGeometry()
+                    }
+                    iconButton(help: "Delete all geometry in active layer", disabled: !controller.canDeleteAllLayerGeometry || morphLocked) {
+                        DeleteAllLayerGeometryIcon()
+                    } action: {
+                        controller.deleteAllLayerGeometry()
+                    }
+                }
+
+                Spacer(minLength: 0)
+
+                Divider().frame(height: 20)
+
+                svgExportButton
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 6)
+            Divider()
+        }
+    }
+
+    private var geometryNameAndSaveRow: some View {
+        HStack(spacing: 8) {
+            Text("Name")
+                .font(.system(size: 12))
+                .foregroundStyle(.secondary)
+                .frame(width: 42, alignment: .leading)
+            TextField("", text: $geometryName)
+                .textFieldStyle(.squareBorder)
+                .font(.system(size: 12))
+                .frame(minWidth: 90, maxWidth: .infinity)
+            saveGeometryButton
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 2)
+    }
+
+    private var saveGeometryButton: some View {
+        let disabled = controller.geometryEditorDocument == nil
+        return Button {
+            controller.saveGeometryEditorDocument(named: geometryName)
+            geometryName = currentGeometryName
+        } label: {
+            SaveToFolderIcon()
+                .frame(width: 24, height: 18)
+                .padding(.horizontal, 3)
+                .padding(.vertical, 2)
+                .contentShape(RoundedRectangle(cornerRadius: 4))
+        }
+        .buttonStyle(.plain)
+        .disabled(disabled)
+        .foregroundStyle(disabled ? Color.secondary.opacity(0.35) : saveStateColor)
+        .contentShape(RoundedRectangle(cornerRadius: 4))
+        .overlay(
+            RoundedRectangle(cornerRadius: 4)
+                .stroke(disabled ? Color.secondary.opacity(0.25) : saveStateColor, lineWidth: 1.2)
+        )
+        .help(saveStateHelp)
+    }
+
+    private var saveStateColor: Color {
+        switch controller.geometryEditorSaveState {
+        case .unchanged:
+            return Color.secondary
+        case .unsaved:
+            return Color.orange
+        case .saved:
+            return Color.green
+        }
+    }
+
+    private var saveStateHelp: String {
+        switch controller.geometryEditorSaveState {
+        case .unchanged:
+            return "Save geometry document"
+        case .unsaved:
+            return "Save geometry document: unsaved changes"
+        case .saved:
+            return "Geometry saved"
         }
     }
 
@@ -1035,7 +1164,7 @@ private struct GeometryEditorShellInspector: View {
         }
         .buttonStyle(.plain)
         .disabled(disabled)
-        .help(help)
+        .modifier(InstantGeometryTooltip(help))
         .foregroundStyle(disabled ? Color.secondary.opacity(0.35) : Color.primary)
         .background(selected ? Color.accentColor.opacity(0.18) : Color.clear)
         .clipShape(RoundedRectangle(cornerRadius: 4))
@@ -1051,7 +1180,7 @@ private struct GeometryEditorShellInspector: View {
             .buttonStyle(.borderless)
             .disabled(disabled)
             .font(.system(size: 11))
-            .help(help)
+            .modifier(InstantGeometryTooltip(help))
     }
 
     private func inspectorButton(
@@ -1083,11 +1212,62 @@ private struct GeometryEditorShellInspector: View {
     }
 }
 
+private struct InstantGeometryTooltip: ViewModifier {
+    let text: String
+    @EnvironmentObject private var controller: AppController
+
+    init(_ text: String) {
+        self.text = text
+    }
+
+    func body(content: Content) -> some View {
+        content
+            .onHover { hovering in
+                if hovering {
+                    controller.hoverHelpText = text
+                } else if controller.hoverHelpText == text {
+                    controller.hoverHelpText = ""
+                }
+            }
+    }
+}
+
 private struct PointCircleIcon: View {
     var body: some View {
         ZStack {
             Circle().stroke(lineWidth: 1.5)
             Circle().fill().frame(width: 4, height: 4)
+        }
+        .padding(4)
+    }
+}
+
+private struct EditPointsIcon: View {
+    var body: some View {
+        GeometryReader { proxy in
+            let size = min(proxy.size.width, proxy.size.height)
+            let centre = CGPoint(x: proxy.size.width / 2, y: proxy.size.height / 2)
+            let dotRadius: CGFloat = 2
+            let gap: CGFloat = 3
+            let innerRadius = dotRadius + gap
+            let outerRadius = size / 2 - 0.75
+
+            Path { path in
+                path.move(to: CGPoint(x: centre.x, y: centre.y - innerRadius))
+                path.addLine(to: CGPoint(x: centre.x, y: centre.y - outerRadius))
+                path.move(to: CGPoint(x: centre.x + innerRadius, y: centre.y))
+                path.addLine(to: CGPoint(x: centre.x + outerRadius, y: centre.y))
+                path.move(to: CGPoint(x: centre.x, y: centre.y + innerRadius))
+                path.addLine(to: CGPoint(x: centre.x, y: centre.y + outerRadius))
+                path.move(to: CGPoint(x: centre.x - innerRadius, y: centre.y))
+                path.addLine(to: CGPoint(x: centre.x - outerRadius, y: centre.y))
+            }
+            .stroke(style: StrokeStyle(lineWidth: 1.5, lineCap: .round))
+
+            Circle()
+                .fill()
+                .frame(width: 4, height: 4)
+                .position(centre)
         }
         .padding(4)
     }

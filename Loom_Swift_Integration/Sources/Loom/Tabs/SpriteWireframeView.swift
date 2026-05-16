@@ -233,7 +233,7 @@ struct SpriteWireframeView: View {
     // MARK: - Canvas rect (letterboxed to canvas aspect ratio, scaled by zoom)
 
     private func canvasRect(viewSize: CGSize) -> CGRect {
-        let cSize   = controller.engine?.canvasSize ?? CGSize(width: 1, height: 1)
+        let cSize   = controller.engineCanvasSize
         guard viewSize.width.isFinite, viewSize.height.isFinite,
               cSize.width.isFinite, cSize.height.isFinite,
               viewSize.width > 0, viewSize.height > 0,
@@ -276,6 +276,10 @@ struct SpriteWireframeView: View {
             x: rect.minX + (normX + 1.0) / 2.0 * rect.width,
             y: rect.minY + (1.0 - normY) / 2.0 * rect.height
         )
+    }
+
+    private func geometryBasis(_ rect: CGRect) -> CGFloat {
+        min(rect.width, rect.height) / 2.0
     }
 
     // MARK: - Grid
@@ -442,11 +446,11 @@ struct SpriteWireframeView: View {
             let ry = wx * sinR + wy * cosR
             wx = rx; wy = ry
         }
-        let normX = wx + def.position.x / 100.0
-        let normY = wy + def.position.y / 100.0
+        let centre = positionToScreen(def.position, rect: rect)
+        let basis = geometryBasis(rect)
         return CGPoint(
-            x: rect.minX + (normX + 1.0) / 2.0 * rect.width,
-            y: rect.minY + (1.0 - normY) / 2.0 * rect.height
+            x: centre.x + CGFloat(wx) * basis,
+            y: centre.y - CGFloat(wy) * basis
         )
     }
 
@@ -600,8 +604,7 @@ struct SpriteWireframeView: View {
         let rect     = canvasRect(viewSize: viewSize)
         let startW   = screenToWorld(dragStartPos, in: rect)
         let currW    = screenToWorld(currentLoc,   in: rect)
-        let centreW  = CGPoint(x: startDef.position.x / 100.0,
-                               y: startDef.position.y / 100.0)
+        let centreScreen = positionToScreen(startDef.position, rect: rect)
         var live = LiveTransform(startDef)
 
         switch handle {
@@ -617,28 +620,28 @@ struct SpriteWireframeView: View {
             live.posY = newY.clamped(-200, 200)
 
         case .tl, .br:  // uniform scale (radial distance from centre)
-            let d0 = hypot(startW.x - centreW.x, startW.y - centreW.y)
-            let d1 = hypot(currW.x  - centreW.x, currW.y  - centreW.y)
+            let d0 = hypot(dragStartPos.x - centreScreen.x, dragStartPos.y - centreScreen.y)
+            let d1 = hypot(currentLoc.x - centreScreen.x, currentLoc.y - centreScreen.y)
             guard d0 > 1e-8 else { break }
             let ratio = d1 / d0
             live.scaleX = (startDef.scale.x * ratio).clamped(0.001, 10)
             live.scaleY = (startDef.scale.y * ratio).clamped(0.001, 10)
 
         case .l, .r:    // scale X only
-            let dx0 = abs(startW.x - centreW.x)
-            let dx1 = abs(currW.x  - centreW.x)
+            let dx0 = abs(dragStartPos.x - centreScreen.x)
+            let dx1 = abs(currentLoc.x - centreScreen.x)
             guard dx0 > 1e-8 else { break }
             live.scaleX = (startDef.scale.x * dx1 / dx0).clamped(0.001, 10)
 
         case .t, .b:    // scale Y only
-            let dy0 = abs(startW.y - centreW.y)
-            let dy1 = abs(currW.y  - centreW.y)
+            let dy0 = abs(dragStartPos.y - centreScreen.y)
+            let dy1 = abs(currentLoc.y - centreScreen.y)
             guard dy0 > 1e-8 else { break }
             live.scaleY = (startDef.scale.y * dy1 / dy0).clamped(0.001, 10)
 
         case .tr, .bl:  // rotate
-            let a0 = atan2(startW.y - centreW.y, startW.x - centreW.x)
-            let a1 = atan2(currW.y  - centreW.y, currW.x  - centreW.x)
+            let a0 = atan2(centreScreen.y - dragStartPos.y, dragStartPos.x - centreScreen.x)
+            let a1 = atan2(centreScreen.y - currentLoc.y, currentLoc.x - centreScreen.x)
             let delta = (a1 - a0) * 180.0 / .pi
             live.rotation = (startDef.rotation + delta).truncatingRemainder(dividingBy: 360)
         }

@@ -3,7 +3,7 @@ import LoomEngine
 
 // MARK: - TimelineLane
 
-enum TimelineLane: Int, CaseIterable {
+enum TimelineLane: Int, CaseIterable, Hashable {
     case position = 0, scale, rotation, morph, opacity, shape
 
     var label: String {
@@ -40,6 +40,40 @@ enum TimelineLane: Int, CaseIterable {
     }
 }
 
+// MARK: - RendererTimelineLane
+
+enum RendererTimelineLane: Int, CaseIterable, Hashable {
+    case fillColor = 0, strokeColor, strokeWidth, opacity
+
+    var label: String {
+        switch self {
+        case .fillColor:   return "Fill"
+        case .strokeColor: return "Stroke"
+        case .strokeWidth: return "Width"
+        case .opacity:     return "Opacity"
+        }
+    }
+
+    var color: Color {
+        switch self {
+        case .fillColor:   return .yellow
+        case .strokeColor: return .red
+        case .strokeWidth: return .indigo
+        case .opacity:     return .pink
+        }
+    }
+
+    func keyframeFrames(from drivers: RendererDrivers?) -> [Int] {
+        guard let drivers else { return [] }
+        switch self {
+        case .fillColor:   return drivers.fillColor?.keyframes.map(\.frame) ?? []
+        case .strokeColor: return drivers.strokeColor?.keyframes.map(\.frame) ?? []
+        case .strokeWidth: return drivers.strokeWidth.keyframes.map(\.frame)
+        case .opacity:     return drivers.opacity.keyframes.map(\.frame)
+        }
+    }
+}
+
 // MARK: - TimelineKFSelection
 
 struct TimelineKFSelection: Equatable {
@@ -49,13 +83,23 @@ struct TimelineKFSelection: Equatable {
     var keyframeIdx: Int
 }
 
+// MARK: - RendererTimelineKFSelection
+
+struct RendererTimelineKFSelection: Equatable {
+    var rendererSetIdx:  Int
+    var rendererItemIdx: Int
+    var lane:            RendererTimelineLane
+    var keyframeIdx:     Int
+}
+
 // MARK: - CameraLane
 
-enum CameraLane: Int, CaseIterable {
-    case pan = 0, zoom, rotation
+enum CameraLane: Int, CaseIterable, Hashable {
+    case tracking = 0, pan, zoom, rotation
 
     var label: String {
         switch self {
+        case .tracking: return "Tracking"
         case .pan:      return "Pan"
         case .zoom:     return "Zoom"
         case .rotation: return "Rotation"
@@ -64,6 +108,7 @@ enum CameraLane: Int, CaseIterable {
 
     var color: Color {
         switch self {
+        case .tracking: return .blue
         case .pan:      return .teal
         case .zoom:     return Color(hue: 0.48, saturation: 0.7, brightness: 0.85)
         case .rotation: return .cyan
@@ -72,6 +117,7 @@ enum CameraLane: Int, CaseIterable {
 
     func keyframeFrames(from cam: CameraConfig) -> [Int] {
         switch self {
+        case .tracking: return cam.tracking.keyframes.map(\.frame)
         case .pan:      return cam.pan.keyframes.map(\.frame)
         case .zoom:     return cam.zoom.keyframes.map(\.frame)
         case .rotation: return cam.rotation.keyframes.map(\.frame)
@@ -99,4 +145,21 @@ func withDrivers(in cfg: inout ProjectConfig,
     else { return }
     perform(&drivers)
     cfg.spriteConfig.library.spriteSets[si].sprites[pi].animation.drivers = drivers
+}
+
+func withRendererDrivers(in cfg: inout ProjectConfig,
+                         setIdx: Int, itemIdx: Int,
+                         perform: (inout RendererDrivers, Renderer) -> Void) {
+    guard setIdx < cfg.renderingConfig.library.rendererSets.count,
+          itemIdx < cfg.renderingConfig.library.rendererSets[setIdx].renderers.count
+    else { return }
+    let renderer = cfg.renderingConfig.library.rendererSets[setIdx].renderers[itemIdx]
+    var drivers = renderer.drivers ?? RendererDrivers(
+        fillColor: ColorDriver.constant(renderer.fillColor),
+        strokeColor: ColorDriver.constant(renderer.strokeColor),
+        strokeWidth: DoubleDriver.constant(renderer.strokeWidth),
+        opacity: .one
+    )
+    perform(&drivers, renderer)
+    cfg.renderingConfig.library.rendererSets[setIdx].renderers[itemIdx].drivers = drivers
 }

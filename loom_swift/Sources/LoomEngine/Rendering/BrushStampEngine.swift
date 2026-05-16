@@ -26,7 +26,8 @@ enum BrushStampEngine {
         color:         LoomColor,
         context:       CGContext,
         elapsedFrames: Double,
-        brushImages:   [String: CGImage]
+        brushImages:   [String: CGImage],
+        opacityMultiplier: Double = 1.0
     ) {
         let images = resolvedImages(config: config, brushImages: brushImages)
         guard !images.isEmpty else { return }
@@ -62,7 +63,8 @@ enum BrushStampEngine {
                     color: color,
                     context: context,
                     images: images,
-                    rng: &rng
+                    rng: &rng,
+                    opacityMultiplier: opacityMultiplier
                 )
             }
         }
@@ -74,7 +76,8 @@ enum BrushStampEngine {
         config: BrushConfig,
         color: LoomColor,
         context: CGContext,
-        brushImages: [String: CGImage]
+        brushImages: [String: CGImage],
+        opacityMultiplier: Double = 1.0
     ) {
         let images = resolvedImages(config: config, brushImages: brushImages)
         guard !images.isEmpty,
@@ -113,7 +116,8 @@ enum BrushStampEngine {
                 color: color,
                 context: context,
                 images: images,
-                rng: &rng
+                rng: &rng,
+                opacityMultiplier: opacityMultiplier
             )
             stampsDrawn += 1
 
@@ -156,7 +160,8 @@ enum BrushStampEngine {
         color: LoomColor,
         context: CGContext,
         images: [CGImage],
-        rng: inout StampRNG
+        rng: inout StampRNG,
+        opacityMultiplier: Double = 1.0
     ) {
         // Base scale: when scaleAlongPath is true, use the per-path noise
         // envelope (pathScale).  When false (the common case), pick a random
@@ -181,7 +186,7 @@ enum BrushStampEngine {
             + config.opacityMin
         let pressureOpacity = 1.0 - config.pressureAlphaInfluence
             + pressure * config.pressureAlphaInfluence
-        let finalOpacity = max(0.0, min(1.0, randOpacity * pressureOpacity))
+        let finalOpacity = max(0.0, min(1.0, randOpacity * pressureOpacity * opacityMultiplier))
 
         // Perpendicular jitter.
         let jitterRange = config.perpendicularJitterMax - config.perpendicularJitterMin

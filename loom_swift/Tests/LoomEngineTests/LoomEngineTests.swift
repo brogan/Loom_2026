@@ -47,6 +47,14 @@ final class LoomEngineAdvanceTests: XCTestCase {
         XCTAssertEqual(engine.currentFrame, 1)
     }
 
+    func testSubFrameAdvanceDoesNotRaceProjectFrameClock() throws {
+        var engine = try LoomEngine(projectDirectory: fixtureDir052)
+        engine.advance(deltaTime: 1.0 / 60.0)
+        XCTAssertEqual(engine.currentFrame, 0)
+        engine.advance(deltaTime: 1.0 / 60.0)
+        XCTAssertEqual(engine.currentFrame, 1)
+    }
+
     func testMultipleAdvances() throws {
         var engine = try LoomEngine(projectDirectory: fixtureDir052)
         for _ in 0..<10 { engine.advance() }

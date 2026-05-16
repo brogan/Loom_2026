@@ -164,28 +164,72 @@ public struct VectorDriver: Codable, Equatable, Sendable {
 
 public struct ColorDriver: Codable, Equatable, Sendable {
     public enum Mode: String, Codable, CaseIterable, Equatable, Sendable {
-        case constant, keyframe
+        case constant, keyframe, jitter, noise, oscillator
     }
 
     public var mode: Mode = .constant
-    public var base: LoomColor = .black
-    public var loopMode: LoopMode = .loop
+    /// Color A — constant value, and the "from" color for blend modes.
+    public var base:      LoomColor  = .black
+    /// Color B — the "to" color for jitter, noise, and oscillator modes.
+    public var colorB:    LoomColor  = .white
+    /// Jitter: half-width of blend window around 0.5. 0.5 = full [0,1] swing.
+    public var range:     Double     = 0.5
+    /// Noise: peak blend excursion from 0.5. 0.5 = full [0,1] swing.
+    public var amplitude: Double     = 0.5
+    /// Noise: global frames between random sample points.
+    public var period:    Int        = 30
+    /// Oscillator: cycles per second.
+    public var freqHz:    Double     = 1.0
+    /// Oscillator: 0–1 phase offset.
+    public var phase:     Double     = 0
+    public var wave:      WaveShape  = .sine
+    /// Jitter / noise: deterministic seed.
+    public var seed:      Int        = 0
+    public var loopMode:  LoopMode   = .loop
     public var keyframes: [ColorKeyframe] = []
 
     public init(
-        mode: Mode = .constant,
-        base: LoomColor = .black,
-        loopMode: LoopMode = .loop,
+        mode:      Mode            = .constant,
+        base:      LoomColor       = .black,
+        colorB:    LoomColor       = .white,
+        range:     Double          = 0.5,
+        amplitude: Double          = 0.5,
+        period:    Int             = 30,
+        freqHz:    Double          = 1.0,
+        phase:     Double          = 0,
+        wave:      WaveShape       = .sine,
+        seed:      Int             = 0,
+        loopMode:  LoopMode        = .loop,
         keyframes: [ColorKeyframe] = []
     ) {
-        self.mode = mode
-        self.base = base
-        self.loopMode = loopMode
-        self.keyframes = keyframes
+        self.mode = mode; self.base = base; self.colorB = colorB
+        self.range = range; self.amplitude = amplitude; self.period = period
+        self.freqHz = freqHz; self.phase = phase; self.wave = wave
+        self.seed = seed; self.loopMode = loopMode; self.keyframes = keyframes
     }
 
     public static func constant(_ color: LoomColor) -> ColorDriver {
         ColorDriver(mode: .constant, base: color)
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case mode, base, colorB, range, amplitude, period, freqHz, phase, wave, seed, loopMode, keyframes
+    }
+
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        mode      = try c.decodeIfPresent(Mode.self,            forKey: .mode)      ?? .constant
+        base      = try c.decodeIfPresent(LoomColor.self,       forKey: .base)      ?? .black
+        colorB    = try c.decodeIfPresent(LoomColor.self,       forKey: .colorB)    ?? .white
+        range     = try c.decodeIfPresent(Double.self,          forKey: .range)     ?? 0.5
+        amplitude = try c.decodeIfPresent(Double.self,          forKey: .amplitude) ?? 0.5
+        period    = try c.decodeIfPresent(Int.self,             forKey: .period)    ?? 30
+        freqHz    = try c.decodeIfPresent(Double.self,          forKey: .freqHz)    ?? 1.0
+        phase     = try c.decodeIfPresent(Double.self,          forKey: .phase)     ?? 0
+        wave      = try c.decodeIfPresent(WaveShape.self,       forKey: .wave)      ?? .sine
+        seed      = try c.decodeIfPresent(Int.self,             forKey: .seed)      ?? 0
+        loopMode  = try c.decodeIfPresent(LoopMode.self,        forKey: .loopMode)  ?? .loop
+        keyframes = try c.decodeIfPresent([ColorKeyframe].self, forKey: .keyframes) ?? []
     }
 }
 
@@ -228,6 +272,9 @@ public enum DriverEvaluator {
 
         case .keyframe:
             guard !driver.keyframes.isEmpty else { return driver.base }
+            guard globalElapsed >= Double(driver.keyframes.sorted { $0.frame < $1.frame }.first!.frame) else {
+                return driver.base
+            }
             return evalDoubleKFs(driver.keyframes,
                                  elapsed: globalElapsed, loop: driver.loopMode)
         }
@@ -274,6 +321,9 @@ public enum DriverEvaluator {
 
         case .keyframe:
             guard !driver.keyframes.isEmpty else { return driver.base }
+            guard globalElapsed >= Double(driver.keyframes.sorted { $0.frame < $1.frame }.first!.frame) else {
+                return driver.base
+            }
             return evalVectorKFs(driver.keyframes,
                                  elapsed: globalElapsed, loop: driver.loopMode)
         }
@@ -283,18 +333,39 @@ public enum DriverEvaluator {
 
     public static func evaluate(
         _ driver: ColorDriver,
-        globalElapsed: Double
+        globalElapsed: Double,
+        targetFPS: Double = 60,
+        spriteIndex: Int = 0
     ) -> LoomColor {
         switch driver.mode {
         case .constant:
             return driver.base
         case .keyframe:
             guard !driver.keyframes.isEmpty else { return driver.base }
+            guard globalElapsed >= Double(driver.keyframes.sorted { $0.frame < $1.frame }.first!.frame) else {
+                return driver.base
+            }
             return evalColorKFs(driver.keyframes,
                                 elapsed: globalElapsed,
                                 loop: driver.loopMode)
+        case .jitter:
+            let h = hash(seed: driver.seed, spriteIndex: spriteIndex, frame: Int(globalElapsed))
+            let t = clamp01(0.5 + (h * 2 - 1) * driver.range)
+            return lerpColor(driver.base, driver.colorB, t: t)
+        case .noise:
+            let raw = valueNoise1D(base: 0.5, amplitude: driver.amplitude,
+                                   period: max(1, driver.period), elapsed: globalElapsed,
+                                   seed: driver.seed, spriteIndex: spriteIndex)
+            return lerpColor(driver.base, driver.colorB, t: clamp01(raw))
+        case .oscillator:
+            let fps  = max(1, targetFPS)
+            let tArg = globalElapsed * driver.freqHz / fps + driver.phase
+            let blend = clamp01((wave(driver.wave, t: tArg) + 1) / 2)
+            return lerpColor(driver.base, driver.colorB, t: blend)
         }
     }
+
+    private static func clamp01(_ v: Double) -> Double { max(0, min(1, v)) }
 
     // MARK: - Wave
 
@@ -363,12 +434,16 @@ public enum DriverEvaluator {
             return max(0, Int(driver.base))
         case .keyframe:
             guard !driver.keyframes.isEmpty else { return max(0, Int(driver.base)) }
+            let sorted = driver.keyframes.sorted { $0.frame < $1.frame }
+            guard globalElapsed >= Double(sorted.first!.frame) else {
+                return max(0, Int(driver.base))
+            }
             let n = normalizeElapsed(globalElapsed,
-                                     total: driver.keyframes.last!.frame,
+                                     total: sorted.last!.frame,
                                      loop: driver.loopMode)
             // Step: walk keyframes in order, keep the last one whose frame ≤ n.
-            var result = driver.keyframes.first!.value
-            for kf in driver.keyframes {
+            var result = sorted.first!.value
+            for kf in sorted {
                 guard Double(kf.frame) <= n else { break }
                 result = kf.value
             }
@@ -399,36 +474,38 @@ public enum DriverEvaluator {
         _ kfs: [DoubleKeyframe], elapsed: Double, loop: LoopMode
     ) -> Double {
         guard !kfs.isEmpty else { return 0 }
-        guard kfs.count > 1 else { return kfs[0].value }
-        let n = normalizeElapsed(elapsed, total: kfs.last!.frame, loop: loop)
-        if n <= Double(kfs.first!.frame) { return kfs.first!.value }
-        if n >= Double(kfs.last!.frame)  { return kfs.last!.value }
-        for i in 0..<(kfs.count - 1) {
-            let lo = kfs[i], hi = kfs[i + 1]
+        let sorted = kfs.sorted { $0.frame < $1.frame }
+        guard sorted.count > 1 else { return sorted[0].value }
+        let n = normalizeElapsed(elapsed, total: sorted.last!.frame, loop: loop)
+        if n <= Double(sorted.first!.frame) { return sorted.first!.value }
+        if n >= Double(sorted.last!.frame)  { return sorted.last!.value }
+        for i in 0..<(sorted.count - 1) {
+            let lo = sorted[i], hi = sorted[i + 1]
             guard Double(lo.frame) <= n, n <= Double(hi.frame) else { continue }
             let span = Double(hi.frame - lo.frame)
             let t    = EasingMath.ease(span > 0 ? (n - Double(lo.frame)) / span : 0, type: lo.easing)
             return lo.value + (hi.value - lo.value) * t
         }
-        return kfs.last!.value
+        return sorted.last!.value
     }
 
     private static func evalVectorKFs(
         _ kfs: [VectorKeyframe], elapsed: Double, loop: LoopMode
     ) -> Vector2D {
         guard !kfs.isEmpty else { return .zero }
-        guard kfs.count > 1 else { return kfs[0].value }
-        let n = normalizeElapsed(elapsed, total: kfs.last!.frame, loop: loop)
-        if n <= Double(kfs.first!.frame) { return kfs.first!.value }
-        if n >= Double(kfs.last!.frame)  { return kfs.last!.value }
-        for i in 0..<(kfs.count - 1) {
-            let lo = kfs[i], hi = kfs[i + 1]
+        let sorted = kfs.sorted { $0.frame < $1.frame }
+        guard sorted.count > 1 else { return sorted[0].value }
+        let n = normalizeElapsed(elapsed, total: sorted.last!.frame, loop: loop)
+        if n <= Double(sorted.first!.frame) { return sorted.first!.value }
+        if n >= Double(sorted.last!.frame)  { return sorted.last!.value }
+        for i in 0..<(sorted.count - 1) {
+            let lo = sorted[i], hi = sorted[i + 1]
             guard Double(lo.frame) <= n, n <= Double(hi.frame) else { continue }
             let span = Double(hi.frame - lo.frame)
             let t    = EasingMath.ease(span > 0 ? (n - Double(lo.frame)) / span : 0, type: lo.easing)
             return Vector2D.lerp(lo.value, hi.value, t: t)
         }
-        return kfs.last!.value
+        return sorted.last!.value
     }
 
     private static func evalColorKFs(

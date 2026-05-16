@@ -64,7 +64,7 @@ struct SubdivisionWireframeView: View {
     // MARK: - Canvas rect (letterboxed)
 
     private func canvasRect(viewSize: CGSize) -> CGRect {
-        let cSize   = controller.engine?.canvasSize ?? CGSize(width: 1, height: 1)
+        let cSize   = controller.engineCanvasSize
         let cAspect = cSize.width / cSize.height
         let vAspect = viewSize.width / viewSize.height
         if cAspect > vAspect {
@@ -188,6 +188,10 @@ struct SubdivisionWireframeView: View {
         )
     }
 
+    private func geometryBasis(_ rect: CGRect) -> CGFloat {
+        min(rect.width, rect.height) / 2.0
+    }
+
     private func transformPoint(_ pt: Vector2D, def: SpriteDef, rect: CGRect) -> CGPoint {
         let sx = def.scale.x * 2.0, sy = def.scale.y * 2.0
         let rotRad = def.rotation * .pi / 180.0
@@ -198,11 +202,11 @@ struct SubdivisionWireframeView: View {
             let ry = wx * sinR + wy * cosR
             wx = rx; wy = ry
         }
-        let normX = wx + def.position.x / 100.0
-        let normY = wy + def.position.y / 100.0
+        let centre = positionToScreen(def.position, rect: rect)
+        let basis = geometryBasis(rect)
         return CGPoint(
-            x: rect.minX + (normX + 1.0) / 2.0 * rect.width,
-            y: rect.minY + (1.0 - normY) / 2.0 * rect.height
+            x: centre.x + CGFloat(wx) * basis,
+            y: centre.y - CGFloat(wy) * basis
         )
     }
 

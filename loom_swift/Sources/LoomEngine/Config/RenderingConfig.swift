@@ -140,15 +140,31 @@ public struct RendererDrivers: Equatable, Codable, Sendable {
     public var fillColor: ColorDriver?
     public var strokeColor: ColorDriver?
     public var strokeWidth: DoubleDriver = .one
+    /// Per-renderer alpha multiplier. 1 = fully opaque, 0 = invisible.
+    public var opacity: DoubleDriver = .one
 
     public init(
         fillColor: ColorDriver? = nil,
         strokeColor: ColorDriver? = nil,
-        strokeWidth: DoubleDriver = .one
+        strokeWidth: DoubleDriver = .one,
+        opacity: DoubleDriver = .one
     ) {
         self.fillColor = fillColor
         self.strokeColor = strokeColor
         self.strokeWidth = strokeWidth
+        self.opacity = opacity
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case fillColor, strokeColor, strokeWidth, opacity
+    }
+
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        fillColor = try c.decodeIfPresent(ColorDriver.self, forKey: .fillColor)
+        strokeColor = try c.decodeIfPresent(ColorDriver.self, forKey: .strokeColor)
+        strokeWidth = try c.decodeIfPresent(DoubleDriver.self, forKey: .strokeWidth) ?? .one
+        opacity = try c.decodeIfPresent(DoubleDriver.self, forKey: .opacity) ?? .one
     }
 }
 

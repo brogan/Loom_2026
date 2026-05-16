@@ -110,6 +110,10 @@
   .card { background: var(--surface2); border: 1px solid var(--border); border-radius: 6px; padding: 12px; }
   .card-title { font-weight: 600; color: var(--text-bright); font-size: 12px; margin-bottom: 4px; }
   .card-desc { font-size: 11.5px; color: var(--text-dim); }
+  .icon-key { display: inline-flex; align-items: center; justify-content: center; min-width: 24px; height: 22px; padding: 0 5px; border: 1px solid var(--border); border-radius: 4px; background: var(--surface2); color: var(--text-bright); font-size: 12px; font-weight: 600; line-height: 1; vertical-align: middle; margin-right: 6px; }
+  .icon-key svg { width: 18px; height: 18px; stroke: currentColor; fill: none; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+  .icon-muted { color: var(--text-dim); }
+  .control-table td:first-child { width: 170px; }
 
   /* ── Search highlights ───────────────────────────── */
   mark { background: var(--highlight); color: #000; border-radius: 2px; padding: 0 2px; }
@@ -147,22 +151,29 @@
   <a class="nav-link" href="#geometry">Geometry</a>
   <a class="nav-link nav-sub" href="#geometry-editor">Editor Tools</a>
   <a class="nav-link nav-sub" href="#geometry-layers">Layers</a>
+  <a class="nav-link nav-sub" href="#geometry-pressure">Pressure Sensitivity</a>
   <a class="nav-link" href="#sprites">Sprites</a>
   <a class="nav-link nav-sub" href="#sprites-hierarchy">Hierarchy</a>
+  <a class="nav-link nav-sub" href="#sprites-depth">Depth &amp; Parallax</a>
   <a class="nav-link" href="#subdivision">Subdivision</a>
   <a class="nav-link nav-sub" href="#subdivision-algorithms">Algorithms</a>
   <a class="nav-link nav-sub" href="#subdivision-ptw">PTW</a>
   <a class="nav-link nav-sub" href="#subdivision-ptp">PTP</a>
+  <a class="nav-link nav-sub" href="#subdivision-pressure">Pressure</a>
   <a class="nav-link nav-sub" href="#subdivision-bake">Baking</a>
   <a class="nav-link" href="#rendering">Rendering</a>
   <a class="nav-link nav-sub" href="#rendering-modes">Render Modes</a>
   <a class="nav-link nav-sub" href="#rendering-brush">Brushes &amp; Stamps</a>
+  <a class="nav-link nav-sub" href="#rendering-drivers">Renderer Drivers</a>
+  <a class="nav-link nav-sub" href="#rendering-color-drivers">Colour Blend Modes</a>
 
   <div class="nav-section">Animation</div>
   <a class="nav-link" href="#animation">Drivers &amp; Keyframes</a>
   <a class="nav-link nav-sub" href="#animation-drivers">Driver Types</a>
   <a class="nav-link nav-sub" href="#animation-timeline">Timeline</a>
+  <a class="nav-link nav-sub" href="#animation-editing">Timeline Editing</a>
   <a class="nav-link nav-sub" href="#animation-camera">Camera</a>
+  <a class="nav-link nav-sub" href="#animation-parallax">Depth &amp; Parallax</a>
   <a class="nav-link nav-sub" href="#animation-morph">Morph Targets</a>
 
   <div class="nav-section">Export</div>
@@ -221,11 +232,11 @@
     </div>
     <div class="card">
       <div class="card-title">Animated rendering</div>
-      <div class="card-desc">Custom brush and stamp PNG patterns, stencil masking, opacity and colour animation on every renderer.</div>
+      <div class="card-desc">Custom brush and stamp PNG patterns, stencil masking, progressive drawing, and colour, width, and opacity animation on every renderer.</div>
     </div>
     <div class="card">
       <div class="card-title">Procedural drivers</div>
-      <div class="card-desc">Noise, oscillator, jitter, and keyframe drivers can animate any transform or renderer property.</div>
+      <div class="card-desc">Noise, oscillator, jitter, and keyframe drivers animate sprite transforms, sprite opacity, camera motion, and renderer-level fill, stroke, width, and opacity.</div>
     </div>
     <div class="card">
       <div class="card-title">Morph targets</div>
@@ -236,6 +247,10 @@
       <div class="card-desc">Parent–child sprite trees with selectable inherit masks for position, rotation, and scale.</div>
     </div>
     <div class="card">
+      <div class="card-title">Pressure sensitivity</div>
+      <div class="card-desc">Freehand and post-traced pressure data can influence brush opacity and stroke weight, and can be carried into subdivided children.</div>
+    </div>
+    <div class="card">
       <div class="card-title">Non-destructive bake</div>
       <div class="card-desc">Preview subdivision live, then bake to a permanent polygon file when satisfied.</div>
     </div>
@@ -244,11 +259,11 @@
   <h3 id="overview-workflow">Core workflow</h3>
   <ol class="steps">
     <li>Create or open a project. The project folder holds all geometry files, brushes, stamps, and the <code>project_config.json</code>.</li>
-    <li>In the <strong>Geometry</strong> tab, draw or import polygon/curve shapes using the built-in editor.</li>
+    <li>In the <strong>Geometry</strong> tab, draw or import polygon, open-curve, and point geometry using the built-in editor.</li>
     <li>In the <strong>Sprites</strong> tab, create sprite instances and assign your geometry. Set position, scale, and rotation. Establish parent–child hierarchies if needed.</li>
     <li>In the <strong>Subdivision</strong> tab, define sets of subdivision parameters and assign them to sprites. Preview the subdivided result and bake when ready.</li>
     <li>In the <strong>Rendering</strong> tab, create renderer sets — choose fill/stroke modes or brush/stamp patterns. Assign each renderer set to the sprites that should use it.</li>
-    <li>Add animation via the <strong>Sprites inspector</strong> or the <strong>Timeline</strong>. Use drivers (noise, oscillator, keyframe) for each property you want to animate.</li>
+    <li>Add animation via the <strong>Sprites inspector</strong>, <strong>Rendering inspector</strong>, or the <strong>Timeline</strong>. Use drivers for sprite transforms, camera motion, renderer colours, stroke width, and renderer opacity.</li>
     <li>Press <strong>Play</strong> (Space) to preview. Export as a still, SVG, or video from the toolbar.</li>
   </ol>
 
@@ -258,7 +273,7 @@
     <thead><tr><th>Folder / File</th><th>Contents</th></tr></thead>
     <tbody>
       <tr><td><code>project_config.json</code></td><td>All sprites, renderers, subdivision sets, global settings</td></tr>
-      <tr><td><code>polygonSets/</code></td><td>XML and JSON geometry files loaded by sprites</td></tr>
+      <tr><td><code>polygonSets/</code></td><td>JSON layered geometry files and legacy XML geometry files loaded by sprites</td></tr>
       <tr><td><code>brushes/</code></td><td>PNG brush pattern images</td></tr>
       <tr><td><code>stamps/</code></td><td>PNG stamp pattern images</td></tr>
       <tr><td><code>svgs/</code></td><td>Exported SVG wireframe files</td></tr>
@@ -286,7 +301,7 @@
   </ol>
 
   <h3 id="start-playback">Playback controls</h3>
-  <p>The toolbar at the top of the window contains the playback controls:</p>
+  <p>The toolbar at the top of the window contains the playback controls and the most frequently changed animation settings:</p>
   <table>
     <thead><tr><th>Control</th><th>Action</th></tr></thead>
     <tbody>
@@ -294,17 +309,21 @@
       <tr><td>■ Stop</td><td>Stop and return to frame 0</td></tr>
       <tr><td>⟳ Loop</td><td>Toggle loop-forever / play-once</td></tr>
       <tr><td>Frame counter</td><td>Displays the current frame number</td></tr>
+      <tr><td>Duration</td><td>Total frame count. Set to 0 to derive duration from the longest keyframe lane.</td></tr>
+      <tr><td>Animating</td><td>Master animation on/off toggle. When off, Play is disabled and the scene remains at the current static frame.</td></tr>
+      <tr><td>BG once</td><td>Draw the background once and composite animated layers on top when possible.</td></tr>
       <tr><td>Scrub bar</td><td>Drag to seek (enabled in Global settings)</td></tr>
+      <tr><td>Progress</td><td>During slow high-resolution renders, a percentage indicator appears on the right side of the tab bar.</td></tr>
     </tbody>
   </table>
 
-  <div class="tip"><strong>Tip:</strong> Enable the scrub bar in <strong>Global → Show Scrub Bar</strong> for a timeline slider beneath the toolbar. Dragging while playing pauses automatically and resumes when released.</div>
+  <div class="tip"><strong>Tip:</strong> The timeline ruler can also be used as a scrubber. Click or drag in the ruler area to move the playhead without starting playback.</div>
 </section>
 
 <!-- ────────────────────────────────────────────────── -->
 <section id="global">
   <h2>Global Tab</h2>
-  <p>The Global tab configures project-wide settings that affect the canvas, output quality, and playback behaviour.</p>
+  <p>The Global tab configures project-wide settings that affect the canvas, output quality, background, camera, and notes. Duration, Animating, and BG once now live beside the playback controls so they remain available from every tab.</p>
 
   <h3>Canvas</h3>
   <table>
@@ -321,8 +340,8 @@
     <thead><tr><th>Field</th><th>Description</th></tr></thead>
     <tbody>
       <tr><td>Background</td><td>Canvas background colour. RGBA — use alpha &lt; 1 for transparent still exports.</td></tr>
-      <tr><td>Border</td><td>Optional border drawn around the canvas edge.</td></tr>
-      <tr><td>Overlay</td><td>Colour composited over everything — useful for a global tint or fog effect.</td></tr>
+      <tr><td>Border</td><td>Optional border drawn around the canvas edge. Use the border width field to set thickness; width 0 disables the border.</td></tr>
+      <tr><td>Overlay</td><td>Colour composited over everything — useful for a global tint, veil, or alpha reduction. The default is black with 0 alpha, so it has no effect until edited.</td></tr>
     </tbody>
   </table>
 
@@ -331,9 +350,6 @@
     <thead><tr><th>Field</th><th>Description</th></tr></thead>
     <tbody>
       <tr><td>Target FPS</td><td>Frames per second for playback and video export.</td></tr>
-      <tr><td>Duration</td><td>Total frames. Set to 0 to derive duration from the longest keyframe lane.</td></tr>
-      <tr><td>Animating</td><td>Master animation on/off toggle. When off, always renders frame 0.</td></tr>
-      <tr><td>Draw BG once</td><td>Optimization: draw the background image once and composite animated layers on top.</td></tr>
       <tr><td>Show Scrub Bar</td><td>Reveals the seek slider beneath the playback toolbar.</td></tr>
     </tbody>
   </table>
@@ -341,8 +357,15 @@
   <h3>Background image</h3>
   <p>Drag in or select a PNG, JPEG, TIFF, BMP, or HEIC file to set a background image. Toggle <strong>Scale to canvas</strong> to stretch it to fill the canvas, or leave it at native resolution.</p>
 
-  <h3>3-D mode</h3>
-  <p>Enable <strong>3-D</strong> to activate the perspective camera. Set a <strong>View Angle</strong> in degrees (typical range 30°–90°) to control the field of view. Camera pan, zoom, and rotation can be animated via the Timeline.</p>
+  <h3>Camera</h3>
+  <p>The camera is a viewport transform applied after all sprite, subdivision, and renderer animation. The Global inspector exposes two static camera settings; the animated camera lanes (tracking, pan, zoom, rotation) live in the Timeline.</p>
+  <table>
+    <thead><tr><th>Field</th><th>Description</th></tr></thead>
+    <tbody>
+      <tr><td>Enabled</td><td>Activates the animated camera system. When off, the viewport is fixed at the default world-centre view.</td></tr>
+      <tr><td>Perspective</td><td>Controls the strength of the 2.5D depth/parallax effect. <strong>0 = flat</strong> (no effect). A value around <code>0.003</code> gives a gentle parallax; <code>0.01</code> is more dramatic. See <a href="#sprites-depth">Depth &amp; Parallax</a>.</td></tr>
+    </tbody>
+  </table>
 
   <h3>Notes</h3>
   <p>A plain-text editor for project-level notes — algorithm descriptions, colour palette references, or render instructions. Not exported.</p>
@@ -368,8 +391,17 @@
     </tbody>
   </table>
 
+  <h3>Quick setup</h3>
+  <p>Quick setup creates a working pipeline from a geometry source without requiring separate dialogs for every hidden shape and shape-set object. Shape sets and shapes still exist internally, but the user-facing workflow concentrates on geometry, subdivision, sprites, render sets, and renderers.</p>
+  <ul>
+    <li>Suggested names are generated automatically using concise suffixes: <code>SubSet</code>, <code>SprtSet</code>, <code>RenSet</code>, and <code>Ren</code>.</li>
+    <li>Subdivision, sprite, renderer set, and renderer fields are dropdowns. You can accept the suggested name or choose an existing item in the project.</li>
+    <li>If the geometry is not subdividable, the subdivision field shows <strong>None</strong>. Polygonal geometry can also be deliberately assigned <strong>None</strong> when subdivision is not wanted.</li>
+    <li>Make Pipeline creates the necessary behind-the-scenes links but leaves you in the current tab. A visual status signal confirms that the pipeline has been built.</li>
+  </ul>
+
   <h3 id="geometry-editor">Geometry Editor</h3>
-  <p>The editor opens as an overlay covering the canvas. It provides a full set of vector-drawing tools.</p>
+  <p>The editor opens as an overlay covering the canvas. It provides a full set of vector-drawing tools for layered JSON geometry. The editor title bar includes a <strong>Default Geometry View</strong> button to return to the normal geometry preview.</p>
 
   <div class="diagram">
     <svg width="520" height="140" viewBox="0 0 520 140" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -397,70 +429,151 @@
     <figcaption>Geometry editor layout — tool bar, canvas, and layers panel</figcaption>
   </div>
 
-  <h4>Drawing tools</h4>
-  <table>
-    <thead><tr><th>Tool</th><th>Description</th></tr></thead>
+  <h4>Create controls</h4>
+  <p>The Create section is for placing new geometry on the active editable layer. Creation tools stay active where repeated use is expected, so you can draw several points, curves, or mesh extensions without reselecting the tool each time.</p>
+  <table class="control-table">
+    <thead><tr><th>Icon / Tool</th><th>Description</th></tr></thead>
     <tbody>
-      <tr><td>Create Points</td><td>Click to place standalone control points.</td></tr>
-      <tr><td>Points</td><td>Select and drag existing anchor points.</td></tr>
-      <tr><td>Edges</td><td>Select and manipulate Bézier segments and control handles.</td></tr>
-      <tr><td>Open Curve</td><td>Draw open (non-closed) Bézier paths by clicking anchor positions.</td></tr>
-      <tr><td>Polygon</td><td>Draw closed Bézier polygons. Click to add anchors, double-click to close.</td></tr>
-      <tr><td>Point By Point</td><td>Manual vertex-by-vertex polygon entry with precise placement.</td></tr>
-      <tr><td>Freehand</td><td>Draw with the mouse or stylus — pressure data is recorded and used in SVG export.</td></tr>
-      <tr><td>Mesh Extend</td><td>Extend an edge outward — shows a live preview as you drag. Confirm anchors to commit.</td></tr>
-      <tr><td>Knife</td><td>Draw a cut line across polygons to split them. Toggle to cut all visible layers.</td></tr>
-      <tr><td>Extrude (Displacement)</td><td>Offset-extrude selected edges by a fixed distance.</td></tr>
-      <tr><td>Extrude (Scale)</td><td>Proportionally scale-extrude selected edges.</td></tr>
+      <tr><td><span class="icon-key">⊙</span>Point</td><td>Click to create standalone points. Points can render directly, or act as stamp positions for image-based rendering. The point tool remains active for repeated placement.</td></tr>
+      <tr><td><span class="icon-key">⬯</span>Oval</td><td>Create an algorithmic oval. Loom treats it as closed polygon geometry for subdivision and rendering, but it can retain parametric controls while edited.</td></tr>
+      <tr><td><span class="icon-key">☆</span>Regular polygon</td><td>Create algorithmic regular polygons and stars. Sides, radius, inner radius, and rotation are editable while the polygon remains parametric.</td></tr>
+      <tr><td><span class="icon-key">⌁</span>Point-by-point</td><td>Click anchors only; Loom infers Bézier control points between anchors. Finalise as a closed polygon or open curve using the buttons on the same row.</td></tr>
+      <tr><td><span class="icon-key">▣</span>Finalise polygon</td><td>Closes the current point-by-point draft or mesh draft as a closed polygon. In mesh mode, <kbd>P</kbd> performs the same commit.</td></tr>
+      <tr><td><span class="icon-key">⌒</span>Finalise open curve</td><td>Finishes a point-by-point draft as an open curve instead of closing it.</td></tr>
+      <tr><td><span class="icon-key">⌗</span>Mesh build</td><td>Extend polygonal meshes from existing edges. Drag the red edge-centre affordance to create provisional geometry; release to keep extending; press <kbd>P</kbd> when the whole new polygon is ready.</td></tr>
+      <tr><td><span class="icon-key">△</span>Fill triangle</td><td>Build a triangle from two selected connected edges where the opening is unambiguous.</td></tr>
+      <tr><td><span class="icon-key">□</span>Fill quad</td><td>Build a quad from two selected connected edges. This is the preferred mesh-fill path when you are filling a four-sided opening.</td></tr>
+      <tr><td><span class="icon-key">▧</span>Fill hole</td><td>Build a polygon from a selected closed boundary of surrounding edges.</td></tr>
+      <tr><td><span class="icon-key">✎</span>Freehand</td><td>Draw open curves or closed shapes with a mouse or stylus. Pressure is recorded when available. The detail slider controls simplification/sampling density.</td></tr>
+      <tr><td><span class="icon-key">⌫</span>Clear draft</td><td>Discard the current point-by-point or creation draft without changing saved geometry.</td></tr>
     </tbody>
   </table>
 
-  <h4>Canvas navigation</h4>
-  <ul>
-    <li>Use the <strong>+/−</strong> zoom buttons to double or halve the view scale.</li>
-    <li>Enable the <strong>Grid</strong> at three detail levels: Quadrants, Standard, and Fine.</li>
-    <li>Toggle <strong>Control Points</strong> to show or hide Bézier handles.</li>
-    <li>Use the <strong>Centre</strong> button to re-center the view on the geometry.</li>
-  </ul>
-
-  <h4>Selection and editing</h4>
-  <ul>
-    <li>Click to select individual points or segments; drag a region to multi-select.</li>
-    <li><strong>Anchor-only mode</strong> hides control handles so you edit only anchor positions.</li>
-    <li><strong>Auto-weld</strong> merges nearby points automatically (configurable tolerance).</li>
-    <li><strong>Undo / Redo</strong> via the toolbar buttons or standard keyboard shortcuts.</li>
-    <li><strong>Copy / Paste</strong> duplicates geometry relative to centroid position.</li>
-  </ul>
-
-  <h4>Transform pivot modes</h4>
-  <p>When transforming selected geometry, choose the pivot point:</p>
-  <table>
-    <thead><tr><th>Mode</th><th>Description</th></tr></thead>
+  <h4>Edit and selection controls</h4>
+  <table class="control-table">
+    <thead><tr><th>Icon / Control</th><th>Description</th></tr></thead>
     <tbody>
-      <tr><td>Local centre</td><td>Pivot around the bounding-box centre of the selection.</td></tr>
-      <tr><td>Common centre</td><td>Pivot around the centroid of all visible geometry.</td></tr>
-      <tr><td>Absolute centre</td><td>Pivot around the canvas origin (0, 0).</td></tr>
+      <tr><td><span class="icon-key">⊙</span>Points</td><td>Select and edit anchors, controls, and standalone points. Click selects the full welded/coincident stack at that location; rubber-band selection captures all points inside the rectangle. Drag selected point groups from inside their selection bounds.</td></tr>
+      <tr><td><span class="icon-key">⌖</span>Anchor-only</td><td>Move selected anchors without dragging their attached control points. Leave off when you want anchor movement to carry the handles with it.</td></tr>
+      <tr><td><span class="icon-key">─</span>Edges</td><td>Select and edit Bézier segments. Rubber-band selects edge midpoints. Drag selected edge groups from inside their selection bounds.</td></tr>
+      <tr><td><span class="icon-key">⌒</span>Open curves</td><td>Select and move complete open-curve objects.</td></tr>
+      <tr><td><span class="icon-key">□</span>Polygons</td><td>Select and move complete closed polygons. Selected polygons fill lightly to show object-level selection.</td></tr>
+      <tr><td><span class="icon-key">〽</span>Pressure Trace</td><td>Trace over selected geometry to add or replace pressure data after the shape has already been created.</td></tr>
+      <tr><td><span class="icon-key">⌦</span>Clear pressure</td><td>Remove stored pressure data from selected geometry so it can be rendered normally or traced again.</td></tr>
+      <tr><td><span class="icon-key">✂</span>Cut</td><td>Standard cut operation for selected geometry objects.</td></tr>
+      <tr><td><span class="icon-key">⧉</span>Copy / Paste</td><td>Copy selected geometry and paste it at the last click position or with a small visible offset.</td></tr>
+      <tr><td><span class="icon-key">⌖</span>Centre</td><td>Move selected geometry so its combined centre aligns with the grid origin. If nothing is selected, active-layer geometry is centred.</td></tr>
+      <tr><td><span class="icon-key">⚓</span>Snap anchors</td><td>Snap selected anchors to the finest grid spacing while leaving controls untouched.</td></tr>
+      <tr><td><span class="icon-key">⊙</span>Snap points</td><td>Snap all selected points to the finest grid spacing. If nothing is selected, all active-layer points are snapped.</td></tr>
+      <tr><td><span class="icon-key">◉</span>Reset controls</td><td>Return selected shape control points to their inferred straight-line positions. This is limited to selected shapes to avoid accidental global resets.</td></tr>
+      <tr><td><span class="icon-key">↶ ↷</span>Undo / Redo</td><td>Step through recent geometry edits.</td></tr>
+    </tbody>
+  </table>
+
+  <h4>Selection behavior</h4>
+  <ul>
+    <li>The edit modes are mutually exclusive: points, edges, open curves, and polygons. The active mode is highlighted.</li>
+    <li>Hold <kbd>Shift</kbd> while clicking to add to the current selection. Hold <kbd>⌘</kbd> while clicking to toggle/remove from it.</li>
+    <li>Point clicks are stack-aware: when overlapping welded points sit in the same location, selecting one selects the stack so mesh corners stay coherent.</li>
+    <li>Rubber-band point selection captures all points in the rectangle, including overlapping welded stacks. Rubber-band edge selection selects edges by their midpoints.</li>
+    <li>For point and edge groups, movement begins only when the drag starts inside the overall selected bounds. Clicking outside those bounds drops the selection unless you drag a new rubber-band rectangle.</li>
+    <li>Scaling and rotation use the same selected geometry path as canvas dragging, so whole objects, edges, and point groups can all be transformed.</li>
+  </ul>
+
+  <h4>Weld controls</h4>
+  <table class="control-table">
+    <thead><tr><th>Icon / Control</th><th>Description</th></tr></thead>
+    <tbody>
+      <tr><td><span class="icon-key">☑</span>Auto Weld</td><td>When enabled, drag-time candidate welds are detected and highlighted. Matching candidates are committed on mouse release.</td></tr>
+      <tr><td><span class="icon-key">🔗+</span>Weld selected</td><td>Weld selected point stacks or selected edge pairs. Point welding snaps the selected points to their average position.</td></tr>
+      <tr><td><span class="icon-key">🔗</span>Weld adjacent</td><td>Search visible editable geometry for adjacent edge pairs and weld them. The tolerance slider controls how strict this search is.</td></tr>
+      <tr><td><span class="icon-key">▭</span>Tolerance</td><td>At the far left, matching is very strict; moving right accepts looser endpoint, midpoint, and direction matches.</td></tr>
+      <tr><td><span class="icon-key">✹</span>Explode / unweld</td><td>Break weld links on selected points, edges, or polygons. Geometry does not move; only the weld registry is changed.</td></tr>
+    </tbody>
+  </table>
+  <p>Welded editable edges draw purple and welded anchors draw pink-purple. Inactive or non-editable layer geometry remains grey, including welded geometry, so the current editing focus is clear.</p>
+
+  <h4>Multiply and cut controls</h4>
+  <table class="control-table">
+    <thead><tr><th>Icon / Control</th><th>Description</th></tr></thead>
+    <tbody>
+      <tr><td><span class="icon-key">⧉</span>Duplicate</td><td>Duplicate selected polygons, open curves, or points and keep the copy selected.</td></tr>
+      <tr><td><span class="icon-key">▰</span>Knife</td><td>Drag a cut line through polygons or open curves. The default cuts only the active editable layer.</td></tr>
+      <tr><td><span class="icon-key">▱▰▱</span>All visible layers</td><td>Adjunct to the Knife tool. When enabled, the knife cuts through all visible layers instead of only the active layer.</td></tr>
+      <tr><td><span class="icon-key">↗</span>Displacement extrude</td><td>Extrude selected edges, polygons, or open curves by dragging a displaced copy and stitching quads back to the original.</td></tr>
+      <tr><td><span class="icon-key">⇱</span>Scale extrude</td><td>Extrude selected geometry as an outer or inner ring by dragging right/up or left/down.</td></tr>
+    </tbody>
+  </table>
+  <p>Knife operations preserve weld links where matching cut points remain. Selecting the two matching internal edges created by a polygon cut and pressing Delete heals the cut by merging the adjacent polygons.</p>
+
+  <h4>Transform controls</h4>
+  <table class="control-table">
+    <thead><tr><th>Control</th><th>Description</th></tr></thead>
+    <tbody>
+      <tr><td><span class="icon-key">⇆</span>Flip H</td><td>Flip selected geometry horizontally around the current transform pivot.</td></tr>
+      <tr><td><span class="icon-key">⇅</span>Flip V</td><td>Flip selected geometry vertically around the current transform pivot.</td></tr>
+      <tr><td>Scale Axis</td><td>Choose whether the scale slider affects X and Y together, X only, or Y only.</td></tr>
+      <tr><td>Pivot</td><td><strong>Local</strong> and <strong>Common</strong> use the selection centre; <strong>Canvas</strong> uses the absolute origin.</td></tr>
+      <tr><td>Scale slider</td><td>Live scale transform. The slider returns to neutral after release.</td></tr>
+      <tr><td>Rotate slider</td><td>Live rotation transform. The slider returns to neutral after release.</td></tr>
+    </tbody>
+  </table>
+
+  <h4>View controls</h4>
+  <table class="control-table">
+    <thead><tr><th>Icon / Control</th><th>Description</th></tr></thead>
+    <tbody>
+      <tr><td><span class="icon-key">＋</span>Zoom in</td><td>Increase the editor view scale.</td></tr>
+      <tr><td><span class="icon-key">−</span>Zoom out</td><td>Decrease the editor view scale.</td></tr>
+      <tr><td><span class="icon-key">✋</span>Pan view</td><td>Drag the canvas to move the editor view without moving geometry.</td></tr>
+      <tr><td><span class="icon-key">#</span>Grid</td><td>Show or hide the grid. The grid detail menu offers Quadrants, Standard, and Fine views.</td></tr>
+      <tr><td><span class="icon-key">⊙</span>Controls</td><td>Show or hide Bézier control points.</td></tr>
+      <tr><td><span class="icon-key">▧</span>Reference image</td><td>Load a greyed-out background image for tracing or mesh construction. Adjust opacity, toggle visibility, or clear it. Reference images are never rendered.</td></tr>
+    </tbody>
+  </table>
+  <p>Snap operations always use the finest internal grid spacing, even when the visible grid is set to Quadrants or Standard.</p>
+
+  <h4>Delete and File controls</h4>
+  <table class="control-table">
+    <thead><tr><th>Icon / Control</th><th>Description</th></tr></thead>
+    <tbody>
+      <tr><td><span class="icon-key">⌫</span>Delete selected</td><td>Delete selected geometry. Deleting a polygon removes it. Deleting a polygon anchor replaces its two adjoining edges with one edge. Deleting one polygon edge converts that polygon to an open curve. Selecting two matching internal cut edges and deleting heals the cut into one polygon.</td></tr>
+      <tr><td><span class="icon-key">⌧</span>Delete all</td><td>Remove all geometry from the active editable layer.</td></tr>
+      <tr><td>Name</td><td>Rename the current geometry document.</td></tr>
+      <tr><td><span class="icon-key">SVG</span>Export SVG</td><td>Save the active layer's raw geometry as an SVG wireframe to the project's <code>svgs/</code> folder.</td></tr>
+      <tr><td><span class="icon-key">○</span>Save state</td><td>The small circle beside Save is empty when unchanged, orange when there are unsaved edits, and green immediately after saving.</td></tr>
+      <tr><td><span class="icon-key">💾</span>Save</td><td>Persist the layered JSON document back to the project. Leaving the editor or switching tabs warns only when layers or geometry have unsaved changes.</td></tr>
     </tbody>
   </table>
 
   <h3 id="geometry-layers">Layers</h3>
   <p>Each geometry document supports multiple named layers. Use layers to separate shape groups — for example, keeping outline polygons on one layer and detail curves on another.</p>
   <ul>
-    <li>Click a layer to make it active (new geometry is drawn on the active layer).</li>
-    <li>Toggle the eye icon to show/hide a layer; toggle the pencil icon to lock/unlock editing.</li>
+    <li>Click a layer to make it active. By default this gives that layer focus: it remains editable and fully coloured, while other layers become visible but non-editable grey context.</li>
+    <li>Toggle the pencil icon to make an additional non-selected layer editable. This is useful when intentionally working across multiple layers.</li>
+    <li>Toggle the eye icon to show or hide a layer entirely.</li>
     <li>Double-click a layer name to rename it.</li>
-    <li>Add or remove layers with the <strong>+</strong> / <strong>−</strong> buttons in the layers panel.</li>
+    <li>Add, rename, duplicate, delete, and reorder layers with the layer controls.</li>
+    <li>Layered JSON is the source of truth. Pipeline targets can still address individual layers for subdivision, sprite, and rendering setup without losing the full editable layered document.</li>
   </ul>
 
-  <h3>File section (inspector)</h3>
-  <table>
-    <thead><tr><th>Control</th><th>Action</th></tr></thead>
-    <tbody>
-      <tr><td>Name</td><td>Document name used as the SVG export stem and display label.</td></tr>
-      <tr><td>Export (folder icon)</td><td>Save the active layer's geometry as an SVG wireframe to the project's <code>svgs/</code> folder.</td></tr>
-      <tr><td>Save (save icon)</td><td>Persist the document back to its <code>polygonSets/</code> JSON file.</td></tr>
-    </tbody>
-  </table>
+  <h3 id="geometry-pressure">Pressure sensitivity</h3>
+  <p>Loom can store pressure samples on freehand and traced geometry. Pressure data is used by SVG export and brush rendering to create hand-drawn variation in stroke weight and opacity. Geometry that contains pressure data is visually marked in the editor so it is clear which shapes carry pressure information.</p>
+
+  <h4>Creating pressure data</h4>
+  <ul>
+    <li><strong>Freehand drawing</strong> records pressure automatically when the input device provides it. If no device pressure is available, Loom still records a usable default profile.</li>
+    <li><strong>Pressure Trace</strong> lets you post-add pressure to geometry created by points or point-by-point tools. Select a shape or edge, activate Pressure Trace, then trace along the relevant path.</li>
+    <li>Pressure tracing samples densely along the path so point-by-point geometry can acquire convincing variation rather than a simple straight interpolation.</li>
+    <li>Pressure can be discarded from selected geometry and re-traced if the result is not right.</li>
+  </ul>
+
+  <h4>Closed pressure-sensitive shapes</h4>
+  <p>Freehand strokes can be finalised as closed polygons while retaining their pressure profile. Pressure remains attached to the path rather than being discarded when the shape becomes a closed polygon. This makes it possible to draw closed, pressure-sensitive regions and then feed them into subdivision and rendering.</p>
+
+  <h4>Pressure and subdivision</h4>
+  <p>When a pressure-sensitive polygon is subdivided, children can receive pressure in different ways from the Subdivision tab. See <a href="#subdivision-pressure">Subdivision Pressure</a> for the current modes.</p>
+
 </section>
 
 <!-- ────────────────────────────────────────────────── -->
@@ -504,11 +617,78 @@
     <thead><tr><th>Section</th><th>Contents</th></tr></thead>
     <tbody>
       <tr><td>Sprite</td><td>Name, renderer set, subdivision set</td></tr>
-      <tr><td>Transform</td><td>X/Y position, X/Y scale, rotation in degrees</td></tr>
-      <tr><td>Animation</td><td>Per-property animation drivers (see <a href="#animation">Animation</a>)</td></tr>
+      <tr><td>Transform</td><td>X/Y position, X/Y scale, rotation in degrees, depth (see below)</td></tr>
+      <tr><td>Animation</td><td>Per-property animation drivers, including position, scale, rotation, morph, shape index, and sprite opacity (see <a href="#animation">Animation</a>)</td></tr>
       <tr><td>Hierarchy</td><td>Parent selector, P/R/S inherit toggles</td></tr>
     </tbody>
   </table>
+
+  <div class="note">Sprite opacity fades the whole sprite and all renderers assigned to it. Renderer opacity, in the Rendering tab, fades one renderer layer inside a multi-renderer set.</div>
+
+  <h3 id="sprites-depth">Depth &amp; Parallax</h3>
+  <p>Each sprite has a <strong>Depth</strong> value in its Transform section. Combined with the <strong>Perspective</strong> setting in the Global tab Camera section, depth creates a 2.5D parallax effect: sprites at different depths move at different rates when the camera pans or zooms, giving a sense of three-dimensional space without changing the underlying 2D geometry.</p>
+
+  <div class="diagram">
+    <svg width="480" height="140" viewBox="0 0 480 140" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <!-- background layer -->
+      <rect x="30" y="16" width="420" height="26" rx="3" fill="#2a2a2a" stroke="#444" stroke-width="1"/>
+      <text x="44" y="33" font-size="10" fill="#888" font-family="-apple-system">Background  depth 6</text>
+      <rect x="340" y="21" width="80" height="16" rx="2" fill="#1a3a1a" stroke="#2a6a2a" stroke-width="1"/>
+      <text x="380" y="32" font-size="9" fill="#4a9a4a" text-anchor="middle" font-family="-apple-system">sprite</text>
+
+      <!-- midground layer -->
+      <rect x="30" y="56" width="420" height="26" rx="3" fill="#2d2d2d" stroke="#555" stroke-width="1"/>
+      <text x="44" y="73" font-size="10" fill="#999" font-family="-apple-system">Midground  depth 2</text>
+      <rect x="270" y="61" width="80" height="16" rx="2" fill="#1a2a3a" stroke="#2a4a6a" stroke-width="1"/>
+      <text x="310" y="72" font-size="9" fill="#4a7aaa" text-anchor="middle" font-family="-apple-system">sprite</text>
+
+      <!-- focal plane -->
+      <rect x="30" y="96" width="420" height="26" rx="3" fill="#252526" stroke="#0e7fd4" stroke-width="1" stroke-dasharray="4,2"/>
+      <text x="44" y="113" font-size="10" fill="#0e7fd4" font-family="-apple-system">Focal plane  depth 0</text>
+      <rect x="180" y="101" width="80" height="16" rx="2" fill="#1a1a3a" stroke="#0e7fd4" stroke-width="1"/>
+      <text x="220" y="112" font-size="9" fill="#0e7fd4" text-anchor="middle" font-family="-apple-system">sprite</text>
+
+      <!-- foreground layer -->
+      <rect x="30" y="136" width="420" height="26" rx="3" fill="#2d2a2a" stroke="#664" stroke-width="1"/>
+      <text x="44" y="153" font-size="10" fill="#998" font-family="-apple-system" style="display:none">Foreground</text>
+
+      <!-- camera icon -->
+      <circle cx="450" cy="109" r="10" fill="#0e7fd4" opacity="0.2" stroke="#0e7fd4" stroke-width="1"/>
+      <text x="450" y="113" font-size="10" fill="#0e7fd4" text-anchor="middle" font-family="-apple-system">⌖</text>
+
+      <!-- parallax arrows -->
+      <defs>
+        <marker id="parr" markerWidth="7" markerHeight="7" refX="6" refY="3" orient="auto">
+          <path d="M0,0 L0,6 L7,3 z" fill="#666"/>
+        </marker>
+        <marker id="parr2" markerWidth="7" markerHeight="7" refX="6" refY="3" orient="auto">
+          <path d="M0,0 L0,6 L7,3 z" fill="#0e7fd4"/>
+        </marker>
+      </defs>
+      <!-- bg arrow (small) -->
+      <line x1="416" y1="29" x2="434" y2="29" stroke="#444" stroke-width="1.5" marker-end="url(#parr)"/>
+      <!-- mid arrow (medium) -->
+      <line x1="408" y1="69" x2="434" y2="69" stroke="#666" stroke-width="1.5" marker-end="url(#parr)"/>
+      <!-- focal arrow (full) -->
+      <line x1="396" y1="109" x2="434" y2="109" stroke="#0e7fd4" stroke-width="1.5" marker-end="url(#parr2)"/>
+    </svg>
+    <figcaption>Sprites at greater depth move less with the camera — creating parallax</figcaption>
+  </div>
+
+  <h4>How depth works</h4>
+  <p>The depth value scales each sprite's effective camera zoom and pan offset by a <em>depth factor</em>: <code>f = 1 / (1 + depth × perspectiveStrength)</code>. A sprite at depth 0 always uses the camera transform unchanged (the focal plane). Positive depth values make sprites appear smaller and lag behind camera movement; negative values make them appear larger and move more than the camera.</p>
+
+  <h4>Draw order</h4>
+  <p>Sprites are automatically drawn back-to-front based on their depth — the sprite with the greatest depth value is drawn first (furthest away), and the most negative depth is drawn last (on top). This means you do not need to manually order sprites to get correct occlusion between depth layers.</p>
+
+  <h4>Quick setup</h4>
+  <ol class="steps">
+    <li>In the Global tab, set <strong>Camera → Enabled</strong> on and enter a <strong>Perspective</strong> value — start with <code>0.003</code>.</li>
+    <li>In the Sprites tab, select each sprite and set its <strong>Depth</strong> in the Transform section. Use <code>0</code> for the focal-plane layer, positive values (e.g. <code>3</code>, <code>6</code>) for background sprites, and negative values (e.g. <code>-1</code>) for foreground sprites.</li>
+    <li>Animate the camera <strong>Pan X/Y</strong> in the Timeline. Background sprites will drift more slowly than focal-plane sprites, creating a parallax sense of depth.</li>
+  </ol>
+
+  <div class="tip"><strong>Tip:</strong> Camera zoom animation also creates depth — zooming in makes background sprites grow more slowly than focal-plane sprites, giving a push-in feel. Combine with pan for a full parallax camera move.</div>
 </section>
 
 <!-- ────────────────────────────────────────────────── -->
@@ -565,10 +745,18 @@
   <ol class="steps">
     <li>Click <strong>+</strong> in the Sets toolbar to create a new subdivision set and give it a name.</li>
     <li>Click <strong>+</strong> in the Parameters toolbar to add the first algorithm to the set.</li>
-    <li>Select the parameter row and adjust its settings in the inspector on the right: algorithm type, ratios, inset, visibility rules, and optional PTW/PTP geometric transforms.</li>
+    <li>Select the parameter row and adjust its settings in the inspector on the right: algorithm type, ratios, inset, visibility rules, pressure handling, and optional PTW/PTP geometric transforms.</li>
     <li>Click the <strong>eye</strong> icon next to the set to preview the subdivided result on the canvas — the sprites assigned to this set update live.</li>
     <li>When satisfied, click <strong>Apply</strong> in the Apply Bar to commit the set assignment to the selected sprite, or use the bake button to write the subdivided geometry to a permanent file.</li>
   </ol>
+
+  <h4>Set and parameter controls</h4>
+  <ul>
+    <li>The bottom toolbar is grouped into set controls, parameter controls, and bake/export controls.</li>
+    <li>Subdivision parameters can be renamed with the angled pencil icon. Concise names make long recursive chains easier to read.</li>
+    <li>PTW and PTP sections stay collapsed until opened. PTP remains disabled until explicitly enabled, preventing accidental point-level deformation.</li>
+    <li>The SVG button exports a wireframe vector file without baking; the bake button writes static subdivided geometry back into <code>polygonSets/</code>.</li>
+  </ul>
 
   <h3 id="subdivision-algorithms">Algorithms</h3>
   <table>
@@ -608,7 +796,7 @@
   </table>
 
   <h3 id="subdivision-ptw">PTW — Polygons Transform Whole</h3>
-  <p>PTW applies geometric transformations to entire output polygons as units. When enabled, each polygon produced by the subdivision step can be independently translated, scaled, and rotated by a randomly sampled amount within configurable ranges. This breaks the regularity of subdivided geometry, producing scattered, fragmented, or organically varied results from otherwise structured forms.</p>
+  <p>PTW applies geometric transformations to entire output polygons as units. When first enabled, geometry remains at its existing 100% scale until you deliberately adjust the transform values. Each polygon produced by the subdivision step can then be independently translated, scaled, and rotated by a randomly sampled amount within configurable ranges. This breaks the regularity of subdivided geometry, producing scattered, fragmented, or organically varied results from otherwise structured forms.</p>
 
   <table>
     <thead><tr><th>Parameter</th><th>Description</th></tr></thead>
@@ -747,6 +935,20 @@
     </tbody>
   </table>
 
+  <h3 id="subdivision-pressure">Pressure subdivision</h3>
+  <p>The Pressure section controls how pressure data from a pressure-sensitive source polygon is passed to children created by subdivision. If the source geometry has no pressure information, Loom skips the extra pressure mapping work.</p>
+  <table>
+    <thead><tr><th>Mode</th><th>Behaviour</th></tr></thead>
+    <tbody>
+      <tr><td>None</td><td>Do not pass pressure data to children. Useful when pressure should affect only the source outline.</td></tr>
+      <tr><td>Spatial</td><td>Map child pressure from the child polygon's position within the parent. Faint or heavy regions of the parent influence children in the same spatial area.</td></tr>
+      <tr><td>Inherit Path</td><td>Each child inherits the parent's pressure path as a reusable profile, preserving the overall hand-drawn rhythm rather than remapping by location.</td></tr>
+      <tr><td>Random</td><td>Assign pressure profiles from a library of sampled line-pressure behaviours. Use the 1–5 checkboxes to choose which pressure groups are allowed, from light/whispy through firm/vigorous.</td></tr>
+    </tbody>
+  </table>
+
+  <div class="note">Pressure subdivision is most useful with brush rendering, where pressure can vary stamp opacity, density, and visual weight. It can also affect SVG stroke-width variation.</div>
+
   <h3 id="subdivision-bake">Baking</h3>
   <p>Baking converts the live-subdivided polygon output into a static polygon file stored in <code>polygonSets/</code>. This is useful when you want to use subdivided geometry as input for a further subdivision pass, or when you want to lock in a particular result.</p>
   <ol class="steps">
@@ -767,6 +969,7 @@
   <table>
     <thead><tr><th>Mode</th><th>Behaviour</th></tr></thead>
     <tbody>
+      <tr><td>All</td><td>Draw every enabled renderer in the set, in list order. This is the normal mode for compositing fill, stroke, brush, and stamp layers together.</td></tr>
       <tr><td>Sequential</td><td>Renderers are applied in order — first renderer for frame 0, second for frame 1, etc.</td></tr>
       <tr><td>Random</td><td>A renderer is picked at random each frame. Optionally bias towards a named preferred renderer at a specified probability.</td></tr>
     </tbody>
@@ -780,14 +983,14 @@
       <tr><td>Stroked</td><td>Outline only, no fill. Controlled by <strong>Stroke Colour</strong> and <strong>Stroke Width</strong>.</td></tr>
       <tr><td>Filled</td><td>Solid fill, no outline. Controlled by <strong>Fill Colour</strong>.</td></tr>
       <tr><td>Filled + Stroked</td><td>Both fill and outline drawn simultaneously.</td></tr>
-      <tr><td>Brushed</td><td>Stroke is rendered using a custom brush PNG pattern. Stroke width controls brush scale.</td></tr>
+      <tr><td>Brushed</td><td>Stroke is rendered using a custom brush PNG pattern. Stroke width controls brush scale. Pressure-sensitive geometry can influence opacity and weight.</td></tr>
       <tr><td>Stenciled</td><td>A mask image is used to reveal or block the stroke/fill area.</td></tr>
       <tr><td>Stamped</td><td>A stamp PNG is tiled or placed along the polygon path with optional meander (random offset) for organic placement.</td></tr>
     </tbody>
   </table>
 
   <h3 id="rendering-brush">Brushes and stamps</h3>
-  <p>Brushes and stamps are small PNG images stored in <code>brushes/</code> and <code>stamps/</code> respectively. Each renderer in Brushed or Stamped mode holds a list of brush/stamp names with individual enable checkboxes.</p>
+  <p>Brushes and stamps are small PNG images stored in <code>brushes/</code> and <code>stamps/</code> respectively. Each renderer in Brushed or Stamped mode holds a list of brush/stamp names with individual enable checkboxes. New projects include default circle, soft-circle, and scatter brushes so brush rendering can be tested immediately.</p>
 
   <h4>Creating a brush or stamp</h4>
   <ol class="steps">
@@ -802,18 +1005,92 @@
   <h4>Meander (Stamped mode)</h4>
   <p>Meander adds random positional jitter to each stamp placement. Set <strong>Meander X</strong> and <strong>Meander Y</strong> for the maximum displacement in pixels. Set a <strong>Seed</strong> to get a reproducible random sequence.</p>
 
-  <h3>Colour and animation</h3>
-  <p>Renderer colours can be static RGBA values or animated via drivers:</p>
+  <h4>Progressive brush mode</h4>
+  <p>In Progressive mode, brush strokes can be drawn gradually across frames. With global animation enabled, the path advances from first polygon/edge toward last; in static rendering it draws the complete path.</p>
+
+  <h3 id="rendering-drivers">Colour, width, and opacity drivers</h3>
+  <p>Renderer properties can be static values or animated via drivers. Renderer drivers differ from sprite drivers: they affect only a specific renderer layer. This is especially useful when a renderer set uses Playback <strong>All</strong>.</p>
   <table>
     <thead><tr><th>Property</th><th>Animation driver support</th></tr></thead>
     <tbody>
-      <tr><td>Opacity</td><td>Yes — fade in/out, oscillate, keyframe.</td></tr>
-      <tr><td>Fill colour</td><td>Yes — animate RGBA over time.</td></tr>
-      <tr><td>Stroke colour</td><td>Yes — animate RGBA over time.</td></tr>
-      <tr><td>Stroke width</td><td>Yes — animate width over time (change amount driver).</td></tr>
+      <tr><td>Fill colour</td><td>Constant, Keyframe, Jitter, Noise, Oscillator — see <a href="#rendering-color-drivers">Colour Blend Modes</a>.</td></tr>
+      <tr><td>Stroke colour</td><td>Constant, Keyframe, Jitter, Noise, Oscillator — see <a href="#rendering-color-drivers">Colour Blend Modes</a>.</td></tr>
+      <tr><td>Stroke width</td><td>Yes — animate width over time using any scalar driver.</td></tr>
+      <tr><td>Renderer opacity</td><td>Yes — per-renderer alpha multiplier. Fades only this renderer layer, not the whole sprite.</td></tr>
       <tr><td>Hold length</td><td>Frames to keep geometry drawn before clearing (ghost/trail effect).</td></tr>
     </tbody>
   </table>
+
+  <h4>Internal renderer changes</h4>
+  <p>Fill colour, stroke colour, and stroke width changes can operate at different scales. <strong>Poly</strong> applies changes per subdivision child polygon; <strong>Sprite</strong> applies one value to the whole sprite; <strong>Global</strong> applies one value across the render. Random palette changes do not require global animation to be enabled when a static randomised result is desired.</p>
+
+  <h4>Sprite opacity vs renderer opacity</h4>
+  <table>
+    <thead><tr><th>Driver</th><th>Use when...</th></tr></thead>
+    <tbody>
+      <tr><td>Sprite opacity</td><td>You want to fade the whole visible sprite, including every renderer in its assigned renderer set.</td></tr>
+      <tr><td>Renderer opacity</td><td>You want to crossfade or fade only one layer, such as a brush texture over a fill, or a stroke over a stamped base.</td></tr>
+    </tbody>
+  </table>
+
+  <h3 id="rendering-color-drivers">Colour blend modes</h3>
+  <p>The <strong>Fill Colour Driver</strong> and <strong>Stroke Colour Driver</strong> sections support five modes. <strong>Constant</strong> and <strong>Keyframe</strong> work the same way as other drivers. The three new blend modes — <strong>Jitter</strong>, <strong>Noise</strong>, and <strong>Oscillator</strong> — each take two colours (<strong>Color A</strong> and <strong>Color B</strong>) and drive a blend value between them every frame.</p>
+
+  <div class="diagram">
+    <svg width="460" height="72" viewBox="0 0 460 72" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <!-- color A swatch -->
+      <rect x="30" y="24" width="28" height="28" rx="4" fill="#1a4a8a" stroke="#3a6ab0" stroke-width="1"/>
+      <text x="44" y="68" font-size="9" fill="#888" text-anchor="middle" font-family="-apple-system">Color A</text>
+      <!-- blend bar -->
+      <defs>
+        <linearGradient id="blendGrad" x1="0" y1="0" x2="1" y2="0">
+          <stop offset="0%" stop-color="#1a4a8a"/>
+          <stop offset="100%" stop-color="#c04040"/>
+        </linearGradient>
+      </defs>
+      <rect x="74" y="28" width="200" height="18" rx="3" fill="url(#blendGrad)" stroke="#444" stroke-width="0.5"/>
+      <!-- blend pointer — jitter snap -->
+      <line x1="130" y1="24" x2="130" y2="50" stroke="#f0c040" stroke-width="1.5"/>
+      <polygon points="126,22 134,22 130,26" fill="#f0c040"/>
+      <text x="130" y="62" font-size="8.5" fill="#f0c040" text-anchor="middle" font-family="-apple-system">jitter t</text>
+      <!-- blend pointer — noise -->
+      <line x1="190" y1="24" x2="190" y2="50" stroke="#5dc87a" stroke-width="1.5"/>
+      <polygon points="186,22 194,22 190,26" fill="#5dc87a"/>
+      <text x="190" y="62" font-size="8.5" fill="#5dc87a" text-anchor="middle" font-family="-apple-system">noise t</text>
+      <!-- blend pointer — oscillator -->
+      <line x1="250" y1="24" x2="250" y2="50" stroke="#0e7fd4" stroke-width="1.5"/>
+      <polygon points="246,22 254,22 250,26" fill="#0e7fd4"/>
+      <text x="250" y="62" font-size="8.5" fill="#0e7fd4" text-anchor="middle" font-family="-apple-system">osc t</text>
+      <!-- color B swatch -->
+      <rect x="288" y="24" width="28" height="28" rx="4" fill="#c04040" stroke="#e06060" stroke-width="1"/>
+      <text x="302" y="68" font-size="9" fill="#888" text-anchor="middle" font-family="-apple-system">Color B</text>
+      <!-- label -->
+      <text x="380" y="38" font-size="10" fill="#666" font-family="-apple-system">blend t ∈ [0,1]</text>
+    </svg>
+    <figcaption>All three blend modes compute a t value in [0,1] and interpolate between Color A and Color B</figcaption>
+  </div>
+
+  <table>
+    <thead><tr><th>Mode</th><th>How t is computed</th><th>Typical use</th></tr></thead>
+    <tbody>
+      <tr><td>Jitter</td><td>Random value each frame from a seeded hash. <strong>Range</strong> (0–0.5) controls the half-width of the window around the midpoint — 0.5 gives full [0,1] swings; 0.1 gives subtle variation.</td><td>Flickering neon, unstable glow, electric colour</td></tr>
+      <tr><td>Noise</td><td>Smooth continuous random walk. <strong>Amplitude</strong> controls the peak excursion from the midpoint (0.5 = full range). <strong>Period</strong> sets the frame interval between noise sample points — higher values give slower, lazier drift.</td><td>Organic colour breathing, slowly shifting haze, living colour fields</td></tr>
+      <tr><td>Oscillator</td><td>Periodic wave (sine, triangle, square, or sawtooth) normalised to [0,1]. <strong>Freq (Hz)</strong> sets cycles per second; <strong>Phase</strong> (0–1) offsets the wave start. Each sprite gets the same phase unless you also vary the sprite's animation seed.</td><td>Rhythmic pulsing between two colours, colour cycling, strobe fills</td></tr>
+    </tbody>
+  </table>
+
+  <h4>Setting up a colour blend driver</h4>
+  <ol class="steps">
+    <li>In the Rendering tab, select a renderer set and then a renderer within it.</li>
+    <li>Expand the <strong>Fill Colour Driver</strong> or <strong>Stroke Colour Driver</strong> section in the inspector.</li>
+    <li>Change the <strong>Mode</strong> picker from <em>Constant</em> to <em>Jitter</em>, <em>Noise</em>, or <em>Oscillator</em>.</li>
+    <li>Set <strong>Color A</strong> — this is the base colour the driver starts from (equivalent to the old constant value). Set <strong>Color B</strong> — the target colour at the other end of the blend.</li>
+    <li>Adjust the mode-specific parameters: <strong>Range</strong> / <strong>Amplitude</strong> / <strong>Freq</strong> and <strong>Phase</strong> as needed.</li>
+    <li>For Jitter and Noise, change <strong>Seed</strong> to differentiate sprites using the same renderer set — otherwise all sprites will produce identical colour values each frame.</li>
+  </ol>
+
+  <div class="tip"><strong>Tip:</strong> For a subtle organic breathing effect, use Noise with Amplitude 0.15 and Period 60. For a hard strobe, use Oscillator with a square wave and Freq 2 Hz. For a gentle pulse, use Oscillator with a sine wave and Freq 0.5 Hz.</div>
+  <div class="note">Jitter and Noise both use the sprite's index as part of their deterministic hash, so different sprites in the same scene will produce different random colour sequences even with the same Seed. The Seed parameter lets you offset those sequences further when you want correlated or uncorrelated groups.</div>
 
   <h3>Palette</h3>
   <p>The inspector offers a <strong>Palette</strong> section for managing named colour swatches. Palettes can be saved to a JSON file and imported into other projects. This allows colour schemes to be shared across projects without manually re-entering values.</p>
@@ -822,7 +1099,7 @@
 <!-- ────────────────────────────────────────────────── -->
 <section id="animation">
   <h2>Animation</h2>
-  <p>Loom animates sprite and renderer properties via <em>drivers</em> — self-contained generators that produce a value for each frame. Every animatable property (position, scale, rotation, opacity, morph amount, shape index) has its own driver.</p>
+  <p>Loom animates sprite, camera, and renderer properties via <em>drivers</em> — self-contained generators that produce a value for each frame. Sprite drivers affect the entire sprite; renderer drivers affect individual renderer layers inside a renderer set.</p>
 
   <h3 id="animation-drivers">Driver types</h3>
   <table>
@@ -837,7 +1114,7 @@
   </table>
 
   <h3 id="animation-timeline">Timeline</h3>
-  <p>The Timeline panel appears at the bottom of the window when a project is open. It shows keyframe lanes for every animated sprite property.</p>
+  <p>The Timeline panel appears at the bottom of the window when a project is open. It shows keyframe lanes for the camera, sprites, and renderer drivers associated with a selected sprite's renderer set. Renderer lanes use a slightly darker background so they are visually distinct from sprite transform lanes.</p>
 
   <div class="diagram">
     <svg width="520" height="90" viewBox="0 0 520 90" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -876,27 +1153,63 @@
 
   <h4>Working with keyframes</h4>
   <ul>
-    <li>Select a sprite and switch to the Keyframe driver in the Animation section of the inspector.</li>
-    <li>Click <strong>+</strong> to add a keyframe at the current frame. The value defaults to the current property value.</li>
+    <li>Select a sprite and switch to the Keyframe driver in the Animation section of the inspector, or select a renderer driver in the Rendering tab.</li>
+    <li>Click <strong>+</strong> to add a keyframe at the current playhead frame. The value defaults to the current interpolated property value.</li>
+    <li>Click in the ruler to move the playhead. Drag in the ruler to scrub.</li>
+    <li>Selecting a keyframe also moves the playhead to that keyframe.</li>
     <li>Drag a keyframe diamond horizontally to change its frame position.</li>
-    <li>Select a keyframe and edit its <strong>Frame</strong> and <strong>Value</strong> fields in the inspector.</li>
+    <li>Select a keyframe and edit its <strong>Frame</strong> and <strong>Value</strong> fields in the inspector. Sprite keyframes switch to the Sprites tab; renderer keyframes switch to the Rendering tab.</li>
+    <li>The matching driver row in the inspector highlights subtly when a keyframe from that lane is selected.</li>
     <li>Set the <strong>Easing</strong> per keyframe (Linear, Ease In, Ease Out, Ease In-Out, or a custom curve).</li>
     <li>Adjust the <strong>Loop Mode</strong> (None / Loop / Ping-Pong) on the driver to control what happens after the last keyframe.</li>
   </ul>
 
+  <h3 id="animation-editing">Timeline editing</h3>
+  <table>
+    <thead><tr><th>Action</th><th>How</th></tr></thead>
+    <tbody>
+      <tr><td>Select one keyframe</td><td>Click a diamond.</td></tr>
+      <tr><td>Add or remove from selection</td><td><kbd>Shift</kbd>-click a keyframe.</td></tr>
+      <tr><td>Rubber-band select</td><td>Drag across the timeline body to select keyframes across one or more lanes.</td></tr>
+      <tr><td>Select a full lane</td><td>Click the lane label to select all keyframes in that lane.</td></tr>
+      <tr><td>Delete selected</td><td>Press <kbd>Delete</kbd> or <kbd>Backspace</kbd>.</td></tr>
+      <tr><td>Copy selected</td><td>Press <kbd>⌘C</kbd>. Relative frame offsets are preserved.</td></tr>
+      <tr><td>Paste selected</td><td>Move the playhead to the insertion frame and press <kbd>⌘V</kbd>. Existing keyframes at matching target frames are replaced.</td></tr>
+      <tr><td>Undo / redo timeline edits</td><td>Use <kbd>⌘Z</kbd> and <kbd>⌘⇧Z</kbd> while the timeline is focused.</td></tr>
+    </tbody>
+  </table>
+
+  <h4>Renderer keyframe lanes</h4>
+  <p>Renderer lanes are shown beneath the sprite lanes for sprites that use renderer sets with animated renderer drivers. Current renderer lanes are <strong>Fill</strong>, <strong>Stroke</strong>, <strong>Width</strong>, and <strong>Opacity</strong>. The renderer opacity lane is a per-renderer alpha multiplier and is ideal for crossfading layers in Playback <strong>All</strong>.</p>
+
   <h4>Zoom and scroll</h4>
-  <p>Use the <strong>×1.5 / ÷1.5</strong> buttons to zoom the timeline ruler horizontally. Drag the timeline panel's top edge to resize it vertically (range 80–320 px).</p>
+  <p>Use the <strong>×1.5 / ÷1.5</strong> buttons to zoom the timeline ruler horizontally. The timeline lane list scrolls vertically when there are more rows than can fit. Drag the larger top grab area to resize the timeline vertically; it can open high enough to inspect dense sprite and renderer lane stacks.</p>
 
   <h3 id="animation-camera">Camera animation</h3>
-  <p>The Timeline has a dedicated <strong>Camera</strong> section with three keyframe lanes:</p>
+  <p>The Timeline has a dedicated <strong>Camera</strong> section with four keyframe lanes:</p>
   <table>
     <thead><tr><th>Lane</th><th>Effect</th></tr></thead>
     <tbody>
+      <tr><td>Tracking X / Y</td><td>Keeps the given world-space point centred in the viewport.</td></tr>
       <tr><td>Pan X / Y</td><td>Translates the viewport by the given pixel offsets.</td></tr>
       <tr><td>Zoom</td><td>Scales the viewport (1.0 = no zoom; 2.0 = 2× zoom).</td></tr>
       <tr><td>Rotation</td><td>Rotates the entire canvas around its centre.</td></tr>
     </tbody>
   </table>
+  <p>Camera animation is evaluated from the same global frame clock as sprite and renderer drivers. It is applied as a final viewport transform after sprite transforms, morph/shape drivers, subdivision, and renderer drivers, so it can be combined with those animation systems.</p>
+
+  <h3 id="animation-parallax">Depth &amp; Parallax with camera animation</h3>
+  <p>Camera animation becomes a depth-aware parallax system when sprites have non-zero <strong>Depth</strong> values and <strong>Perspective strength</strong> is set in the Global tab. The camera lanes in the Timeline remain the same — pan, zoom, tracking, and rotation — but each sprite now evaluates the camera transform through its own depth factor, so every layer moves at a different rate.</p>
+  <table>
+    <thead><tr><th>Camera lane</th><th>Effect with depth enabled</th></tr></thead>
+    <tbody>
+      <tr><td>Pan X / Y</td><td>The primary parallax driver. Background sprites (depth &gt; 0) move less; foreground sprites (depth &lt; 0) move more. The focal plane (depth 0) tracks the pan exactly.</td></tr>
+      <tr><td>Zoom</td><td>Creates a parallax scale effect. Background layers grow and shrink more slowly than the focal plane during a zoom move, reinforcing depth.</td></tr>
+      <tr><td>Tracking</td><td>Keeps the focal-plane point centred. Background sprites will not reach the tracking target exactly — they lag behind proportionally to their depth, which is physically correct.</td></tr>
+      <tr><td>Rotation</td><td>Applied uniformly across all depths — rotation is not depth-scaled.</td></tr>
+    </tbody>
+  </table>
+  <div class="note">Depth and perspective are purely a render-time transform — they do not affect geometry, subdivision, or the geometry editor. The underlying polygon coordinates are always in the flat 2D world.</div>
 
   <h3 id="animation-morph">Morph targets</h3>
   <p>Morphing smoothly interpolates a sprite's geometry between two states: the <em>base</em> geometry and a <em>morph target</em> geometry. The <strong>Morph Amount</strong> driver (0 = base, 1 = target) controls the blend.</p>
@@ -937,7 +1250,7 @@
     <li>Toggle <strong>Restart from beginning</strong> if the playhead should reset before export starts.</li>
     <li>Click <strong>Export…</strong>, choose a destination file, and wait for the progress indicator to complete.</li>
   </ol>
-  <div class="note">The exported video resolution is canvas size × Quality multiplier. ProRes 4444 produces larger files but preserves alpha and is better for compositing workflows.</div>
+  <div class="note">The exported video resolution is canvas size × Quality multiplier. Higher quality values increase render time and file size but do not change video duration or frame rate. If a 5-second video takes 30 seconds to render, it still exports as a 5-second video. ProRes 4444 produces larger files but preserves alpha and is better for compositing workflows.</div>
 
   <h3>Output folder</h3>
   <p>Click the <strong>folder</strong> icon in the toolbar to open the most recently used renders folder in Finder. Loom remembers the last export directory across sessions.</p>
@@ -957,6 +1270,11 @@
       <tr><td><kbd>⌘⇧Z</kbd></td><td>Redo (geometry editor)</td></tr>
       <tr><td><kbd>⌘C</kbd></td><td>Copy selected geometry</td></tr>
       <tr><td><kbd>⌘V</kbd></td><td>Paste geometry</td></tr>
+      <tr><td><kbd>Delete</kbd> / <kbd>Backspace</kbd></td><td>Delete selected geometry or selected timeline keyframes, depending on focus</td></tr>
+      <tr><td><kbd>Shift</kbd>-click</td><td>Add to selection in the Geometry Editor or Timeline</td></tr>
+      <tr><td><kbd>⌘</kbd>-click</td><td>Subtract from geometry selection</td></tr>
+      <tr><td><kbd>P</kbd></td><td>Finalise provisional mesh geometry as a polygon in Mesh build mode</td></tr>
+      <tr><td>Timeline ruler click/drag</td><td>Move or scrub the playhead</td></tr>
     </tbody>
   </table>
 </section>
@@ -967,13 +1285,13 @@
   <table>
     <thead><tr><th>Extension</th><th>Description</th></tr></thead>
     <tbody>
-      <tr><td><code>.json</code> (project)</td><td>Main project configuration including all sprites, renderers, subdivision sets, and global settings.</td></tr>
-      <tr><td><code>.json</code> (geometry)</td><td>Editable geometry document — layers, polygons, Bézier control points, and pressure data.</td></tr>
+      <tr><td><code>.json</code> (project)</td><td>Main project configuration including all sprites, renderers, renderer drivers, subdivision sets, camera settings, and global settings.</td></tr>
+      <tr><td><code>.json</code> (geometry)</td><td>Editable layered geometry document — layers, polygons, open curves, standalone points, algorithmic geometry metadata, Bézier control points, welds, and pressure data.</td></tr>
       <tr><td><code>.xml</code> (geometry)</td><td>Legacy polygon file format. Supported read-only in most contexts; bake output is also written as XML.</td></tr>
       <tr><td><code>.svg</code></td><td>Exported wireframe vector files — one path per polygon, stroke width modulated by pressure data.</td></tr>
       <tr><td><code>.png</code> (still)</td><td>Rasterised frame export at canvas × Quality resolution.</td></tr>
       <tr><td><code>.png</code> (brush/stamp)</td><td>Small brush or stamp pattern image, typically 16–256 px square.</td></tr>
-      <tr><td><code>.mp4</code> / <code>.mov</code></td><td>Video export — H.264/HEVC wrapped in MPEG-4, or ProRes 4444 in MOV container.</td></tr>
+      <tr><td><code>.mp4</code> / <code>.mov</code></td><td>Video export — H.264/HEVC wrapped in MPEG-4, or ProRes 4444 in MOV container. Quality multiplier affects frame resolution, not playback speed.</td></tr>
       <tr><td><code>.palette.json</code></td><td>Exported colour palette — a named array of RGBA swatches for use across projects.</td></tr>
     </tbody>
   </table>

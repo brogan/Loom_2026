@@ -34,6 +34,7 @@ enum StampEngine {
         viewTransform: ViewTransform,
         stampImages:   [String: CGImage],
         opacityState:  PaletteIndexState? = nil,
+        opacityMultiplier: Double = 1.0,
         using rng:     inout RNG
     ) {
         let images: [CGImage] = config.stampNames.compactMap { stampImages[$0] }
@@ -42,10 +43,12 @@ enum StampEngine {
         switch polygon.type {
         case .point:
             drawAtPoints(polygon, images: images, config: config, context: context,
-                         viewTransform: viewTransform, opacityState: opacityState, using: &rng)
+                         viewTransform: viewTransform, opacityState: opacityState,
+                         opacityMultiplier: opacityMultiplier, using: &rng)
         case .spline, .openSpline, .line:
             drawAlongEdges(polygon, images: images, config: config, context: context,
-                           viewTransform: viewTransform, opacityState: opacityState, using: &rng)
+                           viewTransform: viewTransform, opacityState: opacityState,
+                           opacityMultiplier: opacityMultiplier, using: &rng)
         default:
             break
         }
@@ -60,6 +63,7 @@ enum StampEngine {
         context:        CGContext,
         viewTransform:  ViewTransform,
         opacityState:   PaletteIndexState?,
+        opacityMultiplier: Double,
         using rng:      inout RNG
     ) {
         let useOpacityPalette = config.opacityChange.enabled
@@ -82,7 +86,7 @@ enum StampEngine {
             let rect = stampRect(img, scale: randScale)
 
             context.saveGState()
-            context.setAlpha(CGFloat(max(0, min(1, opacity))))
+            context.setAlpha(CGFloat(max(0, min(1, opacity * opacityMultiplier))))
             context.translateBy(x: CGFloat(screen.x + jitterX), y: CGFloat(screen.y + jitterY))
             context.scaleBy(x: 1, y: -1)   // counter Y-flip: context is Y-flipped by LoomEngine
             context.draw(img, in: rect)
@@ -106,6 +110,7 @@ enum StampEngine {
         context:        CGContext,
         viewTransform:  ViewTransform,
         opacityState:   PaletteIndexState?,
+        opacityMultiplier: Double,
         using rng:      inout RNG
     ) {
         let edges = BrushEdge.extractEdges(from: [polygon], viewTransform: viewTransform)
@@ -142,7 +147,7 @@ enum StampEngine {
                 stampIdx += 1
 
                 context.saveGState()
-                context.setAlpha(CGFloat(max(0, min(1, opacity))))
+                context.setAlpha(CGFloat(max(0, min(1, opacity * opacityMultiplier))))
                 context.translateBy(x: CGFloat(stampX), y: CGFloat(stampY))
                 if config.followTangent {
                     // Negate angle: tangent is in screen-space (Y-down), but the context

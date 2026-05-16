@@ -11,9 +11,10 @@ struct DoubleDriverEditor: View {
     let label: String
     @Binding var driver: DoubleDriver
     @Binding var isCollapsed: Bool
+    var isHighlighted: Bool = false
 
     var body: some View {
-        InspectorSection(label, isCollapsed: $isCollapsed) {
+        InspectorSection(label, isCollapsed: $isCollapsed, isHighlighted: isHighlighted) {
             InspectorField("Mode") {
                 Picker("", selection: $driver.mode) {
                     ForEach(DoubleDriver.Mode.allCases, id: \.self) { m in
@@ -100,9 +101,10 @@ struct VectorDriverEditor: View {
     let label: String
     @Binding var driver: VectorDriver
     @Binding var isCollapsed: Bool
+    var isHighlighted: Bool = false
 
     var body: some View {
-        InspectorSection(label, isCollapsed: $isCollapsed) {
+        InspectorSection(label, isCollapsed: $isCollapsed, isHighlighted: isHighlighted) {
             InspectorField("Mode") {
                 Picker("", selection: $driver.mode) {
                     ForEach(VectorDriver.Mode.allCases, id: \.self) { m in
@@ -313,9 +315,10 @@ struct ColorDriverEditor: View {
     let label: String
     @Binding var driver: ColorDriver
     @Binding var isCollapsed: Bool
+    var isHighlighted: Bool = false
 
     var body: some View {
-        InspectorSection(label, isCollapsed: $isCollapsed) {
+        InspectorSection(label, isCollapsed: $isCollapsed, isHighlighted: isHighlighted) {
             InspectorField("Mode") {
                 Picker("", selection: $driver.mode) {
                     ForEach(ColorDriver.Mode.allCases, id: \.self) { m in
@@ -328,6 +331,7 @@ struct ColorDriverEditor: View {
             switch driver.mode {
             case .constant:
                 LoomColorField(label: "Value", color: $driver.base)
+
             case .keyframe:
                 InspectorField("Loop") {
                     Picker("", selection: $driver.loopMode) {
@@ -343,6 +347,61 @@ struct ColorDriverEditor: View {
                     firstFrame: controller.currentTimelineFrame,
                     firstValue: driver.base
                 )
+
+            case .jitter:
+                LoomColorField(label: "Color A", color: $driver.base)
+                LoomColorField(label: "Color B", color: $driver.colorB)
+                InspectorField("Range") {
+                    FloatEntryField(value: $driver.range, width: 55, fractionDigits: 2)
+                    Text("0–0.5").font(.system(size: 10)).foregroundStyle(.tertiary)
+                }
+                InspectorField("Seed") {
+                    TextField("", value: $driver.seed, format: .number)
+                        .textFieldStyle(.squareBorder)
+                        .font(.system(size: 12, design: .monospaced))
+                        .frame(width: 50)
+                }
+
+            case .noise:
+                LoomColorField(label: "Color A", color: $driver.base)
+                LoomColorField(label: "Color B", color: $driver.colorB)
+                InspectorField("Amplitude") {
+                    FloatEntryField(value: $driver.amplitude, width: 55, fractionDigits: 2)
+                    Text("0–0.5").font(.system(size: 10)).foregroundStyle(.tertiary)
+                }
+                InspectorField("Period") {
+                    TextField("", value: $driver.period, format: .number)
+                        .textFieldStyle(.squareBorder)
+                        .font(.system(size: 12, design: .monospaced))
+                        .frame(width: 50)
+                    Text("frames").font(.system(size: 10)).foregroundStyle(.tertiary)
+                }
+                InspectorField("Seed") {
+                    TextField("", value: $driver.seed, format: .number)
+                        .textFieldStyle(.squareBorder)
+                        .font(.system(size: 12, design: .monospaced))
+                        .frame(width: 50)
+                }
+
+            case .oscillator:
+                LoomColorField(label: "Color A", color: $driver.base)
+                LoomColorField(label: "Color B", color: $driver.colorB)
+                InspectorField("Freq (Hz)") {
+                    FloatEntryField(value: $driver.freqHz, width: 55, fractionDigits: 3)
+                }
+                InspectorField("Phase") {
+                    FloatEntryField(value: $driver.phase, width: 55, fractionDigits: 3)
+                    Text("0–1").font(.system(size: 10)).foregroundStyle(.tertiary)
+                }
+                InspectorField("Wave") {
+                    Picker("", selection: $driver.wave) {
+                        ForEach(WaveShape.allCases, id: \.self) { s in
+                            Text(s.rawValue.capitalized).tag(s)
+                        }
+                    }
+                    .labelsHidden()
+                    .frame(maxWidth: 110)
+                }
             }
         }
     }
@@ -455,8 +514,11 @@ private extension VectorDriver.Mode {
 private extension ColorDriver.Mode {
     var label: String {
         switch self {
-        case .constant: return "Constant"
-        case .keyframe: return "Keyframe"
+        case .constant:   return "Constant"
+        case .keyframe:   return "Keyframe"
+        case .jitter:     return "Jitter"
+        case .noise:      return "Noise"
+        case .oscillator: return "Oscillator"
         }
     }
 }

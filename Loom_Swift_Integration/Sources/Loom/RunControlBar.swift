@@ -50,6 +50,7 @@ struct RunControlBar: View {
                 }
                 .buttonStyle(.plain)
                 .help(controller.loopPlayback ? "Loop: On (click to play once)" : "Loop: Off (click to loop)")
+                .modifier(LoomHoverHelp(controller.loopPlayback ? "Loop: On (click to play once)" : "Loop: Off (click to loop)"))
             }
 
             // Frame counter
@@ -57,6 +58,8 @@ struct RunControlBar: View {
                 .font(.system(.body, design: .monospaced))
                 .foregroundStyle(.secondary)
                 .frame(minWidth: 48, alignment: .leading)
+
+            playbackGlobals
 
             Spacer()
 
@@ -118,6 +121,33 @@ struct RunControlBar: View {
         .background(Color(nsColor: .windowBackgroundColor))
     }
 
+    private var playbackGlobals: some View {
+        HStack(spacing: 8) {
+            HStack(spacing: 4) {
+                Text("Duration")
+                    .font(.system(size: 10))
+                    .foregroundStyle(.secondary)
+                TextField("", value: bindGlobal(\.duration), format: .number)
+                    .textFieldStyle(.squareBorder)
+                    .font(.system(size: 11, design: .monospaced))
+                    .frame(width: 54)
+                    .help("Duration in frames. 0 uses the automatic duration.")
+                    .modifier(LoomHoverHelp("Duration in frames. 0 uses the automatic duration."))
+            }
+            Toggle("Animating", isOn: bindGlobal(\.animating))
+                .font(.system(size: 10))
+                .toggleStyle(.checkbox)
+                .help("Enable global animation.")
+                .modifier(LoomHoverHelp("Enable global animation."))
+            Toggle("BG once", isOn: bindGlobal(\.drawBackgroundOnce))
+                .font(.system(size: 10))
+                .toggleStyle(.checkbox)
+                .help("Draw the background once rather than every frame.")
+                .modifier(LoomHoverHelp("Draw the background once rather than every frame."))
+        }
+        .disabled(controller.engine == nil || controller.projectConfig == nil)
+    }
+
     private var scrubRow: some View {
         let maxFrames = Double(controller.maxScrubFrames)
         let displayFrame = isScrubbing ? Int(scrubValue) : currentFrame
@@ -168,6 +198,7 @@ struct RunControlBar: View {
         }
         .buttonStyle(.plain)
         .help(help)
+        .modifier(LoomHoverHelp(help))
     }
 
     private func iconButton(_ systemImage: String, help: String, action: @escaping () -> Void) -> some View {
@@ -178,6 +209,17 @@ struct RunControlBar: View {
         }
         .buttonStyle(.plain)
         .help(help)
+        .modifier(LoomHoverHelp(help))
+    }
+
+    private func bindGlobal<T>(_ kp: WritableKeyPath<GlobalConfig, T>) -> Binding<T> {
+        let ctl = controller
+        return Binding(
+            get: { ctl.projectConfig?.globalConfig[keyPath: kp] ?? GlobalConfig.default[keyPath: kp] },
+            set: { value in
+                ctl.updateProjectConfig { $0.globalConfig[keyPath: kp] = value }
+            }
+        )
     }
 
 }

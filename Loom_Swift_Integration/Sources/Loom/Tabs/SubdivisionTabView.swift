@@ -376,6 +376,7 @@ struct SubdivisionTabView: View {
         }
         .buttonStyle(.plain)
         .help(tooltip)
+        .modifier(LoomHoverHelp(tooltip))
     }
 
     private func paramRenameSheet(_ target: ParamRenameTarget) -> some View {

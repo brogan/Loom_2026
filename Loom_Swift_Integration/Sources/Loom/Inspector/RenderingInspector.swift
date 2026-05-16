@@ -12,6 +12,7 @@ struct RenderingInspector: View {
     @State private var fillColorDriverCollapsed = true
     @State private var strokeColorDriverCollapsed = true
     @State private var strokeWidthDriverCollapsed = true
+    @State private var opacityDriverCollapsed = true
     @State private var brushCollapsed        = false
     @State private var meanderCollapsed      = true
     @State private var stampCollapsed        = false
@@ -157,19 +158,36 @@ struct RenderingInspector: View {
             ColorDriverEditor(
                 label: "Fill Color Driver",
                 driver: bindRendererFillColorDriver(setIdx, itemIdx, fallback: renderer.fillColor),
-                isCollapsed: $fillColorDriverCollapsed
+                isCollapsed: $fillColorDriverCollapsed,
+                isHighlighted: selectedRendererLane(setIdx: setIdx, itemIdx: itemIdx) == .fillColor
             )
             ColorDriverEditor(
                 label: "Stroke Color Driver",
                 driver: bindRendererStrokeColorDriver(setIdx, itemIdx, fallback: renderer.strokeColor),
-                isCollapsed: $strokeColorDriverCollapsed
+                isCollapsed: $strokeColorDriverCollapsed,
+                isHighlighted: selectedRendererLane(setIdx: setIdx, itemIdx: itemIdx) == .strokeColor
             )
             DoubleDriverEditor(
                 label: "Stroke Width Driver",
                 driver: bindRendererStrokeWidthDriver(setIdx, itemIdx, fallback: renderer.strokeWidth),
-                isCollapsed: $strokeWidthDriverCollapsed
+                isCollapsed: $strokeWidthDriverCollapsed,
+                isHighlighted: selectedRendererLane(setIdx: setIdx, itemIdx: itemIdx) == .strokeWidth
+            )
+            DoubleDriverEditor(
+                label: "Opacity Driver",
+                driver: bindRendererOpacityDriver(setIdx, itemIdx),
+                isCollapsed: $opacityDriverCollapsed,
+                isHighlighted: selectedRendererLane(setIdx: setIdx, itemIdx: itemIdx) == .opacity
             )
         }
+    }
+
+    private func selectedRendererLane(setIdx: Int, itemIdx: Int) -> RendererTimelineLane? {
+        guard let selection = controller.selectedRendererTimelineKF,
+              selection.rendererSetIdx == setIdx,
+              selection.rendererItemIdx == itemIdx
+        else { return nil }
+        return selection.lane
     }
 
     // MARK: - Brush config section
@@ -671,7 +689,9 @@ struct RenderingInspector: View {
                     if cfg.renderingConfig.library.rendererSets[setIdx]
                         .renderers[itemIdx].drivers == nil {
                         cfg.renderingConfig.library.rendererSets[setIdx]
-                            .renderers[itemIdx].drivers = RendererDrivers(strokeWidth: DoubleDriver.constant(fallback))
+                            .renderers[itemIdx].drivers = defaultRendererDrivers(
+                                for: cfg.renderingConfig.library.rendererSets[setIdx].renderers[itemIdx]
+                            )
                     }
                     cfg.renderingConfig.library.rendererSets[setIdx]
                         .renderers[itemIdx].drivers!.strokeWidth = v
@@ -712,14 +732,49 @@ struct RenderingInspector: View {
                         .renderers[itemIdx].drivers == nil {
                         let renderer = cfg.renderingConfig.library.rendererSets[setIdx].renderers[itemIdx]
                         cfg.renderingConfig.library.rendererSets[setIdx]
-                            .renderers[itemIdx].drivers = RendererDrivers(
-                                strokeWidth: DoubleDriver.constant(renderer.strokeWidth)
-                            )
+                            .renderers[itemIdx].drivers = defaultRendererDrivers(for: renderer)
                     }
                     cfg.renderingConfig.library.rendererSets[setIdx]
                         .renderers[itemIdx].drivers![keyPath: keyPath] = v
                 }
             }
+        )
+    }
+
+    private func bindRendererOpacityDriver(_ setIdx: Int,
+                                           _ itemIdx: Int) -> Binding<DoubleDriver> {
+        let ctl = controller
+        return Binding(
+            get: {
+                ctl.projectConfig?.renderingConfig.library
+                    .rendererSets[safe: setIdx]?.renderers[safe: itemIdx]?
+                    .drivers?.opacity ?? .one
+            },
+            set: { v in
+                ctl.updateProjectConfig { cfg in
+                    guard setIdx < cfg.renderingConfig.library.rendererSets.count,
+                          itemIdx < cfg.renderingConfig.library.rendererSets[setIdx].renderers.count
+                    else { return }
+                    if cfg.renderingConfig.library.rendererSets[setIdx]
+                        .renderers[itemIdx].drivers == nil {
+                        cfg.renderingConfig.library.rendererSets[setIdx]
+                            .renderers[itemIdx].drivers = defaultRendererDrivers(
+                                for: cfg.renderingConfig.library.rendererSets[setIdx].renderers[itemIdx]
+                            )
+                    }
+                    cfg.renderingConfig.library.rendererSets[setIdx]
+                        .renderers[itemIdx].drivers!.opacity = v
+                }
+            }
+        )
+    }
+
+    private func defaultRendererDrivers(for renderer: Renderer) -> RendererDrivers {
+        RendererDrivers(
+            fillColor: ColorDriver.constant(renderer.fillColor),
+            strokeColor: ColorDriver.constant(renderer.strokeColor),
+            strokeWidth: DoubleDriver.constant(renderer.strokeWidth),
+            opacity: .one
         )
     }
 

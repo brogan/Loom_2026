@@ -102,6 +102,10 @@ struct SpritesInspector: View {
                 FloatEntryField(value: bindS(setIdx, spriteIdx, \.rotation), width: 65, fractionDigits: 2)
                 Text("°").font(.system(size: 11)).foregroundStyle(.secondary)
             }
+            InspectorField("Depth") {
+                FloatEntryField(value: bindS(setIdx, spriteIdx, \.depth), width: 65, fractionDigits: 1)
+                Text("0=focal").font(.system(size: 10)).foregroundStyle(.tertiary)
+            }
         }
     }
 
@@ -373,16 +377,30 @@ private struct DriverSectionsView: View {
     var body: some View {
         let db = driversBinding()
         VStack(alignment: .leading, spacing: 0) {
-            VectorDriverEditor(label: "Position", driver: db.position, isCollapsed: $posCollapsed)
-            VectorDriverEditor(label: "Scale",    driver: db.scale,    isCollapsed: $sclCollapsed)
-            DoubleDriverEditor(label: "Rotation", driver: db.rotation, isCollapsed: $rotCollapsed)
-            DoubleDriverEditor(label: "Morph",    driver: db.morph,    isCollapsed: $mphCollapsed)
-            DoubleDriverEditor(label: "Opacity",  driver: db.opacity,  isCollapsed: $opacCollapsed)
-            DoubleDriverEditor(label: "Shape",    driver: db.shape,    isCollapsed: $shpCollapsed)
+            VectorDriverEditor(label: "Position", driver: db.position, isCollapsed: $posCollapsed,
+                               isHighlighted: selectedLane == .position)
+            VectorDriverEditor(label: "Scale",    driver: db.scale,    isCollapsed: $sclCollapsed,
+                               isHighlighted: selectedLane == .scale)
+            DoubleDriverEditor(label: "Rotation", driver: db.rotation, isCollapsed: $rotCollapsed,
+                               isHighlighted: selectedLane == .rotation)
+            DoubleDriverEditor(label: "Morph",    driver: db.morph,    isCollapsed: $mphCollapsed,
+                               isHighlighted: selectedLane == .morph)
+            DoubleDriverEditor(label: "Opacity",  driver: db.opacity,  isCollapsed: $opacCollapsed,
+                               isHighlighted: selectedLane == .opacity)
+            DoubleDriverEditor(label: "Shape",    driver: db.shape,    isCollapsed: $shpCollapsed,
+                               isHighlighted: selectedLane == .shape)
             morphTargetsSection
             shapeVariantsSection
         }
         .onAppear { syncCollapsed() }
+    }
+
+    private var selectedLane: TimelineLane? {
+        guard let selection = controller.selectedTimelineKF,
+              selection.setIdx == setIdx,
+              selection.spriteIdx == spriteIdx
+        else { return nil }
+        return selection.lane
     }
 
     // MARK: - Morph Targets

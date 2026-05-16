@@ -152,6 +152,7 @@ struct RenderingTabView: View {
         }
         .buttonStyle(.plain)
         .help(tooltip)
+        .modifier(LoomHoverHelp(tooltip))
     }
 
     private func emptyState(_ message: String) -> some View {

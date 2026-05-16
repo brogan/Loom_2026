@@ -474,6 +474,7 @@ public struct SpriteScene: Sendable {
         brushImages: [String: CGImage] = [:],
         stampImages: [String: CGImage] = [:],
         elapsedFrames: Double = 0,
+        perspectiveStrength: Double = 0,
         progressiveBrushStates: inout [String: BrushProgressiveState],
         progressiveBrushEnabled: Bool = false,
         using rng: inout RNG
@@ -488,16 +489,36 @@ public struct SpriteScene: Sendable {
             )
         }
 
-        for (i, instance) in instances.enumerated() {
+        // Draw furthest-away sprites first. Stable sort preserves declaration order for equal depths.
+        let drawOrder = instances.indices.sorted { instances[$0].def.depth > instances[$1].def.depth }
+
+        for i in drawOrder {
+            let instance = instances[i]
             let parentWorld = instance.def.parentName.flatMap { parentWorlds[$0] }
+            let spriteTransform = depthAdjustedTransform(viewTransform,
+                                                         depth: instance.def.depth,
+                                                         perspectiveStrength: perspectiveStrength)
             renderInstance(instance, spriteIndex: i, parentWorld: parentWorld,
-                           into: context, viewTransform: viewTransform,
+                           into: context, viewTransform: spriteTransform,
                            brushImages: brushImages, stampImages: stampImages,
                            elapsedFrames: elapsedFrames,
                            progressiveBrushStates: &progressiveBrushStates,
                            progressiveBrushEnabled: progressiveBrushEnabled,
                            using: &rng)
         }
+    }
+
+    /// Returns a ViewTransform scaled by the parallax factor for a sprite at the given depth.
+    /// depth=0 or perspectiveStrength=0 returns the transform unchanged.
+    private func depthAdjustedTransform(_ base: ViewTransform, depth: Double, perspectiveStrength: Double) -> ViewTransform {
+        guard perspectiveStrength > 0, depth != 0 else { return base }
+        let f = 1.0 / (1.0 + depth * perspectiveStrength)
+        return ViewTransform(
+            canvasSize: base.canvasSize,
+            offset:     Vector2D(x: base.offset.x * f, y: base.offset.y * f),
+            zoom:       base.zoom * f,
+            rotation:   base.rotation
+        )
     }
 
     public func render<RNG: RandomNumberGenerator>(
@@ -715,6 +736,8 @@ public struct SpriteScene: Sendable {
             let changed = resolveRendererChanges(renderer, rendererIndex: rendererIndex, instance: activeInstance,
                                                  scales: [.sprite, .global])
             let resolved = resolveRendererDrivers(changed, spriteIndex: spriteIndex, elapsedFrames: elapsedFrames)
+            let rendererOpacity = resolveRendererOpacity(changed, spriteIndex: spriteIndex, elapsedFrames: elapsedFrames)
+            guard rendererOpacity > 0 else { continue }
             var elementState = rendererAnimationState(for: activeInstance, rendererIndex: rendererIndex)
 
             if resolved.mode == .brushed, let brushCfg = resolved.brushConfig {
@@ -740,7 +763,8 @@ public struct SpriteScene: Sendable {
                                 config: scaledBrush,
                                 color: resolved.strokeColor,
                                 context: context,
-                                brushImages: brushImages
+                                brushImages: brushImages,
+                                opacityMultiplier: rendererOpacity
                             )
                         }
                         state.checkCompletion(mode: scaledBrush.postCompletionMode)
@@ -753,7 +777,8 @@ public struct SpriteScene: Sendable {
                         color:         resolved.strokeColor,
                         context:       context,
                         elapsedFrames: elapsedFrames,
-                        brushImages:   brushImages
+                        brushImages:   brushImages,
+                        opacityMultiplier: rendererOpacity
                     )
                 }
             } else if (resolved.mode == .stamped || resolved.mode == .stenciled),
@@ -776,6 +801,7 @@ public struct SpriteScene: Sendable {
                         viewTransform: viewTransform,
                         stampImages:   stampImages,
                         opacityState:  opacityState,
+                        opacityMultiplier: rendererOpacity,
                         using:         &rng
                     )
                 }
@@ -799,6 +825,7 @@ public struct SpriteScene: Sendable {
                             into:            context,
                             transform:       viewTransform,
                             qualityMultiple: effectiveQuality,
+                            opacityMultiplier: rendererOpacity,
                             spriteIndex:      spriteIndex,
                             elapsedFrames:    elapsedFrames,
                             using:           &rng
@@ -808,7 +835,8 @@ public struct SpriteScene: Sendable {
                                           renderer:        drivenPolyResolved,
                                           into:            context,
                                           transform:       viewTransform,
-                                          qualityMultiple: effectiveQuality)
+                                          qualityMultiple: effectiveQuality,
+                                          opacityMultiplier: rendererOpacity)
                     }
                     elementState = RenderStateEngine.advance(
                         state:   elementState,
@@ -829,6 +857,7 @@ public struct SpriteScene: Sendable {
         into context: CGContext,
         transform: ViewTransform,
         qualityMultiple: Int,
+        opacityMultiplier: Double,
         spriteIndex: Int,
         elapsedFrames: Double,
         using rng: inout RNG
@@ -851,7 +880,8 @@ public struct SpriteScene: Sendable {
                 renderer: drivenPointRenderer,
                 into: context,
                 transform: transform,
-                qualityMultiple: qualityMultiple
+                qualityMultiple: qualityMultiple,
+                opacityMultiplier: opacityMultiplier
             )
             pointState = RenderStateEngine.advance(
                 state: pointState,
@@ -890,13 +920,17 @@ public struct SpriteScene: Sendable {
     /// - **Sprite scale** (`def.scale`) is an additional multiplier applied on top of
     ///   the ×2 geometry factor.
     /// - **Sprite position** is in units of 1/100 of the canvas half-size.
-    ///   Dividing by 100 and multiplying by canvas half-size converts to pixels.
+    ///   Dividing by 100 and multiplying by each axis' canvas half-size converts
+    ///   to pixels, so placement still follows the canvas aspect ratio.
+    /// - **Sprite geometry** uses the shorter canvas dimension as a uniform
+    ///   pixel basis, so shapes keep their proportions on non-square canvases.
     ///
     /// ### Pipeline
     /// 1. Scale point by `2.0 × sprite_scale` in normalised world space.
     /// 2. Rotate (in normalised space so rotation is undistorted on square canvases).
-    /// 3. Multiply by canvas half-size to get pixel offsets from canvas centre.
-    /// 4. Add pixel-space position (raw_pos / 100 × canvas_half).
+    /// 3. Multiply both axes by the shorter canvas half-size to get pixel
+    ///    offsets from canvas centre without aspect stretching.
+    /// 4. Add pixel-space position (raw_pos / 100 × per-axis canvas_half).
     ///
     /// The caller (`renderInstance`) then passes the resulting pixel-space polygon to
     /// `RenderEngine.draw`, whose `ViewTransform.worldToScreen` adds the canvas-centre
@@ -912,6 +946,7 @@ public struct SpriteScene: Sendable {
 
         let hw = canvasSize.width  / 2.0
         let hh = canvasSize.height / 2.0
+        let geometryBasis = min(canvasSize.width, canvasSize.height) / 2.0
 
         // Local scale (×2 for coord convention: polygon coords in [−0.5, 0.5]).
         var sx = def.scale.x * anim.scale.x * 2.0
@@ -959,7 +994,8 @@ public struct SpriteScene: Sendable {
                 let ry = wx * sinR + wy * cosR
                 wx = rx; wy = ry
             }
-            return Vector2D(x: wx * hw + txPx, y: wy * hh + tyPx)
+            return Vector2D(x: wx * geometryBasis + txPx,
+                            y: wy * geometryBasis + tyPx)
         }
         return Polygon2D(points: pts, type: polygon.type,
                          pressures: polygon.pressures,
@@ -1029,13 +1065,17 @@ public struct SpriteScene: Sendable {
         if let fillColor = drivers.fillColor {
             resolved.fillColor = DriverEvaluator.evaluate(
                 fillColor,
-                globalElapsed: elapsedFrames
+                globalElapsed: elapsedFrames,
+                targetFPS: targetFPS,
+                spriteIndex: spriteIndex
             )
         }
         if let strokeColor = drivers.strokeColor {
             resolved.strokeColor = DriverEvaluator.evaluate(
                 strokeColor,
-                globalElapsed: elapsedFrames
+                globalElapsed: elapsedFrames,
+                targetFPS: targetFPS,
+                spriteIndex: spriteIndex
             )
         }
         resolved.strokeWidth = max(0, DriverEvaluator.evaluate(
@@ -1045,5 +1085,17 @@ public struct SpriteScene: Sendable {
             spriteIndex: spriteIndex
         ))
         return resolved
+    }
+
+    private func resolveRendererOpacity(_ renderer: Renderer,
+                                        spriteIndex: Int,
+                                        elapsedFrames: Double) -> Double {
+        guard let drivers = renderer.drivers else { return 1.0 }
+        return max(0, min(1, DriverEvaluator.evaluate(
+            drivers.opacity,
+            globalElapsed: elapsedFrames,
+            targetFPS: targetFPS,
+            spriteIndex: spriteIndex
+        )))
     }
 }

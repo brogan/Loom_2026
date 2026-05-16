@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 import LoomEngine
 
@@ -8,6 +9,11 @@ struct KeyframeInspector: View {
         if let sel = controller.selectedTimelineKF {
             InspectorSection("Keyframe — \(sel.lane.label)") {
                 kfFields(sel)
+            }
+        }
+        if let sel = controller.selectedRendererTimelineKF {
+            InspectorSection("Renderer Keyframe — \(sel.lane.label)") {
+                rendererKFFields(sel)
             }
         }
     }
@@ -61,6 +67,39 @@ struct KeyframeInspector: View {
 
         InspectorField("Easing") {
             Picker("", selection: easingBinding(sel)) {
+                ForEach(EasingType.allCases, id: \.self) { e in
+                    Text(e.kfLabel).tag(e)
+                }
+            }
+            .labelsHidden()
+            .frame(maxWidth: 130)
+        }
+    }
+
+    @ViewBuilder
+    private func rendererKFFields(_ sel: RendererTimelineKFSelection) -> some View {
+        InspectorField("Frame") {
+            TextField("", value: rendererFrameBinding(sel), format: .number)
+                .textFieldStyle(.squareBorder)
+                .font(.system(size: 12, design: .monospaced))
+                .frame(width: 60)
+        }
+
+        switch sel.lane {
+        case .fillColor, .strokeColor:
+            InspectorField("Color") {
+                ColorPicker("", selection: rendererColorBinding(sel), supportsOpacity: true)
+                    .labelsHidden()
+                    .frame(width: 60)
+            }
+        case .strokeWidth, .opacity:
+            InspectorField(sel.lane == .opacity ? "Alpha" : "Width") {
+                FloatEntryField(value: rendererDoubleBinding(sel), width: 65, fractionDigits: 3, fontSize: 12)
+            }
+        }
+
+        InspectorField("Easing") {
+            Picker("", selection: rendererEasingBinding(sel)) {
                 ForEach(EasingType.allCases, id: \.self) { e in
                     Text(e.kfLabel).tag(e)
                 }
@@ -291,6 +330,175 @@ struct KeyframeInspector: View {
                 }
             }
         )
+    }
+
+    // MARK: - Renderer keyframe bindings
+
+    private func rendererFrameBinding(_ sel: RendererTimelineKFSelection) -> Binding<Int> {
+        let ctl = controller
+        return Binding(
+            get: {
+                let drivers = ctl.projectConfig?.renderingConfig.library
+                    .rendererSets[safe: sel.rendererSetIdx]?.renderers[safe: sel.rendererItemIdx]?.drivers
+                return sel.lane.keyframeFrames(from: drivers)[safe: sel.keyframeIdx] ?? 0
+            },
+            set: { newFrame in
+                ctl.updateProjectConfig { cfg in
+                    withRendererDrivers(in: &cfg, setIdx: sel.rendererSetIdx, itemIdx: sel.rendererItemIdx) { drivers, _ in
+                        switch sel.lane {
+                        case .fillColor:
+                            guard sel.keyframeIdx < (drivers.fillColor?.keyframes.count ?? 0) else { return }
+                            drivers.fillColor!.keyframes[sel.keyframeIdx].frame = newFrame
+                            drivers.fillColor!.keyframes.sort { $0.frame < $1.frame }
+                        case .strokeColor:
+                            guard sel.keyframeIdx < (drivers.strokeColor?.keyframes.count ?? 0) else { return }
+                            drivers.strokeColor!.keyframes[sel.keyframeIdx].frame = newFrame
+                            drivers.strokeColor!.keyframes.sort { $0.frame < $1.frame }
+                        case .strokeWidth:
+                            guard sel.keyframeIdx < drivers.strokeWidth.keyframes.count else { return }
+                            drivers.strokeWidth.keyframes[sel.keyframeIdx].frame = newFrame
+                            drivers.strokeWidth.keyframes.sort { $0.frame < $1.frame }
+                        case .opacity:
+                            guard sel.keyframeIdx < drivers.opacity.keyframes.count else { return }
+                            drivers.opacity.keyframes[sel.keyframeIdx].frame = newFrame
+                            drivers.opacity.keyframes.sort { $0.frame < $1.frame }
+                        }
+                    }
+                }
+                let drivers = ctl.projectConfig?.renderingConfig.library
+                    .rendererSets[safe: sel.rendererSetIdx]?.renderers[safe: sel.rendererItemIdx]?.drivers
+                if let newIdx = sel.lane.keyframeFrames(from: drivers).firstIndex(of: newFrame) {
+                    ctl.selectedRendererTimelineKF = RendererTimelineKFSelection(
+                        rendererSetIdx: sel.rendererSetIdx,
+                        rendererItemIdx: sel.rendererItemIdx,
+                        lane: sel.lane,
+                        keyframeIdx: newIdx
+                    )
+                }
+            }
+        )
+    }
+
+    private func rendererDoubleBinding(_ sel: RendererTimelineKFSelection) -> Binding<Double> {
+        let ctl = controller
+        return Binding(
+            get: {
+                let drivers = ctl.projectConfig?.renderingConfig.library
+                    .rendererSets[safe: sel.rendererSetIdx]?.renderers[safe: sel.rendererItemIdx]?
+                    .drivers
+                switch sel.lane {
+                case .strokeWidth:
+                    return drivers?.strokeWidth.keyframes[safe: sel.keyframeIdx]?.value ?? 1
+                case .opacity:
+                    return drivers?.opacity.keyframes[safe: sel.keyframeIdx]?.value ?? 1
+                case .fillColor, .strokeColor:
+                    return 1
+                }
+            },
+            set: { v in
+                ctl.updateProjectConfig { cfg in
+                    withRendererDrivers(in: &cfg, setIdx: sel.rendererSetIdx, itemIdx: sel.rendererItemIdx) { drivers, _ in
+                        switch sel.lane {
+                        case .strokeWidth:
+                            guard sel.keyframeIdx < drivers.strokeWidth.keyframes.count else { return }
+                            drivers.strokeWidth.keyframes[sel.keyframeIdx].value = v
+                        case .opacity:
+                            guard sel.keyframeIdx < drivers.opacity.keyframes.count else { return }
+                            drivers.opacity.keyframes[sel.keyframeIdx].value = v
+                        case .fillColor, .strokeColor:
+                            break
+                        }
+                    }
+                }
+            }
+        )
+    }
+
+    private func rendererColorBinding(_ sel: RendererTimelineKFSelection) -> Binding<Color> {
+        let ctl = controller
+        return Binding(
+            get: {
+                let c: LoomColor
+                let renderer = ctl.projectConfig?.renderingConfig.library
+                    .rendererSets[safe: sel.rendererSetIdx]?.renderers[safe: sel.rendererItemIdx]
+                switch sel.lane {
+                case .fillColor:
+                    c = renderer?.drivers?.fillColor?.keyframes[safe: sel.keyframeIdx]?.value
+                        ?? renderer?.fillColor ?? .black
+                case .strokeColor:
+                    c = renderer?.drivers?.strokeColor?.keyframes[safe: sel.keyframeIdx]?.value
+                        ?? renderer?.strokeColor ?? .black
+                case .strokeWidth, .opacity:
+                    c = .black
+                }
+                return Color(red: c.rF, green: c.gF, blue: c.bF, opacity: c.aF)
+            },
+            set: { newColor in
+                let ns = NSColor(newColor).usingColorSpace(.deviceRGB) ?? NSColor.black
+                let value = LoomColor(
+                    r: clamp255(ns.redComponent),
+                    g: clamp255(ns.greenComponent),
+                    b: clamp255(ns.blueComponent),
+                    a: clamp255(ns.alphaComponent)
+                )
+                ctl.updateProjectConfig { cfg in
+                    withRendererDrivers(in: &cfg, setIdx: sel.rendererSetIdx, itemIdx: sel.rendererItemIdx) { drivers, renderer in
+                        switch sel.lane {
+                        case .fillColor:
+                            if drivers.fillColor == nil { drivers.fillColor = ColorDriver.constant(renderer.fillColor) }
+                            guard sel.keyframeIdx < drivers.fillColor!.keyframes.count else { return }
+                            drivers.fillColor!.keyframes[sel.keyframeIdx].value = value
+                        case .strokeColor:
+                            if drivers.strokeColor == nil { drivers.strokeColor = ColorDriver.constant(renderer.strokeColor) }
+                            guard sel.keyframeIdx < drivers.strokeColor!.keyframes.count else { return }
+                            drivers.strokeColor!.keyframes[sel.keyframeIdx].value = value
+                        case .strokeWidth, .opacity:
+                            break
+                        }
+                    }
+                }
+            }
+        )
+    }
+
+    private func rendererEasingBinding(_ sel: RendererTimelineKFSelection) -> Binding<EasingType> {
+        let ctl = controller
+        return Binding(
+            get: {
+                let drivers = ctl.projectConfig?.renderingConfig.library
+                    .rendererSets[safe: sel.rendererSetIdx]?.renderers[safe: sel.rendererItemIdx]?.drivers
+                switch sel.lane {
+                case .fillColor:   return drivers?.fillColor?.keyframes[safe: sel.keyframeIdx]?.easing ?? .linear
+                case .strokeColor: return drivers?.strokeColor?.keyframes[safe: sel.keyframeIdx]?.easing ?? .linear
+                case .strokeWidth: return drivers?.strokeWidth.keyframes[safe: sel.keyframeIdx]?.easing ?? .linear
+                case .opacity:     return drivers?.opacity.keyframes[safe: sel.keyframeIdx]?.easing ?? .linear
+                }
+            },
+            set: { e in
+                ctl.updateProjectConfig { cfg in
+                    withRendererDrivers(in: &cfg, setIdx: sel.rendererSetIdx, itemIdx: sel.rendererItemIdx) { drivers, _ in
+                        switch sel.lane {
+                        case .fillColor:
+                            guard sel.keyframeIdx < (drivers.fillColor?.keyframes.count ?? 0) else { return }
+                            drivers.fillColor!.keyframes[sel.keyframeIdx].easing = e
+                        case .strokeColor:
+                            guard sel.keyframeIdx < (drivers.strokeColor?.keyframes.count ?? 0) else { return }
+                            drivers.strokeColor!.keyframes[sel.keyframeIdx].easing = e
+                        case .strokeWidth:
+                            guard sel.keyframeIdx < drivers.strokeWidth.keyframes.count else { return }
+                            drivers.strokeWidth.keyframes[sel.keyframeIdx].easing = e
+                        case .opacity:
+                            guard sel.keyframeIdx < drivers.opacity.keyframes.count else { return }
+                            drivers.opacity.keyframes[sel.keyframeIdx].easing = e
+                        }
+                    }
+                }
+            }
+        )
+    }
+
+    private func clamp255(_ v: CGFloat) -> Int {
+        Int(max(0, min(255, (v * 255 + 0.5).rounded(.down))))
     }
 }
 

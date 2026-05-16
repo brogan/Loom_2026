@@ -36,9 +36,16 @@ public enum RenderEngine {
         renderer: Renderer,
         into context: CGContext,
         transform: ViewTransform,
-        qualityMultiple: Int = 1
+        qualityMultiple: Int = 1,
+        opacityMultiplier: Double = 1.0
     ) {
         guard polygon.visible, !polygon.points.isEmpty else { return }
+        let opacity = max(0, min(1, opacityMultiplier))
+        guard opacity > 0 else { return }
+
+        context.saveGState()
+        context.setAlpha(CGFloat(opacity))
+        defer { context.restoreGState() }
 
         switch renderer.mode {
         case .points:

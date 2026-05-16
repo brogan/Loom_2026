@@ -19,5 +19,5 @@ enum AppTab: String, CaseIterable, Hashable {
         }
     }
 
-    var hasListPanel: Bool { self != .global }
+    var hasListPanel: Bool { true }
 }

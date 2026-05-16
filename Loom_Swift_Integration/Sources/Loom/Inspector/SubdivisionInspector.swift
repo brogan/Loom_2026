@@ -8,8 +8,8 @@ struct SubdivisionInspector: View {
     @State private var generalCollapsed  = false
     @State private var insetCollapsed    = false
     @State private var pressureCollapsed = false
-    @State private var ptwCollapsed      = false
-    @State private var ptpCollapsed      = false
+    @State private var ptwCollapsed      = true
+    @State private var ptpCollapsed      = true
 
     var body: some View {
         let setIdx = controller.selectedSubdivisionIndex ?? 0
@@ -67,6 +67,7 @@ struct SubdivisionInspector: View {
             insetSection(setIdx: setIdx, paramIdx: paramIdx)
         }
         pressureSection(setIdx: setIdx, paramIdx: paramIdx)
+        polygonTransformEnabledSection(setIdx: setIdx, paramIdx: paramIdx)
         ptwSection(setIdx: setIdx, paramIdx: paramIdx)
         ptpSection(setIdx: setIdx, paramIdx: paramIdx)
     }
@@ -136,7 +137,7 @@ struct SubdivisionInspector: View {
     // MARK: - Pressure Sensitivity
 
     private func pressureSection(setIdx: Int, paramIdx: Int) -> some View {
-        InspectorSection("PS", isCollapsed: $pressureCollapsed) {
+        InspectorSection("Pressure Sensitivity", isCollapsed: $pressureCollapsed) {
             InspectorField("Mode") {
                 Picker("", selection: bindP(setIdx, paramIdx, \.pressureSubdivisionMode)) {
                     ForEach(PressureSubdivisionMode.allCases, id: \.self) { mode in
@@ -161,14 +162,21 @@ struct SubdivisionInspector: View {
         }
     }
 
-    // MARK: - PTW
+    // MARK: - Polygon Transforms
 
-    private func ptwSection(setIdx: Int, paramIdx: Int) -> some View {
-        InspectorSection("PTW", isCollapsed: $ptwCollapsed) {
+    private func polygonTransformEnabledSection(setIdx: Int, paramIdx: Int) -> some View {
+        InspectorSection("Polygon Transforms") {
             InspectorField("Enabled") {
                 Toggle("", isOn: bindP(setIdx, paramIdx, \.polysTransform)).labelsHidden()
             }
-            InspectorField("Whole") {
+        }
+    }
+
+    // MARK: - Transform Whole Polygons
+
+    private func ptwSection(setIdx: Int, paramIdx: Int) -> some View {
+        InspectorSection("Transform Whole Polygons", isCollapsed: $ptwCollapsed) {
+            InspectorField("Enabled") {
                 Toggle("", isOn: bindP(setIdx, paramIdx, \.polysTranformWhole)).labelsHidden()
             }
             InspectorField("Probability") {
@@ -210,20 +218,26 @@ struct SubdivisionInspector: View {
         }
     }
 
-    // MARK: - PTP Section
+    // MARK: - Transform Polygon Points
 
     private func ptpSection(setIdx: Int, paramIdx: Int) -> some View {
-        InspectorSection("PTP", isCollapsed: $ptpCollapsed) {
+        let isEnabled = controller.projectConfig?.subdivisionConfig
+            .paramsSets[safe: setIdx]?.params[safe: paramIdx]?.polysTransformPoints ?? false
+        return InspectorSection("Transform Polygon Points", isCollapsed: $ptpCollapsed) {
             InspectorField("Enabled") {
                 Toggle("", isOn: bindP(setIdx, paramIdx, \.polysTransformPoints)).labelsHidden()
             }
-            InspectorField("Probability") {
-                FloatEntryField(value: bindP(setIdx, paramIdx, \.pTP_probability), width: 50, fractionDigits: 1)
-                Text("%").font(.system(size: 11)).foregroundStyle(.secondary)
+            Group {
+                InspectorField("Probability") {
+                    FloatEntryField(value: bindP(setIdx, paramIdx, \.pTP_probability), width: 50, fractionDigits: 1)
+                    Text("%").font(.system(size: 11)).foregroundStyle(.secondary)
+                }
+                ptpTabBar()
+                ptpEnabledSummary(setIdx: setIdx, paramIdx: paramIdx)
+                ptpTabContent(setIdx: setIdx, paramIdx: paramIdx)
             }
-            ptpTabBar()
-            ptpEnabledSummary(setIdx: setIdx, paramIdx: paramIdx)
-            ptpTabContent(setIdx: setIdx, paramIdx: paramIdx)
+            .disabled(!isEnabled)
+            .opacity(isEnabled ? 1 : 0.45)
         }
     }
 

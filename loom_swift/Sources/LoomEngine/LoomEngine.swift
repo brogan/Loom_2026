@@ -103,17 +103,21 @@ public struct LoomEngine: @unchecked Sendable {
     /// All sprite instances in the scene (base geometry + def, no animation applied).
     public var spriteInstances: [SpriteInstance] { scene.instances }
 
-    /// Number of times `advance()` has been called.
-    public var currentFrame: Int { frameCount }
+    /// Current project frame on the same clock used for driver keyframe evaluation.
+    public var currentFrame: Int {
+        max(0, Int(elapsedFrames.rounded(.down)))
+    }
 
     /// The effective animation length in frames, or 0 if unbounded.
     ///
-    /// Returns `globalConfig.duration` when set (> 0).  Falls back to the maximum
-    /// `totalDraws` across all sprites, which is 0 when every sprite is unlimited.
+    /// Returns `globalConfig.duration` when set (> 0). Falls back to the latest
+    /// finite sprite or camera keyframe end frame, which is 0 when everything is
+    /// unlimited/static.
     public var maxAnimationFrames: Int {
         let d = globalConfig.duration
         if d > 0 { return d }
-        return scene.instances.reduce(0) { max($0, $1.def.animation.totalDraws) }
+        let spriteEnd = scene.instances.reduce(0) { max($0, $1.def.animation.totalDraws) }
+        return max(spriteEnd, globalConfig.camera.animationEndFrame)
     }
 
     // MARK: - Advance
@@ -126,19 +130,20 @@ public struct LoomEngine: @unchecked Sendable {
     public mutating func advance(deltaTime: Double? = nil) {
         let fps = config.globalConfig.targetFPS
         let dt  = deltaTime ?? (1.0 / max(1.0, fps))
+        let nextElapsedFrames = elapsedFrames + dt * max(1.0, fps)
         // Global animating flag is the master switch: when false, all sprite animation
         // is suppressed and the scene is held at its initial (frame-0) state.
         if config.globalConfig.animating {
             sceneAdvancedThisFrame = scene.advance(
                 deltaTime:     dt,
                 targetFPS:     fps,
-                globalElapsed: elapsedFrames,   // current value before incrementing
+                globalElapsed: nextElapsedFrames,
                 using:         &rng
             )
         } else {
             sceneAdvancedThisFrame = false
         }
-        elapsedFrames += dt * max(1.0, fps)
+        elapsedFrames = nextElapsedFrames
         frameCount    += 1
     }
 
@@ -259,6 +264,7 @@ public struct LoomEngine: @unchecked Sendable {
         scene.render(into: context, viewTransform: activeTransform,
                      brushImages: brushImages, stampImages: stampImages,
                      elapsedFrames: elapsedFrames,
+                     perspectiveStrength: config.globalConfig.camera.perspectiveStrength,
                      progressiveBrushStates: &brushProgressiveStates,
                      progressiveBrushEnabled: config.globalConfig.animating,
                      using: &spriteRNG)
@@ -348,20 +354,32 @@ public struct LoomEngine: @unchecked Sendable {
         guard cam.enabled else { return viewTransform }
 
         let fps = max(1.0, config.globalConfig.targetFPS)
+        let track = DriverEvaluator.evaluate(cam.tracking, globalElapsed: elapsedFrames,
+                                             targetFPS: fps, spriteIndex: 0)
         let pan = DriverEvaluator.evaluate(cam.pan,      globalElapsed: elapsedFrames,
                                            targetFPS: fps, spriteIndex: 0)
         let z   = DriverEvaluator.evaluate(cam.zoom,     globalElapsed: elapsedFrames,
                                            targetFPS: fps, spriteIndex: 0)
         let rot = DriverEvaluator.evaluate(cam.rotation, globalElapsed: elapsedFrames,
                                            targetFPS: fps, spriteIndex: 0)
+        let tracked = rotated(track, degrees: rot)
 
         return ViewTransform(
             canvasSize: viewTransform.canvasSize,
-            offset:     Vector2D(x: pan.x + viewTransform.offset.x,
-                                 y: pan.y + viewTransform.offset.y),
+            offset:     Vector2D(x: viewTransform.offset.x + pan.x - tracked.x * max(0.01, z),
+                                 y: viewTransform.offset.y + pan.y + tracked.y * max(0.01, z)),
             zoom:       max(0.01, z),
             rotation:   rot
         )
+    }
+
+    private func rotated(_ v: Vector2D, degrees: Double) -> Vector2D {
+        guard degrees != 0 else { return v }
+        let rad = degrees * .pi / 180.0
+        let cosR = cos(rad)
+        let sinR = sin(rad)
+        return Vector2D(x: v.x * cosR - v.y * sinR,
+                        y: v.x * sinR + v.y * cosR)
     }
 
     // MARK: - Private helpers

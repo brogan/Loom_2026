@@ -53,6 +53,12 @@ public struct SpriteDef: Codable, Sendable {
     /// as the base shape — mismatched targets are skipped at load time.
     public var morphTargetNames: [String] = []
 
+    // MARK: Depth (2.5D)
+
+    /// Depth in the virtual z-axis. 0 = focal plane (no parallax effect). Positive = farther away;
+    /// negative = closer. Requires `CameraConfig.perspectiveStrength > 0` to have any visual effect.
+    public var depth: Double = 0
+
     public init(
         name: String               = "",
         enabled: Bool              = true,
@@ -69,7 +75,8 @@ public struct SpriteDef: Codable, Sendable {
         spriteVariants: [String]   = [],
         gateStart: Int             = 0,
         gateEnd: Int               = 0,
-        morphTargetNames: [String] = []
+        morphTargetNames: [String] = [],
+        depth: Double              = 0
     ) {
         self.name = name; self.enabled = enabled
         self.shapeSetName = shapeSetName
@@ -83,6 +90,7 @@ public struct SpriteDef: Codable, Sendable {
         self.gateStart        = gateStart
         self.gateEnd          = gateEnd
         self.morphTargetNames = morphTargetNames
+        self.depth            = depth
     }
 
     // Custom decoder: decodeIfPresent for all fields so existing projects
@@ -105,6 +113,7 @@ public struct SpriteDef: Codable, Sendable {
         gateStart         = try c.decodeIfPresent(Int.self,              forKey: .gateStart)         ?? 0
         gateEnd           = try c.decodeIfPresent(Int.self,              forKey: .gateEnd)           ?? 0
         morphTargetNames  = try c.decodeIfPresent([String].self,         forKey: .morphTargetNames)  ?? []
+        depth             = try c.decodeIfPresent(Double.self,            forKey: .depth)             ?? 0
     }
 }
 

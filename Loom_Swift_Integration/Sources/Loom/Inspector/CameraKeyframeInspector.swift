@@ -23,6 +23,13 @@ struct CameraKeyframeInspector: View {
         }
 
         switch sel.lane {
+        case .tracking:
+            InspectorField("Track X") {
+                FloatEntryField(value: trackingXBinding(sel), width: 65, fractionDigits: 2, fontSize: 12)
+            }
+            InspectorField("Track Y") {
+                FloatEntryField(value: trackingYBinding(sel), width: 65, fractionDigits: 2, fontSize: 12)
+            }
         case .pan:
             InspectorField("X pan") {
                 FloatEntryField(value: panXBinding(sel), width: 65, fractionDigits: 2, fontSize: 12)
@@ -74,6 +81,10 @@ struct CameraKeyframeInspector: View {
             set: { newFrame in
                 ctl.updateProjectConfig { cfg in
                     switch sel.lane {
+                    case .tracking:
+                        guard sel.keyframeIdx < cfg.globalConfig.camera.tracking.keyframes.count else { return }
+                        cfg.globalConfig.camera.tracking.keyframes[sel.keyframeIdx].frame = newFrame
+                        cfg.globalConfig.camera.tracking.keyframes.sort { $0.frame < $1.frame }
                     case .pan:
                         guard sel.keyframeIdx < cfg.globalConfig.camera.pan.keyframes.count else { return }
                         cfg.globalConfig.camera.pan.keyframes[sel.keyframeIdx].frame = newFrame
@@ -97,6 +108,32 @@ struct CameraKeyframeInspector: View {
     }
 
     // MARK: - Value bindings
+
+    private func trackingXBinding(_ sel: CameraKFSelection) -> Binding<Double> {
+        let ctl = controller
+        return Binding(
+            get: { ctl.projectConfig?.globalConfig.camera.tracking.keyframes[safe: sel.keyframeIdx]?.value.x ?? 0 },
+            set: { v in
+                ctl.updateProjectConfig { cfg in
+                    guard sel.keyframeIdx < cfg.globalConfig.camera.tracking.keyframes.count else { return }
+                    cfg.globalConfig.camera.tracking.keyframes[sel.keyframeIdx].value.x = v
+                }
+            }
+        )
+    }
+
+    private func trackingYBinding(_ sel: CameraKFSelection) -> Binding<Double> {
+        let ctl = controller
+        return Binding(
+            get: { ctl.projectConfig?.globalConfig.camera.tracking.keyframes[safe: sel.keyframeIdx]?.value.y ?? 0 },
+            set: { v in
+                ctl.updateProjectConfig { cfg in
+                    guard sel.keyframeIdx < cfg.globalConfig.camera.tracking.keyframes.count else { return }
+                    cfg.globalConfig.camera.tracking.keyframes[sel.keyframeIdx].value.y = v
+                }
+            }
+        )
+    }
 
     private func panXBinding(_ sel: CameraKFSelection) -> Binding<Double> {
         let ctl = controller
@@ -132,7 +169,8 @@ struct CameraKeyframeInspector: View {
                 switch sel.lane {
                 case .zoom:     return cam.zoom.keyframes[safe: sel.keyframeIdx]?.value ?? 1
                 case .rotation: return cam.rotation.keyframes[safe: sel.keyframeIdx]?.value ?? 0
-                default:        return 0
+                case .tracking,
+                     .pan:      return 0
                 }
             },
             set: { v in
@@ -157,6 +195,7 @@ struct CameraKeyframeInspector: View {
             get: {
                 let cam = ctl.projectConfig?.globalConfig.camera ?? .disabled
                 switch sel.lane {
+                case .tracking: return cam.tracking.loopMode
                 case .pan:      return cam.pan.loopMode
                 case .zoom:     return cam.zoom.loopMode
                 case .rotation: return cam.rotation.loopMode
@@ -165,6 +204,7 @@ struct CameraKeyframeInspector: View {
             set: { m in
                 ctl.updateProjectConfig { cfg in
                     switch sel.lane {
+                    case .tracking: cfg.globalConfig.camera.tracking.loopMode = m
                     case .pan:      cfg.globalConfig.camera.pan.loopMode      = m
                     case .zoom:     cfg.globalConfig.camera.zoom.loopMode     = m
                     case .rotation: cfg.globalConfig.camera.rotation.loopMode = m
@@ -180,6 +220,7 @@ struct CameraKeyframeInspector: View {
             get: {
                 let cam = ctl.projectConfig?.globalConfig.camera ?? .disabled
                 switch sel.lane {
+                case .tracking: return cam.tracking.keyframes[safe: sel.keyframeIdx]?.easing ?? .linear
                 case .pan:      return cam.pan.keyframes[safe: sel.keyframeIdx]?.easing ?? .linear
                 case .zoom:     return cam.zoom.keyframes[safe: sel.keyframeIdx]?.easing ?? .linear
                 case .rotation: return cam.rotation.keyframes[safe: sel.keyframeIdx]?.easing ?? .linear
@@ -188,6 +229,9 @@ struct CameraKeyframeInspector: View {
             set: { e in
                 ctl.updateProjectConfig { cfg in
                     switch sel.lane {
+                    case .tracking:
+                        guard sel.keyframeIdx < cfg.globalConfig.camera.tracking.keyframes.count else { return }
+                        cfg.globalConfig.camera.tracking.keyframes[sel.keyframeIdx].easing = e
                     case .pan:
                         guard sel.keyframeIdx < cfg.globalConfig.camera.pan.keyframes.count else { return }
                         cfg.globalConfig.camera.pan.keyframes[sel.keyframeIdx].easing = e

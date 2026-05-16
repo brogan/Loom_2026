@@ -8,6 +8,8 @@ struct ContentView: View {
     @State private var currentFrame:      Int  = 0
     @State private var seekFrame:         Int? = nil
     @State private var spritesPreviewMode: Bool = false
+    @State private var subdivisionPreviewMode: Bool = false
+    @State private var timelineCollapsed: Bool = false
     @State private var newProjectName: String = "MyProject"
     @State private var renderProgress: Double? = nil
 
@@ -34,7 +36,9 @@ struct ContentView: View {
 
             contentArea
 
-            TimelinePanel(currentFrame: currentFrame, seekFrame: $seekFrame)
+            TimelinePanel(currentFrame: currentFrame,
+                          seekFrame: $seekFrame,
+                          isCollapsed: $timelineCollapsed)
                 .environmentObject(controller)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -60,8 +64,24 @@ struct ContentView: View {
         } message: {
             Text(controller.geometryEditorLeaveWarningMessage)
         }
-        .onChange(of: controller.projectURL) { _, _ in currentFrame = 0; seekFrame = nil; spritesPreviewMode = false }
+        .onChange(of: controller.projectURL) { _, _ in
+            currentFrame = 0
+            seekFrame = nil
+            spritesPreviewMode = false
+            subdivisionPreviewMode = false
+            timelineCollapsed = shouldDefaultCollapseTimeline
+        }
+        .onAppear {
+            timelineCollapsed = shouldDefaultCollapseTimeline
+        }
         .onChange(of: currentFrame) { _, frame in controller.currentTimelineFrame = frame }
+        .onChange(of: controller.selectedTab) { _, _ in
+            timelineCollapsed = shouldDefaultCollapseTimeline
+        }
+    }
+
+    private var shouldDefaultCollapseTimeline: Bool {
+        controller.selectedTab == .geometry || controller.selectedTab == .subdivision
     }
 
     // MARK: - Tab bar
@@ -91,8 +111,10 @@ struct ContentView: View {
                     .clipShape(RoundedRectangle(cornerRadius: 4))
                 }
                 .buttonStyle(.plain)
+                .modifier(LoomHoverHelp(tab.label))
             }
             Spacer()
+            hoverHelpField
             if let renderProgress {
                 Text("Rendering \(Int((renderProgress * 100).rounded()))%")
                     .font(.system(size: 11, design: .monospaced))
@@ -106,6 +128,21 @@ struct ContentView: View {
         }
         .padding(.horizontal, 8)
         .frame(height: 34)
+    }
+
+    private var hoverHelpField: some View {
+        Text(controller.hoverHelpText.isEmpty ? " " : controller.hoverHelpText)
+            .font(.system(size: 11))
+            .foregroundStyle(.secondary)
+            .lineLimit(1)
+            .truncationMode(.tail)
+            .frame(minWidth: 520, maxWidth: .infinity, alignment: .trailing)
+            .padding(.horizontal, 8)
+            .padding(.vertical, 3)
+            .background(Color.primary.opacity(controller.hoverHelpText.isEmpty ? 0 : 0.045))
+            .clipShape(RoundedRectangle(cornerRadius: 4))
+            .layoutPriority(1)
+            .animation(.easeOut(duration: 0.08), value: controller.hoverHelpText)
     }
 
     // MARK: - Three-column content area
@@ -136,7 +173,7 @@ struct ContentView: View {
     private var listPanel: some View {
         switch controller.selectedTab {
         case .global:
-            EmptyView()
+            GlobalProjectInfoView()
         case .geometry:
             GeometryTabView()
         case .subdivision:
@@ -175,12 +212,35 @@ struct ContentView: View {
                 }
                 .buttonStyle(.plain)
                 .help(spritesPreviewMode ? "Switch to wireframe editor" : "Switch to live preview")
+                .modifier(LoomHoverHelp(spritesPreviewMode ? "Switch to wireframe editor" : "Switch to live preview"))
                 .padding(8)
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         case .subdivision:
-            SubdivisionWireframeView()
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            ZStack(alignment: .topTrailing) {
+                if subdivisionPreviewMode {
+                    liveCanvas
+                } else {
+                    SubdivisionWireframeView()
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                }
+                Button {
+                    subdivisionPreviewMode.toggle()
+                } label: {
+                    Label(subdivisionPreviewMode ? "Edit" : "Preview",
+                          systemImage: subdivisionPreviewMode ? "pencil" : "play.rectangle")
+                        .font(.system(size: 11))
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 4)
+                        .background(.thinMaterial)
+                        .clipShape(RoundedRectangle(cornerRadius: 6))
+                }
+                .buttonStyle(.plain)
+                .help(subdivisionPreviewMode ? "Switch to wireframe editor" : "Switch to live preview")
+                .modifier(LoomHoverHelp(subdivisionPreviewMode ? "Switch to wireframe editor" : "Switch to live preview"))
+                .padding(8)
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
         default:
             liveCanvas
         }
@@ -190,7 +250,7 @@ struct ContentView: View {
         ZStack {
             Color.black
             if let engine = controller.engine {
-                let size   = engine.canvasSize
+                let size   = controller.engineCanvasSize
                 let aspect = size.width / max(size.height, 1)
                 RenderSurfaceView(
                     engine:              engine,

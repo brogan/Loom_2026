@@ -57,6 +57,39 @@ final class GlobalConfigTests: XCTestCase {
         let decoded = try JSONDecoder().decode(GlobalConfig.self, from: data)
         XCTAssertEqual(cfg, decoded)
     }
+
+    func testCameraConfigDecodesMissingTrackingAsZero() throws {
+        let oldStyleCamera = CameraConfig(
+            enabled: true,
+            pan: .constant(Vector2D(x: 12, y: -4)),
+            zoom: .constant(1.5),
+            rotation: .constant(10)
+        )
+        let encoded = try JSONEncoder().encode(oldStyleCamera)
+        var object = try JSONSerialization.jsonObject(with: encoded) as! [String: Any]
+        object.removeValue(forKey: "tracking")
+        let json = try JSONSerialization.data(withJSONObject: object)
+
+        let camera = try JSONDecoder().decode(CameraConfig.self, from: json)
+        XCTAssertTrue(camera.enabled)
+        XCTAssertEqual(camera.tracking, .zero)
+        XCTAssertEqual(camera.pan.base, Vector2D(x: 12, y: -4))
+    }
+
+    func testCameraAnimationEndFrameIncludesTrackingKeyframes() {
+        let camera = CameraConfig(
+            enabled: true,
+            tracking: VectorDriver(
+                mode: .keyframe,
+                keyframes: [
+                    VectorKeyframe(frame: 0, value: Vector2D(x: -100, y: 0)),
+                    VectorKeyframe(frame: 100, value: Vector2D(x: 100, y: 0))
+                ]
+            )
+        )
+
+        XCTAssertEqual(camera.animationEndFrame, 100)
+    }
 }
 
 // MARK: - ShapeConfigTests

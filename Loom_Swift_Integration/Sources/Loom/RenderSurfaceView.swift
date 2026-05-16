@@ -66,17 +66,27 @@ final class RenderSurfaceNSView: NSView {
     // NSView is @MainActor but engine must be accessed off-main for rendering.
     nonisolated(unsafe) fileprivate var engine: Engine
 
-    // Serial queue: all engine mutation and CGImage production happen here.
-    private let renderQueue = DispatchQueue(label: "com.loom.render", qos: .userInteractive)
+    // Shared serial queue: all preview surfaces serialize engine mutation and
+    // CGImage production, including during tab switches while an old surface may
+    // still be finishing an in-flight render.
+    private static let sharedRenderQueue = DispatchQueue(label: "com.loom.render", qos: .userInteractive)
+    private var renderQueue: DispatchQueue { Self.sharedRenderQueue }
 
     // Main-thread only below this line ↓
     private var latestFrame:      CGImage?
     private var lastTick:         CFTimeInterval = 0
     private var renderPending:    Bool           = false
+    private var seekPending:      Bool           = false
+    private var queuedSeekFrame:  Int?           = nil
     private var accumulatedDt:    CFTimeInterval = 0
     // Incremented whenever the engine or project is replaced; lets in-flight
     // renders on renderQueue detect that their result is stale.
     private var renderGeneration: Int            = 0
+    private var renderProgressToken: Int         = 0
+    private var renderProgressVisible: Bool      = false
+    private var pendingRenderProgress: Double?   = nil
+
+    private let slowRenderProgressDelay: TimeInterval = 0.5
 
     var onFrameTick:          (Int) -> Void
     var onAnimationComplete:  (() -> Void)?
@@ -132,20 +142,52 @@ final class RenderSurfaceNSView: NSView {
     /// Seek to `frame` and render a single frame to display.
     /// The render timer must be stopped before calling (scrub pauses playback).
     func seekToFrame(_ frame: Int) {
+        queuedSeekFrame = frame
+        guard !seekPending else { return }
+        renderNextQueuedSeek()
+    }
+
+    private func renderNextQueuedSeek() {
+        guard let frame = queuedSeekFrame else {
+            seekPending = false
+            onRenderProgress(nil)
+            return
+        }
+        queuedSeekFrame = nil
+        seekPending = true
         renderGeneration += 1
         let gen = renderGeneration
+        let progressToken = beginRenderProgress(initial: 0.10)
         renderQueue.async { [weak self] in
             guard let self else { return }
-            DispatchQueue.main.async { [weak self] in self?.onRenderProgress(0.10) }
             self.engine.seek(toFrame: frame)
-            DispatchQueue.main.async { [weak self] in self?.onRenderProgress(0.35) }
-            guard let img = self.engine.makeFrame() else { return }
+            DispatchQueue.main.async { [weak self] in self?.updateRenderProgress(0.35, token: progressToken) }
+            guard let img = self.engine.makeFrame() else {
+                DispatchQueue.main.async { [weak self] in
+                    guard let self else { return }
+                    self.seekPending = false
+                    self.finishRenderProgress(token: progressToken, showCompletion: false)
+                    self.renderNextQueuedSeek()
+                }
+                return
+            }
             DispatchQueue.main.async { [weak self] in
-                guard let self, self.renderGeneration == gen else { return }
-                self.onRenderProgress(1.0)
-                self.onFrameTick(frame)
-                self.updateLayer(with: img)
-                self.onRenderProgress(nil)
+                guard let self else { return }
+                guard self.renderGeneration == gen else {
+                    self.seekPending = false
+                    self.finishRenderProgress(token: progressToken, showCompletion: false)
+                    self.renderNextQueuedSeek()
+                    return
+                }
+                if self.queuedSeekFrame == nil {
+                    self.finishRenderProgress(token: progressToken)
+                    self.onFrameTick(frame)
+                    self.updateLayer(with: img)
+                } else {
+                    self.finishRenderProgress(token: progressToken, showCompletion: false)
+                }
+                self.seekPending = false
+                self.renderNextQueuedSeek()
             }
         }
     }
@@ -154,38 +196,58 @@ final class RenderSurfaceNSView: NSView {
 
     func replaceEngine(_ newEngine: Engine) {
         stopRendering()
+        seekPending = false
+        queuedSeekFrame = nil
         renderGeneration += 1
         let gen = renderGeneration
         clearDisplay()
+        let progressToken = beginRenderProgress(initial: 0.20)
         renderQueue.async { [weak self] in
             guard let self else { return }
             self.engine = newEngine
-            DispatchQueue.main.async { [weak self] in self?.onRenderProgress(0.20) }
-            guard let frame = self.engine.makeFrame() else { return }
+            guard let frame = self.engine.makeFrame() else {
+                DispatchQueue.main.async { [weak self] in
+                    self?.finishRenderProgress(token: progressToken, showCompletion: false)
+                }
+                return
+            }
             DispatchQueue.main.async { [weak self] in
-                guard let self, self.renderGeneration == gen else { return }
-                self.onRenderProgress(1.0)
+                guard let self else { return }
+                guard self.renderGeneration == gen else {
+                    self.finishRenderProgress(token: progressToken, showCompletion: false)
+                    return
+                }
+                self.finishRenderProgress(token: progressToken)
                 self.updateLayer(with: frame)
-                self.onRenderProgress(nil)
             }
         }
     }
 
     func resetAndRenderFirstFrame() {
         stopRendering()
+        seekPending = false
+        queuedSeekFrame = nil
         renderGeneration += 1
         let gen = renderGeneration
         clearDisplay()
+        let progressToken = beginRenderProgress(initial: 0.20)
         renderQueue.async { [weak self] in
             guard let self else { return }
             try? self.engine.reset()
-            DispatchQueue.main.async { [weak self] in self?.onRenderProgress(0.20) }
-            guard let frame = self.engine.makeFrame() else { return }
+            guard let frame = self.engine.makeFrame() else {
+                DispatchQueue.main.async { [weak self] in
+                    self?.finishRenderProgress(token: progressToken, showCompletion: false)
+                }
+                return
+            }
             DispatchQueue.main.async { [weak self] in
-                guard let self, self.renderGeneration == gen else { return }
-                self.onRenderProgress(1.0)
+                guard let self else { return }
+                guard self.renderGeneration == gen else {
+                    self.finishRenderProgress(token: progressToken, showCompletion: false)
+                    return
+                }
+                self.finishRenderProgress(token: progressToken)
                 self.updateLayer(with: frame)
-                self.onRenderProgress(nil)
             }
         }
     }
@@ -204,18 +266,18 @@ final class RenderSurfaceNSView: NSView {
         let totalDt = dt + accumulatedDt
         accumulatedDt = 0
         let gen = renderGeneration
+        let progressToken = beginRenderProgress(initial: 0.10)
 
         renderQueue.async { [weak self] in
             guard let self else { return }
-            DispatchQueue.main.async { [weak self] in self?.onRenderProgress(0.10) }
             self.engine.update(deltaTime: totalDt)
-            DispatchQueue.main.async { [weak self] in self?.onRenderProgress(0.30) }
+            DispatchQueue.main.async { [weak self] in self?.updateRenderProgress(0.30, token: progressToken) }
             let frameNum = self.engine.currentFrame
             let isDone   = self.checkAnimationDone()
             guard let frame = self.engine.makeFrame() else {
                 DispatchQueue.main.async { [weak self] in
                     self?.renderPending = false
-                    self?.onRenderProgress(nil)
+                    self?.finishRenderProgress(token: progressToken, showCompletion: false)
                 }
                 return
             }
@@ -224,15 +286,14 @@ final class RenderSurfaceNSView: NSView {
                 // Discard stale renders produced before a replaceEngine/reset.
                 guard self.renderGeneration == gen else {
                     self.renderPending = false
-                    self.onRenderProgress(nil)
+                    self.finishRenderProgress(token: progressToken, showCompletion: false)
                     return
                 }
                 self.renderPending = false
-                self.onRenderProgress(1.0)
+                self.finishRenderProgress(token: progressToken)
                 self.onFrameTick(frameNum)
                 if isDone { self.stopRendering(); self.onAnimationComplete?() }
                 self.updateLayer(with: frame)
-                self.onRenderProgress(nil)
             }
         }
     }
@@ -262,6 +323,45 @@ final class RenderSurfaceNSView: NSView {
             l.contents = nil
             CATransaction.commit()
         }
+    }
+
+    private func beginRenderProgress(initial: Double) -> Int {
+        renderProgressToken += 1
+        let token = renderProgressToken
+        pendingRenderProgress = initial
+        renderProgressVisible = false
+        DispatchQueue.main.asyncAfter(deadline: .now() + slowRenderProgressDelay) { [weak self] in
+            guard let self else { return }
+            MainActor.assumeIsolated {
+                guard self.renderProgressToken == token,
+                      let progress = self.pendingRenderProgress
+                else { return }
+                self.renderProgressVisible = true
+                self.onRenderProgress(progress)
+            }
+        }
+        return token
+    }
+
+    private func updateRenderProgress(_ progress: Double, token: Int) {
+        guard renderProgressToken == token else { return }
+        pendingRenderProgress = progress
+        if renderProgressVisible {
+            onRenderProgress(progress)
+        }
+    }
+
+    private func finishRenderProgress(token: Int, showCompletion: Bool = true) {
+        guard renderProgressToken == token else { return }
+        renderProgressToken += 1
+        pendingRenderProgress = nil
+        if renderProgressVisible {
+            if showCompletion {
+                onRenderProgress(1.0)
+            }
+            onRenderProgress(nil)
+        }
+        renderProgressVisible = false
     }
 
     private func updateLayer(with frame: CGImage) {

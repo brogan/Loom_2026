@@ -12,6 +12,7 @@ struct GlobalInspector: View {
             canvasSection
             colorsSection
             playbackSection
+            cameraSection
             noteSection
             statusSection
         } else {
@@ -124,22 +125,20 @@ struct GlobalInspector: View {
             InspectorField("FPS") {
                 FloatEntryField(value: bind(\.targetFPS), width: 50, fractionDigits: 1)
             }
-            InspectorField("Duration") {
-                TextField("", value: bind(\.duration), format: .number)
-                    .textFieldStyle(.squareBorder)
-                    .font(.system(size: 12, design: .monospaced))
-                    .frame(width: 60)
-                Text("frames").font(.system(size: 11)).foregroundStyle(.secondary)
-                Text("(0 = auto)").font(.system(size: 10)).foregroundStyle(.tertiary)
-            }
-            InspectorField("Animating") {
-                Toggle("", isOn: bind(\.animating)).labelsHidden()
-            }
-            InspectorField("BG once") {
-                Toggle("", isOn: bind(\.drawBackgroundOnce)).labelsHidden()
-            }
             InspectorField("Scrub bar") {
                 Toggle("", isOn: $controller.showScrubBar).labelsHidden()
+            }
+        }
+    }
+
+    private var cameraSection: some View {
+        InspectorSection("Camera") {
+            InspectorField("Enabled") {
+                Toggle("", isOn: bind(\.camera.enabled)).labelsHidden()
+            }
+            InspectorField("Perspective") {
+                FloatEntryField(value: bind(\.camera.perspectiveStrength), width: 65, fractionDigits: 4)
+                Text("0=flat").font(.system(size: 10)).foregroundStyle(.tertiary)
             }
         }
     }

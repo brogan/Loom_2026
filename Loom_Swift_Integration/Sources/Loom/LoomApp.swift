@@ -27,6 +27,7 @@ struct LoomIntegrationApp: App {
             CommandGroup(replacing: .help) {
                 Button("Loom Help") { HelpWindowController.shared.show() }
                     .keyboardShortcut("?", modifiers: .command)
+                Button("Reveal Loom Log") { LoomLogger.revealInFinder() }
             }
         }
     }
@@ -36,6 +37,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { true }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        LoomLogger.install()
         // When launched via `swift run` the app doesn't steal keyboard focus from the
         // terminal process that spawned it. Force-activate so TextFields work immediately.
         NSApp.activate(ignoringOtherApps: true)
