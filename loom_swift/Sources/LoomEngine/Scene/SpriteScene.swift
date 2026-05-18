@@ -750,7 +750,6 @@ public struct SpriteScene: @unchecked Sendable {
         // values rather than being scaled up by the quality multiple.
         let effectiveQuality = scaleImage ? qualityMultiple : 1
         context.saveGState()
-        context.setAlpha(CGFloat(spriteOpacity))
         defer { context.restoreGState() }
 
         for (rendererIndex, renderer) in activeRenderers {
@@ -758,6 +757,7 @@ public struct SpriteScene: @unchecked Sendable {
                                                  scales: [.sprite, .global])
             let resolved = resolveRendererDrivers(changed, spriteIndex: spriteIndex, elapsedFrames: elapsedFrames)
             let rendererOpacity = resolveRendererOpacity(changed, spriteIndex: spriteIndex, elapsedFrames: elapsedFrames)
+            let effectiveOpacity = rendererOpacity * spriteOpacity
             guard rendererOpacity > 0 else { continue }
             var elementState = rendererAnimationState(for: activeInstance, rendererIndex: rendererIndex)
 
@@ -785,7 +785,7 @@ public struct SpriteScene: @unchecked Sendable {
                                 color: resolved.strokeColor,
                                 context: context,
                                 brushImages: brushImages,
-                                opacityMultiplier: rendererOpacity
+                                opacityMultiplier: effectiveOpacity
                             )
                         }
                         state.checkCompletion(mode: scaledBrush.postCompletionMode)
@@ -799,7 +799,7 @@ public struct SpriteScene: @unchecked Sendable {
                         context:       context,
                         elapsedFrames: elapsedFrames,
                         brushImages:   brushImages,
-                        opacityMultiplier: rendererOpacity
+                        opacityMultiplier: effectiveOpacity
                     )
                 }
             } else if (resolved.mode == .stamped || resolved.mode == .stenciled),
@@ -822,7 +822,7 @@ public struct SpriteScene: @unchecked Sendable {
                         viewTransform: viewTransform,
                         stampImages:   stampImages,
                         opacityState:  opacityState,
-                        opacityMultiplier: rendererOpacity,
+                        opacityMultiplier: effectiveOpacity,
                         using:         &rng
                     )
                 }
@@ -846,7 +846,7 @@ public struct SpriteScene: @unchecked Sendable {
                             into:            context,
                             transform:       viewTransform,
                             qualityMultiple: effectiveQuality,
-                            opacityMultiplier: rendererOpacity,
+                            opacityMultiplier: effectiveOpacity,
                             spriteIndex:      spriteIndex,
                             elapsedFrames:    elapsedFrames,
                             using:           &rng
@@ -857,7 +857,7 @@ public struct SpriteScene: @unchecked Sendable {
                                           into:            context,
                                           transform:       viewTransform,
                                           qualityMultiple: effectiveQuality,
-                                          opacityMultiplier: rendererOpacity)
+                                          opacityMultiplier: effectiveOpacity)
                     }
                     elementState = RenderStateEngine.advance(
                         state:   elementState,
