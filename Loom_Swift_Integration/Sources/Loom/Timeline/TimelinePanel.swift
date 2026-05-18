@@ -288,6 +288,21 @@ struct TimelinePanel: View {
                 Text("Camera").font(.system(size: 11, weight: .medium))
                 Spacer()
                 let hiddenCamCount = CameraLane.allCases.filter { hiddenLanes.contains(cameraLaneID($0)) }.count
+                let unusedCamCount: Int = {
+                    guard let cam = controller.projectConfig?.globalConfig.camera else { return 0 }
+                    return CameraLane.allCases.filter { lane in
+                        guard !hiddenLanes.contains(cameraLaneID(lane)) else { return false }
+                        let enabled: Bool = {
+                            switch lane {
+                            case .tracking: return cam.tracking.enabled
+                            case .pan:      return cam.pan.enabled
+                            case .zoom:     return cam.zoom.enabled
+                            case .rotation: return cam.rotation.enabled
+                            }
+                        }()
+                        return !enabled && lane.keyframeFrames(from: cam).isEmpty
+                    }.count
+                }()
                 if hiddenCamCount > 0 {
                     Button {
                         CameraLane.allCases.forEach { hiddenLanes.remove(cameraLaneID($0)) }
@@ -297,6 +312,29 @@ struct TimelinePanel: View {
                             Text("\(hiddenCamCount)").font(.system(size: 9))
                         }
                         .foregroundStyle(.secondary)
+                    }
+                    .buttonStyle(.plain)
+                    .padding(.trailing, 4)
+                } else if unusedCamCount > 0 {
+                    Button {
+                        guard let cam = controller.projectConfig?.globalConfig.camera else { return }
+                        CameraLane.allCases.forEach { lane in
+                            let enabled: Bool = {
+                                switch lane {
+                                case .tracking: return cam.tracking.enabled
+                                case .pan:      return cam.pan.enabled
+                                case .zoom:     return cam.zoom.enabled
+                                case .rotation: return cam.rotation.enabled
+                                }
+                            }()
+                            if !enabled && lane.keyframeFrames(from: cam).isEmpty {
+                                hiddenLanes.insert(cameraLaneID(lane))
+                            }
+                        }
+                    } label: {
+                        Image(systemName: "eye")
+                            .font(.system(size: 8))
+                            .foregroundStyle(Color.secondary.opacity(0.55))
                     }
                     .buttonStyle(.plain)
                     .padding(.trailing, 4)
@@ -442,6 +480,23 @@ struct TimelinePanel: View {
             let hiddenCount = DriverLane.allCases.filter {
                 hiddenLanes.contains(spriteLaneID(spriteName: sprite.name, lane: $0))
             }.count
+            let unusedCount: Int = {
+                guard let d = node.sprite.animation.drivers else { return 0 }
+                return DriverLane.allCases.filter { lane in
+                    guard !hiddenLanes.contains(spriteLaneID(spriteName: sprite.name, lane: lane)) else { return false }
+                    let enabled: Bool = {
+                        switch lane {
+                        case .position: return d.position.enabled
+                        case .scale:    return d.scale.enabled
+                        case .rotation: return d.rotation.enabled
+                        case .morph:    return d.morph.enabled
+                        case .opacity:  return d.opacity.enabled
+                        case .shape:    return d.shape.enabled
+                        }
+                    }()
+                    return !enabled && lane.keyframeFrames(from: d).isEmpty
+                }.count
+            }()
             if hiddenCount > 0 {
                 Button {
                     DriverLane.allCases.forEach { hiddenLanes.remove(spriteLaneID(spriteName: sprite.name, lane: $0)) }
@@ -451,6 +506,31 @@ struct TimelinePanel: View {
                         Text("\(hiddenCount)").font(.system(size: 9))
                     }
                     .foregroundStyle(.secondary)
+                }
+                .buttonStyle(.plain)
+                .padding(.trailing, 4)
+            } else if unusedCount > 0 {
+                Button {
+                    guard let d = node.sprite.animation.drivers else { return }
+                    DriverLane.allCases.forEach { lane in
+                        let enabled: Bool = {
+                            switch lane {
+                            case .position: return d.position.enabled
+                            case .scale:    return d.scale.enabled
+                            case .rotation: return d.rotation.enabled
+                            case .morph:    return d.morph.enabled
+                            case .opacity:  return d.opacity.enabled
+                            case .shape:    return d.shape.enabled
+                            }
+                        }()
+                        if !enabled && lane.keyframeFrames(from: d).isEmpty {
+                            hiddenLanes.insert(spriteLaneID(spriteName: sprite.name, lane: lane))
+                        }
+                    }
+                } label: {
+                    Image(systemName: "eye")
+                        .font(.system(size: 8))
+                        .foregroundStyle(Color.secondary.opacity(0.55))
                 }
                 .buttonStyle(.plain)
                 .padding(.trailing, 4)
