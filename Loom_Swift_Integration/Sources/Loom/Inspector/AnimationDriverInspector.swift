@@ -16,14 +16,9 @@ struct DoubleDriverEditor: View {
     var body: some View {
         InspectorSection(label, isCollapsed: $isCollapsed, isHighlighted: isHighlighted) {
             InspectorField("Mode") {
-                Picker("", selection: $driver.mode) {
-                    ForEach(DoubleDriver.Mode.allCases, id: \.self) { m in
-                        Text(m.label).tag(m)
-                    }
-                }
-                .labelsHidden()
-                .frame(maxWidth: 120)
+                LoomPicker(selection: $driver.mode, maxWidth: 120)
             }
+            .loomHelp("Animation mode — Constant (fixed value), Jitter (random per-frame noise), Noise (smooth random), Oscillator (periodic wave), Keyframe (interpolated between saved values).")
             modeFields
         }
     }
@@ -33,43 +28,45 @@ struct DoubleDriverEditor: View {
         switch driver.mode {
         case .constant:
             floatField("Value",    $driver.base)
+            .loomHelp("Fixed scalar value output every frame.")
 
         case .jitter:
             floatField("Base",     $driver.base)
+            .loomHelp("Centre value around which random jitter is applied each frame.")
             floatField("Range ±",  $driver.range)
+            .loomHelp("Maximum deviation from Base — the output is a random value in [Base−Range, Base+Range] each frame.")
             intField("Seed",       $driver.seed)
+            .loomHelp("Random seed for reproducible jitter. Change to get a different noise sequence.")
 
         case .noise:
             floatField("Base",     $driver.base)
+            .loomHelp("Centre value of the smooth noise output.")
             floatField("Amplitude",$driver.amplitude)
+            .loomHelp("Maximum deviation from Base produced by the smooth noise function.")
             intField("Period (f)", $driver.period)
+            .loomHelp("Length in frames of one full noise cycle. Larger values = slower, smoother variation.")
             intField("Seed",       $driver.seed)
+            .loomHelp("Random seed for reproducible smooth noise. Change to get a different noise shape.")
 
         case .oscillator:
             floatField("Base",     $driver.base)
+            .loomHelp("Centre value that the oscillator wave is offset from.")
             floatField("Amplitude",$driver.amplitude)
+            .loomHelp("Peak deviation from Base — the wave swings between Base−Amplitude and Base+Amplitude.")
             floatField("Freq Hz",  $driver.freqHz)
+            .loomHelp("Oscillation frequency in cycles per second. Higher values = faster oscillation.")
             floatField("Phase 0–1",$driver.phase)
+            .loomHelp("Starting phase offset of the wave (0 = start at centre crossing, 0.25 = start at peak).")
             InspectorField("Wave") {
-                Picker("", selection: $driver.wave) {
-                    ForEach(WaveShape.allCases, id: \.self) { w in
-                        Text(w.rawValue.capitalized).tag(w)
-                    }
-                }
-                .labelsHidden()
-                .frame(maxWidth: 110)
+                LoomPicker(selection: $driver.wave, maxWidth: 110)
             }
+            .loomHelp("Wave shape — Sine (smooth), Triangle (linear ramp), Square (stepped), Sawtooth (rising ramp).")
 
         case .keyframe:
             InspectorField("Loop") {
-                Picker("", selection: $driver.loopMode) {
-                    ForEach(LoopMode.allCases, id: \.self) { m in
-                        Text(m.label).tag(m)
-                    }
-                }
-                .labelsHidden()
-                .frame(maxWidth: 100)
+                LoomPicker(selection: $driver.loopMode, maxWidth: 100)
             }
+            .loomHelp("What happens after the last keyframe — Loop (wrap to start), Ping-Pong (reverse), Once (hold at last value).")
             DoubleKeyframeTable(
                 keyframes: $driver.keyframes,
                 firstFrame: controller.currentTimelineFrame,
@@ -106,14 +103,9 @@ struct VectorDriverEditor: View {
     var body: some View {
         InspectorSection(label, isCollapsed: $isCollapsed, isHighlighted: isHighlighted) {
             InspectorField("Mode") {
-                Picker("", selection: $driver.mode) {
-                    ForEach(VectorDriver.Mode.allCases, id: \.self) { m in
-                        Text(m.label).tag(m)
-                    }
-                }
-                .labelsHidden()
-                .frame(maxWidth: 120)
+                LoomPicker(selection: $driver.mode, maxWidth: 120)
             }
+            .loomHelp("Animation mode — Constant (fixed XY), Jitter (random per-frame XY noise), Noise (smooth random XY), Oscillator (periodic XY wave), Keyframe (interpolated XY between saved values).")
             modeFields
         }
     }
@@ -123,43 +115,45 @@ struct VectorDriverEditor: View {
         switch driver.mode {
         case .constant:
             vec2Field("Value",     $driver.base)
+            .loomHelp("Fixed XY value output every frame.")
 
         case .jitter:
             vec2Field("Base",      $driver.base)
+            .loomHelp("Centre XY value around which random jitter is applied each frame.")
             vec2Field("Range ±",   $driver.range)
+            .loomHelp("Maximum per-axis deviation from Base — each axis is independently randomised within ±Range each frame.")
             intField("Seed",       $driver.seed)
+            .loomHelp("Random seed for reproducible XY jitter. Change to get a different noise sequence.")
 
         case .noise:
             vec2Field("Base",      $driver.base)
+            .loomHelp("Centre XY value of the smooth noise output.")
             vec2Field("Amplitude", $driver.amplitude)
+            .loomHelp("Maximum per-axis deviation from Base produced by the smooth noise function.")
             intField("Period (f)", $driver.period)
+            .loomHelp("Length in frames of one full noise cycle per axis. Larger values = slower, smoother variation.")
             intField("Seed",       $driver.seed)
+            .loomHelp("Random seed for reproducible smooth XY noise. Change to get a different noise shape.")
 
         case .oscillator:
             vec2Field("Base",      $driver.base)
+            .loomHelp("Centre XY value that the oscillator waves are offset from.")
             vec2Field("Amplitude", $driver.amplitude)
+            .loomHelp("Peak per-axis deviation from Base — each axis swings between Base−Amplitude and Base+Amplitude.")
             vec2Field("Freq Hz",   $driver.freqHz)
+            .loomHelp("Per-axis oscillation frequency in cycles per second. Set X and Y differently for elliptical paths.")
             vec2Field("Phase 0–1", $driver.phase)
+            .loomHelp("Per-axis starting phase offset of the wave (0–1). Offset X and Y by 0.25 for a circular orbit.")
             InspectorField("Wave") {
-                Picker("", selection: $driver.wave) {
-                    ForEach(WaveShape.allCases, id: \.self) { w in
-                        Text(w.rawValue.capitalized).tag(w)
-                    }
-                }
-                .labelsHidden()
-                .frame(maxWidth: 110)
+                LoomPicker(selection: $driver.wave, maxWidth: 110)
             }
+            .loomHelp("Wave shape applied to both axes — Sine (smooth), Triangle (linear ramp), Square (stepped), Sawtooth (rising ramp).")
 
         case .keyframe:
             InspectorField("Loop") {
-                Picker("", selection: $driver.loopMode) {
-                    ForEach(LoopMode.allCases, id: \.self) { m in
-                        Text(m.label).tag(m)
-                    }
-                }
-                .labelsHidden()
-                .frame(maxWidth: 100)
+                LoomPicker(selection: $driver.loopMode, maxWidth: 100)
             }
+            .loomHelp("What happens after the last keyframe — Loop (wrap to start), Ping-Pong (reverse), Once (hold at last value).")
             VectorKeyframeTable(
                 keyframes: $driver.keyframes,
                 firstFrame: controller.currentTimelineFrame,
@@ -320,28 +314,19 @@ struct ColorDriverEditor: View {
     var body: some View {
         InspectorSection(label, isCollapsed: $isCollapsed, isHighlighted: isHighlighted) {
             InspectorField("Mode") {
-                Picker("", selection: $driver.mode) {
-                    ForEach(ColorDriver.Mode.allCases, id: \.self) { m in
-                        Text(m.label).tag(m)
-                    }
-                }
-                .labelsHidden()
-                .frame(maxWidth: 120)
+                LoomPicker(selection: $driver.mode, maxWidth: 120)
             }
+            .loomHelp("Animation mode — Constant (fixed colour), Keyframe (interpolated), Jitter (random per-frame flicker), Noise (smooth colour transition), Oscillator (periodic colour cycling).")
             switch driver.mode {
             case .constant:
                 LoomColorField(label: "Value", color: $driver.base)
+                .loomHelp("Fixed colour output every frame.")
 
             case .keyframe:
                 InspectorField("Loop") {
-                    Picker("", selection: $driver.loopMode) {
-                        ForEach(LoopMode.allCases, id: \.self) { m in
-                            Text(m.label).tag(m)
-                        }
-                    }
-                    .labelsHidden()
-                    .frame(maxWidth: 100)
+                    LoomPicker(selection: $driver.loopMode, maxWidth: 100)
                 }
+                .loomHelp("What happens after the last keyframe — Loop (wrap to start), Ping-Pong (reverse), Once (hold last colour).")
                 ColorKeyframeTable(
                     keyframes: $driver.keyframes,
                     firstFrame: controller.currentTimelineFrame,
@@ -350,25 +335,32 @@ struct ColorDriverEditor: View {
 
             case .jitter:
                 LoomColorField(label: "Color A", color: $driver.base)
+                .loomHelp("Base colour. Each frame the output is randomly shifted toward or away from Color B.")
                 LoomColorField(label: "Color B", color: $driver.colorB)
+                .loomHelp("Target colour for random jitter. The output oscillates between Color A and Color B.")
                 InspectorField("Range") {
                     FloatEntryField(value: $driver.range, width: 55, fractionDigits: 2)
                     Text("0–0.5").font(.system(size: 10)).foregroundStyle(.tertiary)
                 }
+                .loomHelp("Maximum random colour component deviation from Color A toward Color B (0–0.5).")
                 InspectorField("Seed") {
                     TextField("", value: $driver.seed, format: .number)
                         .textFieldStyle(.squareBorder)
                         .font(.system(size: 12, design: .monospaced))
                         .frame(width: 50)
                 }
+                .loomHelp("Random seed for reproducible colour jitter. Change to get a different flicker pattern.")
 
             case .noise:
                 LoomColorField(label: "Color A", color: $driver.base)
+                .loomHelp("Base colour. The smooth noise output blends between Color A and Color B.")
                 LoomColorField(label: "Color B", color: $driver.colorB)
+                .loomHelp("Target colour blended toward by the smooth noise function.")
                 InspectorField("Amplitude") {
                     FloatEntryField(value: $driver.amplitude, width: 55, fractionDigits: 2)
                     Text("0–0.5").font(.system(size: 10)).foregroundStyle(.tertiary)
                 }
+                .loomHelp("Maximum smooth colour deviation from Color A toward Color B (0–0.5).")
                 InspectorField("Period") {
                     TextField("", value: $driver.period, format: .number)
                         .textFieldStyle(.squareBorder)
@@ -376,32 +368,33 @@ struct ColorDriverEditor: View {
                         .frame(width: 50)
                     Text("frames").font(.system(size: 10)).foregroundStyle(.tertiary)
                 }
+                .loomHelp("Length in frames of one full smooth colour noise cycle. Larger values = slower transitions.")
                 InspectorField("Seed") {
                     TextField("", value: $driver.seed, format: .number)
                         .textFieldStyle(.squareBorder)
                         .font(.system(size: 12, design: .monospaced))
                         .frame(width: 50)
                 }
+                .loomHelp("Random seed for reproducible smooth colour noise. Change to get a different noise shape.")
 
             case .oscillator:
                 LoomColorField(label: "Color A", color: $driver.base)
+                .loomHelp("First colour in the oscillation cycle (wave trough).")
                 LoomColorField(label: "Color B", color: $driver.colorB)
+                .loomHelp("Second colour in the oscillation cycle (wave peak).")
                 InspectorField("Freq (Hz)") {
                     FloatEntryField(value: $driver.freqHz, width: 55, fractionDigits: 3)
                 }
+                .loomHelp("Colour oscillation frequency in cycles per second. Higher values = faster cycling.")
                 InspectorField("Phase") {
                     FloatEntryField(value: $driver.phase, width: 55, fractionDigits: 3)
                     Text("0–1").font(.system(size: 10)).foregroundStyle(.tertiary)
                 }
+                .loomHelp("Starting phase offset of the colour wave (0 = start at Color A, 0.5 = start at Color B).")
                 InspectorField("Wave") {
-                    Picker("", selection: $driver.wave) {
-                        ForEach(WaveShape.allCases, id: \.self) { s in
-                            Text(s.rawValue.capitalized).tag(s)
-                        }
-                    }
-                    .labelsHidden()
-                    .frame(maxWidth: 110)
+                    LoomPicker(selection: $driver.wave, maxWidth: 110)
                 }
+                .loomHelp("Wave shape controlling the blend between Color A and Color B — Sine (smooth), Triangle, Square (hard switch), Sawtooth.")
             }
         }
     }
@@ -486,52 +479,6 @@ struct ColorKeyframeTable: View {
 }
 
 // MARK: - Display name extensions (private to this file)
-
-private extension DoubleDriver.Mode {
-    var label: String {
-        switch self {
-        case .constant:   return "Constant"
-        case .jitter:     return "Jitter"
-        case .noise:      return "Noise"
-        case .oscillator: return "Oscillator"
-        case .keyframe:   return "Keyframe"
-        }
-    }
-}
-
-private extension VectorDriver.Mode {
-    var label: String {
-        switch self {
-        case .constant:   return "Constant"
-        case .jitter:     return "Jitter"
-        case .noise:      return "Noise"
-        case .oscillator: return "Oscillator"
-        case .keyframe:   return "Keyframe"
-        }
-    }
-}
-
-private extension ColorDriver.Mode {
-    var label: String {
-        switch self {
-        case .constant:   return "Constant"
-        case .keyframe:   return "Keyframe"
-        case .jitter:     return "Jitter"
-        case .noise:      return "Noise"
-        case .oscillator: return "Oscillator"
-        }
-    }
-}
-
-private extension LoopMode {
-    var label: String {
-        switch self {
-        case .loop:     return "Loop"
-        case .once:     return "Once"
-        case .pingPong: return "Ping-Pong"
-        }
-    }
-}
 
 private extension EasingType {
     var shortLabel: String {
