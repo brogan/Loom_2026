@@ -332,8 +332,22 @@
     <thead><tr><th>Field</th><th>Description</th></tr></thead>
     <tbody>
       <tr><td>Name</td><td>Display name shown in the toolbar centre. Also used as the video export filename stem.</td></tr>
-      <tr><td>Width / Height</td><td>Canvas dimensions in pixels. Renderers and SVG export use these dimensions.</td></tr>
+      <tr><td>Format</td><td>Standard output size preset. Choosing a preset immediately sets Width and Height. If you edit either dimension manually, the picker switches to <strong>Custom</strong>.</td></tr>
+      <tr><td>Width / Height</td><td>Canvas dimensions in pixels. Renderers and SVG export use these dimensions. Edit freely — the Format picker will show Custom for any size that does not match a preset.</td></tr>
       <tr><td>Quality</td><td>Multiplier applied to output resolution (e.g. 2× renders at twice the canvas size).</td></tr>
+    </tbody>
+  </table>
+  <table>
+    <thead><tr><th>Preset</th><th>Width</th><th>Height</th><th>Typical use</th></tr></thead>
+    <tbody>
+      <tr><td><strong>Square</strong></td><td>1080</td><td>1080</td><td>Social media, default</td></tr>
+      <tr><td><strong>SD</strong></td><td>640</td><td>480</td><td>Standard definition video</td></tr>
+      <tr><td><strong>HD</strong></td><td>1280</td><td>720</td><td>HD video (720p)</td></tr>
+      <tr><td><strong>Full HD</strong></td><td>1920</td><td>1080</td><td>Full HD video (1080p)</td></tr>
+      <tr><td><strong>4K</strong></td><td>3840</td><td>2160</td><td>Ultra HD / print at scale</td></tr>
+      <tr><td><strong>A4</strong></td><td>630</td><td>891</td><td>A4 print at 75 dpi</td></tr>
+      <tr><td><strong>A2</strong></td><td>840</td><td>1188</td><td>A2 print at 50 dpi</td></tr>
+      <tr><td><strong>Custom</strong></td><td>—</td><td>—</td><td>Any manually-entered size</td></tr>
     </tbody>
   </table>
 
