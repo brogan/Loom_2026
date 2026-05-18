@@ -309,12 +309,18 @@ private struct GeometryInspector: View {
 
     @ViewBuilder
     private func polygonSetSection(def: PolygonSetDef) -> some View {
+        let folder = (def.folder == "polygonSet" || def.folder.isEmpty) ? "polygonSets" : def.folder
         InspectorSection("Polygon Set") {
             InspectorRow(label: "Type", value: def.polygonType.rawValue)
             if def.regularParams != nil {
                 InspectorRow(label: "Source", value: "algorithmic")
+            } else if def.filename.isEmpty {
+                InspectorRow(label: "File", value: "—")
             } else {
-                InspectorRow(label: "File", value: def.filename.isEmpty ? "—" : def.filename)
+                InspectorRow(label: "File", value: def.filename)
+                if !fileExists(folder: folder, filename: def.filename) {
+                    relinkRow(name: def.name, folder: folder)
+                }
             }
         }
     }
@@ -361,6 +367,12 @@ private struct GeometryInspector: View {
         InspectorSection("Curve Set") {
             InspectorRow(label: "Folder", value: def.folder)
             InspectorRow(label: "File",   value: def.filename.isEmpty ? "—" : def.filename)
+            if !def.filename.isEmpty, let key = controller.selectedGeometryKey {
+                let name = String(key.split(separator: "/", maxSplits: 1).last ?? "")
+                if !fileExists(folder: def.folder, filename: def.filename) {
+                    relinkRow(name: name, folder: def.folder)
+                }
+            }
         }
     }
 
@@ -369,7 +381,50 @@ private struct GeometryInspector: View {
         InspectorSection("Point Set") {
             InspectorRow(label: "Folder", value: def.folder)
             InspectorRow(label: "File",   value: def.filename.isEmpty ? "—" : def.filename)
+            if !def.filename.isEmpty, let key = controller.selectedGeometryKey {
+                let name = String(key.split(separator: "/", maxSplits: 1).last ?? "")
+                if !fileExists(folder: def.folder, filename: def.filename) {
+                    relinkRow(name: name, folder: def.folder)
+                }
+            }
         }
+    }
+
+    // MARK: Missing-file helpers
+
+    private func fileExists(folder: String, filename: String) -> Bool {
+        controller.geometryFileURL(folder: folder, filename: filename)
+            .map { FileManager.default.fileExists(atPath: $0.path) } ?? true
+    }
+
+    @ViewBuilder
+    private func relinkRow(name: String, folder: String) -> some View {
+        HStack(spacing: 6) {
+            Image(systemName: "exclamationmark.triangle.fill")
+                .font(.system(size: 10))
+                .foregroundStyle(.orange)
+            Text("File not found")
+                .font(.system(size: 11))
+                .foregroundStyle(.orange)
+            Spacer()
+            Button("Re-link…") {
+                let panel = NSOpenPanel()
+                panel.title          = "Locate Missing File"
+                panel.message        = "Choose the replacement geometry file for \"\(name)\""
+                panel.allowsMultipleSelection = false
+                panel.canChooseDirectories    = false
+                panel.allowedContentTypes     = [.json, .xml]
+                panel.begin { response in
+                    guard response == .OK, let url = panel.url else { return }
+                    controller.relinkGeometryFile(name: name, folder: folder, toURL: url)
+                }
+            }
+            .font(.system(size: 11))
+            .buttonStyle(.plain)
+            .foregroundStyle(Color.accentColor)
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 4)
     }
 
     // MARK: Binding helpers
@@ -2041,6 +2096,7 @@ private struct QuickSetupSection: View {
                     .font(.system(size: 11))
                     .frame(maxWidth: .infinity)
                 }
+                .loomHelp("Which geometry layer's polygons to use as the pipeline source. 'All Visible Layers' combines all visible layers into one shape.")
             }
             InspectorField("Base name") {
                 TextField("", text: $qsBaseName)
@@ -2051,7 +2107,9 @@ private struct QuickSetupSection: View {
                         applyRecommendedNames(overwrite: true)
                     }
             }
-            InspectorField("Subdiv set") {
+            .loomHelp("Root name used to auto-generate names for the shape, sprite, and renderer. Seeded from the geometry filename or selected layer name.")
+            Divider().padding(.vertical, 4)
+            InspectorField("Subdivision set") {
                 Picker("", selection: $qsSubdivSetName) {
                     ForEach(subdivisionSetOptions, id: \.self) { name in
                         Text(name).tag(name)
@@ -2062,6 +2120,8 @@ private struct QuickSetupSection: View {
                     .font(.system(size: 11))
                     .frame(maxWidth: .infinity)
             }
+            .loomHelp("Subdivision parameter set applied to the generated shape. Choose None for raw unsubdivided geometry.")
+            Divider().padding(.vertical, 4)
             InspectorField("Sprite set") {
                 Picker("", selection: $qsSpriteSetName) {
                     ForEach(spriteSetOptions, id: \.self) { name in
@@ -2073,12 +2133,15 @@ private struct QuickSetupSection: View {
                     .font(.system(size: 11))
                     .frame(maxWidth: .infinity)
             }
+            .loomHelp("Sprite set that will contain the new sprite. Pick an existing set to add to it, or type a new name to create one.")
             InspectorField("Sprite") {
                 TextField("", text: $qsSpriteName)
                     .textFieldStyle(.squareBorder)
                     .font(.system(size: 11))
                     .frame(maxWidth: .infinity)
             }
+            .loomHelp("Name of the sprite to create within the sprite set.")
+            Divider().padding(.vertical, 4)
             InspectorField("Renderer set") {
                 Picker("", selection: $qsRendererSetName) {
                     ForEach(rendererSetOptions, id: \.self) { name in
@@ -2090,6 +2153,7 @@ private struct QuickSetupSection: View {
                     .font(.system(size: 11))
                     .frame(maxWidth: .infinity)
             }
+            .loomHelp("Renderer set assigned to the new sprite. Pick an existing set to add to it, or type a new name to create one.")
             InspectorField("Renderer") {
                 Picker("", selection: $qsRendererName) {
                     ForEach(rendererOptions, id: \.self) { name in
@@ -2101,6 +2165,7 @@ private struct QuickSetupSection: View {
                     .font(.system(size: 11))
                     .frame(maxWidth: .infinity)
             }
+            .loomHelp("Name of the renderer to create within the renderer set.")
             InspectorField("Mode") {
                 Picker("", selection: $qsRendererMode) {
                     ForEach(RendererMode.allCases, id: \.self) { m in
@@ -2111,6 +2176,7 @@ private struct QuickSetupSection: View {
                     .font(.system(size: 11))
                     .frame(maxWidth: .infinity)
             }
+            .loomHelp("Drawing mode for the new renderer — Stroked (outline), Filled (solid), Filled+Stroked (both), Points (dot cloud), Brushed (stamps along path), Stamped (images at points).")
             HStack(spacing: 6) {
                 Circle()
                     .fill(pipelineExists ? Color.green : Color.secondary.opacity(0.35))
@@ -2136,8 +2202,11 @@ private struct QuickSetupSection: View {
             applyRecommendedNames(overwrite: true)
         }
         .onChange(of: qsLayerTargetID) { _, _ in
-            // Layer change: don't reset base name — user may intentionally share set names
-            // across layers of the same file.
+            if let layer = selectedLayerOption, layer.layerID != nil {
+                qsBaseName = sanitized(layer.name)
+            } else {
+                qsBaseName = stem
+            }
             applyRecommendedNames(overwrite: true)
         }
         .onChange(of: sourceIsCleanParametricRegularPolygon) { _, isCleanParametricRegularPolygon in
@@ -2406,7 +2475,7 @@ private struct QuickSetupSection: View {
     // Set names use baseStem so users can give shared containers a generic label.
     // Item names (shape, sprite, renderer) remain source-specific so each layer
     // is distinguishable within its set.
-    private var recommendedSubdivSetName: String { "\(baseStem)_SubSet" }
+    private var recommendedSubdivSetName: String { "\(stem)_\(baseStem)" }
     private var recommendedQuickSetupSubdivSetName: String {
         if sourceIsCleanParametricRegularPolygon {
             return Self.noSubdivisionName
@@ -2415,10 +2484,10 @@ private struct QuickSetupSection: View {
     }
     private var recommendedShapeSetName: String { "\(baseStem)_Shapes" }
     private var recommendedShapeName: String { "\(sourceNameStem)_Shape" }
-    private var recommendedSpriteSetName: String { "\(baseStem)_SprtSet" }
-    private var recommendedSpriteName: String { "\(sourceNameStem)_Sprite" }
-    private var recommendedRendererSetName: String { "\(baseStem)_RenSet" }
-    private var recommendedRendererName: String { "\(sourceNameStem)_Ren" }
+    private var recommendedSpriteSetName: String { "\(stem)_\(baseStem)" }
+    private var recommendedSpriteName: String { baseStem }
+    private var recommendedRendererSetName: String { "\(stem)_\(baseStem)" }
+    private var recommendedRendererName: String { baseStem }
     private var recommendedQuickSetupRendererMode: RendererMode {
         sourceIsCleanParametricRegularPolygon ? .stroked : qsRendererMode
     }
