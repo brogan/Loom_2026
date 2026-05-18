@@ -111,6 +111,7 @@ struct GlobalInspector: View {
                     .font(.system(size: 12))
                     .frame(maxWidth: 120)
             }
+            .loomHelp("Name for this project — used in exported filenames and window titles.")
             InspectorField("Format") {
                 Picker("", selection: presetBinding) {
                     ForEach(CanvasPreset.allCases) { preset in
@@ -120,6 +121,7 @@ struct GlobalInspector: View {
                 .labelsHidden()
                 .frame(maxWidth: 120)
             }
+            .loomHelp("Standard output size preset. Selecting a preset sets Width and Height automatically; editing dimensions manually shows Custom.")
             InspectorField("Width") {
                 TextField("", value: bind(\.width), format: .number)
                     .textFieldStyle(.squareBorder)
@@ -127,6 +129,7 @@ struct GlobalInspector: View {
                     .frame(width: 60)
                 Text("px").font(.system(size: 11)).foregroundStyle(.secondary)
             }
+            .loomHelp("Canvas width in pixels at 1× quality. Actual render width = Width × Quality multiplier.")
             InspectorField("Height") {
                 TextField("", value: bind(\.height), format: .number)
                     .textFieldStyle(.squareBorder)
@@ -134,6 +137,7 @@ struct GlobalInspector: View {
                     .frame(width: 60)
                 Text("px").font(.system(size: 11)).foregroundStyle(.secondary)
             }
+            .loomHelp("Canvas height in pixels at 1× quality. Actual render height = Height × Quality multiplier.")
             InspectorField("Quality") {
                 TextField("", value: bind(\.qualityMultiple), format: .number)
                     .textFieldStyle(.squareBorder)
@@ -141,9 +145,11 @@ struct GlobalInspector: View {
                     .frame(width: 40)
                 Text("×").font(.system(size: 11)).foregroundStyle(.secondary)
             }
+            .loomHelp("Render quality multiplier. 2 doubles both dimensions (4× pixel count). Use 1 for fast preview, 2–4 for final export.")
             InspectorField("Scale img") {
                 Toggle("", isOn: bind(\.scaleImage)).labelsHidden()
             }
+            .loomHelp("When on, the background image is scaled to fill the canvas. When off, it is drawn at its original pixel size.")
             InspectorField("BG image") {
                 let path = bind(\.backgroundImagePath).wrappedValue
                 if !path.isEmpty {
@@ -161,18 +167,23 @@ struct GlobalInspector: View {
                 Button("Choose…") { pickBackgroundImage() }
                     .font(.system(size: 11))
             }
+            .loomHelp("Background image drawn behind all sprites. Supported formats: PNG, JPEG, TIFF, BMP, HEIC.")
         }
     }
 
     private var colorsSection: some View {
         InspectorSection("Colors") {
             LoomColorField(label: "Background", color: bindColor(\.backgroundColor))
+                .loomHelp("Canvas background fill colour rendered behind all sprites.")
             LoomColorField(label: "Border",     color: bindColor(\.borderColor))
+                .loomHelp("Colour of the optional border drawn around the canvas edge.")
             InspectorField("Border width") {
                 FloatEntryField(value: bind(\.borderWidth), width: 50, fractionDigits: 1)
                 Text("px").font(.system(size: 11)).foregroundStyle(.secondary)
             }
+            .loomHelp("Thickness of the canvas border in pixels at 1× quality. Set to 0 for no border.")
             LoomColorField(label: "Overlay",    color: bindColor(\.overlayColor))
+                .loomHelp("Colour tinted over the entire canvas after all sprites are drawn. Useful for global colour grading or vignettes.")
         }
     }
 
@@ -181,9 +192,11 @@ struct GlobalInspector: View {
             InspectorField("FPS") {
                 FloatEntryField(value: bind(\.targetFPS), width: 50, fractionDigits: 1)
             }
+            .loomHelp("Target frame rate for preview playback in frames per second. Actual rate depends on render complexity.")
             InspectorField("Scrub bar") {
                 Toggle("", isOn: $controller.showScrubBar).labelsHidden()
             }
+            .loomHelp("Show or hide the timeline scrub bar below the canvas.")
         }
     }
 
@@ -192,10 +205,12 @@ struct GlobalInspector: View {
             InspectorField("Enabled") {
                 Toggle("", isOn: bind(\.camera.enabled)).labelsHidden()
             }
+            .loomHelp("Activates perspective projection. When off, all sprites are rendered in flat 2D regardless of their Depth value.")
             InspectorField("Perspective") {
                 FloatEntryField(value: bind(\.camera.perspectiveStrength), width: 65, fractionDigits: 4)
                 Text("0=flat").font(.system(size: 10)).foregroundStyle(.tertiary)
             }
+            .loomHelp("Strength of the perspective effect. 0 = flat orthographic; larger values increase depth distortion for sprites away from the focal plane.")
         }
     }
 
