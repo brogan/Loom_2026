@@ -2,6 +2,36 @@ import AppKit
 import SwiftUI
 import LoomEngine
 
+private enum CanvasPreset: String, CaseIterable, Identifiable {
+    case square = "Square"
+    case sd     = "SD"
+    case hd     = "HD"
+    case fullHD = "Full HD"
+    case uhd4k  = "4K"
+    case a4     = "A4"
+    case a2     = "A2"
+    case custom = "Custom"
+
+    var id: String { rawValue }
+
+    var size: (width: Int, height: Int)? {
+        switch self {
+        case .square: return (1080, 1080)
+        case .sd:     return (640,  480)
+        case .hd:     return (1280, 720)
+        case .fullHD: return (1920, 1080)
+        case .uhd4k:  return (3840, 2160)
+        case .a4:     return (630,  891)
+        case .a2:     return (840,  1188)
+        case .custom: return nil
+        }
+    }
+
+    static func matching(width: Int, height: Int) -> CanvasPreset {
+        allCases.first { $0.size?.width == width && $0.size?.height == height } ?? .custom
+    }
+}
+
 struct GlobalInspector: View {
 
     @EnvironmentObject private var controller: AppController
@@ -56,6 +86,23 @@ struct GlobalInspector: View {
         }
     }
 
+    private var presetBinding: Binding<CanvasPreset> {
+        Binding(
+            get: {
+                guard let cfg = controller.projectConfig else { return .square }
+                return CanvasPreset.matching(width: cfg.globalConfig.width, height: cfg.globalConfig.height)
+            },
+            set: { preset in
+                if let size = preset.size {
+                    controller.updateProjectConfig {
+                        $0.globalConfig.width  = size.width
+                        $0.globalConfig.height = size.height
+                    }
+                }
+            }
+        )
+    }
+
     private var canvasSection: some View {
         InspectorSection("Canvas") {
             InspectorField("Name") {
@@ -63,6 +110,15 @@ struct GlobalInspector: View {
                     .textFieldStyle(.squareBorder)
                     .font(.system(size: 12))
                     .frame(maxWidth: 120)
+            }
+            InspectorField("Format") {
+                Picker("", selection: presetBinding) {
+                    ForEach(CanvasPreset.allCases) { preset in
+                        Text(preset.rawValue).tag(preset)
+                    }
+                }
+                .labelsHidden()
+                .frame(maxWidth: 120)
             }
             InspectorField("Width") {
                 TextField("", value: bind(\.width), format: .number)

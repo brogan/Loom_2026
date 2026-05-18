@@ -91,6 +91,7 @@ struct TimelinePanel: View {
     let currentFrame: Int
     @Binding var seekFrame: Int?
     @Binding var isCollapsed: Bool
+    var windowHeight: CGFloat = 800
 
     @State private var panelHeight:           CGFloat       = 180
     @State private var resizeStartPanelHeight: CGFloat?     = nil
@@ -120,9 +121,10 @@ struct TimelinePanel: View {
     private let rowHeight:    CGFloat = 22
     private let rulerHeight:  CGFloat = 28
     private let hitTolerance: CGFloat = 8
-    private let minPanelHeight: CGFloat = 80
-    private let maxPanelHeight: CGFloat = 430
+    private let minPanelHeight:    CGFloat = 80
+    private var maxPanelHeight:    CGFloat { windowHeight / 2 }
     private let resizeHandleHeight: CGFloat = 26
+    private let bottomPadding:     CGFloat = 16
 
     private var cameraRowCount: Int { cameraExpanded ? 1 + CameraLane.allCases.count : 1 }
     private var spriteStartY: CGFloat { rulerHeight + CGFloat(cameraRowCount) * rowHeight }
@@ -146,7 +148,7 @@ struct TimelinePanel: View {
                         }
                         .frame(height: timelineContentHeight)
                     }
-                    .frame(height: timelineContentHeight)
+                    .frame(height: timelineContentHeight + bottomPadding)
                     .frame(minWidth: outer.size.width, alignment: .leading)
                 }
             }
@@ -426,7 +428,9 @@ struct TimelinePanel: View {
                 seekFrame           = storedRendererFrame(hit)
                 rendererKFDragState = RendererKFDragState(hit: hit, previewFrame: storedRendererFrame(hit))
             } else {
-                if optionModifierActive {
+                let row = rowInfo(at: v.startLocation)
+                let onLaneRow = row?.lane != nil || row?.rendererLane != nil
+                if optionModifierActive || onLaneRow {
                     dragKind = .pan
                 } else {
                     dragKind = .rubberBand
@@ -1482,29 +1486,40 @@ struct TimelinePanel: View {
         guard let loc = spriteLocation(listIdx: spriteListIdx) else { return }
         recordTimelineUndoSnapshot()
         controller.updateProjectConfig { cfg in
+            // Auto-initialize drivers if this sprite has none yet (mirrors camera behaviour)
+            if cfg.spriteConfig.library.spriteSets[safe: loc.setIdx]?
+                  .sprites[safe: loc.spriteIdx]?.animation.drivers == nil {
+                cfg.spriteConfig.library.spriteSets[loc.setIdx].sprites[loc.spriteIdx].animation.drivers = .identity
+            }
             withDrivers(in: &cfg, si: loc.setIdx, pi: loc.spriteIdx) { drivers in
                 switch lane {
                 case .position:
+                    drivers.position.mode = .keyframe
                     let v = interpolateVector(drivers.position.keyframes, at: frame, neutral: .zero)
                     drivers.position.keyframes.append(VectorKeyframe(frame: frame, value: v, easing: .linear))
                     drivers.position.keyframes.sort { $0.frame < $1.frame }
                 case .scale:
+                    drivers.scale.mode = .keyframe
                     let v = interpolateVector(drivers.scale.keyframes, at: frame, neutral: Vector2D(x: 1, y: 1))
                     drivers.scale.keyframes.append(VectorKeyframe(frame: frame, value: v, easing: .linear))
                     drivers.scale.keyframes.sort { $0.frame < $1.frame }
                 case .rotation:
+                    drivers.rotation.mode = .keyframe
                     let v = interpolateDouble(drivers.rotation.keyframes, at: frame, neutral: 0)
                     drivers.rotation.keyframes.append(DoubleKeyframe(frame: frame, value: v, easing: .linear))
                     drivers.rotation.keyframes.sort { $0.frame < $1.frame }
                 case .morph:
+                    drivers.morph.mode = .keyframe
                     let v = interpolateDouble(drivers.morph.keyframes, at: frame, neutral: 0)
                     drivers.morph.keyframes.append(DoubleKeyframe(frame: frame, value: v, easing: .linear))
                     drivers.morph.keyframes.sort { $0.frame < $1.frame }
                 case .opacity:
+                    drivers.opacity.mode = .keyframe
                     let v = interpolateDouble(drivers.opacity.keyframes, at: frame, neutral: 1)
                     drivers.opacity.keyframes.append(DoubleKeyframe(frame: frame, value: v, easing: .linear))
                     drivers.opacity.keyframes.sort { $0.frame < $1.frame }
                 case .shape:
+                    drivers.shape.mode = .keyframe
                     let v = interpolateDouble(drivers.shape.keyframes, at: frame, neutral: 0)
                     drivers.shape.keyframes.append(DoubleKeyframe(frame: frame, value: v, easing: .linear))
                     drivers.shape.keyframes.sort { $0.frame < $1.frame }

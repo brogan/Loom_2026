@@ -2,19 +2,21 @@ import AppKit
 import SwiftUI
 import LoomEngine
 
+private enum SpriteViewMode { case wireframe, parallax, preview }
+
 struct ContentView: View {
 
     @EnvironmentObject private var controller: AppController
     @State private var currentFrame:      Int  = 0
     @State private var seekFrame:         Int? = nil
-    @State private var spritesPreviewMode: Bool = false
+    @State private var spriteViewMode: SpriteViewMode = .wireframe
     @State private var subdivisionPreviewMode: Bool = false
     @State private var timelineCollapsed: Bool = false
     @State private var newProjectName: String = "MyProject"
     @State private var renderProgress: Double? = nil
 
     var body: some View {
-        if controller.engine != nil {
+        if controller.engine != nil || controller.projectConfig != nil {
             mainLayout
         } else {
             landingView
@@ -24,7 +26,12 @@ struct ContentView: View {
     // MARK: - Main layout (project open)
 
     private var mainLayout: some View {
+        GeometryReader { geo in
         VStack(spacing: 0) {
+            if controller.engine == nil, controller.loadError != nil {
+                missingFileBanner
+            }
+
             RunControlBar(currentFrame: $currentFrame, seekFrame: $seekFrame)
                 .environmentObject(controller)
 
@@ -38,8 +45,11 @@ struct ContentView: View {
 
             TimelinePanel(currentFrame: currentFrame,
                           seekFrame: $seekFrame,
-                          isCollapsed: $timelineCollapsed)
+                          isCollapsed: $timelineCollapsed,
+                          windowHeight: geo.size.height)
                 .environmentObject(controller)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .sheet(isPresented: $controller.showingExportSheet) {
@@ -67,7 +77,7 @@ struct ContentView: View {
         .onChange(of: controller.projectURL) { _, _ in
             currentFrame = 0
             seekFrame = nil
-            spritesPreviewMode = false
+            spriteViewMode = .wireframe
             subdivisionPreviewMode = false
             timelineCollapsed = shouldDefaultCollapseTimeline
         }
@@ -82,6 +92,25 @@ struct ContentView: View {
 
     private var shouldDefaultCollapseTimeline: Bool {
         controller.selectedTab == .geometry || controller.selectedTab == .subdivision
+    }
+
+    private var missingFileBanner: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "exclamationmark.triangle.fill")
+                .foregroundStyle(.orange)
+                .font(.system(size: 12))
+            Text("One or more geometry files are missing. Use the Geometry tab to re-link them, then the project will reload.")
+                .font(.system(size: 11))
+                .foregroundStyle(.primary)
+            Spacer()
+            Button("Geometry") { controller.requestTabSelection(.geometry) }
+                .font(.system(size: 11))
+                .buttonStyle(.plain)
+                .foregroundStyle(.orange)
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 6)
+        .background(Color.orange.opacity(0.12))
     }
 
     // MARK: - Tab bar
@@ -193,26 +222,21 @@ struct ContentView: View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
         case .sprites:
             ZStack(alignment: .topTrailing) {
-                if spritesPreviewMode {
-                    liveCanvas
-                } else {
-                    SpriteWireframeView()
+                switch spriteViewMode {
+                case .wireframe:
+                    SpriteWireframeView(parallaxMode: false)
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
+                case .parallax:
+                    SpriteWireframeView(parallaxMode: true)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                case .preview:
+                    liveCanvas
                 }
-                Button {
-                    spritesPreviewMode.toggle()
-                } label: {
-                    Label(spritesPreviewMode ? "Edit" : "Preview",
-                          systemImage: spritesPreviewMode ? "pencil" : "play.rectangle")
-                        .font(.system(size: 11))
-                        .padding(.horizontal, 8)
-                        .padding(.vertical, 4)
-                        .background(.thinMaterial)
-                        .clipShape(RoundedRectangle(cornerRadius: 6))
+                HStack(spacing: 4) {
+                    spriteViewButton(.wireframe, label: "Edit",     icon: "pencil")
+                    spriteViewButton(.parallax,  label: "Parallax", icon: "square.3.layers.3d")
+                    spriteViewButton(.preview,   label: "Preview",  icon: "play.rectangle")
                 }
-                .buttonStyle(.plain)
-                .help(spritesPreviewMode ? "Switch to wireframe editor" : "Switch to live preview")
-                .modifier(LoomHoverHelp(spritesPreviewMode ? "Switch to wireframe editor" : "Switch to live preview"))
                 .padding(8)
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -244,6 +268,27 @@ struct ContentView: View {
         default:
             liveCanvas
         }
+    }
+
+    private func spriteViewButton(_ mode: SpriteViewMode, label: String, icon: String) -> some View {
+        let isActive = spriteViewMode == mode
+        return Button { spriteViewMode = mode } label: {
+            Label(label, systemImage: icon)
+                .font(.system(size: 11))
+                .padding(.horizontal, 8)
+                .padding(.vertical, 4)
+                .background(isActive
+                            ? Color.accentColor.opacity(0.35)
+                            : Color(nsColor: .windowBackgroundColor).opacity(0.85))
+                .clipShape(RoundedRectangle(cornerRadius: 6))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 6)
+                        .strokeBorder(isActive ? Color.accentColor.opacity(0.6) : Color.clear, lineWidth: 1)
+                )
+        }
+        .buttonStyle(.plain)
+        .help("Switch to \(label.lowercased()) view")
+        .modifier(LoomHoverHelp("Switch to \(label.lowercased()) view"))
     }
 
     private var liveCanvas: some View {
