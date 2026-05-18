@@ -2,6 +2,9 @@ import CoreGraphics
 import CoreImage
 import Foundation
 import ImageIO
+#if canImport(AppKit)
+import AppKit
+#endif
 
 // MARK: - LoomEngine
 
@@ -90,6 +93,9 @@ public struct LoomEngine: @unchecked Sendable {
         self.elapsedFrames      = 0.0
         self.accumulationCanvas = nil
         self.brushProgressiveStates = [:]
+#if canImport(AppKit)
+        self.scene.svgImages = LoomEngine.loadSVGImages(projectDirectory: projectDirectory)
+#endif
     }
 
     // MARK: - Public accessors
@@ -398,6 +404,24 @@ public struct LoomEngine: @unchecked Sendable {
             brushMaskImage(from: $0)
         }
     }
+
+#if canImport(AppKit)
+    /// Load all SVG files from `<projectDirectory>/svgs/sprites/`, keyed by filename.
+    /// NSImage on macOS natively renders SVG as vector — no pre-rasterization.
+    private static func loadSVGImages(projectDirectory: URL) -> [String: NSImage] {
+        let directory = projectDirectory.appendingPathComponent("svgs/sprites")
+        guard let entries = try? FileManager.default.contentsOfDirectory(
+            at: directory, includingPropertiesForKeys: nil
+        ) else { return [:] }
+        var result: [String: NSImage] = [:]
+        for url in entries where url.pathExtension.lowercased() == "svg" {
+            if let img = NSImage(contentsOf: url) {
+                result[url.lastPathComponent] = img
+            }
+        }
+        return result
+    }
+#endif
 
     /// Load all PNG files from `directory`, keyed by filename.
     /// Returns an empty dict when the directory does not exist or cannot be read.

@@ -12,6 +12,7 @@ private struct GeometrySource: Identifiable, Hashable {
     let hasCurves: Bool
     let hasPoints: Bool
     let spriteCount: Int
+    var isMissingFile: Bool = false
 
     var id: String { key }
 }
@@ -182,6 +183,23 @@ struct GeometryTabView: View {
                 .disabled(controller.selectedGeometryKey == nil)
                 .foregroundStyle(controller.selectedGeometryKey != nil ? Color.red : Color.secondary)
             }
+
+            HStack {
+                Spacer()
+                Button("Import SVG…") {
+                    let panel = NSOpenPanel()
+                    panel.title = "Import SVG Geometry"
+                    panel.message = "Select an SVG file to import. Text should be converted to paths in Inkscape first (Object › Object to Path)."
+                    panel.allowsMultipleSelection = false
+                    panel.canChooseDirectories = false
+                    panel.allowedContentTypes = [UTType(filenameExtension: "svg") ?? .xml]
+                    panel.begin { response in
+                        guard response == .OK, let url = panel.url else { return }
+                        controller.importSVGGeometry(from: url)
+                    }
+                }
+                Spacer()
+            }
         }
         .buttonStyle(.borderless)
         .font(.system(size: 11))
@@ -222,6 +240,12 @@ struct GeometryTabView: View {
             Label(source.name, systemImage: source.icon)
                 .font(.system(size: 12))
                 .lineLimit(1)
+            if source.isMissingFile {
+                Image(systemName: "exclamationmark.triangle.fill")
+                    .font(.system(size: 10))
+                    .foregroundStyle(.orange)
+                    .help("Geometry file not found — select this item and use the inspector to re-link it")
+            }
             Spacer()
             geometryKindIcon(.polygons, isPresent: source.hasPolygons)
                 .frame(width: 18, height: 16)
@@ -280,6 +304,8 @@ struct GeometryTabView: View {
 
         for def in cfg.polygonConfig.library.polygonSets where def.regularParams == nil && !isLayerTargetedPolygonSet(def) {
             let contents = editableGeometryContents(for: def)
+            let missing  = controller.geometryFileURL(folder: "polygonSets", filename: def.filename)
+                .map { !FileManager.default.fileExists(atPath: $0.path) } ?? false
             sources.append(
                 GeometrySource(
                     key: "polygonSets/\(def.name)",
@@ -289,12 +315,15 @@ struct GeometryTabView: View {
                     hasPolygons: contents?.hasPolygons ?? true,
                     hasCurves: contents?.hasCurves ?? false,
                     hasPoints: contents?.hasPoints ?? false,
-                    spriteCount: spriteCount(folder: "polygonSets", name: def.name)
+                    spriteCount: spriteCount(folder: "polygonSets", name: def.name),
+                    isMissingFile: missing
                 )
             )
         }
 
         for def in cfg.curveConfig.library.curveSets {
+            let missing = controller.geometryFileURL(folder: def.folder, filename: def.filename)
+                .map { !FileManager.default.fileExists(atPath: $0.path) } ?? false
             sources.append(
                 GeometrySource(
                     key: "curveSets/\(def.name)",
@@ -304,12 +333,15 @@ struct GeometryTabView: View {
                     hasPolygons: false,
                     hasCurves: true,
                     hasPoints: false,
-                    spriteCount: spriteCount(folder: "curveSets", name: def.name)
+                    spriteCount: spriteCount(folder: "curveSets", name: def.name),
+                    isMissingFile: missing
                 )
             )
         }
 
         for def in cfg.pointConfig.library.pointSets {
+            let missing = controller.geometryFileURL(folder: def.folder, filename: def.filename)
+                .map { !FileManager.default.fileExists(atPath: $0.path) } ?? false
             sources.append(
                 GeometrySource(
                     key: "pointSets/\(def.name)",
@@ -319,7 +351,8 @@ struct GeometryTabView: View {
                     hasPolygons: false,
                     hasCurves: false,
                     hasPoints: true,
-                    spriteCount: spriteCount(folder: "pointSets", name: def.name)
+                    spriteCount: spriteCount(folder: "pointSets", name: def.name),
+                    isMissingFile: missing
                 )
             )
         }

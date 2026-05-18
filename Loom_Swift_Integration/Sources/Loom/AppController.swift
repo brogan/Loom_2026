@@ -171,8 +171,18 @@ final class AppController: ObservableObject, @unchecked Sendable {
     @Published var selectedRendererTimelineKF:    RendererTimelineKFSelection? = nil
     @Published var selectedCameraKF:              CameraKFSelection?   = nil
     @Published var currentTimelineFrame:          Int                  = 0
-    @Published var loopPlayback:                  Bool                 = true
-    @Published var hoverHelpText:                 String               = ""
+    @Published var loopPlayback:                  Bool                 = false
+    // Deduplicated: only fires objectWillChange when the value actually changes,
+    // preventing spurious re-renders on every hover event.
+    private var _hoverHelpText: String = ""
+    var hoverHelpText: String {
+        get { _hoverHelpText }
+        set {
+            guard newValue != _hoverHelpText else { return }
+            objectWillChange.send()
+            _hoverHelpText = newValue
+        }
+    }
     @Published var showScrubBar:                  Bool                 = false
     @Published var selectedRendererIndex:         Int?    = nil
     @Published var selectedRendererItemIndex:     Int?    = nil   // within selected set
@@ -345,6 +355,16 @@ final class AppController: ObservableObject, @unchecked Sendable {
     }
 
     /// Writes config to disk on a background queue then rebuilds the engine on the main queue.
+    /// Immediately flush any pending debounced save to disk. Does not reload the engine.
+    func saveNow() {
+        guard let url = projectURL, let config = projectConfig else { return }
+        configCommitItem?.cancel()
+        configCommitItem = nil
+        configSaveQueue.async {
+            try? ProjectLoader.save(config, to: url)
+        }
+    }
+
     /// Debounced so rapid slider events coalesce into one save+reload cycle.
     private func scheduleConfigCommit(_ config: ProjectConfig) {
         configCommitItem?.cancel()
@@ -5186,6 +5206,11 @@ final class AppController: ObservableObject, @unchecked Sendable {
                     withIntermediateDirectories: true
                 )
             }
+            // SVG sprite sprites live inside the svgs/ hub alongside geometry exports.
+            try FileManager.default.createDirectory(
+                at: url.appendingPathComponent("svgs/sprites"),
+                withIntermediateDirectories: true
+            )
             let renders = url.appendingPathComponent("renders")
             for sub in ["stills", "animations"] {
                 try FileManager.default.createDirectory(
@@ -5219,7 +5244,7 @@ final class AppController: ObservableObject, @unchecked Sendable {
         loadError          = nil
         animationCompleted = false
         loadEngine(from: projectDirectory)
-        playbackState = (engine?.globalConfig.animating == true) ? .playing : .stopped
+        playbackState = .stopped
         addToRecent(projectDirectory)
         startSentinelTimer()
         clearSelections()
@@ -5231,7 +5256,7 @@ final class AppController: ObservableObject, @unchecked Sendable {
         loadError          = nil
         animationCompleted = false
         loadEngine(from: url)
-        playbackState = (engine?.globalConfig.animating == true) ? .playing : .stopped
+        playbackState = .stopped
     }
 
     // MARK: - Scrub
@@ -5507,6 +5532,38 @@ final class AppController: ObservableObject, @unchecked Sendable {
         }
     }
 
+    /// Import an SVG file and convert its path geometry into a new polygon set.
+    /// All styling is stripped; only Bézier curves and straight segments are kept.
+    /// Each SVG subpath becomes a `<polygon>` in the polygon set.
+    func importSVGGeometry(from sourceURL: URL) {
+        guard let projectURL = projectURL else { return }
+        let stem      = sourceURL.deletingPathExtension().lastPathComponent
+        let baseName  = stem.isEmpty ? "imported_svg" : stem
+        let finalName = uniquePolygonSetName(baseName, excluding: "")
+        let filename  = "\(sanitizedGeometryFilename(finalName)).xml"
+        let directory = projectURL.appendingPathComponent("polygonSets", isDirectory: true)
+        let destURL   = directory.appendingPathComponent(filename)
+        do {
+            let xml = try LoomSVGImporter.importPolygonSetXML(from: sourceURL)
+            try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+            try xml.write(to: destURL, atomically: true, encoding: .utf8)
+            updateProjectConfig { cfg in
+                let def = PolygonSetDef(
+                    name: finalName,
+                    folder: "polygonSets",
+                    filename: filename,
+                    polygonType: .splinePolygon
+                )
+                cfg.polygonConfig.library.polygonSets.append(def)
+            }
+            selectedGeometryKey = "polygonSets/\(finalName)"
+            appStatusMessage = "SVG imported: \(finalName)"
+        } catch {
+            appStatusMessage = "SVG import failed: \(error.localizedDescription)"
+            LoomLogger.error("Failed to import SVG geometry from \(sourceURL.lastPathComponent)", error: error)
+        }
+    }
+
     func importGeometry(from sourceURL: URL) {
         guard let projectURL = projectURL else { return }
         let stem     = sourceURL.deletingPathExtension().lastPathComponent
@@ -5602,6 +5659,11 @@ final class AppController: ObservableObject, @unchecked Sendable {
     private func loadEngine(from url: URL) {
         do {
             DefaultBrushes.write(to: url.appendingPathComponent("brushes"))
+            // Ensure svgs/sprites exists for projects created before this feature.
+            try? FileManager.default.createDirectory(
+                at: url.appendingPathComponent("svgs/sprites"),
+                withIntermediateDirectories: true
+            )
             let loadedEngine = try Engine(projectDirectory: url)
             engineCanvasSize = loadedEngine.canvasSize
             engine        = loadedEngine
@@ -5611,10 +5673,53 @@ final class AppController: ObservableObject, @unchecked Sendable {
         } catch {
             engine        = nil
             engineCanvasSize = CGSize(width: 1, height: 1)
-            projectConfig = nil
+            // Still load the config so missing-file recovery is accessible in the UI.
+            projectConfig = try? ProjectLoader.load(projectDirectory: url)
             loadError     = error.localizedDescription
             LoomLogger.error("Could not load engine from \(url.path)", error: error)
         }
+    }
+
+    func reloadEngine() {
+        guard let url = projectURL else { return }
+        loadEngine(from: url)
+    }
+
+    // Returns the on-disk URL for a geometry file, or nil if there is no project or the filename is empty.
+    func geometryFileURL(folder: String, filename: String) -> URL? {
+        guard let base = projectURL, !filename.isEmpty else { return nil }
+        let dir = (folder == "polygonSet" || folder.isEmpty) ? "polygonSets" : folder
+        return base.appendingPathComponent(dir).appendingPathComponent(filename)
+    }
+
+    func relinkGeometryFile(name: String, folder: String, toURL chosenURL: URL) {
+        guard let base = projectURL else { return }
+        let dir = (folder == "polygonSet" || folder.isEmpty) ? "polygonSets" : folder
+        let targetDir   = base.appendingPathComponent(dir, isDirectory: true)
+        let newFilename = chosenURL.lastPathComponent
+        let destURL     = targetDir.appendingPathComponent(newFilename)
+        if destURL.standardizedFileURL != chosenURL.standardizedFileURL {
+            try? FileManager.default.createDirectory(at: targetDir, withIntermediateDirectories: true)
+            try? FileManager.default.copyItem(at: chosenURL, to: destURL)
+        }
+        updateProjectConfig { cfg in
+            switch folder {
+            case "polygonSets", "regularPolygons", "polygonSet", "":
+                if let idx = cfg.polygonConfig.library.polygonSets.firstIndex(where: { $0.name == name }) {
+                    cfg.polygonConfig.library.polygonSets[idx].filename = newFilename
+                }
+            case "curveSets":
+                if let idx = cfg.curveConfig.library.curveSets.firstIndex(where: { $0.name == name }) {
+                    cfg.curveConfig.library.curveSets[idx].filename = newFilename
+                }
+            case "pointSets":
+                if let idx = cfg.pointConfig.library.pointSets.firstIndex(where: { $0.name == name }) {
+                    cfg.pointConfig.library.pointSets[idx].filename = newFilename
+                }
+            default: break
+            }
+        }
+        reloadEngine()
     }
 
     private func clearSelections() {

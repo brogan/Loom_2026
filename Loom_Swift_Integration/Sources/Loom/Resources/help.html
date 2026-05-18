@@ -152,9 +152,11 @@
   <a class="nav-link nav-sub" href="#geometry-editor">Editor Tools</a>
   <a class="nav-link nav-sub" href="#geometry-layers">Layers</a>
   <a class="nav-link nav-sub" href="#geometry-pressure">Pressure Sensitivity</a>
+  <a class="nav-link nav-sub" href="#geometry-svg-import">SVG Geometry Import</a>
   <a class="nav-link" href="#sprites">Sprites</a>
   <a class="nav-link nav-sub" href="#sprites-hierarchy">Hierarchy</a>
   <a class="nav-link nav-sub" href="#sprites-depth">Depth &amp; Parallax</a>
+  <a class="nav-link nav-sub" href="#sprites-svg">SVG Sprites</a>
   <a class="nav-link" href="#subdivision">Subdivision</a>
   <a class="nav-link nav-sub" href="#subdivision-algorithms">Algorithms</a>
   <a class="nav-link nav-sub" href="#subdivision-ptw">PTW</a>
@@ -388,6 +390,7 @@
       <tr><td>Open Editor</td><td>Open the full geometry editor for the selected document.</td></tr>
       <tr><td>Duplicate</td><td>Copy the selected geometry document, giving it a new name.</td></tr>
       <tr><td>Import</td><td>Browse for an existing XML or JSON polygon file and register it in the project.</td></tr>
+      <tr><td>Import SVG…</td><td>Convert an SVG file's path geometry into a new polygon set. See <a href="#geometry-svg-import">SVG Geometry Import</a>.</td></tr>
     </tbody>
   </table>
 
@@ -574,6 +577,50 @@
   <h4>Pressure and subdivision</h4>
   <p>When a pressure-sensitive polygon is subdivided, children can receive pressure in different ways from the Subdivision tab. See <a href="#subdivision-pressure">Subdivision Pressure</a> for the current modes.</p>
 
+  <h3 id="geometry-svg-import">SVG Geometry Import</h3>
+  <p>The <strong>Import SVG…</strong> button converts an SVG file's path data into a Loom polygon set. All styling — colour, stroke width, fill, opacity — is discarded; only the underlying Bézier geometry is imported. The result is a fully editable polygon set that can be subdivided, animated, and rendered exactly like hand-drawn geometry.</p>
+
+  <p>The primary use case is importing <strong>text as geometry</strong>: design lettering in Inkscape, convert glyphs to paths, and bring them into Loom for experimental subdivision and animation. The same workflow works for any vector art whose geometry you want to control inside Loom.</p>
+
+  <h4>Inkscape workflow</h4>
+  <ol class="steps">
+    <li>Design or import your text or vector art in Inkscape.</li>
+    <li>Select all objects. Choose <strong>Object &rsaquo; Object to Path</strong> (or <kbd>Shift</kbd>+<kbd>Ctrl</kbd>+<kbd>C</kbd> on Windows/Linux). This converts text glyphs and shapes to explicit Bézier path elements — Loom cannot read live text nodes.</li>
+    <li>Optionally group or arrange elements. Loom flattens all <code>&lt;path&gt;</code> elements from the entire file into one polygon set, so grouping affects only the SVG, not the import result.</li>
+    <li>Save as <strong>Plain SVG</strong> (File &rsaquo; Save a Copy &rsaquo; Plain SVG) for the cleanest output. Inkscape SVG works too but contains extra metadata that is safely ignored.</li>
+    <li>In Loom's Geometry tab, click <strong>Import SVG…</strong> and select the file. A new polygon set appears in the geometry list, selected and ready to use.</li>
+    <li>Assign the polygon set to a sprite via <strong>Quick Setup</strong> or by editing the sprite's inspector.</li>
+  </ol>
+
+  <div class="tip"><strong>Tip:</strong> After importing, open the geometry editor to inspect the result. Each polygon is one subpath from the SVG. For a word like "loom", you will see four closed polygons (plus inner contours for letters like 'o').</div>
+
+  <h4>What is imported</h4>
+  <table>
+    <thead><tr><th>SVG path command</th><th>How it is handled</th></tr></thead>
+    <tbody>
+      <tr><td><code>M / m</code></td><td>Starts a new subpath (new polygon in the set)</td></tr>
+      <tr><td><code>L / l, H / h, V / v</code></td><td>Straight line — converted to a degenerate cubic (control points at one-third and two-thirds of the segment)</td></tr>
+      <tr><td><code>C / c</code></td><td>Cubic Bézier — mapped directly to Loom's native segment format</td></tr>
+      <tr><td><code>S / s</code></td><td>Smooth cubic — first control point reflected from the previous segment's second control point</td></tr>
+      <tr><td><code>Q / q</code></td><td>Quadratic Bézier — degree-elevated to cubic using the standard formula</td></tr>
+      <tr><td><code>T / t</code></td><td>Smooth quadratic — control point reflected, then elevated to cubic</td></tr>
+      <tr><td><code>A / a</code></td><td>Elliptical arc — split into up to four cubic segments using the W3C SVG F.6 approximation algorithm</td></tr>
+      <tr><td><code>Z / z</code></td><td>Closes the subpath — polygon becomes a closed spline (filled or stroked as a loop)</td></tr>
+    </tbody>
+  </table>
+
+  <p>Element-level <code>transform</code> attributes — <code>translate</code>, <code>scale</code>, <code>rotate</code>, <code>matrix</code>, <code>skewX</code>, <code>skewY</code> — are resolved and applied to coordinates before import, including nested transforms inside <code>&lt;g&gt;</code> groups.</p>
+
+  <h4>Coordinate mapping</h4>
+  <p>Coordinates are normalised so that the larger SVG dimension (width or height of the viewBox) maps to the Loom geometry range <code>[−0.5, 0.5]</code>. Aspect ratio is always preserved. A sprite assigned this polygon set with the default scale of <code>1.0</code> will fill the canvas's shorter dimension; scale it down in the Sprites inspector to adjust.</p>
+
+  <div class="note">If the SVG has no <code>viewBox</code> attribute, Loom falls back to the <code>width</code> and <code>height</code> attributes. If neither is present, a 100 × 100 unit canvas is assumed. For best results, ensure your SVG is exported with a <code>viewBox</code> (Inkscape Plain SVG always includes one).</div>
+
+  <h4>Multi-contour glyphs</h4>
+  <p>Letters with interior voids — <strong>o, a, e, B, D, P, Q, R</strong> and so on — have two or more contours (an outer shape and one or more inner holes). Each contour becomes a separate polygon in the imported set. When rendered with a <strong>filled</strong> renderer, the inner contours create the expected void appearance only if your renderer uses even-odd fill. With a <strong>stroked</strong> renderer all contours draw independently, which is usually what you want for subdivision experiments.</p>
+
+  <div class="tip"><strong>Tip:</strong> After importing a multi-letter word, try applying a subdivision set that uses <strong>stochastic</strong> or <strong>noise</strong> rules. Each letter's polygon set of contours subdivides independently, giving a naturally varied result across the word.</div>
+
 </section>
 
 <!-- ────────────────────────────────────────────────── -->
@@ -616,7 +663,7 @@
   <table>
     <thead><tr><th>Section</th><th>Contents</th></tr></thead>
     <tbody>
-      <tr><td>Sprite</td><td>Name, renderer set, subdivision set</td></tr>
+      <tr><td>Sprite</td><td>Name, renderer set, subdivision set, and SVG sprite picker (when <code>svgs/sprites/</code> contains files — see <a href="#sprites-svg">SVG Sprites</a>)</td></tr>
       <tr><td>Transform</td><td>X/Y position, X/Y scale, rotation in degrees, depth (see below)</td></tr>
       <tr><td>Animation</td><td>Per-property animation drivers, including position, scale, rotation, morph, shape index, and sprite opacity (see <a href="#animation">Animation</a>)</td></tr>
       <tr><td>Hierarchy</td><td>Parent selector, P/R/S inherit toggles</td></tr>
@@ -629,66 +676,165 @@
   <p>Each sprite has a <strong>Depth</strong> value in its Transform section. Combined with the <strong>Perspective</strong> setting in the Global tab Camera section, depth creates a 2.5D parallax effect: sprites at different depths move at different rates when the camera pans or zooms, giving a sense of three-dimensional space without changing the underlying 2D geometry.</p>
 
   <div class="diagram">
-    <svg width="480" height="140" viewBox="0 0 480 140" fill="none" xmlns="http://www.w3.org/2000/svg">
-      <!-- background layer -->
-      <rect x="30" y="16" width="420" height="26" rx="3" fill="#2a2a2a" stroke="#444" stroke-width="1"/>
-      <text x="44" y="33" font-size="10" fill="#888" font-family="-apple-system">Background  depth 6</text>
-      <rect x="340" y="21" width="80" height="16" rx="2" fill="#1a3a1a" stroke="#2a6a2a" stroke-width="1"/>
-      <text x="380" y="32" font-size="9" fill="#4a9a4a" text-anchor="middle" font-family="-apple-system">sprite</text>
-
-      <!-- midground layer -->
-      <rect x="30" y="56" width="420" height="26" rx="3" fill="#2d2d2d" stroke="#555" stroke-width="1"/>
-      <text x="44" y="73" font-size="10" fill="#999" font-family="-apple-system">Midground  depth 2</text>
-      <rect x="270" y="61" width="80" height="16" rx="2" fill="#1a2a3a" stroke="#2a4a6a" stroke-width="1"/>
-      <text x="310" y="72" font-size="9" fill="#4a7aaa" text-anchor="middle" font-family="-apple-system">sprite</text>
-
-      <!-- focal plane -->
-      <rect x="30" y="96" width="420" height="26" rx="3" fill="#252526" stroke="#0e7fd4" stroke-width="1" stroke-dasharray="4,2"/>
-      <text x="44" y="113" font-size="10" fill="#0e7fd4" font-family="-apple-system">Focal plane  depth 0</text>
-      <rect x="180" y="101" width="80" height="16" rx="2" fill="#1a1a3a" stroke="#0e7fd4" stroke-width="1"/>
-      <text x="220" y="112" font-size="9" fill="#0e7fd4" text-anchor="middle" font-family="-apple-system">sprite</text>
-
-      <!-- foreground layer -->
-      <rect x="30" y="136" width="420" height="26" rx="3" fill="#2d2a2a" stroke="#664" stroke-width="1"/>
-      <text x="44" y="153" font-size="10" fill="#998" font-family="-apple-system" style="display:none">Foreground</text>
-
-      <!-- camera icon -->
-      <circle cx="450" cy="109" r="10" fill="#0e7fd4" opacity="0.2" stroke="#0e7fd4" stroke-width="1"/>
-      <text x="450" y="113" font-size="10" fill="#0e7fd4" text-anchor="middle" font-family="-apple-system">⌖</text>
-
-      <!-- parallax arrows -->
+    <svg width="540" height="172" viewBox="0 0 540 172" fill="none" xmlns="http://www.w3.org/2000/svg">
       <defs>
-        <marker id="parr" markerWidth="7" markerHeight="7" refX="6" refY="3" orient="auto">
-          <path d="M0,0 L0,6 L7,3 z" fill="#666"/>
+        <marker id="darr-g" markerWidth="7" markerHeight="7" refX="6" refY="3" orient="auto">
+          <path d="M0,0 L0,6 L7,3 z" fill="#4a8a5a"/>
         </marker>
-        <marker id="parr2" markerWidth="7" markerHeight="7" refX="6" refY="3" orient="auto">
+        <marker id="darr-b" markerWidth="7" markerHeight="7" refX="6" refY="3" orient="auto">
+          <path d="M0,0 L0,6 L7,3 z" fill="#4a6a9a"/>
+        </marker>
+        <marker id="darr-a" markerWidth="7" markerHeight="7" refX="6" refY="3" orient="auto">
           <path d="M0,0 L0,6 L7,3 z" fill="#0e7fd4"/>
         </marker>
+        <marker id="darr-o" markerWidth="7" markerHeight="7" refX="6" refY="3" orient="auto">
+          <path d="M0,0 L0,6 L7,3 z" fill="#c08040"/>
+        </marker>
       </defs>
-      <!-- bg arrow (small) -->
-      <line x1="416" y1="29" x2="434" y2="29" stroke="#444" stroke-width="1.5" marker-end="url(#parr)"/>
-      <!-- mid arrow (medium) -->
-      <line x1="408" y1="69" x2="434" y2="69" stroke="#666" stroke-width="1.5" marker-end="url(#parr)"/>
-      <!-- focal arrow (full) -->
-      <line x1="396" y1="109" x2="434" y2="109" stroke="#0e7fd4" stroke-width="1.5" marker-end="url(#parr2)"/>
+
+      <!-- Row 1: Background, depth 200, f≈0.63 -->
+      <rect x="8" y="8" width="290" height="30" rx="3" fill="#1a2a1a" stroke="#2d5a2d" stroke-width="1"/>
+      <text x="18" y="26" font-size="10" fill="#5a9a5a" font-family="-apple-system">Background · depth 200</text>
+      <text x="220" y="27" font-size="9" fill="#3a7a3a" font-family="Menlo, monospace">f = 0.63</text>
+      <line x1="305" y1="23" x2="422" y2="23" stroke="#4a8a5a" stroke-width="1.5" marker-end="url(#darr-g)"/>
+
+      <!-- Row 2: Near-background, depth 100, f≈0.77 -->
+      <rect x="8" y="48" width="290" height="30" rx="3" fill="#1a1a2a" stroke="#2d3a5a" stroke-width="1"/>
+      <text x="18" y="66" font-size="10" fill="#5a7aaa" font-family="-apple-system">Near-background · depth 100</text>
+      <text x="220" y="67" font-size="9" fill="#4a6a9a" font-family="Menlo, monospace">f = 0.77</text>
+      <line x1="305" y1="63" x2="447" y2="63" stroke="#4a6a9a" stroke-width="1.5" marker-end="url(#darr-b)"/>
+
+      <!-- Row 3: Focal plane, depth 0, f=1.00 -->
+      <rect x="8" y="88" width="290" height="30" rx="3" fill="#252526" stroke="#0e7fd4" stroke-width="1" stroke-dasharray="4,2"/>
+      <text x="18" y="106" font-size="10" fill="#0e7fd4" font-family="-apple-system">Focal plane · depth 0</text>
+      <text x="220" y="107" font-size="9" fill="#0e7fd4" font-family="Menlo, monospace">f = 1.00</text>
+      <line x1="305" y1="103" x2="490" y2="103" stroke="#0e7fd4" stroke-width="2" marker-end="url(#darr-a)"/>
+
+      <!-- Row 4: Foreground, depth -50, f≈1.18 -->
+      <rect x="8" y="128" width="290" height="30" rx="3" fill="#2a1a0a" stroke="#7a5a2a" stroke-width="1"/>
+      <text x="18" y="146" font-size="10" fill="#c08040" font-family="-apple-system">Foreground · depth −50</text>
+      <text x="220" y="147" font-size="9" fill="#c08040" font-family="Menlo, monospace">f = 1.18</text>
+      <line x1="305" y1="143" x2="523" y2="143" stroke="#c08040" stroke-width="1.5" marker-end="url(#darr-o)"/>
+
+      <text x="415" y="166" font-size="9" fill="#555555" text-anchor="middle" font-family="-apple-system">displacement per frame when camera pans →</text>
     </svg>
-    <figcaption>Sprites at greater depth move less with the camera — creating parallax</figcaption>
+    <figcaption>Arrow length shows how far each layer moves when the camera pans — at perspectiveStrength 0.003. Foreground moves more; background moves less.</figcaption>
   </div>
 
-  <h4>How depth works</h4>
-  <p>The depth value scales each sprite's effective camera zoom and pan offset by a <em>depth factor</em>: <code>f = 1 / (1 + depth × perspectiveStrength)</code>. A sprite at depth 0 always uses the camera transform unchanged (the focal plane). Positive depth values make sprites appear smaller and lag behind camera movement; negative values make them appear larger and move more than the camera.</p>
+  <h4>The depth formula</h4>
+  <p>For each sprite the engine computes a <em>parallax factor</em> from its depth and the global perspective strength:</p>
+  <p style="font-family: Menlo, monospace; font-size: 12px; padding: 8px 14px; background: var(--surface2); border-radius: 4px; border: 1px solid var(--border);">f = 1 / (1 + depth × perspectiveStrength)</p>
+  <p>This factor scales <em>both</em> the camera's pan offset and zoom for that sprite, every frame. At depth 0 (the focal plane) <code>f = 1.00</code> and the sprite follows the camera exactly. Positive depth (background) gives <code>f &lt; 1</code> — the sprite lags and appears to zoom more slowly. Negative depth (foreground) gives <code>f &gt; 1</code> — the sprite leads and appears to zoom more aggressively.</p>
+
+  <h4>Parallax factor reference</h4>
+  <table>
+    <thead>
+      <tr>
+        <th>Depth</th>
+        <th>Layer</th>
+        <th>f at strength 0.003</th>
+        <th>f at strength 0.005</th>
+        <th>f at strength 0.010</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr><td>−50</td><td>Foreground</td><td>1.18</td><td>1.33</td><td>2.00</td></tr>
+      <tr><td>−20</td><td>Near foreground</td><td>1.06</td><td>1.11</td><td>1.25</td></tr>
+      <tr><td>0</td><td>Focal plane</td><td>1.00</td><td>1.00</td><td>1.00</td></tr>
+      <tr><td>50</td><td>Shallow background</td><td>0.87</td><td>0.80</td><td>0.67</td></tr>
+      <tr><td>100</td><td>Near background</td><td>0.77</td><td>0.67</td><td>0.50</td></tr>
+      <tr><td>200</td><td>Background</td><td>0.63</td><td>0.50</td><td>0.33</td></tr>
+      <tr><td>500</td><td>Far background</td><td>0.40</td><td>0.29</td><td>0.17</td></tr>
+    </tbody>
+  </table>
+
+  <div class="note">When <code>depth × perspectiveStrength</code> approaches <code>−1</code>, the factor approaches infinity and a foreground sprite will fly to an extreme screen position. With strength <code>0.010</code>, keep foreground depths above <code>−50</code>. With <code>0.005</code>, above <code>−100</code>. With <code>0.003</code>, you have room down to about <code>−200</code>.</div>
 
   <h4>Draw order</h4>
-  <p>Sprites are automatically drawn back-to-front based on their depth — the sprite with the greatest depth value is drawn first (furthest away), and the most negative depth is drawn last (on top). This means you do not need to manually order sprites to get correct occlusion between depth layers.</p>
+  <p>Sprites are automatically drawn back-to-front based on depth — the greatest depth value is drawn first (furthest away), the most negative depth is drawn last (on top). You do not need to manually order sprites to get correct occlusion between depth layers.</p>
 
   <h4>Quick setup</h4>
   <ol class="steps">
     <li>In the Global tab, set <strong>Camera → Enabled</strong> on and enter a <strong>Perspective</strong> value — start with <code>0.003</code>.</li>
-    <li>In the Sprites tab, select each sprite and set its <strong>Depth</strong> in the Transform section. Use <code>0</code> for the focal-plane layer, positive values (e.g. <code>3</code>, <code>6</code>) for background sprites, and negative values (e.g. <code>-1</code>) for foreground sprites.</li>
-    <li>Animate the camera <strong>Pan X/Y</strong> in the Timeline. Background sprites will drift more slowly than focal-plane sprites, creating a parallax sense of depth.</li>
+    <li>In the Sprites tab, select each sprite and set its <strong>Depth</strong> in the Transform section. Use <code>0</code> for the focal-plane layer, positive values (e.g. <code>100</code>, <code>200</code>) for background sprites, and negative values (e.g. <code>−30</code>) for foreground sprites.</li>
+    <li>Animate the camera <strong>Pan X/Y</strong> in the Timeline. Background sprites drift more slowly than focal-plane sprites, creating the parallax sense of depth.</li>
   </ol>
 
-  <div class="tip"><strong>Tip:</strong> Camera zoom animation also creates depth — zooming in makes background sprites grow more slowly than focal-plane sprites, giving a push-in feel. Combine with pan for a full parallax camera move.</div>
+  <div class="tip"><strong>Tip:</strong> Camera zoom animation also creates depth — zooming in makes background sprites grow more slowly than focal-plane sprites, giving a push-in feel. Both the pan offset and the zoom factor are scaled by <code>f</code>, so depth interacts equally with all camera motion.</div>
+
+  <h3 id="sprites-svg">SVG Sprites</h3>
+  <p>Any sprite can display an SVG image file in place of its polygon geometry. The SVG is rendered at full vector quality each frame by macOS — it is re-rasterised at the correct screen size automatically, so there is no resolution loss when the sprite is scaled up. All standard transform drivers and camera features apply exactly as they do to polygon sprites.</p>
+
+  <p>The intended workflow pairs SVG sprites with <a href="#geometry-svg-import">SVG Geometry Import</a>: design artwork in Inkscape with full colour, gradients, and fills; import the <em>geometry</em> into Loom for subdivision and rendering experiments; place the <em>styled SVG</em> in <code>svgs/sprites/</code> to use as an animated sprite that retains Inkscape's visual style.</p>
+
+  <h4>Setup</h4>
+  <ol class="steps">
+    <li>Place one or more <code>.svg</code> files in the project's <code>svgs/sprites/</code> folder. Loom creates this folder automatically inside every project's <code>svgs/</code> directory.</li>
+    <li>In the Sprites tab, select the sprite you want to assign the SVG to.</li>
+    <li>In the inspector's <strong>Sprite</strong> section, a dropdown labelled <strong>SVG sprite</strong> appears (it is hidden when <code>svgs/sprites/</code> is empty). Choose the filename from the list.</li>
+    <li>The sprite now renders the SVG instead of its polygon geometry. The renderer set and subdivision set assigned to that sprite are bypassed — the SVG carries its own internal styling.</li>
+    <li>Adjust position, scale, rotation, and depth in the Transform section as usual. Animate any of these with the Animation drivers.</li>
+  </ol>
+
+  <div class="tip"><strong>Tip:</strong> To revert to polygon rendering, set the SVG sprite picker back to <strong>None</strong>. The sprite's geometry and renderer set are preserved and resume drawing immediately.</div>
+
+  <h4>What drivers apply to SVG sprites</h4>
+  <table>
+    <thead><tr><th>Driver / feature</th><th>Works with SVG sprite?</th></tr></thead>
+    <tbody>
+      <tr><td>Position X / Y</td><td>Yes — all modes (constant, noise, oscillator, keyframe)</td></tr>
+      <tr><td>Scale X / Y</td><td>Yes — scales the drawn image rectangle</td></tr>
+      <tr><td>Rotation</td><td>Yes — rotates around the sprite's world-space centre</td></tr>
+      <tr><td>Opacity</td><td>Yes — fades the entire SVG image uniformly</td></tr>
+      <tr><td>Depth / parallax</td><td>Yes — depth value works with camera perspective strength</td></tr>
+      <tr><td>Camera (pan, zoom, rotation, tracking)</td><td>Yes — SVG position and orientation follow camera transforms</td></tr>
+      <tr><td>Parent / child hierarchy</td><td>Yes — position, rotation, and scale inheritance all work</td></tr>
+      <tr><td>Gate (frame in / out)</td><td>Yes — sprite is hidden outside the gate range</td></tr>
+      <tr><td>Shape variants / shape driver</td><td>No — the shape driver selects between polygon geometry variants, not SVG files</td></tr>
+      <tr><td>Morph targets</td><td>No — morph interpolation operates on polygon point arrays</td></tr>
+      <tr><td>Subdivision</td><td>No — subdivision is a polygon-only operation</td></tr>
+      <tr><td>Renderer set (stroke, fill, brush)</td><td>No — the SVG renders its own internal styling</td></tr>
+    </tbody>
+  </table>
+
+  <h4>File location and loading</h4>
+  <p>SVG files must be placed in <code>&lt;project&gt;/svgs/sprites/</code>. This folder is created automatically when a project is first opened. Loom loads all <code>.svg</code> files from this directory at project-open time. If you add or remove files while the project is open, use <strong>Reload</strong> (<kbd>⌘R</kbd>) to pick up the changes.</p>
+
+  <div class="diagram">
+    <svg width="480" height="120" viewBox="0 0 480 120" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <defs>
+        <marker id="arr-svg" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
+          <path d="M0,0 L0,6 L8,3 z" fill="#0e7fd4"/>
+        </marker>
+      </defs>
+      <!-- Inkscape box -->
+      <rect x="10" y="30" width="110" height="60" rx="5" fill="#252526" stroke="#3c3c3c"/>
+      <text x="65" y="55" text-anchor="middle" font-size="11" fill="#ccc" font-family="-apple-system">Inkscape</text>
+      <text x="65" y="71" text-anchor="middle" font-size="10" fill="#888" font-family="-apple-system">Style SVG artwork</text>
+      <!-- arrow -->
+      <line x1="122" y1="60" x2="162" y2="60" stroke="#0e7fd4" stroke-width="1.5" marker-end="url(#arr-svg)"/>
+      <text x="142" y="54" text-anchor="middle" font-size="9" fill="#888" font-family="-apple-system">save</text>
+      <!-- folder box -->
+      <rect x="165" y="30" width="120" height="60" rx="5" fill="#252526" stroke="#3c3c3c"/>
+      <text x="225" y="55" text-anchor="middle" font-size="11" fill="#ccc" font-family="-apple-system">svgs/sprites/</text>
+      <text x="225" y="71" text-anchor="middle" font-size="10" fill="#888" font-family="-apple-system">logo.svg, etc.</text>
+      <!-- arrow -->
+      <line x1="287" y1="60" x2="327" y2="60" stroke="#0e7fd4" stroke-width="1.5" marker-end="url(#arr-svg)"/>
+      <text x="307" y="54" text-anchor="middle" font-size="9" fill="#888" font-family="-apple-system">pick</text>
+      <!-- Loom box -->
+      <rect x="330" y="30" width="130" height="60" rx="5" fill="#252526" stroke="#3c3c3c"/>
+      <text x="395" y="52" text-anchor="middle" font-size="11" fill="#ccc" font-family="-apple-system">Loom Sprite</text>
+      <text x="395" y="68" text-anchor="middle" font-size="10" fill="#888" font-family="-apple-system">all transform drivers</text>
+      <text x="395" y="81" text-anchor="middle" font-size="10" fill="#888" font-family="-apple-system">+ camera + depth</text>
+    </svg>
+    <figcaption>SVG sprite workflow: design in Inkscape → place in svgs/sprites/ → pick in the inspector → animate in Loom</figcaption>
+  </div>
+
+  <h4>Performance</h4>
+  <p>macOS caches a rasterised bitmap of each NSImage after the first draw at a given size. For a sprite whose scale does not change frame-to-frame — a static background logo, for example — the rendering cost after the first frame is negligible. For sprites with animated scale, macOS re-rasterises when the drawn size changes significantly, which adds a small per-frame cost proportional to the SVG complexity. Simple Inkscape exports (a few dozen paths) have no measurable impact. Very complex SVGs with thousands of paths (detailed illustrations, large type specimens) may add a few milliseconds per frame.</p>
+
+  <div class="note">SVG sprites bypass Loom's polygon rendering pipeline entirely. They cannot be subdivided, and Loom's renderer sets (stroke colour, brush, stamp modes) do not apply. If you want Loom's rendering on SVG-derived geometry, use <a href="#geometry-svg-import">Import SVG…</a> in the Geometry tab instead — this converts the path data to a polygon set that goes through the full subdivision and rendering pipeline.</div>
+
 </section>
 
 <!-- ────────────────────────────────────────────────── -->
@@ -1186,30 +1332,119 @@
   <p>Use the <strong>×1.5 / ÷1.5</strong> buttons to zoom the timeline ruler horizontally. The timeline lane list scrolls vertically when there are more rows than can fit. Drag the larger top grab area to resize the timeline vertically; it can open high enough to inspect dense sprite and renderer lane stacks.</p>
 
   <h3 id="animation-camera">Camera animation</h3>
-  <p>The Timeline has a dedicated <strong>Camera</strong> section with four keyframe lanes:</p>
+  <p>The Timeline has a dedicated <strong>Camera</strong> section with four independently driven lanes. Camera animation is evaluated from the same global frame clock as sprite and renderer drivers, and is applied as a final viewport transform after all sprite, subdivision, and renderer animation.</p>
+
+  <h4>Tracking vs Pan — a critical distinction</h4>
+  <p>Both <strong>Tracking</strong> and <strong>Pan</strong> move the viewport, but they mean different things and diverge the moment zoom or rotation is involved.</p>
+
+  <div class="diagram">
+    <svg width="480" height="118" viewBox="0 0 480 118" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <!-- LEFT: Tracking -->
+      <rect x="4" y="4" width="228" height="110" rx="5" fill="#1e2a35" stroke="#0e7fd4" stroke-width="1"/>
+      <text x="118" y="22" text-anchor="middle" font-size="10" font-weight="600" fill="#0e7fd4" font-family="-apple-system">TRACKING  (X, Y)</text>
+      <!-- mini canvas -->
+      <rect x="24" y="32" width="80" height="64" rx="2" fill="#252526" stroke="#3c3c3c" stroke-width="1"/>
+      <!-- crosshair at canvas centre -->
+      <line x1="64" y1="38" x2="64" y2="90" stroke="#0e7fd4" stroke-width="0.6" stroke-dasharray="2,2"/>
+      <line x1="28" y1="64" x2="100" y2="64" stroke="#0e7fd4" stroke-width="0.6" stroke-dasharray="2,2"/>
+      <!-- world point P at centre (tracking keeps it there) -->
+      <circle cx="64" cy="64" r="5" fill="#0e7fd4"/>
+      <text x="71" y="61" font-size="8" fill="#0e7fd4" font-family="-apple-system">P</text>
+      <!-- annotation -->
+      <text x="116" y="45" font-size="9" fill="#888" font-family="-apple-system">Viewport offset =</text>
+      <text x="116" y="59" font-size="9" fill="#ccc" font-family="Menlo, monospace">−(X,Y) × zoom</text>
+      <text x="116" y="77" font-size="8.5" fill="#5aaa6a" font-family="-apple-system">Point P stays centred</text>
+      <text x="116" y="89" font-size="8.5" fill="#5aaa6a" font-family="-apple-system">at any zoom level.</text>
+      <text x="116" y="104" font-size="8" fill="#666" font-family="-apple-system">Scaled by zoom; rotated by rotation.</text>
+
+      <!-- RIGHT: Pan -->
+      <rect x="248" y="4" width="228" height="110" rx="5" fill="#2a1e12" stroke="#c08040" stroke-width="1"/>
+      <text x="362" y="22" text-anchor="middle" font-size="10" font-weight="600" fill="#c08040" font-family="-apple-system">PAN  (X, Y)</text>
+      <!-- mini canvas -->
+      <rect x="268" y="32" width="80" height="64" rx="2" fill="#252526" stroke="#3c3c3c" stroke-width="1"/>
+      <!-- crosshair at canvas centre -->
+      <line x1="308" y1="38" x2="308" y2="90" stroke="#555" stroke-width="0.6" stroke-dasharray="2,2"/>
+      <line x1="272" y1="64" x2="344" y2="64" stroke="#555" stroke-width="0.6" stroke-dasharray="2,2"/>
+      <!-- world point P off-centre (pan is fixed, doesn't compensate zoom) -->
+      <circle cx="298" cy="56" r="5" fill="#c08040"/>
+      <text x="287" y="54" font-size="8" fill="#c08040" font-family="-apple-system">P</text>
+      <!-- drift arrow -->
+      <line x1="308" y1="64" x2="300" y2="57" stroke="#c08040" stroke-width="0.8" stroke-dasharray="2,1"/>
+      <!-- annotation -->
+      <text x="360" y="45" font-size="9" fill="#888" font-family="-apple-system">Viewport offset =</text>
+      <text x="360" y="59" font-size="9" fill="#ccc" font-family="Menlo, monospace">+(X, Y)</text>
+      <text x="360" y="77" font-size="8.5" fill="#c08040" font-family="-apple-system">Raw pixel shift; P drifts</text>
+      <text x="360" y="89" font-size="8.5" fill="#c08040" font-family="-apple-system">off-centre when zoom changes.</text>
+      <text x="360" y="104" font-size="8" fill="#666" font-family="-apple-system">Unaffected by zoom or rotation.</text>
+    </svg>
+    <figcaption>Tracking is zoom-compensated — it holds a world point at the screen centre regardless of zoom. Pan is a fixed pixel offset — it never adjusts for zoom.</figcaption>
+  </div>
+
+  <p><strong>When they produce the same result:</strong> at zoom = 1.0 and rotation = 0°, <code>tracking(X, Y)</code> and <code>pan(−X, −Y)</code> are numerically identical. In a flat animation with no zoom or rotation, the two drivers overlap completely.</p>
+  <p><strong>When they diverge:</strong> the moment zoom ≠ 1 or rotation ≠ 0°, tracking continues to hold the world point at screen centre, while pan delivers the same raw pixel offset regardless of zoom level. If you key a pan of −200&nbsp;px at zoom 1× and then animate zoom up to 2×, the pan stays −200&nbsp;px and the world point drifts off-centre. With tracking(200, 0) and zoom 2×, the engine automatically computes an offset of −400&nbsp;px, keeping the point centred.</p>
+  <p><strong>Using them together:</strong> tracking and pan compose additively. A common pattern is to set tracking to follow a focal world point and add a small pan on top to create a cinematic drift or composed reframe — the tracked point is almost-centred but offset by the pan amount.</p>
+
+  <h4>Lane reference</h4>
   <table>
-    <thead><tr><th>Lane</th><th>Effect</th></tr></thead>
+    <thead>
+      <tr><th>Lane</th><th>What it controls</th><th>Typical values</th><th>Notes</th></tr>
+    </thead>
     <tbody>
-      <tr><td>Tracking X / Y</td><td>Keeps the given world-space point centred in the viewport.</td></tr>
-      <tr><td>Pan X / Y</td><td>Translates the viewport by the given pixel offsets.</td></tr>
-      <tr><td>Zoom</td><td>Scales the viewport (1.0 = no zoom; 2.0 = 2× zoom).</td></tr>
-      <tr><td>Rotation</td><td>Rotates the entire canvas around its centre.</td></tr>
+      <tr>
+        <td>Tracking X / Y</td>
+        <td>Locks a world-space point to the screen centre. Automatically scales by zoom and rotates by the rotation value before applying.</td>
+        <td>World-space coordinates — same units as geometry. Match the extent of your scene, e.g. −500 to 500 on a 1000-unit canvas.</td>
+        <td>Zoom-aware. Rotation-aware. Safe to keyframe across zoom moves.</td>
+      </tr>
+      <tr>
+        <td>Pan X / Y</td>
+        <td>Adds a raw pixel offset to the viewport, on top of tracking. Positive X pans right; positive Y pans up (world-space convention).</td>
+        <td>World-space pixels. ±(canvas&nbsp;width/2) covers edge-to-edge. E.g. ±400 on an 800-unit canvas. Larger values are valid for scrolling.</td>
+        <td>Not scaled by zoom. Use for simple flat panning or for offset-from-tracking.</td>
+      </tr>
+      <tr>
+        <td>Zoom</td>
+        <td>Scales the entire viewport around the canvas centre. Applied to tracking before the offset is computed.</td>
+        <td><code>1.0</code> = no change. <code>0.5</code> = zoom out (half size). <code>2.0</code> = 2× magnification. Clamped to minimum <code>0.01</code>.</td>
+        <td>Values below 1 zoom out; above 1 zoom in. With depth enabled, each layer's effective zoom is also multiplied by its depth factor <em>f</em>.</td>
+      </tr>
+      <tr>
+        <td>Rotation</td>
+        <td>Rotates the entire canvas around its centre, in degrees clockwise.</td>
+        <td>0° = no rotation. 180° = half turn. Any value; not clamped. Animate from 0 → 360 for a full revolution.</td>
+        <td>Applied uniformly — rotation is not depth-scaled. Tracking automatically compensates for rotation so the tracked point stays centred under rotation.</td>
+      </tr>
     </tbody>
   </table>
-  <p>Camera animation is evaluated from the same global frame clock as sprite and renderer drivers. It is applied as a final viewport transform after sprite transforms, morph/shape drivers, subdivision, and renderer drivers, so it can be combined with those animation systems.</p>
 
   <h3 id="animation-parallax">Depth &amp; Parallax with camera animation</h3>
-  <p>Camera animation becomes a depth-aware parallax system when sprites have non-zero <strong>Depth</strong> values and <strong>Perspective strength</strong> is set in the Global tab. The camera lanes in the Timeline remain the same — pan, zoom, tracking, and rotation — but each sprite now evaluates the camera transform through its own depth factor, so every layer moves at a different rate.</p>
+  <p>When sprites have non-zero <strong>Depth</strong> values and <strong>Perspective strength</strong> is non-zero, the engine re-evaluates the camera transform through each sprite's depth factor before rendering it. The four camera lanes behave as described above, but their screen-space effect differs per depth layer. See <a href="#sprites-depth">Depth &amp; Parallax</a> for the factor formula and reference table.</p>
+
   <table>
     <thead><tr><th>Camera lane</th><th>Effect with depth enabled</th></tr></thead>
     <tbody>
-      <tr><td>Pan X / Y</td><td>The primary parallax driver. Background sprites (depth &gt; 0) move less; foreground sprites (depth &lt; 0) move more. The focal plane (depth 0) tracks the pan exactly.</td></tr>
-      <tr><td>Zoom</td><td>Creates a parallax scale effect. Background layers grow and shrink more slowly than the focal plane during a zoom move, reinforcing depth.</td></tr>
-      <tr><td>Tracking</td><td>Keeps the focal-plane point centred. Background sprites will not reach the tracking target exactly — they lag behind proportionally to their depth, which is physically correct.</td></tr>
-      <tr><td>Rotation</td><td>Applied uniformly across all depths — rotation is not depth-scaled.</td></tr>
+      <tr>
+        <td>Pan X / Y</td>
+        <td>The primary parallax driver. Each layer's effective offset is <code>pan × f</code>. Background sprites (f &lt; 1) move less; foreground sprites (f &gt; 1) move more. The focal plane (f = 1) tracks the pan exactly. Animating pan over time produces the classic horizontal or vertical parallax scroll.</td>
+      </tr>
+      <tr>
+        <td>Zoom</td>
+        <td>Each layer's effective zoom is <code>zoom × f</code>. Background layers grow and shrink more slowly than the focal plane during a zoom move, reinforcing depth. Animating zoom is the standard way to produce a parallax push-in or pull-out shot.</td>
+      </tr>
+      <tr>
+        <td>Tracking</td>
+        <td>Keeps the tracked world point centred for <em>depth-0 sprites only</em>. Because the effective offset for a depth-d sprite is <code>(pan − tracked × zoom) × f</code>, background sprites do not fully reach the tracking target — they lag behind by their depth factor, which is physically correct (in a real parallax system, subjects at different distances don't share the same screen-centre relationship). Use tracking to anchor the focal plane subject and let depth layers naturally distribute around it.</td>
+      </tr>
+      <tr>
+        <td>Rotation</td>
+        <td>Applied uniformly across all depths — rotation is not multiplied by the depth factor. All layers rotate by the same angle around the canvas centre regardless of depth.</td>
+      </tr>
     </tbody>
   </table>
+
   <div class="note">Depth and perspective are purely a render-time transform — they do not affect geometry, subdivision, or the geometry editor. The underlying polygon coordinates are always in the flat 2D world.</div>
+
+  <div class="tip"><strong>Tracking + depth:</strong> A strong compositional technique is to set tracking to a world point at the focal plane (depth 0) and animate zoom. The focal-plane subject stays locked at screen centre while background and foreground layers scale at different rates around it — a physically accurate dolly-zoom into a parallax scene.</div>
 
   <h3 id="animation-morph">Morph targets</h3>
   <p>Morphing smoothly interpolates a sprite's geometry between two states: the <em>base</em> geometry and a <em>morph target</em> geometry. The <strong>Morph Amount</strong> driver (0 = base, 1 = target) controls the blend.</p>
@@ -1230,16 +1465,35 @@
   <h3 id="export-still">Still image</h3>
   <p>Click the <strong>photo</strong> icon in the toolbar to save the current frame as a PNG file. The file is written to <code>renders/stills/</code> with an auto-generated name based on the project name and a timestamp. Resolution is the canvas size multiplied by the Quality setting.</p>
 
-  <h3 id="export-svg">SVG export</h3>
-  <p>Loom has two SVG export paths:</p>
+  <h3 id="export-svg">SVG — export and import</h3>
+  <p>Loom treats SVG as a two-way format. You can export geometry out for editing in Inkscape, then reimport the results — either as geometry or as rendered sprite images.</p>
+
+  <h4>Export paths</h4>
   <table>
-    <thead><tr><th>Source</th><th>How to trigger</th><th>Contents</th></tr></thead>
+    <thead><tr><th>Source</th><th>How to trigger</th><th>Contents</th><th>Destination</th></tr></thead>
     <tbody>
-      <tr><td>Geometry Editor</td><td><strong>Export</strong> row in the File inspector section</td><td>Active layer's raw geometry as wireframe Bézier paths</td></tr>
-      <tr><td>Subdivision Tab</td><td>Folder-arrow icon next to the bake button</td><td>Subdivided polygon output as wireframe paths</td></tr>
+      <tr><td>Geometry Editor</td><td><strong>Export</strong> row in the File inspector section</td><td>Active layer's raw geometry as wireframe Bézier paths</td><td><code>svgs/</code></td></tr>
+      <tr><td>Subdivision Tab</td><td>Folder-arrow icon next to the bake button</td><td>Subdivided polygon output as wireframe paths</td><td><code>svgs/</code></td></tr>
     </tbody>
   </table>
   <p>SVG files are written to the project's <code>svgs/</code> folder. If a file with the same stem already exists, a numbered suffix is appended automatically. Stroke width varies per path segment when pressure data is available (from freehand drawing).</p>
+
+  <h4>Import paths</h4>
+  <table>
+    <thead><tr><th>Method</th><th>How to trigger</th><th>Result</th></tr></thead>
+    <tbody>
+      <tr><td>Geometry import</td><td><strong>Import SVG…</strong> in the Geometry tab action bar</td><td>SVG path data converted to a polygon set. Goes through the full subdivision and rendering pipeline. See <a href="#geometry-svg-import">SVG Geometry Import</a>.</td></tr>
+      <tr><td>SVG sprite</td><td>Place file in <code>svgs/sprites/</code>, pick from inspector dropdown</td><td>SVG rendered directly at vector quality. Bypasses subdivision. All transform drivers apply. See <a href="#sprites-svg">SVG Sprites</a>.</td></tr>
+    </tbody>
+  </table>
+
+  <h4>Full round-trip workflow</h4>
+  <ol class="steps">
+    <li>Draw geometry in Loom's editor or design text in Inkscape.</li>
+    <li><strong>Export SVG</strong> from the Geometry tab to <code>svgs/</code>. Open in Inkscape and add colour, gradients, and fills.</li>
+    <li>Save the styled version to <code>svgs/sprites/</code>. In Loom, assign it as an <strong>SVG sprite</strong> — this gives you the Inkscape visual style with all of Loom's transform and camera animation.</li>
+    <li>Optionally, also <strong>Import SVG…</strong> from the Geometry tab to bring the stripped path geometry back as a polygon set — animate the outline separately with Loom's subdivision and renderers running on the same shape.</li>
+  </ol>
 
   <h3 id="export-video">Video export</h3>
   <ol class="steps">

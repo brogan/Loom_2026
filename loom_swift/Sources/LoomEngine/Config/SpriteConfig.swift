@@ -59,6 +59,14 @@ public struct SpriteDef: Codable, Sendable {
     /// negative = closer. Requires `CameraConfig.perspectiveStrength > 0` to have any visual effect.
     public var depth: Double = 0
 
+    // MARK: SVG sprite
+
+    /// Filename of an SVG file in the project's `svg_sprites/` subdirectory.
+    /// When set, this sprite renders the SVG image using all standard transform drivers
+    /// (position, scale, rotation, opacity, depth/parallax, camera, hierarchy, gate).
+    /// The shape/renderer pipeline is bypassed.
+    public var svgFilename: String?
+
     public init(
         name: String               = "",
         enabled: Bool              = true,
@@ -76,7 +84,8 @@ public struct SpriteDef: Codable, Sendable {
         gateStart: Int             = 0,
         gateEnd: Int               = 0,
         morphTargetNames: [String] = [],
-        depth: Double              = 0
+        depth: Double              = 0,
+        svgFilename: String?       = nil
     ) {
         self.name = name; self.enabled = enabled
         self.shapeSetName = shapeSetName
@@ -91,6 +100,7 @@ public struct SpriteDef: Codable, Sendable {
         self.gateEnd          = gateEnd
         self.morphTargetNames = morphTargetNames
         self.depth            = depth
+        self.svgFilename      = svgFilename
     }
 
     // Custom decoder: decodeIfPresent for all fields so existing projects
@@ -114,6 +124,7 @@ public struct SpriteDef: Codable, Sendable {
         gateEnd           = try c.decodeIfPresent(Int.self,              forKey: .gateEnd)           ?? 0
         morphTargetNames  = try c.decodeIfPresent([String].self,         forKey: .morphTargetNames)  ?? []
         depth             = try c.decodeIfPresent(Double.self,            forKey: .depth)             ?? 0
+        svgFilename       = try c.decodeIfPresent(String.self,           forKey: .svgFilename)
     }
 }
 

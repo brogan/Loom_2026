@@ -1,5 +1,8 @@
 import CoreGraphics
 import Foundation
+#if canImport(AppKit)
+import AppKit
+#endif
 
 // MARK: - Error
 
@@ -32,10 +35,16 @@ public enum SpriteSceneError: Error, LocalizedError {
 /// Polygon geometry is in world space (origin at canvas centre, Y-up).
 /// `render` expects the caller to have applied a Y-flip transform to the
 /// `CGContext` before the call (matching the contract of `RenderEngine`).
-public struct SpriteScene: Sendable {
+public struct SpriteScene: @unchecked Sendable {
 
     /// All resolved sprite instances, in declaration order from `sprites.xml`.
     public var instances: [SpriteInstance]
+
+    /// SVG images for SVG-sprite rendering, keyed by filename. Set by `LoomEngine` at init.
+    /// Sprites with a matching `def.svgFilename` bypass the polygon pipeline and draw the image.
+#if canImport(AppKit)
+    public var svgImages: [String: NSImage] = [:]
+#endif
 
     /// Pixel-space multiplier; all per-instance pixel distances are scaled by this factor.
     private let qualityMultiple: Int
@@ -651,6 +660,18 @@ public struct SpriteScene: Sendable {
         let anim = instance.def.animation
         guard anim.totalDraws == 0 || instance.state.drawCycle < anim.totalDraws else { return }
 
+        // ── SVG sprite: bypass polygon pipeline ──────────────────────────────
+#if canImport(AppKit)
+        if let filename = instance.def.svgFilename {
+            if let nsImage = svgImages[filename] {
+                renderSVGInstance(instance, nsImage: nsImage, parentWorld: parentWorld,
+                                  into: context, viewTransform: viewTransform,
+                                  spriteIndex: spriteIndex, elapsedFrames: elapsedFrames)
+            }
+            return
+        }
+#endif
+
         // ── Shape driver: select active geometry and renderer set ────────────
         // Step-evaluated: snaps to last keyframe at or before elapsed — no interpolation.
         let shapeIdx = instance.def.animation.drivers.map {
@@ -848,6 +869,88 @@ public struct SpriteScene: Sendable {
             }
         }
     }
+
+#if canImport(AppKit)
+    /// Draw an NSImage SVG sprite, applying all transform drivers and the full parent hierarchy.
+    ///
+    /// The context is expected to have the Y-flip applied by `LoomEngine.renderImpl`.
+    /// This method counters that flip locally so the image draws right-side-up.
+    private func renderSVGInstance(
+        _ instance: SpriteInstance,
+        nsImage: NSImage,
+        parentWorld: ParentWorld?,
+        into context: CGContext,
+        viewTransform: ViewTransform,
+        spriteIndex: Int,
+        elapsedFrames: Double
+    ) {
+        let def  = instance.def
+        let anim = instance.state.transform
+
+        let hw            = viewTransform.canvasSize.width  / 2.0
+        let hh            = viewTransform.canvasSize.height / 2.0
+        let geometryBasis = min(viewTransform.canvasSize.width, viewTransform.canvasSize.height) / 2.0
+
+        // Scale (×2 matches the polygon coordinate convention).
+        var sx = def.scale.x * anim.scale.x * 2.0
+        var sy = def.scale.y * anim.scale.y * 2.0
+
+        // Rotation in degrees (CCW positive in world Y-up space).
+        var rotDeg = def.rotation + anim.rotation
+
+        // World position in pixels from canvas centre.
+        let localTx = (def.position.x + anim.positionOffset.x) / 100.0 * hw
+        let localTy = (def.position.y + anim.positionOffset.y) / 100.0 * hh
+        var txPx = localTx
+        var tyPx = localTy
+
+        // Compose with parent hierarchy.
+        if let parent = parentWorld {
+            let mask = def.inheritMask
+            if mask.scale    { sx *= parent.scale.x; sy *= parent.scale.y }
+            if mask.rotation { rotDeg += parent.rotationDeg }
+            if mask.position {
+                let rad  = parent.rotationDeg * .pi / 180.0
+                let cosP = cos(rad), sinP = sin(rad)
+                let relTx = localTx - parent.basePositionPx.x
+                let relTy = localTy - parent.basePositionPx.y
+                txPx = parent.positionPx.x + relTx * cosP - relTy * sinP
+                tyPx = parent.positionPx.y + relTx * sinP + relTy * cosP
+            }
+        }
+
+        let spriteOpacity = max(0, min(1, anim.opacity))
+        guard spriteOpacity > 0 else { return }
+
+        // Screen size: sprite scale × geometry basis × camera zoom.
+        let screenW = CGFloat(sx * geometryBasis * viewTransform.zoom)
+        let screenH = CGFloat(sy * geometryBasis * viewTransform.zoom)
+        guard screenW > 0, screenH > 0 else { return }
+
+        // Screen centre position (camera rotation and pan already baked into viewTransform).
+        let centre = viewTransform.worldToScreen(Vector2D(x: txPx, y: tyPx))
+
+        // Total rotation: sprite + camera (CCW positive in Y-up / screen CCW).
+        let rotRad = CGFloat((rotDeg + viewTransform.rotation) * .pi / 180.0)
+
+        context.saveGState()
+        context.setAlpha(CGFloat(spriteOpacity))
+        // Translate to the sprite's screen position, counter the LoomEngine Y-flip,
+        // then rotate so the image orientation matches polygon sprites.
+        context.translateBy(x: centre.x, y: centre.y)
+        context.scaleBy(x: 1, y: -1)
+        context.rotate(by: rotRad)
+
+        let drawRect = CGRect(x: -screenW / 2, y: -screenH / 2, width: screenW, height: screenH)
+        let nsCtx = NSGraphicsContext(cgContext: context, flipped: false)
+        NSGraphicsContext.saveGraphicsState()
+        NSGraphicsContext.current = nsCtx
+        nsImage.draw(in: drawRect)
+        NSGraphicsContext.restoreGraphicsState()
+
+        context.restoreGState()
+    }
+#endif
 
     private func drawPointsWithElementChanges<RNG: RandomNumberGenerator>(
         _ polygon: Polygon2D,

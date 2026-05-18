@@ -19,10 +19,10 @@ struct SpritesInspector: View {
             if sprite.animation.drivers != nil {
                 DriverSectionsView(setIdx: setIdx, spriteIdx: spriteIdx)
                     .environmentObject(controller)
-                    .id("\(setIdx):\(spriteIdx)")
             }
             hierarchySection(sprite: sprite, setIdx: setIdx, spriteIdx: spriteIdx)
-        })
+        }
+        .id("\(setIdx):\(spriteIdx)"))
     }
 
     // MARK: - General
@@ -61,7 +61,55 @@ struct SpritesInspector: View {
                     .frame(maxWidth: 120)
                 }
             }
+            let svgFiles = svgSpriteFiles()
+            if !svgFiles.isEmpty {
+                InspectorField("SVG sprite") {
+                    Picker("", selection: svgFilenameBinding(setIdx: setIdx, spriteIdx: spriteIdx)) {
+                        Text("None").tag("")
+                        ForEach(svgFiles, id: \.self) { name in
+                            Text(name).tag(name)
+                        }
+                    }
+                    .labelsHidden()
+                    .font(.system(size: 12))
+                    .frame(maxWidth: 150)
+                }
+            }
         }
+    }
+
+    /// Binding that maps `svgFilename: String?` to a `String` for Picker selection.
+    /// Empty string represents nil (no SVG assigned).
+    private func svgFilenameBinding(setIdx: Int, spriteIdx: Int) -> Binding<String> {
+        let ctl = controller
+        return Binding(
+            get: {
+                ctl.projectConfig?.spriteConfig.library
+                    .spriteSets[safe: setIdx]?.sprites[safe: spriteIdx]?.svgFilename ?? ""
+            },
+            set: { newValue in
+                ctl.updateProjectConfig { cfg in
+                    guard setIdx < cfg.spriteConfig.library.spriteSets.count,
+                          spriteIdx < cfg.spriteConfig.library.spriteSets[setIdx].sprites.count
+                    else { return }
+                    cfg.spriteConfig.library.spriteSets[setIdx].sprites[spriteIdx]
+                        .svgFilename = newValue.isEmpty ? nil : newValue
+                }
+            }
+        )
+    }
+
+    /// Returns SVG filenames available in the project's `svg_sprites/` directory.
+    private func svgSpriteFiles() -> [String] {
+        guard let url = controller.projectURL else { return [] }
+        let dir = url.appendingPathComponent("svgs/sprites")
+        let entries = (try? FileManager.default.contentsOfDirectory(
+            at: dir, includingPropertiesForKeys: nil
+        )) ?? []
+        return entries
+            .filter { $0.pathExtension.lowercased() == "svg" }
+            .map    { $0.lastPathComponent }
+            .sorted()
     }
 
     private func subdivBinding(setIdx: Int, spriteIdx: Int) -> Binding<String> {
@@ -93,13 +141,13 @@ struct SpritesInspector: View {
     private func transformSection(setIdx: Int, spriteIdx: Int) -> some View {
         InspectorSection("Transform") {
             vec2Field("Position",
-                      xKP: \.position.x, yKP: \.position.y,
-                      setIdx: setIdx, spriteIdx: spriteIdx)
+                      xBind: positionBinding(setIdx, spriteIdx, isX: true),
+                      yBind: positionBinding(setIdx, spriteIdx, isX: false))
             vec2Field("Scale",
                       xKP: \.scale.x, yKP: \.scale.y,
                       setIdx: setIdx, spriteIdx: spriteIdx)
             InspectorField("Rotation") {
-                FloatEntryField(value: bindS(setIdx, spriteIdx, \.rotation), width: 65, fractionDigits: 2)
+                FloatEntryField(value: rotationBinding(setIdx, spriteIdx), width: 65, fractionDigits: 2)
                 Text("°").font(.system(size: 11)).foregroundStyle(.secondary)
             }
             InspectorField("Depth") {
@@ -273,6 +321,20 @@ struct SpritesInspector: View {
         }
     }
 
+    private func vec2Field(
+        _ label: String,
+        xBind: Binding<Double>, yBind: Binding<Double>
+    ) -> some View {
+        InspectorField(label) {
+            HStack(spacing: 3) {
+                Text("X").font(.system(size: 10)).foregroundStyle(.tertiary).frame(width: 10)
+                FloatEntryField(value: xBind, width: 54, fractionDigits: 2, fontSize: 11)
+                Text("Y").font(.system(size: 10)).foregroundStyle(.tertiary).frame(width: 10)
+                FloatEntryField(value: yBind, width: 54, fractionDigits: 2, fontSize: 11)
+            }
+        }
+    }
+
     private func rangeField(
         _ label: String,
         minKP: WritableKeyPath<SpriteAnimation, Double>,
@@ -355,6 +417,104 @@ struct SpritesInspector: View {
                 }
             }
         )
+    }
+
+    // MARK: - Propagating transform bindings
+
+    private func positionBinding(_ si: Int, _ pi: Int, isX: Bool) -> Binding<Double> {
+        let ctl = controller
+        let kp: WritableKeyPath<SpriteDef, Double> = isX ? \.position.x : \.position.y
+        return Binding(
+            get: {
+                ctl.projectConfig?.spriteConfig.library
+                    .spriteSets[safe: si]?.sprites[safe: pi]?[keyPath: kp] ?? 0
+            },
+            set: { newVal in
+                ctl.updateProjectConfig { cfg in
+                    guard si < cfg.spriteConfig.library.spriteSets.count,
+                          pi < cfg.spriteConfig.library.spriteSets[si].sprites.count else { return }
+                    let delta = newVal - cfg.spriteConfig.library.spriteSets[si].sprites[pi][keyPath: kp]
+                    let name  = cfg.spriteConfig.library.spriteSets[si].sprites[pi].name
+                    cfg.spriteConfig.library.spriteSets[si].sprites[pi][keyPath: kp] = newVal
+                    Self.propagatePosition(dx: isX ? delta : 0,
+                                           dy: isX ? 0 : delta,
+                                           from: name, in: &cfg, setIdx: si)
+                }
+            }
+        )
+    }
+
+    private func rotationBinding(_ si: Int, _ pi: Int) -> Binding<Double> {
+        let ctl = controller
+        return Binding(
+            get: {
+                ctl.projectConfig?.spriteConfig.library
+                    .spriteSets[safe: si]?.sprites[safe: pi]?.rotation ?? 0
+            },
+            set: { newRot in
+                ctl.updateProjectConfig { cfg in
+                    guard si < cfg.spriteConfig.library.spriteSets.count,
+                          pi < cfg.spriteConfig.library.spriteSets[si].sprites.count else { return }
+                    let sprite = cfg.spriteConfig.library.spriteSets[si].sprites[pi]
+                    let dRot   = newRot - sprite.rotation
+                    cfg.spriteConfig.library.spriteSets[si].sprites[pi].rotation = newRot
+                    Self.propagateRotation(dRot: dRot,
+                                           pivotX: sprite.position.x,
+                                           pivotY: sprite.position.y,
+                                           from: sprite.name, in: &cfg, setIdx: si)
+                }
+            }
+        )
+    }
+
+    // MARK: - Child propagation (static so closures don't capture self)
+
+    static func propagatePosition(
+        dx: Double, dy: Double,
+        from parentName: String,
+        in cfg: inout ProjectConfig, setIdx: Int
+    ) {
+        guard setIdx < cfg.spriteConfig.library.spriteSets.count else { return }
+        let sprites = cfg.spriteConfig.library.spriteSets[setIdx].sprites
+        for i in sprites.indices where sprites[i].parentName == parentName {
+            if sprites[i].inheritMask.position {
+                cfg.spriteConfig.library.spriteSets[setIdx].sprites[i].position.x += dx
+                cfg.spriteConfig.library.spriteSets[setIdx].sprites[i].position.y += dy
+            }
+            propagatePosition(dx: dx, dy: dy,
+                              from: sprites[i].name, in: &cfg, setIdx: setIdx)
+        }
+    }
+
+    static func propagateRotation(
+        dRot: Double, pivotX: Double, pivotY: Double,
+        from parentName: String,
+        in cfg: inout ProjectConfig, setIdx: Int
+    ) {
+        guard setIdx < cfg.spriteConfig.library.spriteSets.count else { return }
+        let rad = dRot * .pi / 180.0
+        let cosR = cos(rad), sinR = sin(rad)
+        let sprites = cfg.spriteConfig.library.spriteSets[setIdx].sprites
+        for i in sprites.indices where sprites[i].parentName == parentName {
+            let mask = sprites[i].inheritMask
+            if mask.rotation {
+                cfg.spriteConfig.library.spriteSets[setIdx].sprites[i].rotation += dRot
+            }
+            if mask.position {
+                let ox = sprites[i].position.x - pivotX
+                let oy = sprites[i].position.y - pivotY
+                let newX = pivotX + ox * cosR - oy * sinR
+                let newY = pivotY + ox * sinR + oy * cosR
+                cfg.spriteConfig.library.spriteSets[setIdx].sprites[i].position.x = newX
+                cfg.spriteConfig.library.spriteSets[setIdx].sprites[i].position.y = newY
+                propagateRotation(dRot: dRot, pivotX: newX, pivotY: newY,
+                                  from: sprites[i].name, in: &cfg, setIdx: setIdx)
+            } else {
+                propagateRotation(dRot: dRot,
+                                  pivotX: sprites[i].position.x, pivotY: sprites[i].position.y,
+                                  from: sprites[i].name, in: &cfg, setIdx: setIdx)
+            }
+        }
     }
 }
 
