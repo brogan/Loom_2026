@@ -35,6 +35,7 @@ struct SpritesInspector: View {
                     .font(.system(size: 12))
                     .frame(maxWidth: 110)
             }
+            .loomHelp("Name for this sprite — used in parent assignments, shape variants, and timeline identification.")
             let rendererSets = controller.projectConfig?.renderingConfig.library.rendererSets ?? []
             InspectorField("Renderer Set") {
                 Picker("", selection: bindS(setIdx, spriteIdx, \.rendererSetName)) {
@@ -47,6 +48,7 @@ struct SpritesInspector: View {
                 .font(.system(size: 12))
                 .frame(maxWidth: 120)
             }
+            .loomHelp("Renderer set that draws this sprite. Assign a set from the Rendering tab to control how the shape is painted.")
             let subdivSets = controller.projectConfig?.subdivisionConfig.paramsSets ?? []
             if !subdivSets.isEmpty {
                 InspectorField("Subdiv set") {
@@ -60,6 +62,7 @@ struct SpritesInspector: View {
                     .font(.system(size: 12))
                     .frame(maxWidth: 120)
                 }
+                .loomHelp("Subdivision parameter set applied to this sprite's geometry before drawing.")
             }
             let svgFiles = svgSpriteFiles()
             if !svgFiles.isEmpty {
@@ -74,6 +77,7 @@ struct SpritesInspector: View {
                     .font(.system(size: 12))
                     .frame(maxWidth: 150)
                 }
+                .loomHelp("SVG file from the project's svgs/sprites/ folder to render as this sprite instead of a generated shape.")
             }
         }
     }
@@ -143,17 +147,21 @@ struct SpritesInspector: View {
             vec2Field("Position",
                       xBind: positionBinding(setIdx, spriteIdx, isX: true),
                       yBind: positionBinding(setIdx, spriteIdx, isX: false))
+            .loomHelp("Canvas position in pixels. Origin (0,0) is top-left; positive X = right, positive Y = down.")
             vec2Field("Scale",
                       xKP: \.scale.x, yKP: \.scale.y,
                       setIdx: setIdx, spriteIdx: spriteIdx)
+            .loomHelp("Scale multiplier (1.0 = original size). Applied around the sprite's anchor point.")
             InspectorField("Rotation") {
                 FloatEntryField(value: rotationBinding(setIdx, spriteIdx), width: 65, fractionDigits: 2)
                 Text("°").font(.system(size: 11)).foregroundStyle(.secondary)
             }
+            .loomHelp("Rotation in degrees, clockwise. Applied around the sprite's anchor point.")
             InspectorField("Depth") {
                 FloatEntryField(value: bindS(setIdx, spriteIdx, \.depth), width: 65, fractionDigits: 1)
                 Text("0=focal").font(.system(size: 10)).foregroundStyle(.tertiary)
             }
+            .loomHelp("Depth relative to the focal plane for perspective projection. 0 = focal plane; positive recedes, negative comes forward.")
         }
     }
 
@@ -168,6 +176,7 @@ struct SpritesInspector: View {
             InspectorField("Enabled") {
                 Toggle("", isOn: bindA(si, pi, \.enabled)).labelsHidden()
             }
+            .loomHelp("Activates frame-by-frame animation for this sprite. When off, the sprite stays at its base transform.")
             InspectorField("Use Drivers") {
                 Toggle("", isOn: Binding(
                     get: { ctl.projectConfig?.spriteConfig.library
@@ -186,6 +195,7 @@ struct SpritesInspector: View {
                 .labelsHidden()
                 Text("new system").font(.system(size: 10)).foregroundStyle(.tertiary)
             }
+            .loomHelp("Switch to driver-based animation with independent keyframe lanes for position, scale, rotation, morph, opacity, and shape.")
             InspectorField("Gate start") {
                 TextField("", value: bindSprite(setIdx, spriteIdx, \.gateStart), format: .number)
                     .textFieldStyle(.squareBorder)
@@ -193,6 +203,7 @@ struct SpritesInspector: View {
                     .frame(width: 55)
                 Text("0=off").font(.system(size: 10)).foregroundStyle(.tertiary)
             }
+            .loomHelp("First frame at which this sprite becomes visible and starts animating. 0 = no gate (active from frame 0).")
             InspectorField("Gate end") {
                 TextField("", value: bindSprite(setIdx, spriteIdx, \.gateEnd), format: .number)
                     .textFieldStyle(.squareBorder)
@@ -200,6 +211,7 @@ struct SpritesInspector: View {
                     .frame(width: 55)
                 Text("0=off").font(.system(size: 10)).foregroundStyle(.tertiary)
             }
+            .loomHelp("Last frame at which this sprite is visible. 0 = no gate (stays visible through the end of playback).")
             if anim.enabled && anim.drivers == nil {
                 InspectorField("Type") {
                     Picker("", selection: bindA(setIdx, spriteIdx, \.type)) {
@@ -210,6 +222,7 @@ struct SpritesInspector: View {
                     .labelsHidden()
                     .frame(maxWidth: 130)
                 }
+                .loomHelp("Animation strategy — Keyframe (interpolates between saved transforms), Random (jitters each frame), Keyframe Morph (shape morphing), Jitter Morph (random morph blend).")
                 InspectorField("Loop") {
                     Picker("", selection: bindA(setIdx, spriteIdx, \.loopMode)) {
                         ForEach(LoopMode.allCases, id: \.self) { m in
@@ -219,6 +232,7 @@ struct SpritesInspector: View {
                     .labelsHidden()
                     .frame(maxWidth: 100)
                 }
+                .loomHelp("How the animation behaves at the end — Loop (wrap to start), Ping-Pong (reverse), Once (hold at last frame).")
                 InspectorField("Total draws") {
                     TextField("", value: bindA(setIdx, spriteIdx, \.totalDraws), format: .number)
                         .textFieldStyle(.squareBorder)
@@ -226,21 +240,27 @@ struct SpritesInspector: View {
                         .frame(width: 55)
                     Text("0=∞").font(.system(size: 10)).foregroundStyle(.tertiary)
                 }
+                .loomHelp("Number of animation cycles before stopping. 0 = infinite loop.")
                 rangeField("Transl X",
                            minKP: \.translationRange.x.min, maxKP: \.translationRange.x.max,
                            setIdx: setIdx, spriteIdx: spriteIdx)
+                .loomHelp("Min/max random translation in pixels along X per frame (Random animation mode).")
                 rangeField("Transl Y",
                            minKP: \.translationRange.y.min, maxKP: \.translationRange.y.max,
                            setIdx: setIdx, spriteIdx: spriteIdx)
+                .loomHelp("Min/max random translation in pixels along Y per frame (Random animation mode).")
                 rangeField("Scale X",
                            minKP: \.scaleRange.x.min, maxKP: \.scaleRange.x.max,
                            setIdx: setIdx, spriteIdx: spriteIdx)
+                .loomHelp("Min/max random scale multiplier along X per frame (Random animation mode).")
                 rangeField("Scale Y",
                            minKP: \.scaleRange.y.min, maxKP: \.scaleRange.y.max,
                            setIdx: setIdx, spriteIdx: spriteIdx)
+                .loomHelp("Min/max random scale multiplier along Y per frame (Random animation mode).")
                 rangeField("Rotation",
                            minKP: \.rotationRange.min, maxKP: \.rotationRange.max,
                            setIdx: setIdx, spriteIdx: spriteIdx)
+                .loomHelp("Min/max random rotation in degrees applied each frame (Random animation mode).")
                 if anim.type == .jitterMorph {
                     InspectorField("Morph range") {
                         HStack(spacing: 3) {
@@ -251,6 +271,7 @@ struct SpritesInspector: View {
                                             width: 54, fractionDigits: 2, fontSize: 11)
                         }
                     }
+                    .loomHelp("Min/max blend amount in Jitter Morph mode (0 = base shape, 1 = fully blended to the morph target).")
                 }
             }
         }
@@ -288,6 +309,7 @@ struct SpritesInspector: View {
                 .labelsHidden()
                 .frame(maxWidth: 130)
             }
+            .loomHelp("Sprite that this sprite is attached to. Position/rotation changes on the parent propagate to children per the Inherit settings.")
             if sprite.parentName != nil {
                 InspectorField("Inherit") {
                     HStack(spacing: 6) {
@@ -299,6 +321,7 @@ struct SpritesInspector: View {
                             .toggleStyle(.checkbox).font(.system(size: 11))
                     }
                 }
+                .loomHelp("Which parent transform components are inherited — Pos (position offset), Rot (rotation), Scale (scale multiplier).")
             }
         }
     }
@@ -597,6 +620,7 @@ private struct DriverSectionsView: View {
                     }
                     .buttonStyle(.plain).foregroundStyle(.secondary)
                 }
+                .loomHelp("Shape (from this sprite's shape set) to blend toward when the Morph driver reaches 1.0.")
             }
             Button {
                 var arr = mtBinding.wrappedValue
@@ -641,6 +665,7 @@ private struct DriverSectionsView: View {
                     }
                     .buttonStyle(.plain).foregroundStyle(.secondary)
                 }
+                .loomHelp("Alternative sprite whose geometry is blended with this sprite's current shape via the Shape driver.")
             }
             Button {
                 var arr = svBinding.wrappedValue
