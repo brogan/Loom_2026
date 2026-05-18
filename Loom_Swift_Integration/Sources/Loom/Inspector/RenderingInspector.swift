@@ -32,6 +32,7 @@ struct RenderingInspector: View {
             if let itemIdx = controller.selectedRendererItemIndex,
                let renderer = set.renderers[safe: itemIdx] {
                 rendererEditor(renderer: renderer, setIdx: setIdx, itemIdx: itemIdx)
+                sectionDivider
                 rendererDriversSection(renderer: renderer, setIdx: setIdx, itemIdx: itemIdx)
                 switch renderer.mode {
                 case .brushed:
@@ -43,9 +44,19 @@ struct RenderingInspector: View {
                 default:
                     EmptyView()
                 }
+                sectionDivider
                 changesSection(renderer: renderer, setIdx: setIdx, itemIdx: itemIdx)
             }
         })
+    }
+
+    // MARK: - Section divider
+
+    private var sectionDivider: some View {
+        Rectangle()
+            .fill(Color(nsColor: .separatorColor))
+            .frame(height: 1.5)
+            .padding(.vertical, 3)
     }
 
     // MARK: - Set header
@@ -59,6 +70,7 @@ struct RenderingInspector: View {
                     .font(.system(size: 12))
                     .frame(maxWidth: 110)
             }
+            .loomHelp("Name for this renderer set — shown in the set list and in sprite assignment dropdowns.")
             InspectorField("Playback") {
                 Picker("", selection: bindSet(setIdx, \.playbackConfig.mode)) {
                     ForEach(PlaybackMode.allCases, id: \.self) { m in
@@ -68,6 +80,7 @@ struct RenderingInspector: View {
                 .labelsHidden()
                 .frame(maxWidth: 120)
             }
+            .loomHelp("How the set cycles through renderers — Static (always first), Sequential (in order by Hold length), All (draw simultaneously), Random (pick each frame).")
             if mode == .random {
                 InspectorField("Preferred") {
                     TextField("", text: bindSet(setIdx, \.playbackConfig.preferredRenderer))
@@ -75,16 +88,19 @@ struct RenderingInspector: View {
                         .font(.system(size: 12))
                         .frame(maxWidth: 110)
                 }
+                .loomHelp("Name of the renderer to favour when Playback is Random. Leave blank to disable preference.")
                 InspectorField("Pref. prob.") {
                     FloatEntryField(value: bindSet(setIdx, \.playbackConfig.preferredProbability),
                                     width: 55, fractionDigits: 1)
                     Text("%").font(.system(size: 10)).foregroundStyle(.secondary)
                 }
+                .loomHelp("Chance (0–100%) that the preferred renderer is chosen instead of a uniformly random one.")
             }
             InspectorField("Mod. params") {
                 Toggle("", isOn: bindSet(setIdx, \.playbackConfig.modifyInternalParameters))
                     .labelsHidden()
             }
+            .loomHelp("When on, internal animation state (palette index, opacity step) advances each virtual frame. Turn off to freeze procedural variation.")
             InspectorRow(label: "Renderers", value: "\(set.renderers.count)")
         }
     }
@@ -118,6 +134,7 @@ struct RenderingInspector: View {
                     .font(.system(size: 12))
                     .frame(maxWidth: 110)
             }
+            .loomHelp("Name for this renderer — shown in the timeline lane and renderer list.")
             InspectorField("Mode") {
                 Picker("", selection: bindR(setIdx, itemIdx, \.mode)) {
                     ForEach(RendererMode.allCases.filter { $0 != .stenciled }, id: \.self) { m in
@@ -130,16 +147,21 @@ struct RenderingInspector: View {
                     initModeConfig(newMode, setIdx: setIdx, itemIdx: itemIdx)
                 }
             }
+            .loomHelp("Drawing mode — Stroked (outline), Filled (solid), Filled+Stroked (both), Points (dot cloud), Brushed (stamps along path), Stamped (images at point positions).")
             LoomColorField(label: "Stroke color",
                            color: bindR(setIdx, itemIdx, \.strokeColor))
+            .loomHelp("Colour and opacity used for stroked outlines and point markers.")
             LoomColorField(label: "Fill color",
                            color: bindR(setIdx, itemIdx, \.fillColor))
+            .loomHelp("Colour and opacity used when the mode includes a filled area.")
             InspectorField("Stroke w") {
                 FloatEntryField(value: bindR(setIdx, itemIdx, \.strokeWidth), width: 60, fractionDigits: 2)
             }
+            .loomHelp("Stroke line width in pixels at 1× quality. Scaled proportionally at higher quality multiples.")
             InspectorField("Point size") {
                 FloatEntryField(value: bindR(setIdx, itemIdx, \.pointSize), width: 60, fractionDigits: 2)
             }
+            .loomHelp("Diameter of drawn points in Points mode, in pixels at 1× quality.")
             InspectorField("Hold") {
                 TextField("", value: bindR(setIdx, itemIdx, \.holdLength), format: .number)
                     .textFieldStyle(.squareBorder)
@@ -147,6 +169,7 @@ struct RenderingInspector: View {
                     .frame(width: 50)
                 Text("frames").font(.system(size: 10)).foregroundStyle(.secondary)
             }
+            .loomHelp("Number of virtual frames this renderer is held before the set advances to the next renderer in Sequential playback mode.")
         }
     }
 
@@ -211,27 +234,33 @@ struct RenderingInspector: View {
                 .labelsHidden()
                 .frame(maxWidth: 130)
             }
+            .loomHelp("Full Path — stamps the entire path each frame; Progressive — agents traverse the path incrementally, adding stamps over time.")
             InspectorField("Spacing") {
                 FloatEntryField(value: bindBrushKP(setIdx, itemIdx, \.stampSpacing,
                                                    fallback: cfg.stampSpacing),
                                 width: 55, fractionDigits: 1)
             }
+            .loomHelp("Distance between stamp centres along the path in pixels. Smaller values = denser coverage.")
             InspectorField("Follow tang.") {
                 Toggle("", isOn: bindBrushKP(setIdx, itemIdx, \.followTangent,
                                              fallback: cfg.followTangent))
                     .labelsHidden()
             }
+            .loomHelp("When on, each stamp rotates to align with the path tangent at its placement point.")
             rangeField2("Perp. jitter",
                         v1: bindBrushKP(setIdx, itemIdx, \.perpendicularJitterMin,
                                         fallback: cfg.perpendicularJitterMin),
                         v2: bindBrushKP(setIdx, itemIdx, \.perpendicularJitterMax,
                                         fallback: cfg.perpendicularJitterMax))
+            .loomHelp("Min/max perpendicular offset from the path in pixels. Adds scatter away from the line.")
             rangeField2("Scale",
                         v1: bindBrushKP(setIdx, itemIdx, \.scaleMin, fallback: cfg.scaleMin),
                         v2: bindBrushKP(setIdx, itemIdx, \.scaleMax, fallback: cfg.scaleMax))
+            .loomHelp("Min/max scale multiplier applied to each stamp image (1.0 = original size).")
             rangeField2("Opacity",
                         v1: bindBrushKP(setIdx, itemIdx, \.opacityMin, fallback: cfg.opacityMin),
                         v2: bindBrushKP(setIdx, itemIdx, \.opacityMax, fallback: cfg.opacityMax))
+            .loomHelp("Min/max opacity multiplier per stamp (0 = invisible, 1 = fully opaque).")
             InspectorField("Stamps/frame") {
                 TextField("", value: bindBrushKP(setIdx, itemIdx, \.stampsPerFrame,
                                                  fallback: cfg.stampsPerFrame), format: .number)
@@ -239,6 +268,7 @@ struct RenderingInspector: View {
                     .font(.system(size: 12, design: .monospaced))
                     .frame(width: 50)
             }
+            .loomHelp("Number of stamp placements each draw frame in Progressive mode. Higher values = faster path coverage.")
             InspectorField("Agents") {
                 TextField("", value: bindBrushKP(setIdx, itemIdx, \.agentCount,
                                                  fallback: cfg.agentCount), format: .number)
@@ -246,6 +276,7 @@ struct RenderingInspector: View {
                     .font(.system(size: 12, design: .monospaced))
                     .frame(width: 50)
             }
+            .loomHelp("Number of independent traversal agents in Progressive mode. More agents spread stamps across the path simultaneously.")
             InspectorField("Post done") {
                 Picker("", selection: bindBrushKP(setIdx, itemIdx, \.postCompletionMode,
                                                   fallback: cfg.postCompletionMode)) {
@@ -256,6 +287,7 @@ struct RenderingInspector: View {
                 .labelsHidden()
                 .frame(maxWidth: 110)
             }
+            .loomHelp("What happens when Progressive mode finishes — Hold (freeze at end), Loop (restart from beginning), Ping-Pong (reverse direction).")
             InspectorField("Blur radius") {
                 TextField("", value: bindBrushKP(setIdx, itemIdx, \.blurRadius,
                                                  fallback: cfg.blurRadius), format: .number)
@@ -263,16 +295,19 @@ struct RenderingInspector: View {
                     .font(.system(size: 12, design: .monospaced))
                     .frame(width: 50)
             }
+            .loomHelp("Gaussian blur radius applied to each stamp image before drawing. 0 = no blur.")
             InspectorField("Pressure→size") {
                 FloatEntryField(value: bindBrushKP(setIdx, itemIdx, \.pressureSizeInfluence,
                                                    fallback: cfg.pressureSizeInfluence),
                                 width: 55, fractionDigits: 2)
             }
+            .loomHelp("How strongly source polygon pressure data scales stamp size (0 = no effect, 1 = full influence).")
             InspectorField("Pressure→α") {
                 FloatEntryField(value: bindBrushKP(setIdx, itemIdx, \.pressureAlphaInfluence,
                                                    fallback: cfg.pressureAlphaInfluence),
                                 width: 55, fractionDigits: 2)
             }
+            .loomHelp("How strongly source polygon pressure data scales stamp opacity (0 = no effect, 1 = full influence).")
             if let brushDir = controller.projectURL?.appendingPathComponent("brushes") {
                 revealButton(label: "Reveal brushes folder", url: brushDir)
             }
@@ -283,17 +318,20 @@ struct RenderingInspector: View {
                                              fallback: cfg.meander.enabled))
                     .labelsHidden()
             }
+            .loomHelp("Adds sinusoidal wave deviation to the stamp path before stamps are placed, creating a wavy brush stroke.")
             if cfg.meander.enabled {
                 InspectorField("Amplitude") {
                     FloatEntryField(value: bindBrushKP(setIdx, itemIdx, \.meander.amplitude,
                                                        fallback: cfg.meander.amplitude),
                                     width: 60, fractionDigits: 1)
                 }
+                .loomHelp("Height of the wave deviation from the path centre in pixels. Larger values = more extreme undulation.")
                 InspectorField("Frequency") {
                     FloatEntryField(value: bindBrushKP(setIdx, itemIdx, \.meander.frequency,
                                                        fallback: cfg.meander.frequency),
                                     width: 60, fractionDigits: 4)
                 }
+                .loomHelp("Wave frequency — higher values produce more oscillations per path unit length.")
                 InspectorField("Samples") {
                     TextField("", value: bindBrushKP(setIdx, itemIdx, \.meander.samples,
                                                      fallback: cfg.meander.samples), format: .number)
@@ -301,6 +339,7 @@ struct RenderingInspector: View {
                         .font(.system(size: 12, design: .monospaced))
                         .frame(width: 50)
                 }
+                .loomHelp("Number of sample points used to build the meandered path. More samples = smoother wave; typically 50–200.")
                 InspectorField("Seed") {
                     TextField("", value: bindBrushKP(setIdx, itemIdx, \.meander.seed,
                                                      fallback: cfg.meander.seed), format: .number)
@@ -309,23 +348,27 @@ struct RenderingInspector: View {
                         .frame(width: 50)
                     Text("0=auto").font(.system(size: 9)).foregroundStyle(.tertiary)
                 }
+                .loomHelp("Random seed for the meander shape. 0 = auto (varies each draw cycle); any other value locks the shape.")
                 InspectorField("Animated") {
                     Toggle("", isOn: bindBrushKP(setIdx, itemIdx, \.meander.animated,
                                                  fallback: cfg.meander.animated))
                         .labelsHidden()
                 }
+                .loomHelp("When on, the meander phase shifts each frame, creating a flowing wave effect over time.")
                 if cfg.meander.animated {
                     InspectorField("Anim speed") {
                         FloatEntryField(value: bindBrushKP(setIdx, itemIdx, \.meander.animSpeed,
                                                            fallback: cfg.meander.animSpeed),
                                         width: 60, fractionDigits: 4)
                     }
+                    .loomHelp("Rate at which the meander phase advances per draw cycle. Higher values = faster wave movement.")
                 }
                 InspectorField("Scale path") {
                     Toggle("", isOn: bindBrushKP(setIdx, itemIdx, \.meander.scaleAlongPath,
                                                  fallback: cfg.meander.scaleAlongPath))
                         .labelsHidden()
                 }
+                .loomHelp("Modulate stamp scale along the path length using a secondary wave — stamps grow and shrink as they travel the path.")
                 if cfg.meander.scaleAlongPath {
                     InspectorField("Path freq.") {
                         FloatEntryField(
@@ -333,12 +376,14 @@ struct RenderingInspector: View {
                                                fallback: cfg.meander.scaleAlongPathFrequency),
                             width: 60, fractionDigits: 4)
                     }
+                    .loomHelp("Frequency of the scale-along-path wave. Higher values = more scale variation cycles per path length.")
                     InspectorField("Path range") {
                         FloatEntryField(
                             value: bindBrushKP(setIdx, itemIdx, \.meander.scaleAlongPathRange,
                                                fallback: cfg.meander.scaleAlongPathRange),
                             width: 60, fractionDigits: 3)
                     }
+                    .loomHelp("Amplitude of the scale variation — how much stamp size oscillates along the path.")
                 }
             }
         }
@@ -365,24 +410,29 @@ struct RenderingInspector: View {
                 .labelsHidden()
                 .frame(maxWidth: 130)
             }
+            .loomHelp("Full Path — stamps the entire path each frame; Progressive — agents traverse the path incrementally, adding stamps over time.")
             InspectorField("Spacing") {
                 FloatEntryField(value: bindStencilKP(setIdx, itemIdx, \.stampSpacing,
                                                      fallback: cfg.stampSpacing),
                                 width: 55, fractionDigits: 1)
             }
+            .loomHelp("Distance between stamp centres along the path in pixels. Smaller values = denser coverage.")
             InspectorField("Follow tang.") {
                 Toggle("", isOn: bindStencilKP(setIdx, itemIdx, \.followTangent,
                                                fallback: cfg.followTangent))
                     .labelsHidden()
             }
+            .loomHelp("When on, each stamp rotates to align with the path tangent at its placement point.")
             rangeField2("Perp. jitter",
                         v1: bindStencilKP(setIdx, itemIdx, \.perpendicularJitterMin,
                                           fallback: cfg.perpendicularJitterMin),
                         v2: bindStencilKP(setIdx, itemIdx, \.perpendicularJitterMax,
                                           fallback: cfg.perpendicularJitterMax))
+            .loomHelp("Min/max perpendicular offset from the path in pixels. Adds scatter away from the line.")
             rangeField2("Scale",
                         v1: bindStencilKP(setIdx, itemIdx, \.scaleMin, fallback: cfg.scaleMin),
                         v2: bindStencilKP(setIdx, itemIdx, \.scaleMax, fallback: cfg.scaleMax))
+            .loomHelp("Min/max scale multiplier applied to each stamp image (1.0 = original size).")
             InspectorField("Stamps/frame") {
                 TextField("", value: bindStencilKP(setIdx, itemIdx, \.stampsPerFrame,
                                                    fallback: cfg.stampsPerFrame), format: .number)
@@ -390,6 +440,7 @@ struct RenderingInspector: View {
                     .font(.system(size: 12, design: .monospaced))
                     .frame(width: 50)
             }
+            .loomHelp("Number of stamp placements each draw frame in Progressive mode. Higher values = faster path coverage.")
             InspectorField("Agents") {
                 TextField("", value: bindStencilKP(setIdx, itemIdx, \.agentCount,
                                                    fallback: cfg.agentCount), format: .number)
@@ -397,6 +448,7 @@ struct RenderingInspector: View {
                     .font(.system(size: 12, design: .monospaced))
                     .frame(width: 50)
             }
+            .loomHelp("Number of independent traversal agents in Progressive mode. More agents spread stamps across the path simultaneously.")
             InspectorField("Post done") {
                 Picker("", selection: bindStencilKP(setIdx, itemIdx, \.postCompletionMode,
                                                     fallback: cfg.postCompletionMode)) {
@@ -407,6 +459,7 @@ struct RenderingInspector: View {
                 .labelsHidden()
                 .frame(maxWidth: 110)
             }
+            .loomHelp("What happens when Progressive mode finishes — Hold (freeze at end), Loop (restart from beginning), Ping-Pong (reverse direction).")
             if let stampDir = controller.projectURL?.appendingPathComponent("stamps") {
                 revealButton(label: "Reveal stamps folder", url: stampDir)
             }
@@ -418,6 +471,7 @@ struct RenderingInspector: View {
                                                fallback: oc.enabled))
                     .labelsHidden()
             }
+            .loomHelp("Animate stamp opacity over time using the palette and settings below.")
             if oc.enabled {
                 sizeChangeFields(
                     kind:      bindStencilKP(setIdx, itemIdx, \.opacityChange.kind,     fallback: oc.kind),
@@ -444,6 +498,7 @@ struct RenderingInspector: View {
                 Toggle("", isOn: bindFillChange(setIdx, itemIdx, \.enabled, fallback: false))
                     .labelsHidden()
             }
+            .loomHelp("Animate the fill colour over time using the palette and settings below.")
             if enabled, let fc = ch.fillColor {
                 colorChangeFields(
                     kind:     bindFillChange(setIdx, itemIdx, \.kind,     fallback: fc.kind),
@@ -463,6 +518,7 @@ struct RenderingInspector: View {
                 Toggle("", isOn: bindStrokeChange(setIdx, itemIdx, \.enabled, fallback: false))
                     .labelsHidden()
             }
+            .loomHelp("Animate the stroke colour over time using the palette and settings below.")
             if enabled, let sc = ch.strokeColor {
                 colorChangeFields(
                     kind:     bindStrokeChange(setIdx, itemIdx, \.kind,     fallback: sc.kind),
@@ -482,6 +538,7 @@ struct RenderingInspector: View {
                 Toggle("", isOn: bindWidthChange(setIdx, itemIdx, \.enabled, fallback: false))
                     .labelsHidden()
             }
+            .loomHelp("Animate the stroke width over time using the size palette and settings below.")
             if enabled, let sw = ch.strokeWidth {
                 sizeChangeFields(
                     kind:     bindWidthChange(setIdx, itemIdx, \.kind,     fallback: sw.kind),
@@ -508,6 +565,7 @@ struct RenderingInspector: View {
             }
             .labelsHidden().frame(maxWidth: 110)
         }
+        .loomHelp("Sequential — steps through palette colours in order; Random — picks a random palette colour each step.")
         InspectorField("Motion") {
             Picker("", selection: motion) {
                 Text("Up").tag(ChangeMotion.up)
@@ -516,6 +574,7 @@ struct RenderingInspector: View {
             }
             .labelsHidden().frame(maxWidth: 110)
         }
+        .loomHelp("Up — advances forward through the palette; Down — steps in reverse; Ping-Pong — bounces back and forth.")
         InspectorField("Cycle") {
             Picker("", selection: cycle) {
                 Text("Constant").tag(ChangeCycle.constant)
@@ -523,6 +582,7 @@ struct RenderingInspector: View {
             }
             .labelsHidden().frame(maxWidth: 110)
         }
+        .loomHelp("Constant — advances one step per draw unit; Pausing — holds each colour for a random number of steps up to Pause max.")
         InspectorField("Scale") {
             Picker("", selection: scale) {
                 Text("Poly").tag(ChangeScale.poly)
@@ -532,6 +592,7 @@ struct RenderingInspector: View {
             }
             .labelsHidden().frame(maxWidth: 110)
         }
+        .loomHelp("What counts as one step — Poly (each polygon), Sprite (each sprite), Point (each point), Global (all sprites share the same palette index).")
         if cycle.wrappedValue == .pausing {
             InspectorField("Pause max") {
                 TextField("", value: pauseMax, format: .number)
@@ -539,6 +600,7 @@ struct RenderingInspector: View {
                     .font(.system(size: 12, design: .monospaced))
                     .frame(width: 50)
             }
+            .loomHelp("Maximum number of steps to hold on each colour before advancing to the next palette entry.")
         }
     }
 
@@ -553,6 +615,7 @@ struct RenderingInspector: View {
             }
             .labelsHidden().frame(maxWidth: 110)
         }
+        .loomHelp("Sequential — steps through palette values in order; Random — picks a random palette value each step.")
         InspectorField("Motion") {
             Picker("", selection: motion) {
                 Text("Up").tag(ChangeMotion.up)
@@ -561,6 +624,7 @@ struct RenderingInspector: View {
             }
             .labelsHidden().frame(maxWidth: 110)
         }
+        .loomHelp("Up — advances forward through the palette; Down — steps in reverse; Ping-Pong — bounces back and forth.")
         InspectorField("Cycle") {
             Picker("", selection: cycle) {
                 Text("Constant").tag(ChangeCycle.constant)
@@ -568,6 +632,7 @@ struct RenderingInspector: View {
             }
             .labelsHidden().frame(maxWidth: 110)
         }
+        .loomHelp("Constant — advances one step per draw unit; Pausing — holds each value for a random number of steps up to Pause max.")
         InspectorField("Scale") {
             Picker("", selection: scale) {
                 Text("Poly").tag(ChangeScale.poly)
@@ -577,6 +642,7 @@ struct RenderingInspector: View {
             }
             .labelsHidden().frame(maxWidth: 110)
         }
+        .loomHelp("What counts as one step — Poly (each polygon), Sprite (each sprite), Point (each point), Global (all sprites share the same palette index).")
         if cycle.wrappedValue == .pausing {
             InspectorField("Pause max") {
                 TextField("", value: pauseMax, format: .number)
@@ -584,6 +650,7 @@ struct RenderingInspector: View {
                     .font(.system(size: 12, design: .monospaced))
                     .frame(width: 50)
             }
+            .loomHelp("Maximum number of steps to hold on each value before advancing to the next palette entry.")
         }
         SizePaletteEditor(palette: palette)
     }
@@ -703,25 +770,12 @@ struct RenderingInspector: View {
     private func bindRendererFillColorDriver(_ setIdx: Int,
                                              _ itemIdx: Int,
                                              fallback: LoomColor) -> Binding<ColorDriver> {
-        bindRendererColorDriver(setIdx, itemIdx, keyPath: \.fillColor, fallback: fallback)
-    }
-
-    private func bindRendererStrokeColorDriver(_ setIdx: Int,
-                                               _ itemIdx: Int,
-                                               fallback: LoomColor) -> Binding<ColorDriver> {
-        bindRendererColorDriver(setIdx, itemIdx, keyPath: \.strokeColor, fallback: fallback)
-    }
-
-    private func bindRendererColorDriver(_ setIdx: Int,
-                                         _ itemIdx: Int,
-                                         keyPath: WritableKeyPath<RendererDrivers, ColorDriver?>,
-                                         fallback: LoomColor) -> Binding<ColorDriver> {
         let ctl = controller
         return Binding(
             get: {
                 ctl.projectConfig?.renderingConfig.library
                     .rendererSets[safe: setIdx]?.renderers[safe: itemIdx]?
-                    .drivers?[keyPath: keyPath] ?? ColorDriver.constant(fallback)
+                    .drivers?.fillColor ?? ColorDriver.constant(fallback)
             },
             set: { v in
                 ctl.updateProjectConfig { cfg in
@@ -735,7 +789,35 @@ struct RenderingInspector: View {
                             .renderers[itemIdx].drivers = defaultRendererDrivers(for: renderer)
                     }
                     cfg.renderingConfig.library.rendererSets[setIdx]
-                        .renderers[itemIdx].drivers![keyPath: keyPath] = v
+                        .renderers[itemIdx].drivers!.fillColor = v
+                }
+            }
+        )
+    }
+
+    private func bindRendererStrokeColorDriver(_ setIdx: Int,
+                                               _ itemIdx: Int,
+                                               fallback: LoomColor) -> Binding<ColorDriver> {
+        let ctl = controller
+        return Binding(
+            get: {
+                ctl.projectConfig?.renderingConfig.library
+                    .rendererSets[safe: setIdx]?.renderers[safe: itemIdx]?
+                    .drivers?.strokeColor ?? ColorDriver.constant(fallback)
+            },
+            set: { v in
+                ctl.updateProjectConfig { cfg in
+                    guard setIdx < cfg.renderingConfig.library.rendererSets.count,
+                          itemIdx < cfg.renderingConfig.library.rendererSets[setIdx].renderers.count
+                    else { return }
+                    if cfg.renderingConfig.library.rendererSets[setIdx]
+                        .renderers[itemIdx].drivers == nil {
+                        let renderer = cfg.renderingConfig.library.rendererSets[setIdx].renderers[itemIdx]
+                        cfg.renderingConfig.library.rendererSets[setIdx]
+                            .renderers[itemIdx].drivers = defaultRendererDrivers(for: renderer)
+                    }
+                    cfg.renderingConfig.library.rendererSets[setIdx]
+                        .renderers[itemIdx].drivers!.strokeColor = v
                 }
             }
         )
