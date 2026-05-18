@@ -81,6 +81,9 @@ public struct DoubleDriver: Codable, Equatable, Sendable {
     /// Keyframe: how the sequence repeats when global frame exceeds the last keyframe.
     public var loopMode:  LoopMode  = .loop
     public var keyframes: [DoubleKeyframe] = []
+    /// When false the driver returns its neutral identity value; the engine skips evaluation.
+    /// Default false for new drivers. Legacy projects infer true when non-trivial.
+    public var enabled:   Bool      = false
 
     public init(
         mode:      Mode         = .constant,
@@ -93,12 +96,14 @@ public struct DoubleDriver: Codable, Equatable, Sendable {
         wave:      WaveShape    = .sine,
         seed:      Int          = 0,
         loopMode:  LoopMode     = .loop,
-        keyframes: [DoubleKeyframe] = []
+        keyframes: [DoubleKeyframe] = [],
+        enabled:   Bool         = false
     ) {
         self.mode = mode; self.base = base; self.range = range
         self.amplitude = amplitude; self.period = period
         self.freqHz = freqHz; self.phase = phase; self.wave = wave
         self.seed = seed; self.loopMode = loopMode; self.keyframes = keyframes
+        self.enabled = enabled
     }
 
     public static let zero     = DoubleDriver(mode: .constant, base: 0)
@@ -106,6 +111,31 @@ public struct DoubleDriver: Codable, Equatable, Sendable {
 
     public static func constant(_ v: Double) -> DoubleDriver {
         DoubleDriver(mode: .constant, base: v)
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case mode, base, range, amplitude, period, freqHz, phase, wave, seed, loopMode, keyframes, enabled
+    }
+
+    public init(from decoder: Decoder) throws {
+        let c         = try decoder.container(keyedBy: CodingKeys.self)
+        mode          = try c.decodeIfPresent(Mode.self,             forKey: .mode)      ?? .constant
+        base          = try c.decodeIfPresent(Double.self,           forKey: .base)      ?? 0
+        range         = try c.decodeIfPresent(Double.self,           forKey: .range)     ?? 0
+        amplitude     = try c.decodeIfPresent(Double.self,           forKey: .amplitude) ?? 0
+        period        = try c.decodeIfPresent(Int.self,              forKey: .period)    ?? 30
+        freqHz        = try c.decodeIfPresent(Double.self,           forKey: .freqHz)    ?? 1.0
+        phase         = try c.decodeIfPresent(Double.self,           forKey: .phase)     ?? 0
+        wave          = try c.decodeIfPresent(WaveShape.self,        forKey: .wave)      ?? .sine
+        seed          = try c.decodeIfPresent(Int.self,              forKey: .seed)      ?? 0
+        loopMode      = try c.decodeIfPresent(LoopMode.self,         forKey: .loopMode)  ?? .loop
+        keyframes     = try c.decodeIfPresent([DoubleKeyframe].self,  forKey: .keyframes) ?? []
+        // Backward compat: if key absent, infer enabled from non-trivial configuration.
+        if let stored = try c.decodeIfPresent(Bool.self, forKey: .enabled) {
+            enabled = stored
+        } else {
+            enabled = (mode != .constant) || !keyframes.isEmpty
+        }
     }
 }
 
@@ -132,6 +162,9 @@ public struct VectorDriver: Codable, Equatable, Sendable {
     public var seed:      Int       = 0
     public var loopMode:  LoopMode  = .loop
     public var keyframes: [VectorKeyframe] = []
+    /// When false the driver returns its neutral identity value; the engine skips evaluation.
+    /// Default false for new drivers. Legacy projects infer true when non-trivial.
+    public var enabled:   Bool      = false
 
     public init(
         mode:      Mode           = .constant,
@@ -144,12 +177,14 @@ public struct VectorDriver: Codable, Equatable, Sendable {
         wave:      WaveShape      = .sine,
         seed:      Int            = 0,
         loopMode:  LoopMode       = .loop,
-        keyframes: [VectorKeyframe] = []
+        keyframes: [VectorKeyframe] = [],
+        enabled:   Bool           = false
     ) {
         self.mode = mode; self.base = base; self.range = range
         self.amplitude = amplitude; self.period = period
         self.freqHz = freqHz; self.phase = phase; self.wave = wave
         self.seed = seed; self.loopMode = loopMode; self.keyframes = keyframes
+        self.enabled = enabled
     }
 
     public static let zero     = VectorDriver(mode: .constant, base: .zero)
@@ -157,6 +192,31 @@ public struct VectorDriver: Codable, Equatable, Sendable {
 
     public static func constant(_ v: Vector2D) -> VectorDriver {
         VectorDriver(mode: .constant, base: v)
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case mode, base, range, amplitude, period, freqHz, phase, wave, seed, loopMode, keyframes, enabled
+    }
+
+    public init(from decoder: Decoder) throws {
+        let c         = try decoder.container(keyedBy: CodingKeys.self)
+        mode          = try c.decodeIfPresent(Mode.self,              forKey: .mode)      ?? .constant
+        base          = try c.decodeIfPresent(Vector2D.self,          forKey: .base)      ?? .zero
+        range         = try c.decodeIfPresent(Vector2D.self,          forKey: .range)     ?? .zero
+        amplitude     = try c.decodeIfPresent(Vector2D.self,          forKey: .amplitude) ?? .zero
+        period        = try c.decodeIfPresent(Int.self,               forKey: .period)    ?? 30
+        freqHz        = try c.decodeIfPresent(Vector2D.self,          forKey: .freqHz)    ?? Vector2D(x: 1, y: 1)
+        phase         = try c.decodeIfPresent(Vector2D.self,          forKey: .phase)     ?? .zero
+        wave          = try c.decodeIfPresent(WaveShape.self,         forKey: .wave)      ?? .sine
+        seed          = try c.decodeIfPresent(Int.self,               forKey: .seed)      ?? 0
+        loopMode      = try c.decodeIfPresent(LoopMode.self,          forKey: .loopMode)  ?? .loop
+        keyframes     = try c.decodeIfPresent([VectorKeyframe].self,  forKey: .keyframes) ?? []
+        // Backward compat: if key absent, infer enabled from non-trivial configuration.
+        if let stored = try c.decodeIfPresent(Bool.self, forKey: .enabled) {
+            enabled = stored
+        } else {
+            enabled = (mode != .constant) || !keyframes.isEmpty
+        }
     }
 }
 
@@ -187,6 +247,8 @@ public struct ColorDriver: Codable, Equatable, Sendable {
     public var seed:      Int        = 0
     public var loopMode:  LoopMode   = .loop
     public var keyframes: [ColorKeyframe] = []
+    /// When false the driver returns its base colour; the engine skips evaluation.
+    public var enabled:   Bool       = false
 
     public init(
         mode:      Mode            = .constant,
@@ -200,12 +262,14 @@ public struct ColorDriver: Codable, Equatable, Sendable {
         wave:      WaveShape       = .sine,
         seed:      Int             = 0,
         loopMode:  LoopMode        = .loop,
-        keyframes: [ColorKeyframe] = []
+        keyframes: [ColorKeyframe] = [],
+        enabled:   Bool            = false
     ) {
         self.mode = mode; self.base = base; self.colorB = colorB
         self.range = range; self.amplitude = amplitude; self.period = period
         self.freqHz = freqHz; self.phase = phase; self.wave = wave
         self.seed = seed; self.loopMode = loopMode; self.keyframes = keyframes
+        self.enabled = enabled
     }
 
     public static func constant(_ color: LoomColor) -> ColorDriver {
@@ -213,11 +277,11 @@ public struct ColorDriver: Codable, Equatable, Sendable {
     }
 
     private enum CodingKeys: String, CodingKey {
-        case mode, base, colorB, range, amplitude, period, freqHz, phase, wave, seed, loopMode, keyframes
+        case mode, base, colorB, range, amplitude, period, freqHz, phase, wave, seed, loopMode, keyframes, enabled
     }
 
     public init(from decoder: Decoder) throws {
-        let c = try decoder.container(keyedBy: CodingKeys.self)
+        let c     = try decoder.container(keyedBy: CodingKeys.self)
         mode      = try c.decodeIfPresent(Mode.self,            forKey: .mode)      ?? .constant
         base      = try c.decodeIfPresent(LoomColor.self,       forKey: .base)      ?? .black
         colorB    = try c.decodeIfPresent(LoomColor.self,       forKey: .colorB)    ?? .white
@@ -230,6 +294,11 @@ public struct ColorDriver: Codable, Equatable, Sendable {
         seed      = try c.decodeIfPresent(Int.self,             forKey: .seed)      ?? 0
         loopMode  = try c.decodeIfPresent(LoopMode.self,        forKey: .loopMode)  ?? .loop
         keyframes = try c.decodeIfPresent([ColorKeyframe].self, forKey: .keyframes) ?? []
+        if let stored = try c.decodeIfPresent(Bool.self, forKey: .enabled) {
+            enabled = stored
+        } else {
+            enabled = (mode != .constant) || !keyframes.isEmpty
+        }
     }
 }
 

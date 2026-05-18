@@ -116,6 +116,7 @@ struct TimelinePanel: View {
     @State private var cameraExpanded:        Bool          = false
     @State private var selectedCameraKFHit:   CameraKFSelection? = nil
     @State private var cameraDragState:       (lane: CameraLane, kfIdx: Int, previewFrame: Int)? = nil
+    @State private var hiddenLanes:           Set<String>   = []
 
     private let headerWidth:  CGFloat = 160
     private let rowHeight:    CGFloat = 22
@@ -126,7 +127,7 @@ struct TimelinePanel: View {
     private let resizeHandleHeight: CGFloat = 26
     private let bottomPadding:     CGFloat = 16
 
-    private var cameraRowCount: Int { cameraExpanded ? 1 + CameraLane.allCases.count : 1 }
+    private var cameraRowCount: Int { cameraExpanded ? 1 + visibleCameraLanes().count : 1 }
     private var spriteStartY: CGFloat { rulerHeight + CGFloat(cameraRowCount) * rowHeight }
     private var timelineContentHeight: CGFloat {
         rulerHeight + CGFloat(cameraRowCount + spriteTimelineRowCount) * rowHeight
@@ -286,14 +287,49 @@ struct TimelinePanel: View {
                     .font(.system(size: 9)).foregroundStyle(.teal)
                 Text("Camera").font(.system(size: 11, weight: .medium))
                 Spacer()
+                let hiddenCamCount = CameraLane.allCases.filter { hiddenLanes.contains(cameraLaneID($0)) }.count
+                if hiddenCamCount > 0 {
+                    Button {
+                        CameraLane.allCases.forEach { hiddenLanes.remove(cameraLaneID($0)) }
+                    } label: {
+                        HStack(spacing: 2) {
+                            Image(systemName: "eye.slash").font(.system(size: 8))
+                            Text("\(hiddenCamCount)").font(.system(size: 9))
+                        }
+                        .foregroundStyle(.secondary)
+                    }
+                    .buttonStyle(.plain)
+                    .padding(.trailing, 4)
+                }
             }
             .frame(height: rowHeight)
             .padding(.leading, 4)
             if cameraExpanded {
-                ForEach(CameraLane.allCases, id: \.rawValue) { lane in
-                    driverHeaderRow(lane.label, color: lane.color) {
-                        selectCameraLane(lane, additive: shiftModifierActive)
-                    }
+                let cam = controller.projectConfig?.globalConfig.camera
+                ForEach(visibleCameraLanes(), id: \.rawValue) { lane in
+                    let hasKF  = !(lane.keyframeFrames(from: cam ?? .disabled).isEmpty)
+                    let isEnab: Bool = {
+                        switch lane {
+                        case .tracking: return cam?.tracking.enabled ?? false
+                        case .pan:      return cam?.pan.enabled      ?? false
+                        case .zoom:     return cam?.zoom.enabled     ?? false
+                        case .rotation: return cam?.rotation.enabled ?? false
+                        }
+                    }()
+                    driverHeaderRow(lane.label, color: lane.color,
+                                    isEnabled: isEnab, hasKeyframes: hasKF, isHidden: false,
+                                    onTap: { selectCameraLane(lane, additive: shiftModifierActive) },
+                                    onToggleEnabled: {
+                                        controller.updateProjectConfig { cfg in
+                                            switch lane {
+                                            case .tracking: cfg.globalConfig.camera.tracking.enabled.toggle()
+                                            case .pan:      cfg.globalConfig.camera.pan.enabled.toggle()
+                                            case .zoom:     cfg.globalConfig.camera.zoom.enabled.toggle()
+                                            case .rotation: cfg.globalConfig.camera.rotation.enabled.toggle()
+                                            }
+                                        }
+                                    },
+                                    onToggleHidden: { hiddenLanes.insert(cameraLaneID(lane)) })
                 }
             }
 
@@ -301,19 +337,75 @@ struct TimelinePanel: View {
             ForEach(timelineNodes, id: \.sprite.name) { node in
                 spriteHeaderRow(node)
                 if expandedSprites.contains(node.sprite.name) {
-                    ForEach(DriverLane.allCases, id: \.rawValue) { lane in
-                        driverHeaderRow(lane.label, color: lane.color) {
-                            selectSpriteLane(spriteListIdx: timelineNodes.firstIndex { $0.sprite.name == node.sprite.name } ?? 0,
-                                             lane: lane,
-                                             additive: shiftModifierActive)
-                        }
+                    let si = timelineNodes.firstIndex { $0.sprite.name == node.sprite.name } ?? 0
+                    let drivers = node.sprite.animation.drivers
+                    ForEach(visibleSpriteLanes(for: node), id: \.rawValue) { lane in
+                        let hasKF   = !(lane.keyframeFrames(from: drivers ?? .identity).isEmpty)
+                        let isEnab: Bool = {
+                            guard let d = drivers else { return false }
+                            switch lane {
+                            case .position: return d.position.enabled
+                            case .scale:    return d.scale.enabled
+                            case .rotation: return d.rotation.enabled
+                            case .morph:    return d.morph.enabled
+                            case .opacity:  return d.opacity.enabled
+                            case .shape:    return d.shape.enabled
+                            }
+                        }()
+                        driverHeaderRow(lane.label, color: lane.color,
+                                        isEnabled: isEnab, hasKeyframes: hasKF, isHidden: false,
+                                        onTap: { selectSpriteLane(spriteListIdx: si, lane: lane,
+                                                                   additive: shiftModifierActive) },
+                                        onToggleEnabled: {
+                                            controller.updateProjectConfig { cfg in
+                                                withDrivers(in: &cfg, si: node.setIdx, pi: node.spriteIdx) { d in
+                                                    switch lane {
+                                                    case .position: d.position.enabled.toggle()
+                                                    case .scale:    d.scale.enabled.toggle()
+                                                    case .rotation: d.rotation.enabled.toggle()
+                                                    case .morph:    d.morph.enabled.toggle()
+                                                    case .opacity:  d.opacity.enabled.toggle()
+                                                    case .shape:    d.shape.enabled.toggle()
+                                                    }
+                                                }
+                                            }
+                                        },
+                                        onToggleHidden: {
+                                            hiddenLanes.insert(spriteLaneID(spriteName: node.sprite.name, lane: lane))
+                                        })
                     }
-                    ForEach(rendererRows(for: node), id: \.id) { row in
-                        driverHeaderRow(row.label, color: row.lane.color, isRenderer: true) {
-                            selectRendererLane(spriteListIdx: timelineNodes.firstIndex { $0.sprite.name == node.sprite.name } ?? 0,
-                                               row: row,
-                                               additive: shiftModifierActive)
-                        }
+                    ForEach(visibleRendererRows(for: node), id: \.id) { row in
+                        let rend    = renderer(atSet: row.rendererSetIdx, item: row.rendererItemIdx)
+                        let hasKF   = !(row.lane.keyframeFrames(from: rend?.drivers).isEmpty)
+                        let isEnab: Bool = {
+                            guard let d = rend?.drivers else { return false }
+                            switch row.lane {
+                            case .fillColor:   return d.fillColor?.enabled   ?? false
+                            case .strokeColor: return d.strokeColor?.enabled ?? false
+                            case .strokeWidth: return d.strokeWidth.enabled
+                            case .opacity:     return d.opacity.enabled
+                            }
+                        }()
+                        driverHeaderRow(row.label, color: row.lane.color, isRenderer: true,
+                                        isEnabled: isEnab, hasKeyframes: hasKF, isHidden: false,
+                                        onTap: { selectRendererLane(spriteListIdx: si, row: row,
+                                                                     additive: shiftModifierActive) },
+                                        onToggleEnabled: {
+                                            controller.updateProjectConfig { cfg in
+                                                withRendererDrivers(in: &cfg, setIdx: row.rendererSetIdx,
+                                                                    itemIdx: row.rendererItemIdx) { d, _ in
+                                                    switch row.lane {
+                                                    case .fillColor:   d.fillColor?.enabled.toggle()
+                                                    case .strokeColor: d.strokeColor?.enabled.toggle()
+                                                    case .strokeWidth: d.strokeWidth.enabled.toggle()
+                                                    case .opacity:     d.opacity.enabled.toggle()
+                                                    }
+                                                }
+                                            }
+                                        },
+                                        onToggleHidden: {
+                                            hiddenLanes.insert(rendererLaneID(row))
+                                        })
                     }
                 }
             }
@@ -347,6 +439,22 @@ struct TimelinePanel: View {
                 .frame(width: 6, height: 6)
             Text(sprite.name).font(.system(size: 11)).lineLimit(1).truncationMode(.tail)
             Spacer()
+            let hiddenCount = DriverLane.allCases.filter {
+                hiddenLanes.contains(spriteLaneID(spriteName: sprite.name, lane: $0))
+            }.count
+            if hiddenCount > 0 {
+                Button {
+                    DriverLane.allCases.forEach { hiddenLanes.remove(spriteLaneID(spriteName: sprite.name, lane: $0)) }
+                } label: {
+                    HStack(spacing: 2) {
+                        Image(systemName: "eye.slash").font(.system(size: 8))
+                        Text("\(hiddenCount)").font(.system(size: 9))
+                    }
+                    .foregroundStyle(.secondary)
+                }
+                .buttonStyle(.plain)
+                .padding(.trailing, 4)
+            }
         }
         .frame(height: rowHeight)
         .padding(.leading, CGFloat(node.depth) * 12 + 4)
@@ -358,22 +466,50 @@ struct TimelinePanel: View {
         }
     }
 
-    private func driverHeaderRow(_ label: String, color: Color, isRenderer: Bool = false, action: (() -> Void)? = nil) -> some View {
-        HStack(spacing: 5) {
+    private func driverHeaderRow(
+        _ label: String,
+        color: Color,
+        isRenderer: Bool = false,
+        isEnabled: Bool,
+        hasKeyframes: Bool,
+        isHidden: Bool,
+        onTap: (() -> Void)? = nil,
+        onToggleEnabled: @escaping () -> Void,
+        onToggleHidden: @escaping () -> Void
+    ) -> some View {
+        HStack(spacing: 4) {
             Color.clear.frame(width: 14)
             Circle().fill(color.opacity(0.5)).frame(width: 5, height: 5)
-            Text(label).font(.system(size: 10)).foregroundStyle(.secondary)
-            Spacer()
+            Text(label)
+                .font(.system(size: 10))
+                .foregroundStyle(isEnabled ? .secondary : .tertiary)
+                .lineLimit(1)
+            Spacer(minLength: 2)
+            Circle()
+                .fill(hasKeyframes ? Color.green : Color.white.opacity(0.45))
+                .overlay(Circle().stroke(Color.secondary.opacity(0.35), lineWidth: 0.5))
+                .frame(width: 6, height: 6)
+            Button(action: onToggleEnabled) {
+                Image(systemName: isEnabled ? "checkmark.square.fill" : "square")
+                    .font(.system(size: 10))
+                    .foregroundStyle(isEnabled ? Color.accentColor : Color.secondary.opacity(0.6))
+            }
+            .buttonStyle(.plain)
+            Button(action: onToggleHidden) {
+                Image(systemName: "eye.slash")
+                    .font(.system(size: 10))
+                    .foregroundStyle(Color.secondary.opacity(0.5))
+            }
+            .buttonStyle(.plain)
         }
+        .padding(.trailing, 6)
         .frame(height: rowHeight)
         .padding(.leading, 14)
         .background(isRenderer
                     ? Color.black.opacity(0.12)
                     : Color(NSColor.windowBackgroundColor).opacity(0.35))
         .contentShape(Rectangle())
-        .onTapGesture {
-            action?()
-        }
+        .onTapGesture { onTap?() }
     }
 
     // MARK: - Timeline canvas
@@ -563,7 +699,7 @@ struct TimelinePanel: View {
                  with: .color(Color(NSColor.windowBackgroundColor).opacity(0.55)))
         if cameraExpanded {
             var camY = rulerHeight + rowHeight
-            for j in 0..<CameraLane.allCases.count {
+            for j in 0..<visibleCameraLanes().count {
                 ctx.fill(Path(CGRect(x: 0, y: camY, width: size.width, height: rowHeight)),
                          with: .color(j.isMultiple(of: 2)
                              ? Color(NSColor.windowBackgroundColor).opacity(0.35)
@@ -583,10 +719,11 @@ struct TimelinePanel: View {
                     : Color(NSColor.controlBackgroundColor).opacity(0.8))
             )
             rowY += rowHeight
-            let renderRows = rendererRows(for: node)
-            let laneCount = DriverLane.allCases.count + renderRows.count
+            let visSpriteLanes   = visibleSpriteLanes(for: node)
+            let visRendererRows  = visibleRendererRows(for: node)
+            let laneCount = visSpriteLanes.count + visRendererRows.count
             if expandedSprites.contains(sprite.name) {
-                for j in 0..<DriverLane.allCases.count {
+                for j in 0..<visSpriteLanes.count {
                     ctx.fill(
                         Path(CGRect(x: 0, y: rowY, width: size.width, height: rowHeight)),
                         with: .color(j.isMultiple(of: 2)
@@ -595,7 +732,7 @@ struct TimelinePanel: View {
                     )
                     rowY += rowHeight
                 }
-                for j in 0..<renderRows.count {
+                for j in 0..<visRendererRows.count {
                     ctx.fill(
                         Path(CGRect(x: 0, y: rowY, width: size.width, height: rowHeight)),
                         with: .color(j.isMultiple(of: 2)
@@ -604,7 +741,7 @@ struct TimelinePanel: View {
                     )
                     rowY += rowHeight
                 }
-                // Gate overlay: dim inactive regions across all lane rows.
+                // Gate overlay: dim inactive regions across all visible lane rows.
                 let gs = sprite.gateStart, ge = sprite.gateEnd
                 if gs > 0 || ge > 0 {
                     let laneBlockY = rowY - CGFloat(laneCount) * rowHeight
@@ -687,7 +824,7 @@ struct TimelinePanel: View {
             rowY += rowHeight
 
             if expandedSprites.contains(sprite.name) {
-                for lane in DriverLane.allCases {
+                for lane in visibleSpriteLanes(for: node) {
                     let midLaneY = rowY + rowHeight / 2
                     if let drivers = sprite.animation.drivers {
                         for (ki, frame) in lane.keyframeFrames(from: drivers).enumerated() {
@@ -703,7 +840,7 @@ struct TimelinePanel: View {
                     }
                     rowY += rowHeight
                 }
-                for row in rendererRows(for: node) {
+                for row in visibleRendererRows(for: node) {
                     let midLaneY = rowY + rowHeight / 2
                     let renderer = renderer(atSet: row.rendererSetIdx, item: row.rendererItemIdx)
                     for (ki, frame) in row.lane.keyframeFrames(from: renderer?.drivers).enumerated() {
@@ -987,13 +1124,13 @@ struct TimelinePanel: View {
             }
             rowY += rowHeight
             if expandedSprites.contains(sprite.name) {
-                for lane in DriverLane.allCases {
+                for lane in visibleSpriteLanes(for: node) {
                     if point.y >= rowY && point.y < rowY + rowHeight {
                         return RowInfo(spriteListIdx: i, lane: lane)
                     }
                     rowY += rowHeight
                 }
-                for row in rendererRows(for: node) {
+                for row in visibleRendererRows(for: node) {
                     if point.y >= rowY && point.y < rowY + rowHeight {
                         return RowInfo(
                             spriteListIdx: i,
@@ -1082,7 +1219,7 @@ struct TimelinePanel: View {
         if cameraExpanded {
             let cam = controller.projectConfig?.globalConfig.camera ?? .disabled
             var rowY = rulerHeight + rowHeight
-            for lane in CameraLane.allCases {
+            for lane in visibleCameraLanes() {
                 let midY = rowY + rowHeight / 2
                 for (ki, frame) in lane.keyframeFrames(from: cam).enumerated() {
                     result.append((.camera(lane: lane, keyframeIdx: ki),
@@ -1096,7 +1233,7 @@ struct TimelinePanel: View {
         for (si, node) in timelineNodes.enumerated() {
             rowY += rowHeight
             if expandedSprites.contains(node.sprite.name) {
-                for lane in DriverLane.allCases {
+                for lane in visibleSpriteLanes(for: node) {
                     let midY = rowY + rowHeight / 2
                     if let drivers = node.sprite.animation.drivers {
                         for (ki, frame) in lane.keyframeFrames(from: drivers).enumerated() {
@@ -1106,7 +1243,7 @@ struct TimelinePanel: View {
                     }
                     rowY += rowHeight
                 }
-                for row in rendererRows(for: node) {
+                for row in visibleRendererRows(for: node) {
                     let midY = rowY + rowHeight / 2
                     for (ki, frame) in row.lane.keyframeFrames(from: renderer(atSet: row.rendererSetIdx, item: row.rendererItemIdx)?.drivers).enumerated() {
                         result.append((.renderer(spriteListIdx: si,
@@ -1495,31 +1632,37 @@ struct TimelinePanel: View {
                 switch lane {
                 case .position:
                     drivers.position.mode = .keyframe
+                    drivers.position.enabled = true
                     let v = interpolateVector(drivers.position.keyframes, at: frame, neutral: .zero)
                     drivers.position.keyframes.append(VectorKeyframe(frame: frame, value: v, easing: .linear))
                     drivers.position.keyframes.sort { $0.frame < $1.frame }
                 case .scale:
                     drivers.scale.mode = .keyframe
+                    drivers.scale.enabled = true
                     let v = interpolateVector(drivers.scale.keyframes, at: frame, neutral: Vector2D(x: 1, y: 1))
                     drivers.scale.keyframes.append(VectorKeyframe(frame: frame, value: v, easing: .linear))
                     drivers.scale.keyframes.sort { $0.frame < $1.frame }
                 case .rotation:
                     drivers.rotation.mode = .keyframe
+                    drivers.rotation.enabled = true
                     let v = interpolateDouble(drivers.rotation.keyframes, at: frame, neutral: 0)
                     drivers.rotation.keyframes.append(DoubleKeyframe(frame: frame, value: v, easing: .linear))
                     drivers.rotation.keyframes.sort { $0.frame < $1.frame }
                 case .morph:
                     drivers.morph.mode = .keyframe
+                    drivers.morph.enabled = true
                     let v = interpolateDouble(drivers.morph.keyframes, at: frame, neutral: 0)
                     drivers.morph.keyframes.append(DoubleKeyframe(frame: frame, value: v, easing: .linear))
                     drivers.morph.keyframes.sort { $0.frame < $1.frame }
                 case .opacity:
                     drivers.opacity.mode = .keyframe
+                    drivers.opacity.enabled = true
                     let v = interpolateDouble(drivers.opacity.keyframes, at: frame, neutral: 1)
                     drivers.opacity.keyframes.append(DoubleKeyframe(frame: frame, value: v, easing: .linear))
                     drivers.opacity.keyframes.sort { $0.frame < $1.frame }
                 case .shape:
                     drivers.shape.mode = .keyframe
+                    drivers.shape.enabled = true
                     let v = interpolateDouble(drivers.shape.keyframes, at: frame, neutral: 0)
                     drivers.shape.keyframes.append(DoubleKeyframe(frame: frame, value: v, easing: .linear))
                     drivers.shape.keyframes.sort { $0.frame < $1.frame }
@@ -1583,22 +1726,26 @@ struct TimelinePanel: View {
                     if drivers.fillColor == nil { drivers.fillColor = ColorDriver.constant(renderer.fillColor) }
                     let value = interpolateColor(drivers.fillColor?.keyframes ?? [], at: frame, neutral: renderer.fillColor)
                     drivers.fillColor!.mode = .keyframe
+                    drivers.fillColor!.enabled = true
                     drivers.fillColor!.keyframes.append(ColorKeyframe(frame: frame, value: value, easing: .linear))
                     drivers.fillColor!.keyframes.sort { $0.frame < $1.frame }
                 case .strokeColor:
                     if drivers.strokeColor == nil { drivers.strokeColor = ColorDriver.constant(renderer.strokeColor) }
                     let value = interpolateColor(drivers.strokeColor?.keyframes ?? [], at: frame, neutral: renderer.strokeColor)
                     drivers.strokeColor!.mode = .keyframe
+                    drivers.strokeColor!.enabled = true
                     drivers.strokeColor!.keyframes.append(ColorKeyframe(frame: frame, value: value, easing: .linear))
                     drivers.strokeColor!.keyframes.sort { $0.frame < $1.frame }
                 case .strokeWidth:
                     let value = interpolateDouble(drivers.strokeWidth.keyframes, at: frame, neutral: renderer.strokeWidth)
                     drivers.strokeWidth.mode = .keyframe
+                    drivers.strokeWidth.enabled = true
                     drivers.strokeWidth.keyframes.append(DoubleKeyframe(frame: frame, value: value, easing: .linear))
                     drivers.strokeWidth.keyframes.sort { $0.frame < $1.frame }
                 case .opacity:
                     let value = interpolateDouble(drivers.opacity.keyframes, at: frame, neutral: 1)
                     drivers.opacity.mode = .keyframe
+                    drivers.opacity.enabled = true
                     drivers.opacity.keyframes.append(DoubleKeyframe(frame: frame, value: value, easing: .linear))
                     drivers.opacity.keyframes.sort { $0.frame < $1.frame }
                 }
@@ -1749,7 +1896,7 @@ struct TimelinePanel: View {
     private func cameraLaneAt(_ point: CGPoint) -> CameraLane? {
         guard cameraExpanded else { return nil }
         var rowY = rulerHeight + rowHeight
-        for lane in CameraLane.allCases {
+        for lane in visibleCameraLanes() {
             if point.y >= rowY && point.y < rowY + rowHeight { return lane }
             rowY += rowHeight
         }
@@ -1785,21 +1932,25 @@ struct TimelinePanel: View {
             case .tracking:
                 let v = interpolateVector(cfg.globalConfig.camera.tracking.keyframes, at: frame, neutral: .zero)
                 cfg.globalConfig.camera.tracking.mode = .keyframe
+                cfg.globalConfig.camera.tracking.enabled = true
                 cfg.globalConfig.camera.tracking.keyframes.append(VectorKeyframe(frame: frame, value: v, easing: .linear))
                 cfg.globalConfig.camera.tracking.keyframes.sort { $0.frame < $1.frame }
             case .pan:
                 let v = interpolateVector(cfg.globalConfig.camera.pan.keyframes, at: frame, neutral: .zero)
                 cfg.globalConfig.camera.pan.mode = .keyframe
+                cfg.globalConfig.camera.pan.enabled = true
                 cfg.globalConfig.camera.pan.keyframes.append(VectorKeyframe(frame: frame, value: v, easing: .linear))
                 cfg.globalConfig.camera.pan.keyframes.sort { $0.frame < $1.frame }
             case .zoom:
                 let v = interpolateDouble(cfg.globalConfig.camera.zoom.keyframes, at: frame, neutral: 1.0)
                 cfg.globalConfig.camera.zoom.mode = .keyframe
+                cfg.globalConfig.camera.zoom.enabled = true
                 cfg.globalConfig.camera.zoom.keyframes.append(DoubleKeyframe(frame: frame, value: v, easing: .linear))
                 cfg.globalConfig.camera.zoom.keyframes.sort { $0.frame < $1.frame }
             case .rotation:
                 let v = interpolateDouble(cfg.globalConfig.camera.rotation.keyframes, at: frame, neutral: 0.0)
                 cfg.globalConfig.camera.rotation.mode = .keyframe
+                cfg.globalConfig.camera.rotation.enabled = true
                 cfg.globalConfig.camera.rotation.keyframes.append(DoubleKeyframe(frame: frame, value: v, easing: .linear))
                 cfg.globalConfig.camera.rotation.keyframes.sort { $0.frame < $1.frame }
             }
@@ -1896,7 +2047,7 @@ struct TimelinePanel: View {
 
         guard cameraExpanded else { return }
         var rowY = rulerHeight + rowHeight
-        for lane in CameraLane.allCases {
+        for lane in visibleCameraLanes() {
             let midY = rowY + rowHeight / 2
             for (ki, frame) in lane.keyframeFrames(from: cam).enumerated() {
                 let isDragging = cameraDragState.map { $0.lane == lane && $0.kfIdx == ki } ?? false
@@ -1972,12 +2123,33 @@ struct TimelinePanel: View {
         controller.projectConfig?.renderingConfig.library.rendererSets[safe: setIdx]?.renderers[safe: itemIdx]
     }
 
+    // MARK: - Lane visibility helpers
+
+    private func spriteLaneID(spriteName: String, lane: DriverLane) -> String {
+        "s:\(spriteName):\(lane.rawValue)"
+    }
+    private func rendererLaneID(_ row: RendererTimelineRow) -> String {
+        "r:\(row.rendererSetIdx):\(row.rendererItemIdx):\(row.lane.rawValue)"
+    }
+    private func cameraLaneID(_ lane: CameraLane) -> String {
+        "c:\(lane.rawValue)"
+    }
+    private func visibleSpriteLanes(for node: TimelineNode) -> [DriverLane] {
+        DriverLane.allCases.filter { !hiddenLanes.contains(spriteLaneID(spriteName: node.sprite.name, lane: $0)) }
+    }
+    private func visibleRendererRows(for node: TimelineNode) -> [RendererTimelineRow] {
+        rendererRows(for: node).filter { !hiddenLanes.contains(rendererLaneID($0)) }
+    }
+    private func visibleCameraLanes() -> [CameraLane] {
+        CameraLane.allCases.filter { !hiddenLanes.contains(cameraLaneID($0)) }
+    }
+
     private var spriteTimelineRowCount: Int {
         timelineNodes.reduce(0) { count, node in
             var rows = count + 1
             if expandedSprites.contains(node.sprite.name) {
-                rows += DriverLane.allCases.count
-                rows += rendererRows(for: node).count
+                rows += visibleSpriteLanes(for: node).count
+                rows += visibleRendererRows(for: node).count
             }
             return rows
         }

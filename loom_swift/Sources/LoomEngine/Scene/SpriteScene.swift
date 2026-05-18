@@ -675,7 +675,7 @@ public struct SpriteScene: @unchecked Sendable {
         // ── Shape driver: select active geometry and renderer set ────────────
         // Step-evaluated: snaps to last keyframe at or before elapsed — no interpolation.
         let shapeIdx = instance.def.animation.drivers.map {
-            DriverEvaluator.evaluateShapeIndex($0.shape, globalElapsed: elapsedFrames)
+            $0.shape.enabled ? DriverEvaluator.evaluateShapeIndex($0.shape, globalElapsed: elapsedFrames) : 0
         } ?? 0
 
         var activeInstance = instance
@@ -706,12 +706,10 @@ public struct SpriteScene: @unchecked Sendable {
         // Driver path takes precedence over legacy state.transform.morphAmount.
         let morphAmount: Double
         if let drivers = activeInstance.def.animation.drivers {
-            morphAmount = DriverEvaluator.evaluate(
-                drivers.morph,
-                globalElapsed: elapsedFrames,
-                targetFPS:     targetFPS,
-                spriteIndex:   spriteIndex
-            )
+            morphAmount = drivers.morph.enabled
+                ? DriverEvaluator.evaluate(drivers.morph, globalElapsed: elapsedFrames,
+                                           targetFPS: targetFPS, spriteIndex: spriteIndex)
+                : 0.0
         } else {
             morphAmount = activeInstance.state.transform.morphAmount
         }
@@ -1165,40 +1163,28 @@ public struct SpriteScene: @unchecked Sendable {
                                         elapsedFrames: Double) -> Renderer {
         guard let drivers = renderer.drivers else { return renderer }
         var resolved = renderer
-        if let fillColor = drivers.fillColor {
-            resolved.fillColor = DriverEvaluator.evaluate(
-                fillColor,
-                globalElapsed: elapsedFrames,
-                targetFPS: targetFPS,
-                spriteIndex: spriteIndex
-            )
+        if let fillColor = drivers.fillColor, fillColor.enabled {
+            resolved.fillColor = DriverEvaluator.evaluate(fillColor, globalElapsed: elapsedFrames,
+                                                          targetFPS: targetFPS, spriteIndex: spriteIndex)
         }
-        if let strokeColor = drivers.strokeColor {
-            resolved.strokeColor = DriverEvaluator.evaluate(
-                strokeColor,
-                globalElapsed: elapsedFrames,
-                targetFPS: targetFPS,
-                spriteIndex: spriteIndex
-            )
+        if let strokeColor = drivers.strokeColor, strokeColor.enabled {
+            resolved.strokeColor = DriverEvaluator.evaluate(strokeColor, globalElapsed: elapsedFrames,
+                                                             targetFPS: targetFPS, spriteIndex: spriteIndex)
         }
-        resolved.strokeWidth = max(0, DriverEvaluator.evaluate(
-            drivers.strokeWidth,
-            globalElapsed: elapsedFrames,
-            targetFPS: targetFPS,
-            spriteIndex: spriteIndex
-        ))
+        if drivers.strokeWidth.enabled {
+            resolved.strokeWidth = max(0, DriverEvaluator.evaluate(drivers.strokeWidth,
+                                                                    globalElapsed: elapsedFrames,
+                                                                    targetFPS: targetFPS,
+                                                                    spriteIndex: spriteIndex))
+        }
         return resolved
     }
 
     private func resolveRendererOpacity(_ renderer: Renderer,
                                         spriteIndex: Int,
                                         elapsedFrames: Double) -> Double {
-        guard let drivers = renderer.drivers else { return 1.0 }
-        return max(0, min(1, DriverEvaluator.evaluate(
-            drivers.opacity,
-            globalElapsed: elapsedFrames,
-            targetFPS: targetFPS,
-            spriteIndex: spriteIndex
-        )))
+        guard let drivers = renderer.drivers, drivers.opacity.enabled else { return 1.0 }
+        return max(0, min(1, DriverEvaluator.evaluate(drivers.opacity, globalElapsed: elapsedFrames,
+                                                      targetFPS: targetFPS, spriteIndex: spriteIndex)))
     }
 }

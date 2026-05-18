@@ -65,26 +65,26 @@ public enum TransformAnimator {
         targetFPS:      Double,
         spriteIndex:    Int
     ) -> SpriteTransform {
-        let pos = DriverEvaluator.evaluate(drivers.position,
-                                           globalElapsed: globalElapsed,
-                                           targetFPS: targetFPS,
-                                           spriteIndex: spriteIndex)
-        let scl = DriverEvaluator.evaluate(drivers.scale,
-                                           globalElapsed: globalElapsed,
-                                           targetFPS: targetFPS,
-                                           spriteIndex: spriteIndex)
-        let rot = DriverEvaluator.evaluate(drivers.rotation,
-                                           globalElapsed: globalElapsed,
-                                           targetFPS: targetFPS,
-                                           spriteIndex: spriteIndex)
-        let morph = DriverEvaluator.evaluate(drivers.morph,
-                                             globalElapsed: globalElapsed,
-                                             targetFPS: targetFPS,
-                                             spriteIndex: spriteIndex)
-        let opacity = DriverEvaluator.evaluate(drivers.opacity,
-                                               globalElapsed: globalElapsed,
-                                               targetFPS: targetFPS,
-                                               spriteIndex: spriteIndex)
+        let pos = drivers.position.enabled
+            ? DriverEvaluator.evaluate(drivers.position, globalElapsed: globalElapsed,
+                                       targetFPS: targetFPS, spriteIndex: spriteIndex)
+            : .zero
+        let scl = drivers.scale.enabled
+            ? DriverEvaluator.evaluate(drivers.scale, globalElapsed: globalElapsed,
+                                       targetFPS: targetFPS, spriteIndex: spriteIndex)
+            : Vector2D(x: 1, y: 1)
+        let rot = drivers.rotation.enabled
+            ? DriverEvaluator.evaluate(drivers.rotation, globalElapsed: globalElapsed,
+                                       targetFPS: targetFPS, spriteIndex: spriteIndex)
+            : 0.0
+        let morph = drivers.morph.enabled
+            ? DriverEvaluator.evaluate(drivers.morph, globalElapsed: globalElapsed,
+                                       targetFPS: targetFPS, spriteIndex: spriteIndex)
+            : 0.0
+        let opacity = drivers.opacity.enabled
+            ? DriverEvaluator.evaluate(drivers.opacity, globalElapsed: globalElapsed,
+                                       targetFPS: targetFPS, spriteIndex: spriteIndex)
+            : 1.0
         return SpriteTransform(
             positionOffset: pos,
             scale:          scl,

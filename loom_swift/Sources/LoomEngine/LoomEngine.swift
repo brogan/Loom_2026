@@ -359,15 +359,19 @@ public struct LoomEngine: @unchecked Sendable {
         let cam = config.globalConfig.camera
         guard cam.enabled else { return viewTransform }
 
-        let fps = max(1.0, config.globalConfig.targetFPS)
-        let track = DriverEvaluator.evaluate(cam.tracking, globalElapsed: elapsedFrames,
-                                             targetFPS: fps, spriteIndex: 0)
-        let pan = DriverEvaluator.evaluate(cam.pan,      globalElapsed: elapsedFrames,
-                                           targetFPS: fps, spriteIndex: 0)
-        let z   = DriverEvaluator.evaluate(cam.zoom,     globalElapsed: elapsedFrames,
-                                           targetFPS: fps, spriteIndex: 0)
-        let rot = DriverEvaluator.evaluate(cam.rotation, globalElapsed: elapsedFrames,
-                                           targetFPS: fps, spriteIndex: 0)
+        let fps   = max(1.0, config.globalConfig.targetFPS)
+        let track = cam.tracking.enabled
+            ? DriverEvaluator.evaluate(cam.tracking, globalElapsed: elapsedFrames, targetFPS: fps, spriteIndex: 0)
+            : Vector2D.zero
+        let pan   = cam.pan.enabled
+            ? DriverEvaluator.evaluate(cam.pan,      globalElapsed: elapsedFrames, targetFPS: fps, spriteIndex: 0)
+            : Vector2D.zero
+        let z     = cam.zoom.enabled
+            ? DriverEvaluator.evaluate(cam.zoom,     globalElapsed: elapsedFrames, targetFPS: fps, spriteIndex: 0)
+            : 1.0
+        let rot   = cam.rotation.enabled
+            ? DriverEvaluator.evaluate(cam.rotation, globalElapsed: elapsedFrames, targetFPS: fps, spriteIndex: 0)
+            : 0.0
         let tracked = rotated(track, degrees: rot)
 
         return ViewTransform(
