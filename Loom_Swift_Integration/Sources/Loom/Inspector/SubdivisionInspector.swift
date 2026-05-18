@@ -82,6 +82,7 @@ struct SubdivisionInspector: View {
                     .font(.system(size: 12))
                     .frame(maxWidth: 110)
             }
+            .loomHelp("Label for this subdivision step — appears in the params list.")
             InspectorField("Algorithm") {
                 Picker("", selection: bindP(setIdx, paramIdx, \.subdivisionType)) {
                     ForEach(SubdivisionType.allCases, id: \.self) { t in
@@ -91,13 +92,17 @@ struct SubdivisionInspector: View {
                 .labelsHidden()
                 .frame(maxWidth: 130)
             }
+            .loomHelp("Subdivision algorithm applied to each input polygon at this step. Quad/Tri split into child shapes; Echo/Bord add inset copies; Split cuts along one axis.")
             vector2DField("Line ratios", xKP: \.lineRatios.x, yKP: \.lineRatios.y,
                           setIdx: setIdx, paramIdx: paramIdx)
+            .loomHelp("Horizontal (X) and vertical (Y) split positions within the polygon, in the range 0–1. Controls exactly where the subdivision lines land.")
             vector2DField("CP ratios", xKP: \.controlPointRatios.x, yKP: \.controlPointRatios.y,
                           setIdx: setIdx, paramIdx: paramIdx)
+            .loomHelp("Bézier control-point ratios that curve the subdivision split edges. 0.5 produces a straight line; values above or below introduce curvature.")
             InspectorField("Continuous") {
                 Toggle("", isOn: bindP(setIdx, paramIdx, \.continuous)).labelsHidden()
             }
+            .loomHelp("When on, all child polygons from this step use this same parameter rather than advancing to the next one in the set.")
             InspectorField("Visibility") {
                 Picker("", selection: bindP(setIdx, paramIdx, \.visibilityRule)) {
                     ForEach(VisibilityRule.allCases, id: \.self) { r in
@@ -107,12 +112,15 @@ struct SubdivisionInspector: View {
                 .labelsHidden()
                 .frame(maxWidth: 130)
             }
+            .loomHelp("Filters which output polygons are rendered — all, alternating, random fractions, every nth, and so on.")
             InspectorField("Ran middle") {
                 Toggle("", isOn: bindP(setIdx, paramIdx, \.ranMiddle)).labelsHidden()
             }
+            .loomHelp("Jitters the subdivision midpoint position randomly each draw cycle, breaking the regularity of the split.")
             InspectorField("Ran divisor") {
                 FloatEntryField(value: bindP(setIdx, paramIdx, \.ranDiv), width: 60, fractionDigits: 1)
             }
+            .loomHelp("Scales the midpoint jitter amount — higher values produce smaller offsets. Default 100.")
         }
     }
 
@@ -123,14 +131,17 @@ struct SubdivisionInspector: View {
             vector2DField("Scale",
                           xKP: \.insetTransform.scale.x, yKP: \.insetTransform.scale.y,
                           setIdx: setIdx, paramIdx: paramIdx)
+            .loomHelp("Scale of the echo or border inset polygon relative to its parent. 1.0 = same size; values below 1 shrink it.")
             vector2DField("Translate",
                           xKP: \.insetTransform.translation.x, yKP: \.insetTransform.translation.y,
                           setIdx: setIdx, paramIdx: paramIdx)
+            .loomHelp("Positional offset applied to the inset polygon along X and Y.")
             InspectorField("Rotation") {
                 FloatEntryField(value: bindP(setIdx, paramIdx, \.insetTransform.rotation),
                                 width: 80, fractionDigits: 4)
                 Text("rad").font(.system(size: 11)).foregroundStyle(.secondary)
             }
+            .loomHelp("Rotation of the inset polygon in radians, relative to the source polygon.")
         }
     }
 
@@ -147,6 +158,7 @@ struct SubdivisionInspector: View {
                 .labelsHidden()
                 .frame(maxWidth: 130)
             }
+            .loomHelp("How pressure values from the source polygon are distributed to child polygons created by this subdivision step.")
             if controller.projectConfig?.subdivisionConfig
                 .paramsSets[safe: setIdx]?.params[safe: paramIdx]?.pressureSubdivisionMode == .random {
                 InspectorField("Groups") {
@@ -158,6 +170,7 @@ struct SubdivisionInspector: View {
                         }
                     }
                 }
+                .loomHelp("Which pressure groups (1–5) participate in random pressure assignment. At least one should be enabled.")
             }
         }
     }
@@ -169,6 +182,7 @@ struct SubdivisionInspector: View {
             InspectorField("Enabled") {
                 Toggle("", isOn: bindP(setIdx, paramIdx, \.polysTransform)).labelsHidden()
             }
+            .loomHelp("Master switch enabling the PTW (whole-polygon) and PTP (point-level) transform sections for this subdivision step.")
         }
     }
 
@@ -179,42 +193,53 @@ struct SubdivisionInspector: View {
             InspectorField("Enabled") {
                 Toggle("", isOn: bindP(setIdx, paramIdx, \.polysTranformWhole)).labelsHidden()
             }
+            .loomHelp("Activate random per-polygon translation, scale, and rotation transforms. Geometry stays at 100% scale until ranges are adjusted.")
             InspectorField("Probability") {
                 FloatEntryField(value: bindP(setIdx, paramIdx, \.pTW_probability), width: 50, fractionDigits: 1)
                 Text("%").font(.system(size: 11)).foregroundStyle(.secondary)
             }
+            .loomHelp("Chance (0–100%) that any individual output polygon receives a transform each frame. At 50%, roughly half the polygons are affected.")
             InspectorField("Common ctr") {
                 Toggle("", isOn: bindP(setIdx, paramIdx, \.pTW_commonCentre)).labelsHidden()
             }
+            .loomHelp("When on, all polygons transform around one shared centre point rather than each polygon's own centroid — useful for radial scatter effects.")
             InspectorField("Ran transl") {
                 Toggle("", isOn: bindP(setIdx, paramIdx, \.pTW_randomTranslation)).labelsHidden()
             }
+            .loomHelp("Enable random positional displacement. Must be on for Transl X/Y ranges to have any effect.")
             InspectorField("Ran scale") {
                 Toggle("", isOn: bindP(setIdx, paramIdx, \.pTW_randomScale)).labelsHidden()
             }
+            .loomHelp("Enable random scale variation per polygon. Must be on for Scale X/Y ranges to have any effect.")
             InspectorField("Ran rotate") {
                 Toggle("", isOn: bindP(setIdx, paramIdx, \.pTW_randomRotation)).labelsHidden()
             }
+            .loomHelp("Enable random rotation per polygon. Must be on for Rot range to have any effect.")
             vector2DField("Transl X",
                           xKP: \.pTW_randomTranslationRange.x.min,
                           yKP: \.pTW_randomTranslationRange.x.max,
                           setIdx: setIdx, paramIdx: paramIdx, xLabel: "mn", yLabel: "mx")
+            .loomHelp("Min/max range for random X-axis displacement applied per polygon.")
             vector2DField("Transl Y",
                           xKP: \.pTW_randomTranslationRange.y.min,
                           yKP: \.pTW_randomTranslationRange.y.max,
                           setIdx: setIdx, paramIdx: paramIdx, xLabel: "mn", yLabel: "mx")
+            .loomHelp("Min/max range for random Y-axis displacement applied per polygon.")
             vector2DField("Scale X",
                           xKP: \.pTW_randomScaleRange.x.min,
                           yKP: \.pTW_randomScaleRange.x.max,
                           setIdx: setIdx, paramIdx: paramIdx, xLabel: "mn", yLabel: "mx")
+            .loomHelp("Min/max range for random X-axis scale factor. 1.0 = no change; values above enlarge, below shrink.")
             vector2DField("Scale Y",
                           xKP: \.pTW_randomScaleRange.y.min,
                           yKP: \.pTW_randomScaleRange.y.max,
                           setIdx: setIdx, paramIdx: paramIdx, xLabel: "mn", yLabel: "mx")
+            .loomHelp("Min/max range for random Y-axis scale factor. 1.0 = no change.")
             vector2DField("Rot range",
                           xKP: \.pTW_randomRotationRange.min,
                           yKP: \.pTW_randomRotationRange.max,
                           setIdx: setIdx, paramIdx: paramIdx, xLabel: "mn", yLabel: "mx")
+            .loomHelp("Min/max range for random rotation angle in degrees applied per polygon.")
         }
     }
 
@@ -227,11 +252,13 @@ struct SubdivisionInspector: View {
             InspectorField("Enabled") {
                 Toggle("", isOn: bindP(setIdx, paramIdx, \.polysTransformPoints)).labelsHidden()
             }
+            .loomHelp("Activate point-level deformation (PTP) for this subdivision step. Individual anchor and control-point groups are configured in the tabs below.")
             Group {
                 InspectorField("Probability") {
                     FloatEntryField(value: bindP(setIdx, paramIdx, \.pTP_probability), width: 50, fractionDigits: 1)
                     Text("%").font(.system(size: 11)).foregroundStyle(.secondary)
                 }
+                .loomHelp("Chance (0–100%) that PTP fires for each individual output polygon. All enabled groups apply to the polygons that pass this roll.")
                 ptpTabBar()
                 ptpEnabledSummary(setIdx: setIdx, paramIdx: paramIdx)
                 ptpTabContent(setIdx: setIdx, paramIdx: paramIdx)
@@ -308,9 +335,11 @@ struct SubdivisionInspector: View {
                                 width: 50, fractionDigits: 1)
                 Text("%").font(.system(size: 11)).foregroundStyle(.secondary)
             }
+            .loomHelp("Chance (0–100%) this Ext group fires per polygon, in addition to the top-level PTP probability.")
             InspectorField("Spike factor") {
                 FloatEntryField(value: bindPTP(setIdx, paramIdx, \.exteriorAnchors.spikeFactor), width: 60)
             }
+            .loomHelp("Displacement magnitude for exterior anchors. Positive values push outward (spike); negative pull inward (dent).")
             InspectorField("Which spike") {
                 Picker("", selection: bindPTP(setIdx, paramIdx, \.exteriorAnchors.whichSpike)) {
                     Text("All").tag("ALL")
@@ -319,6 +348,7 @@ struct SubdivisionInspector: View {
                 }
                 .labelsHidden().frame(maxWidth: 110)
             }
+            .loomHelp("Which anchor subset is displaced — All anchors, Corner anchors only, or Midpoint anchors only.")
             InspectorField("Spike type") {
                 Picker("", selection: bindPTP(setIdx, paramIdx, \.exteriorAnchors.spikeType)) {
                     Text("Symmetrical").tag("SYMMETRICAL")
@@ -328,6 +358,7 @@ struct SubdivisionInspector: View {
                 }
                 .labelsHidden().frame(maxWidth: 110)
             }
+            .loomHelp("Direction of the spike — Symmetrical (balanced), Right-biased, Left-biased, or Random per anchor.")
             InspectorField("Spike axis") {
                 Picker("", selection: bindPTP(setIdx, paramIdx, \.exteriorAnchors.spikeAxis)) {
                     Text("XY").tag("XY")
@@ -336,33 +367,44 @@ struct SubdivisionInspector: View {
                 }
                 .labelsHidden().frame(maxWidth: 80)
             }
+            .loomHelp("Constrain the displacement to both axes (XY), X only, or Y only.")
             InspectorField("Ran spike") {
                 Toggle("", isOn: bindPTP(setIdx, paramIdx, \.exteriorAnchors.randomSpike)).labelsHidden()
             }
+            .loomHelp("Randomise spike magnitude per anchor within the Spike range below, instead of using the fixed Spike factor.")
             ptpFloatRangeField("Spike range", \.exteriorAnchors.randomSpikeFactor,
                                 setIdx: setIdx, paramIdx: paramIdx)
+            .loomHelp("Min/max spike factor sampled per anchor when Ran spike is on.")
             InspectorField("CPs follow") {
                 Toggle("", isOn: bindPTP(setIdx, paramIdx, \.exteriorAnchors.cpsFollow)).labelsHidden()
             }
+            .loomHelp("When on, control-point handles move with their displaced anchor, preserving the local curve shape at the spike.")
             InspectorField("CPs mult") {
                 FloatEntryField(value: bindPTP(setIdx, paramIdx, \.exteriorAnchors.cpsFollowMultiplier), width: 60)
             }
+            .loomHelp("Multiplier controlling how closely handles track the anchor. 1.0 = full follow; values below reduce the effect.")
             InspectorField("Ran CPs fol") {
                 Toggle("", isOn: bindPTP(setIdx, paramIdx, \.exteriorAnchors.randomCpsFollow)).labelsHidden()
             }
+            .loomHelp("Randomise the CP follow multiplier per anchor within the CPs fol rng below.")
             ptpFloatRangeField("CPs fol rng", \.exteriorAnchors.randomCpsFollowRange,
                                 setIdx: setIdx, paramIdx: paramIdx)
+            .loomHelp("Min/max range for the random CP follow multiplier.")
             InspectorField("CPs squeeze") {
                 Toggle("", isOn: bindPTP(setIdx, paramIdx, \.exteriorAnchors.cpsSqueeze)).labelsHidden()
             }
+            .loomHelp("Pull control handles toward the edge midpoint, sharpening the base of the spike.")
             InspectorField("Squeeze fact") {
                 FloatEntryField(value: bindPTP(setIdx, paramIdx, \.exteriorAnchors.cpsSqueezeFactor), width: 60)
             }
+            .loomHelp("Factor controlling how strongly handles are pulled toward the edge midpoint.")
             InspectorField("Ran squeeze") {
                 Toggle("", isOn: bindPTP(setIdx, paramIdx, \.exteriorAnchors.randomCpsSqueeze)).labelsHidden()
             }
+            .loomHelp("Randomise the squeeze factor per anchor within the Squeeze rng below.")
             ptpFloatRangeField("Squeeze rng", \.exteriorAnchors.randomCpsSqueezeRange,
                                 setIdx: setIdx, paramIdx: paramIdx)
+            .loomHelp("Min/max range for the random squeeze factor.")
         }
     }
 
@@ -375,9 +417,11 @@ struct SubdivisionInspector: View {
                                 width: 50, fractionDigits: 1)
                 Text("%").font(.system(size: 11)).foregroundStyle(.secondary)
             }
+            .loomHelp("Chance (0–100%) this Cen group fires per polygon, in addition to the top-level PTP probability.")
             InspectorField("Tear factor") {
                 FloatEntryField(value: bindPTP(setIdx, paramIdx, \.centralAnchors.tearFactor), width: 60)
             }
+            .loomHelp("Displacement magnitude for central anchor points. Larger values produce more dramatic tears.")
             InspectorField("Tear axis") {
                 Picker("", selection: bindPTP(setIdx, paramIdx, \.centralAnchors.tearAxis)) {
                     Text("XY").tag("XY")
@@ -387,6 +431,7 @@ struct SubdivisionInspector: View {
                 }
                 .labelsHidden().frame(maxWidth: 90)
             }
+            .loomHelp("Axis constraint for the tear — XY (both), X only, Y only, or Random per polygon.")
             InspectorField("Tear dir") {
                 Picker("", selection: bindPTP(setIdx, paramIdx, \.centralAnchors.tearDirection)) {
                     Text("Diagonal").tag("DIAGONAL")
@@ -396,28 +441,37 @@ struct SubdivisionInspector: View {
                 }
                 .labelsHidden().frame(maxWidth: 100)
             }
+            .loomHelp("Directional bias for the tear — Diagonal, Left, Right, or Random per polygon.")
             InspectorField("Ran tear") {
                 Toggle("", isOn: bindPTP(setIdx, paramIdx, \.centralAnchors.randomTear)).labelsHidden()
             }
+            .loomHelp("Randomise tear magnitude within the Tear range below, instead of using the fixed Tear factor.")
             ptpFloatRangeField("Tear range", \.centralAnchors.randomTearFactor,
                                 setIdx: setIdx, paramIdx: paramIdx)
+            .loomHelp("Min/max tear factor sampled per polygon when Ran tear is on.")
             InspectorField("CPs follow") {
                 Toggle("", isOn: bindPTP(setIdx, paramIdx, \.centralAnchors.cpsFollow)).labelsHidden()
             }
+            .loomHelp("When on, control-point handles move with the torn anchor, preserving local curve shape.")
             InspectorField("CPs mult") {
                 FloatEntryField(value: bindPTP(setIdx, paramIdx, \.centralAnchors.cpsFollowMultiplier), width: 60)
             }
+            .loomHelp("Multiplier for how closely handles track the torn anchor. 1.0 = full follow.")
             InspectorField("Ran CPs fol") {
                 Toggle("", isOn: bindPTP(setIdx, paramIdx, \.centralAnchors.randomCpsFollow)).labelsHidden()
             }
+            .loomHelp("Randomise the CP follow multiplier per polygon within the CPs fol rng below.")
             ptpFloatRangeField("CPs fol rng", \.centralAnchors.randomCpsFollowRange,
                                 setIdx: setIdx, paramIdx: paramIdx)
+            .loomHelp("Min/max range for the random CP follow multiplier.")
             InspectorField("All pts fol") {
                 Toggle("", isOn: bindPTP(setIdx, paramIdx, \.centralAnchors.allPointsFollow)).labelsHidden()
             }
+            .loomHelp("When on, all other polygon points also displace in the same tear direction, shearing the whole shape.")
             InspectorField("Inverted fol") {
                 Toggle("", isOn: bindPTP(setIdx, paramIdx, \.centralAnchors.invertedFollow)).labelsHidden()
             }
+            .loomHelp("Reverse the direction of the all-points-follow displacement — points move opposite to the central anchor tear.")
         }
     }
 
@@ -430,19 +484,25 @@ struct SubdivisionInspector: View {
                                 width: 50, fractionDigits: 1)
                 Text("%").font(.system(size: 11)).foregroundStyle(.secondary)
             }
+            .loomHelp("Chance (0–100%) this OCP group fires per polygon, in addition to the top-level PTP probability.")
             InspectorField("Line ratio X") {
                 FloatEntryField(value: bindPTP(setIdx, paramIdx, \.outerControlPoints.lineRatioX), width: 60)
             }
+            .loomHelp("Base position of the outer handle along the edge on X (0 = start anchor, 1 = end anchor).")
             InspectorField("Line ratio Y") {
                 FloatEntryField(value: bindPTP(setIdx, paramIdx, \.outerControlPoints.lineRatioY), width: 60)
             }
+            .loomHelp("Base position of the outer handle along the edge on Y.")
             InspectorField("Ran ratio") {
                 Toggle("", isOn: bindPTP(setIdx, paramIdx, \.outerControlPoints.randomLineRatio)).labelsHidden()
             }
+            .loomHelp("Randomise handle positions using the Inner/Outer range below instead of the fixed Line ratios.")
             ptpFloatRangeField("Inner range", \.outerControlPoints.randomLineRatioInner,
                                 setIdx: setIdx, paramIdx: paramIdx)
+            .loomHelp("Min/max for random variation of the inner-side line ratio when Ran ratio is on.")
             ptpFloatRangeField("Outer range", \.outerControlPoints.randomLineRatioOuter,
                                 setIdx: setIdx, paramIdx: paramIdx)
+            .loomHelp("Min/max for random variation of the outer-side line ratio when Ran ratio is on.")
             InspectorField("Curve mode") {
                 Picker("", selection: bindPTP(setIdx, paramIdx, \.outerControlPoints.curveMode)) {
                     Text("Perpendicular").tag("PERPENDICULAR")
@@ -450,6 +510,7 @@ struct SubdivisionInspector: View {
                 }
                 .labelsHidden().frame(maxWidth: 120)
             }
+            .loomHelp("Perpendicular — handles project at 90° to the edge; From centre — handles point away from the polygon centroid.")
             InspectorField("Curve type") {
                 Picker("", selection: bindPTP(setIdx, paramIdx, \.outerControlPoints.curveType)) {
                     Text("Puff").tag("PUFF")
@@ -461,30 +522,40 @@ struct SubdivisionInspector: View {
                 }
                 .labelsHidden().frame(maxWidth: 130)
             }
+            .loomHelp("Puff = edges bow outward; Pinch = inward. Alternating patterns (Puff-Pinch-…) create star or flower-like shapes.")
             InspectorField("Mult min") {
                 FloatEntryField(value: bindPTP(setIdx, paramIdx, \.outerControlPoints.curveMultiplierMin), width: 60)
             }
+            .loomHelp("Minimum curvature multiplier — the lower bound when Ran mult is off. Higher values = more extreme bowing.")
             InspectorField("Mult max") {
                 FloatEntryField(value: bindPTP(setIdx, paramIdx, \.outerControlPoints.curveMultiplierMax), width: 60)
             }
+            .loomHelp("Maximum curvature multiplier — used as the upper bound when Ran mult is on.")
             InspectorField("Ran mult") {
                 Toggle("", isOn: bindPTP(setIdx, paramIdx, \.outerControlPoints.randomMultiplier)).labelsHidden()
             }
+            .loomHelp("Randomise the curvature multiplier per edge within the Mult range below.")
             ptpFloatRangeField("Mult range", \.outerControlPoints.randomCurveMultiplier,
                                 setIdx: setIdx, paramIdx: paramIdx)
+            .loomHelp("Min/max range for the random curvature multiplier when Ran mult is on.")
             InspectorField("From ctr X") {
                 FloatEntryField(value: bindPTP(setIdx, paramIdx, \.outerControlPoints.curveFromCentreRatioX), width: 60)
             }
+            .loomHelp("For From centre mode: X offset ratio placing the handle relative to the polygon centroid.")
             InspectorField("From ctr Y") {
                 FloatEntryField(value: bindPTP(setIdx, paramIdx, \.outerControlPoints.curveFromCentreRatioY), width: 60)
             }
+            .loomHelp("For From centre mode: Y offset ratio placing the handle relative to the polygon centroid.")
             InspectorField("Ran from ctr") {
                 Toggle("", isOn: bindPTP(setIdx, paramIdx, \.outerControlPoints.randomFromCentre)).labelsHidden()
             }
+            .loomHelp("Randomise the from-centre position using the A and B ranges below.")
             ptpFloatRangeField("From ctr A", \.outerControlPoints.randomFromCentreA,
                                 setIdx: setIdx, paramIdx: paramIdx)
+            .loomHelp("First random range for the from-centre handle position (typically X-side variation).")
             ptpFloatRangeField("From ctr B", \.outerControlPoints.randomFromCentreB,
                                 setIdx: setIdx, paramIdx: paramIdx)
+            .loomHelp("Second random range for the from-centre handle position (typically Y-side variation).")
         }
     }
 
@@ -497,9 +568,11 @@ struct SubdivisionInspector: View {
                                 width: 50, fractionDigits: 1)
                 Text("%").font(.system(size: 11)).foregroundStyle(.secondary)
             }
+            .loomHelp("Chance (0–100%) this ALC group fires per polygon, in addition to the top-level PTP probability.")
             InspectorField("Tear factor") {
                 FloatEntryField(value: bindPTP(setIdx, paramIdx, \.anchorsLinkedToCentre.tearFactor), width: 60)
             }
+            .loomHelp("Displacement magnitude for anchors geometrically linked to the polygon centre.")
             InspectorField("Tear type") {
                 Picker("", selection: bindPTP(setIdx, paramIdx, \.anchorsLinkedToCentre.tearType)) {
                     Text("Outside corner").tag("TOWARDS_OUTSIDE_CORNER")
@@ -509,22 +582,29 @@ struct SubdivisionInspector: View {
                 }
                 .labelsHidden().frame(maxWidth: 130)
             }
+            .loomHelp("Target direction — Outside corner (nearest), Opposite corner (far), Towards centre (inward), or Random per anchor.")
             InspectorField("Ran tear") {
                 Toggle("", isOn: bindPTP(setIdx, paramIdx, \.anchorsLinkedToCentre.randomTear)).labelsHidden()
             }
+            .loomHelp("Randomise tear magnitude within the Tear range below instead of using the fixed Tear factor.")
             ptpFloatRangeField("Tear range", \.anchorsLinkedToCentre.randomTearFactor,
                                 setIdx: setIdx, paramIdx: paramIdx)
+            .loomHelp("Min/max tear factor sampled per polygon when Ran tear is on.")
             InspectorField("CPs follow") {
                 Toggle("", isOn: bindPTP(setIdx, paramIdx, \.anchorsLinkedToCentre.cpsFollow)).labelsHidden()
             }
+            .loomHelp("When on, control-point handles move with the torn anchor, preserving local curve shape.")
             InspectorField("CPs mult") {
                 FloatEntryField(value: bindPTP(setIdx, paramIdx, \.anchorsLinkedToCentre.cpsFollowMultiplier), width: 60)
             }
+            .loomHelp("Multiplier for how closely handles track the torn anchor. 1.0 = full follow.")
             InspectorField("Ran CPs fol") {
                 Toggle("", isOn: bindPTP(setIdx, paramIdx, \.anchorsLinkedToCentre.randomCpsFollow)).labelsHidden()
             }
+            .loomHelp("Randomise the CP follow multiplier per polygon within the CPs fol rng below.")
             ptpFloatRangeField("CPs fol rng", \.anchorsLinkedToCentre.randomCpsFollowRange,
                                 setIdx: setIdx, paramIdx: paramIdx)
+            .loomHelp("Min/max range for the random CP follow multiplier.")
         }
     }
 
@@ -537,6 +617,7 @@ struct SubdivisionInspector: View {
                                 width: 50, fractionDigits: 1)
                 Text("%").font(.system(size: 11)).foregroundStyle(.secondary)
             }
+            .loomHelp("Chance (0–100%) this ICP group fires per polygon, in addition to the top-level PTP probability.")
             InspectorField("Refer outer") {
                 Picker("", selection: bindPTP(setIdx, paramIdx, \.innerControlPoints.referToOuter)) {
                     Text("None").tag("NONE")
@@ -546,31 +627,41 @@ struct SubdivisionInspector: View {
                 }
                 .labelsHidden().frame(maxWidth: 110)
             }
+            .loomHelp("How inner handles relate to OCP — None (independent), Follow (mirrors OCP offset), Exaggerate (amplifies it), Counter (opposes it).")
             InspectorField("Inner mult X") {
                 FloatEntryField(value: bindPTP(setIdx, paramIdx, \.innerControlPoints.innerMultiplierX), width: 60)
             }
+            .loomHelp("Multiplier applied to the inward handle position on the X axis.")
             InspectorField("Inner mult Y") {
                 FloatEntryField(value: bindPTP(setIdx, paramIdx, \.innerControlPoints.innerMultiplierY), width: 60)
             }
+            .loomHelp("Multiplier applied to the inward handle position on the Y axis.")
             InspectorField("Outer mult X") {
                 FloatEntryField(value: bindPTP(setIdx, paramIdx, \.innerControlPoints.outerMultiplierX), width: 60)
             }
+            .loomHelp("Multiplier applied to the outward handle position on the X axis.")
             InspectorField("Outer mult Y") {
                 FloatEntryField(value: bindPTP(setIdx, paramIdx, \.innerControlPoints.outerMultiplierY), width: 60)
             }
+            .loomHelp("Multiplier applied to the outward handle position on the Y axis.")
             InspectorField("Inner ratio") {
                 FloatEntryField(value: bindPTP(setIdx, paramIdx, \.innerControlPoints.innerRatio), width: 60)
             }
+            .loomHelp("Base ratio position for inner handles along the edge (0 = start anchor, 1 = end anchor).")
             InspectorField("Outer ratio") {
                 FloatEntryField(value: bindPTP(setIdx, paramIdx, \.innerControlPoints.outerRatio), width: 60)
             }
+            .loomHelp("Base ratio position for outer handles along the edge.")
             InspectorField("Ran ratio") {
                 Toggle("", isOn: bindPTP(setIdx, paramIdx, \.innerControlPoints.randomRatio)).labelsHidden()
             }
+            .loomHelp("Randomise inner and outer handle ratios using the Inner/Outer range below.")
             ptpFloatRangeField("Inner range", \.innerControlPoints.randomInnerRatio,
                                 setIdx: setIdx, paramIdx: paramIdx)
+            .loomHelp("Min/max range for random inner handle ratio when Ran ratio is on.")
             ptpFloatRangeField("Outer range", \.innerControlPoints.randomOuterRatio,
                                 setIdx: setIdx, paramIdx: paramIdx)
+            .loomHelp("Min/max range for random outer handle ratio when Ran ratio is on.")
             InspectorField("Common line") {
                 Picker("", selection: bindPTP(setIdx, paramIdx, \.innerControlPoints.commonLine)) {
                     Text("Even").tag("EVEN")
@@ -580,6 +671,7 @@ struct SubdivisionInspector: View {
                 }
                 .labelsHidden().frame(maxWidth: 90)
             }
+            .loomHelp("Align handles on even, odd, or randomly chosen edges for a consistent curvature pattern; None disables alignment.")
         }
     }
 
