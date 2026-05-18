@@ -477,14 +477,16 @@ struct TimelinePanel: View {
                 .frame(width: 6, height: 6)
             Text(sprite.name).font(.system(size: 11)).lineLimit(1).truncationMode(.tail)
             Spacer()
-            let hiddenCount = DriverLane.allCases.filter {
-                hiddenLanes.contains(spriteLaneID(spriteName: sprite.name, lane: $0))
-            }.count
+            let rendRows = rendererRows(for: node)
+            let hiddenCount =
+                DriverLane.allCases.filter { hiddenLanes.contains(spriteLaneID(spriteName: sprite.name, lane: $0)) }.count
+                + rendRows.filter { hiddenLanes.contains(rendererLaneID($0)) }.count
             let unusedCount: Int = {
-                guard let d = node.sprite.animation.drivers else { return 0 }
-                return DriverLane.allCases.filter { lane in
+                let d = node.sprite.animation.drivers
+                let spriteUnused = DriverLane.allCases.filter { lane in
                     guard !hiddenLanes.contains(spriteLaneID(spriteName: sprite.name, lane: lane)) else { return false }
-                    let enabled: Bool = {
+                    guard let d else { return false }
+                    let en: Bool = {
                         switch lane {
                         case .position: return d.position.enabled
                         case .scale:    return d.scale.enabled
@@ -494,12 +496,28 @@ struct TimelinePanel: View {
                         case .shape:    return d.shape.enabled
                         }
                     }()
-                    return !enabled && lane.keyframeFrames(from: d).isEmpty
+                    return !en && lane.keyframeFrames(from: d).isEmpty
                 }.count
+                let rendUnused = rendRows.filter { row in
+                    guard !hiddenLanes.contains(rendererLaneID(row)) else { return false }
+                    let drivers = renderer(atSet: row.rendererSetIdx, item: row.rendererItemIdx)?.drivers
+                    let en: Bool = {
+                        guard let drivers else { return false }
+                        switch row.lane {
+                        case .fillColor:   return drivers.fillColor?.enabled   ?? false
+                        case .strokeColor: return drivers.strokeColor?.enabled ?? false
+                        case .strokeWidth: return drivers.strokeWidth.enabled
+                        case .opacity:     return drivers.opacity.enabled
+                        }
+                    }()
+                    return !en && row.lane.keyframeFrames(from: drivers).isEmpty
+                }.count
+                return spriteUnused + rendUnused
             }()
             if hiddenCount > 0 {
                 Button {
                     DriverLane.allCases.forEach { hiddenLanes.remove(spriteLaneID(spriteName: sprite.name, lane: $0)) }
+                    rendRows.forEach { hiddenLanes.remove(rendererLaneID($0)) }
                 } label: {
                     HStack(spacing: 2) {
                         Image(systemName: "eye.slash").font(.system(size: 8))
@@ -511,20 +529,36 @@ struct TimelinePanel: View {
                 .padding(.trailing, 4)
             } else if unusedCount > 0 {
                 Button {
-                    guard let d = node.sprite.animation.drivers else { return }
-                    DriverLane.allCases.forEach { lane in
-                        let enabled: Bool = {
-                            switch lane {
-                            case .position: return d.position.enabled
-                            case .scale:    return d.scale.enabled
-                            case .rotation: return d.rotation.enabled
-                            case .morph:    return d.morph.enabled
-                            case .opacity:  return d.opacity.enabled
-                            case .shape:    return d.shape.enabled
+                    if let d = node.sprite.animation.drivers {
+                        DriverLane.allCases.forEach { lane in
+                            let en: Bool = {
+                                switch lane {
+                                case .position: return d.position.enabled
+                                case .scale:    return d.scale.enabled
+                                case .rotation: return d.rotation.enabled
+                                case .morph:    return d.morph.enabled
+                                case .opacity:  return d.opacity.enabled
+                                case .shape:    return d.shape.enabled
+                                }
+                            }()
+                            if !en && lane.keyframeFrames(from: d).isEmpty {
+                                hiddenLanes.insert(spriteLaneID(spriteName: sprite.name, lane: lane))
+                            }
+                        }
+                    }
+                    rendRows.forEach { row in
+                        let drivers = renderer(atSet: row.rendererSetIdx, item: row.rendererItemIdx)?.drivers
+                        let en: Bool = {
+                            guard let drivers else { return false }
+                            switch row.lane {
+                            case .fillColor:   return drivers.fillColor?.enabled   ?? false
+                            case .strokeColor: return drivers.strokeColor?.enabled ?? false
+                            case .strokeWidth: return drivers.strokeWidth.enabled
+                            case .opacity:     return drivers.opacity.enabled
                             }
                         }()
-                        if !enabled && lane.keyframeFrames(from: d).isEmpty {
-                            hiddenLanes.insert(spriteLaneID(spriteName: sprite.name, lane: lane))
+                        if !en && row.lane.keyframeFrames(from: drivers).isEmpty {
+                            hiddenLanes.insert(rendererLaneID(row))
                         }
                     }
                 } label: {
