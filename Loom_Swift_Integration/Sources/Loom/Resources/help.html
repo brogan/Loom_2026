@@ -154,6 +154,7 @@
   <a class="nav-link nav-sub" href="#geometry-pressure">Pressure Sensitivity</a>
   <a class="nav-link nav-sub" href="#geometry-svg-import">SVG Geometry Import</a>
   <a class="nav-link" href="#sprites">Sprites</a>
+  <a class="nav-link nav-sub" href="#sprites-coordinates">Coordinate System</a>
   <a class="nav-link nav-sub" href="#sprites-hierarchy">Hierarchy</a>
   <a class="nav-link nav-sub" href="#sprites-depth">Depth &amp; Parallax</a>
   <a class="nav-link nav-sub" href="#sprites-svg">SVG Sprites</a>
@@ -175,6 +176,7 @@
   <a class="nav-link nav-sub" href="#animation-timeline">Timeline</a>
   <a class="nav-link nav-sub" href="#animation-lane-controls">Lane Controls</a>
   <a class="nav-link nav-sub" href="#animation-editing">Timeline Editing</a>
+  <a class="nav-link nav-sub" href="#animation-visual-kf">Visual KF Editing</a>
   <a class="nav-link nav-sub" href="#animation-camera">Camera</a>
   <a class="nav-link nav-sub" href="#animation-parallax">Depth &amp; Parallax</a>
   <a class="nav-link nav-sub" href="#animation-morph">Morph Targets</a>
@@ -660,6 +662,121 @@
     <li>With the new sprite selected, open the inspector and assign a <strong>Geometry</strong> (polygon set file), a <strong>Renderer Set</strong>, and a <strong>Subdivision Set</strong>.</li>
     <li>Set initial <strong>Position</strong>, <strong>Scale</strong>, and <strong>Rotation</strong> in the Transform section.</li>
   </ol>
+
+  <h3 id="sprites-coordinates">Coordinate System</h3>
+  <p>All sprite transforms — position, scale, and rotation — are expressed in Loom's <em>world coordinate system</em>. Understanding this system is essential for placing sprites precisely and for interpreting the values produced by animation drivers.</p>
+
+  <div class="diagram">
+    <svg width="520" height="300" viewBox="0 0 520 300" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <defs>
+        <marker id="cax" markerWidth="8" markerHeight="8" refX="7" refY="3" orient="auto">
+          <path d="M0,0 L0,6 L8,3 z" fill="#777"/>
+        </marker>
+      </defs>
+
+      <!-- Canvas boundary (world: −400..400 in X and Y for an 800×800 canvas) -->
+      <!-- SVG centre of this rect = (200, 150); scale = 240/800 = 0.3 SVG-px per world-unit -->
+      <rect x="80" y="30" width="240" height="240" fill="#14141a" stroke="#3c3c3c" stroke-width="1.5" rx="2"/>
+      <text x="200" y="20" text-anchor="middle" font-size="9" fill="#555" font-family="-apple-system">800 × 800 px canvas</text>
+
+      <!-- Grid at world ±200 (= ±60 SVG px from centre) -->
+      <line x1="140" y1="30" x2="140" y2="270" stroke="#2c2c3a" stroke-width="1" stroke-dasharray="3,3"/>
+      <line x1="260" y1="30" x2="260" y2="270" stroke="#2c2c3a" stroke-width="1" stroke-dasharray="3,3"/>
+      <line x1="80"  y1="90"  x2="320" y2="90"  stroke="#2c2c3a" stroke-width="1" stroke-dasharray="3,3"/>
+      <line x1="80"  y1="210" x2="320" y2="210" stroke="#2c2c3a" stroke-width="1" stroke-dasharray="3,3"/>
+      <!-- Grid value labels -->
+      <text x="140" y="280" text-anchor="middle" font-size="8" fill="#555" font-family="Menlo,monospace">-200</text>
+      <text x="260" y="280" text-anchor="middle" font-size="8" fill="#555" font-family="Menlo,monospace">200</text>
+      <text x="76"  y="94"  text-anchor="end"    font-size="8" fill="#555" font-family="Menlo,monospace">200</text>
+      <text x="76"  y="214" text-anchor="end"    font-size="8" fill="#555" font-family="Menlo,monospace">-200</text>
+
+      <!-- X axis -->
+      <line x1="62" y1="150" x2="336" y2="150" stroke="#777" stroke-width="1" marker-end="url(#cax)"/>
+      <!-- Y axis (upward in world → upward in diagram) -->
+      <line x1="200" y1="285" x2="200" y2="14" stroke="#777" stroke-width="1" marker-end="url(#cax)"/>
+
+      <!-- Canvas-edge coordinate labels -->
+      <text x="62"  y="153" text-anchor="end"    font-size="8" fill="#666" font-family="Menlo,monospace">-400</text>
+      <text x="338" y="153" text-anchor="start"   font-size="8" fill="#666" font-family="Menlo,monospace">400</text>
+      <text x="200" y="286" text-anchor="middle"  font-size="8" fill="#666" font-family="Menlo,monospace">-400</text>
+      <text x="200" y="12"  text-anchor="middle"  font-size="8" fill="#666" font-family="Menlo,monospace">400</text>
+
+      <!-- Axis direction labels -->
+      <text x="340" y="148" font-size="9" fill="#aaa" font-family="-apple-system">+X (right)</text>
+      <text x="205" y="12"  font-size="9" fill="#aaa" font-family="-apple-system">+Y (up)</text>
+
+      <!-- Origin -->
+      <circle cx="200" cy="150" r="3.5" fill="#0e7fd4"/>
+      <text x="207" y="145" font-size="9" fill="#0e7fd4" font-family="Menlo,monospace">(0, 0)</text>
+
+      <!-- Example sprite A at world (150, 100) → SVG (245, 120) -->
+      <rect x="239" y="114" width="14" height="14" fill="#0e7fd428" stroke="#0e7fd4" stroke-width="1" rx="2"/>
+      <circle cx="246" cy="121" r="2" fill="#0e7fd4"/>
+      <line x1="200" y1="150" x2="242" y2="121" stroke="#0e7fd4" stroke-width="0.7" stroke-dasharray="3,2"/>
+      <text x="255" y="119" font-size="8.5" fill="#0e7fd4" font-family="Menlo,monospace">(150, 100)</text>
+
+      <!-- Example sprite B at world (−120, −160) → SVG (164, 198) -->
+      <rect x="158" y="192" width="14" height="14" fill="#a060e028" stroke="#a060e0" stroke-width="1" rx="2"/>
+      <circle cx="165" cy="199" r="2" fill="#a060e0"/>
+      <text x="100" y="197" text-anchor="end" font-size="8.5" fill="#a060e0" font-family="Menlo,monospace">(-120, -160)</text>
+
+      <!-- Right-side annotation panel -->
+      <text x="358" y="48"  font-size="10" font-weight="600" fill="#cccccc" font-family="-apple-system">Rules</text>
+      <text x="358" y="66"  font-size="9" fill="#888" font-family="-apple-system">Origin (0, 0) = canvas centre</text>
+      <text x="358" y="82"  font-size="9" fill="#888" font-family="-apple-system">+X → right,  −X → left</text>
+      <text x="358" y="98"  font-size="9" fill="#888" font-family="-apple-system">+Y → up,  −Y → down</text>
+      <text x="358" y="114" font-size="9" fill="#888" font-family="-apple-system">1 unit = 1 canvas pixel</text>
+      <text x="358" y="130" font-size="9" fill="#888" font-family="-apple-system">800 px canvas → ±400 range</text>
+      <text x="358" y="146" font-size="9" fill="#888" font-family="-apple-system">Rotation: °clockwise from up</text>
+
+      <text x="358" y="172" font-size="10" font-weight="600" fill="#cccccc" font-family="-apple-system">Driver offset semantics</text>
+      <text x="358" y="190" font-size="9" fill="#888" font-family="-apple-system">Position KF value = offset</text>
+      <text x="358" y="206" font-size="9" fill="#888" font-family="-apple-system">  added to base position</text>
+      <text x="358" y="224" font-size="9" fill="#888" font-family="-apple-system">Scale KF value = multiplier</text>
+      <text x="358" y="240" font-size="9" fill="#888" font-family="-apple-system">  on top of base scale</text>
+      <text x="358" y="258" font-size="9" fill="#888" font-family="-apple-system">Rotation KF value = offset</text>
+      <text x="358" y="274" font-size="9" fill="#888" font-family="-apple-system">  added to base rotation</text>
+    </svg>
+    <figcaption>World coordinate system for an 800 × 800 px canvas. The same rules apply at any canvas size; the unit range simply scales with half the canvas dimension.</figcaption>
+  </div>
+
+  <table>
+    <thead><tr><th>Property</th><th>Units / convention</th><th>Notes</th></tr></thead>
+    <tbody>
+      <tr>
+        <td>Position X / Y</td>
+        <td>World units (1 unit = 1 canvas pixel). Origin at canvas centre.</td>
+        <td>Positive X moves the sprite right; positive Y moves it <strong>up</strong>. An 800-px canvas spans −400 to +400 in both axes.</td>
+      </tr>
+      <tr>
+        <td>Scale X / Y</td>
+        <td>Unitless multiplier. <code>1.0</code> = base size.</td>
+        <td><code>2.0</code> doubles the sprite; <code>0.5</code> halves it. Negative values mirror the geometry. X and Y can differ to stretch non-uniformly.</td>
+      </tr>
+      <tr>
+        <td>Rotation</td>
+        <td>Degrees, clockwise from upright.</td>
+        <td><code>0°</code> = as drawn; <code>90°</code> = rotated one quarter-turn clockwise; <code>−90°</code> = counter-clockwise. Values outside 0–360 are valid and wrap naturally.</td>
+      </tr>
+      <tr>
+        <td>Driver position keyframe</td>
+        <td>World-unit <em>offset</em> added to the sprite's base Position field.</td>
+        <td>A driver value of <code>(0, 0)</code> leaves the sprite at its base position. <code>(50, 0)</code> shifts it 50 units to the right of its base.</td>
+      </tr>
+      <tr>
+        <td>Driver scale keyframe</td>
+        <td>Unitless <em>multiplier</em> applied on top of the sprite's base Scale.</td>
+        <td>A driver value of <code>(1, 1)</code> is the identity (no change). <code>(2, 1)</code> doubles width only.</td>
+      </tr>
+      <tr>
+        <td>Driver rotation keyframe</td>
+        <td>Degree <em>offset</em> added to the sprite's base Rotation.</td>
+        <td>A driver value of <code>0</code> leaves the sprite at its base rotation. <code>45</code> adds a 45° clockwise rotation on top.</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <div class="note">The geometry editor always works in the same world space. A polygon vertex at <code>(200, 100)</code> in the geometry editor maps directly to world position <code>(200, 100)</code> once the sprite's base position, scale, and rotation are applied.</div>
 
   <h3 id="sprites-hierarchy">Hierarchy and inheritance</h3>
   <p>Any sprite can be assigned a <strong>parent</strong> via the Hierarchy section in the inspector. Child transforms are applied relative to the parent. Use the P / R / S toggles to choose which parent transforms the child inherits:</p>
@@ -1379,6 +1496,72 @@
 
   <h4>Zoom and scroll</h4>
   <p>Use the <strong>×1.5 / ÷1.5</strong> buttons to zoom the timeline ruler horizontally. The timeline lane list scrolls vertically when there are more rows than can fit. Drag the larger top grab area to resize the timeline vertically; it can open high enough to inspect dense sprite and renderer lane stacks.</p>
+
+  <h3 id="animation-visual-kf">Visual sprite keyframe editing</h3>
+  <p>When a <strong>Position</strong>, <strong>Scale</strong>, or <strong>Rotation</strong> keyframe is selected in the timeline, Loom lets you set its value by directly manipulating the sprite in the <em>Edit</em> or <em>Parallax</em> wireframe view — no need to type numeric values.</p>
+
+  <h4>How it works</h4>
+  <ol class="steps">
+    <li>In the timeline, click a diamond on a sprite's <strong>Position</strong>, <strong>Scale</strong>, or <strong>Rotation</strong> lane to select it. The playhead moves to that frame.</li>
+    <li>The sprite is automatically selected in the wireframe view and a gold <strong>Timeline KF</strong> badge appears in the control strip, showing which lane is active (e.g. <em>Timeline KF · Position</em>).</li>
+    <li>The wireframe view shows the sprite at its <strong>complete combined pose</strong> for that frame: all enabled driver lanes (position, scale, and rotation) are evaluated together, so you always see an accurate picture of how the sprite looks at that moment — not just the lane you are editing.</li>
+    <li>Drag the sprite to the target position, or drag its corner handles to resize or rotate it, exactly as you would when editing the base transform.</li>
+    <li>On <strong>releasing the drag</strong>, the result is automatically written back to the selected keyframe. Position drags update the Position driver KF value; scale-handle drags update the Scale driver KF; rotation-handle drags update the Rotation driver KF.</li>
+  </ol>
+
+  <div class="diagram">
+    <svg width="500" height="100" viewBox="0 0 500 100" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <!-- Timeline mini strip -->
+      <rect x="0" y="0" width="240" height="100" rx="4" fill="#252526" stroke="#3c3c3c"/>
+      <text x="12" y="16" font-size="9" fill="#555" font-family="-apple-system">TIMELINE</text>
+      <!-- Lane rows -->
+      <text x="12" y="36" font-size="9" fill="#888" font-family="-apple-system">Position</text>
+      <circle cx="120" cy="32" r="5" fill="#4a7fcc" stroke="#7aafff" stroke-width="1.5"/>
+      <circle cx="180" cy="32" r="4" fill="#4a7fcc"/>
+      <!-- selected KF ring -->
+      <circle cx="120" cy="32" r="8" fill="none" stroke="#ffffff" stroke-width="1" stroke-dasharray="2,1.5" opacity="0.5"/>
+      <text x="12" y="56" font-size="9" fill="#888" font-family="-apple-system">Scale</text>
+      <circle cx="150" cy="52" r="4" fill="#4ab080"/>
+      <text x="12" y="76" font-size="9" fill="#888" font-family="-apple-system">Rotation</text>
+      <circle cx="100" cy="72" r="4" fill="#e08840"/>
+      <circle cx="200" cy="72" r="4" fill="#e08840"/>
+      <!-- playhead at KF -->
+      <line x1="120" y1="0" x2="120" y2="100" stroke="#0e7fd4" stroke-width="1"/>
+      <polygon points="116,0 124,0 120,6" fill="#0e7fd4"/>
+
+      <!-- Arrow -->
+      <text x="258" y="55" font-size="18" fill="#555">→</text>
+
+      <!-- Control strip badge -->
+      <rect x="285" y="30" width="200" height="40" rx="4" fill="#252526" stroke="#3c3c3c"/>
+      <rect x="295" y="39" width="130" height="22" rx="3" fill="#7a5000b0" stroke="#c09020" stroke-width="1"/>
+      <text x="360" y="54" text-anchor="middle" font-size="10" font-weight="600" fill="#f0c040" font-family="-apple-system">Timeline KF · Position</text>
+      <text x="440" y="54" font-size="9" fill="#555" font-family="-apple-system">drag sprite</text>
+    </svg>
+    <figcaption>Selecting a Position keyframe in the timeline (left) activates the gold Timeline KF badge in the wireframe control strip (right). Drag the sprite to set the new value; release to commit.</figcaption>
+  </div>
+
+  <h4>Combined pose display</h4>
+  <p>The wireframe view evaluates <strong>all</strong> enabled driver lanes at the selected keyframe's frame, not just the lane being edited. This means:</p>
+  <ul>
+    <li>While editing a <strong>Rotation</strong> KF at frame 30, you also see the sprite's frame-30 position and scale — exactly as it will appear during playback.</li>
+    <li>Switching between Position, Scale, and Rotation KFs on the same sprite always shows a consistent, complete pose rather than each transform in isolation.</li>
+    <li>Other lane values are read-only during the drag — only the selected lane's KF is updated on release.</li>
+  </ul>
+
+  <h4>Supported lanes and limitations</h4>
+  <table>
+    <thead><tr><th>Lane</th><th>Visual editing</th><th>How to drag</th></tr></thead>
+    <tbody>
+      <tr><td>Position</td><td>✓ Supported</td><td>Drag the sprite body to any point on the canvas.</td></tr>
+      <tr><td>Scale</td><td>✓ Supported</td><td>Drag a corner handle (non-rotate corners) inward or outward.</td></tr>
+      <tr><td>Rotation</td><td>✓ Supported</td><td>Drag the corner rotate handles (top-right or bottom-left).</td></tr>
+      <tr><td>Morph / Opacity / Shape</td><td>✗ Not supported</td><td>Edit numeric values directly in the inspector.</td></tr>
+    </tbody>
+  </table>
+
+  <div class="tip"><strong>Tip:</strong> The Parallax view works the same way. Select a keyframe, switch to the Parallax view to see depth interactions, then drag — the result is written to the same driver keyframe. This is useful for dialling in positions that look correct under a specific camera pan or zoom.</div>
+  <div class="note">Visual KF editing only works with the <strong>driver-based</strong> keyframe system (Position, Scale, Rotation driver lanes in the timeline). It does not affect the legacy per-sprite keyframe list used in older projects.</div>
 
   <h3 id="animation-camera">Camera animation</h3>
   <p>The Timeline has a dedicated <strong>Camera</strong> section with four independently driven lanes. Camera animation is evaluated from the same global frame clock as sprite and renderer drivers, and is applied as a final viewport transform after all sprite, subdivision, and renderer animation.</p>

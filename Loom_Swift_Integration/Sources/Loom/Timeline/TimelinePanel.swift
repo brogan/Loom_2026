@@ -252,10 +252,12 @@ struct TimelinePanel: View {
         VStack(spacing: 0) {
             HStack(spacing: 3) {
                 Button { zoom = max(1, zoom / 1.5) } label: {
-                    Image(systemName: "minus.magnifyingglass").font(.system(size: 12))
+                    Image(systemName: "minus.magnifyingglass").font(.system(size: 16))
+                        .frame(width: 24, height: 24).contentShape(Rectangle())
                 }.buttonStyle(.plain).foregroundStyle(.secondary)
                 Button { zoom = min(64, zoom * 1.5) } label: {
-                    Image(systemName: "plus.magnifyingglass").font(.system(size: 12))
+                    Image(systemName: "plus.magnifyingglass").font(.system(size: 16))
+                        .frame(width: 24, height: 24).contentShape(Rectangle())
                 }.buttonStyle(.plain).foregroundStyle(.secondary)
                 Spacer()
                 if !activeSelectionItems.isEmpty {

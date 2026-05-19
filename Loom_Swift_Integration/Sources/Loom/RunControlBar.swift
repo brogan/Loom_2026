@@ -45,6 +45,7 @@ struct RunControlBar: View {
                     Image(systemName: controller.loopPlayback ? "repeat" : "repeat.1")
                         .font(.system(size: 13))
                         .frame(width: 28, height: 28)
+                        .contentShape(Rectangle())
                         .foregroundStyle(controller.loopPlayback ? Color.accentColor : Color.secondary)
                 }
                 .buttonStyle(.plain)
@@ -194,6 +195,7 @@ struct RunControlBar: View {
             Image(systemName: systemImage)
                 .font(.system(size: 14))
                 .frame(width: 32, height: 32)
+                .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .help(help)
@@ -205,6 +207,7 @@ struct RunControlBar: View {
             Image(systemName: systemImage)
                 .font(.system(size: 14))
                 .frame(width: 28, height: 28)
+                .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .help(help)

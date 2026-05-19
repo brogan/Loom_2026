@@ -178,6 +178,7 @@ struct SpriteWireframeView: View {
         .padding(.horizontal, 8)
         .padding(.vertical, 5)
         .background(Color(white: 0.11))
+        .colorScheme(.dark)
     }
 
     private var zoomControls: some View {
@@ -620,21 +621,34 @@ struct SpriteWireframeView: View {
             return d
         }
 
-        // Timeline driver KF mode: show sprite at the KF's target transform
+        // Timeline driver KF mode: evaluate ALL enabled driver lanes at the selected KF's
+        // frame so position, scale, and rotation are seen together as a single consistent pose.
         if let tkf = activeTimelineKF, let drivers = sprite.animation.drivers {
-            var d = sprite
+            let targetFrame: Int
             switch tkf.lane {
-            case .position:
-                let v = drivers.position.keyframes[tkf.keyframeIdx].value
+            case .position: targetFrame = drivers.position.keyframes[tkf.keyframeIdx].frame
+            case .scale:    targetFrame = drivers.scale.keyframes[tkf.keyframeIdx].frame
+            case .rotation: targetFrame = drivers.rotation.keyframes[tkf.keyframeIdx].frame
+            default:        return sprite
+            }
+            let elapsed = Double(targetFrame)
+            let fps = controller.projectConfig?.globalConfig.targetFPS ?? 30.0
+            var d = sprite
+            if drivers.position.enabled {
+                let v = DriverEvaluator.evaluate(drivers.position, globalElapsed: elapsed,
+                                                 targetFPS: fps, spriteIndex: tkf.spriteIdx)
                 d.position.x += v.x
                 d.position.y += v.y
-            case .scale:
-                let v = drivers.scale.keyframes[tkf.keyframeIdx].value
+            }
+            if drivers.scale.enabled {
+                let v = DriverEvaluator.evaluate(drivers.scale, globalElapsed: elapsed,
+                                                 targetFPS: fps, spriteIndex: tkf.spriteIdx)
                 d.scale.x *= v.x
                 d.scale.y *= v.y
-            case .rotation:
-                d.rotation += drivers.rotation.keyframes[tkf.keyframeIdx].value
-            default: break
+            }
+            if drivers.rotation.enabled {
+                d.rotation += DriverEvaluator.evaluate(drivers.rotation, globalElapsed: elapsed,
+                                                       targetFPS: fps, spriteIndex: tkf.spriteIdx)
             }
             return d
         }

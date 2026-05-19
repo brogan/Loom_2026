@@ -9,11 +9,14 @@ import Foundation
 public struct TransformDrivers: Codable, Equatable, Sendable {
 
     /// Position offset (world-space units — same convention as `SpriteDef.position`).
-    public var position: VectorDriver = .zero
+    /// Uses loopMode .once so keyframe motion reaches its end value and stays there.
+    public var position: VectorDriver = VectorDriver(mode: .constant, base: .zero,                    loopMode: .once)
     /// Scale multiplier on top of `SpriteDef.scale`.  Identity = (1, 1).
-    public var scale:    VectorDriver = .identity
+    /// Uses loopMode .once so keyframe scaling reaches its end value and stays there.
+    public var scale:    VectorDriver = VectorDriver(mode: .constant, base: Vector2D(x: 1, y: 1),    loopMode: .once)
     /// Rotation in degrees, added to `SpriteDef.rotation`.
-    public var rotation: DoubleDriver = .zero
+    /// Uses loopMode .once so keyframe rotation reaches its end value and stays there.
+    public var rotation: DoubleDriver = DoubleDriver(mode: .constant, base: 0,                        loopMode: .once)
     /// Morph blend amount (same encoding as legacy `morphAmount` — integer part
     /// selects morph target index (1-based), fractional part blends toward next).
     public var morph:    DoubleDriver = .zero
@@ -26,9 +29,9 @@ public struct TransformDrivers: Codable, Equatable, Sendable {
     public var shape:    DoubleDriver = DoubleDriver(mode: .constant, base: 0, loopMode: .once)
 
     public init(
-        position: VectorDriver = .zero,
-        scale:    VectorDriver = .identity,
-        rotation: DoubleDriver = .zero,
+        position: VectorDriver = VectorDriver(mode: .constant, base: .zero,                 loopMode: .once),
+        scale:    VectorDriver = VectorDriver(mode: .constant, base: Vector2D(x: 1, y: 1), loopMode: .once),
+        rotation: DoubleDriver = DoubleDriver(mode: .constant, base: 0,                    loopMode: .once),
         morph:    DoubleDriver = .zero,
         opacity:  DoubleDriver = DoubleDriver(mode: .constant, base: 1, loopMode: .once),
         shape:    DoubleDriver = DoubleDriver(mode: .constant, base: 0, loopMode: .once)
@@ -48,9 +51,9 @@ public struct TransformDrivers: Codable, Equatable, Sendable {
     // any given field was added continue to load with safe defaults.
     public init(from decoder: Decoder) throws {
         let c        = try decoder.container(keyedBy: CodingKeys.self)
-        position     = try c.decodeIfPresent(VectorDriver.self, forKey: .position) ?? .zero
-        scale        = try c.decodeIfPresent(VectorDriver.self, forKey: .scale)    ?? .identity
-        rotation     = try c.decodeIfPresent(DoubleDriver.self, forKey: .rotation) ?? .zero
+        position     = try c.decodeIfPresent(VectorDriver.self, forKey: .position) ?? VectorDriver(mode: .constant, base: .zero,                 loopMode: .once)
+        scale        = try c.decodeIfPresent(VectorDriver.self, forKey: .scale)    ?? VectorDriver(mode: .constant, base: Vector2D(x: 1, y: 1), loopMode: .once)
+        rotation     = try c.decodeIfPresent(DoubleDriver.self, forKey: .rotation) ?? DoubleDriver(mode: .constant, base: 0,                    loopMode: .once)
         morph        = try c.decodeIfPresent(DoubleDriver.self, forKey: .morph)    ?? .zero
         opacity      = try c.decodeIfPresent(DoubleDriver.self, forKey: .opacity)  ?? DoubleDriver(mode: .constant, base: 1, loopMode: .once)
         shape        = try c.decodeIfPresent(DoubleDriver.self, forKey: .shape)    ?? DoubleDriver(mode: .constant, base: 0, loopMode: .once)

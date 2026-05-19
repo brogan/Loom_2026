@@ -138,6 +138,7 @@ struct ContentView: View {
                         controller.selectedTab == tab ? Color.primary : Color.secondary
                     )
                     .clipShape(RoundedRectangle(cornerRadius: 4))
+                    .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
                 .modifier(LoomHoverHelp(tab.label))
@@ -238,6 +239,7 @@ struct ContentView: View {
                     spriteViewButton(.preview,   label: "Preview",  icon: "play.rectangle")
                 }
                 .padding(8)
+                .colorScheme(.dark)
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         case .subdivision:
@@ -263,6 +265,7 @@ struct ContentView: View {
                 .help(subdivisionPreviewMode ? "Switch to wireframe editor" : "Switch to live preview")
                 .modifier(LoomHoverHelp(subdivisionPreviewMode ? "Switch to wireframe editor" : "Switch to live preview"))
                 .padding(8)
+                .colorScheme(.dark)
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         default:
@@ -360,6 +363,7 @@ struct ContentView: View {
         .frame(maxWidth: 380)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Color.black)
+        .colorScheme(.dark)
     }
 
     private var recentProjectsList: some View {
