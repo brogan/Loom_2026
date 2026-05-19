@@ -2984,6 +2984,50 @@ final class AppController: ObservableObject, @unchecked Sendable {
         postStatus("Duplicated \(polygonCopies.count + curveCopies.count + pointCopies.count) item(s)")
     }
 
+    func duplicateSelectedGeometryToNewLayer(named proposedName: String) {
+        guard var document = geometryEditorDocument,
+              let layerID = geometryEditorSelection.layerID,
+              let layerIndex = document.layers.firstIndex(where: { $0.id == layerID }),
+              canDuplicateSelectedGeometry
+        else {
+            postStatus("Duplicate to layer: no selectable geometry")
+            return
+        }
+
+        let selectedPolygons       = geometryEditorSelection.polygonIDs
+        let selectedCurves         = geometryEditorSelection.openCurveIDs
+        let selectedStandalonePoints = geometryEditorSelection.pointIDs
+
+        let polygonCopies = document.layers[layerIndex].polygons
+            .filter { selectedPolygons.contains($0.id) }
+            .map { $0.duplicated(name: $0.name) }
+        let curveCopies = document.layers[layerIndex].openCurves
+            .filter { selectedCurves.contains($0.id) }
+            .map { $0.duplicated(name: $0.name) }
+        let pointCopies = document.layers[layerIndex].points
+            .filter { selectedStandalonePoints.contains($0.id) }
+            .map { $0.duplicated(name: $0.name) }
+
+        guard !polygonCopies.isEmpty || !curveCopies.isEmpty || !pointCopies.isEmpty else {
+            postStatus("Duplicate to layer: selected geometry not found")
+            return
+        }
+
+        let layerName = proposedName.trimmingCharacters(in: .whitespacesAndNewlines)
+        let finalName = layerName.isEmpty ? "Layer \(document.layers.count + 1)" : layerName
+        let newLayer  = EditableGeometryLayer(name: finalName, polygons: polygonCopies,
+                                              openCurves: curveCopies, points: pointCopies)
+
+        recordGeometryEditorUndoSnapshot()
+        document.layers.insert(newLayer, at: layerIndex + 1)
+        document.activeLayerID = layerID
+        geometryEditorDocument = document
+        syncGeometryEditorLayers(from: document.layers)
+        // Stay on original layer with original selection unchanged
+        selectedGeometryEditorLayerID = layerID
+        postStatus("Duplicated to new layer \"\(finalName)\"")
+    }
+
     func cutSelectedGeometry() {
         guard var document = geometryEditorDocument,
               let layerID = geometryEditorSelection.layerID,

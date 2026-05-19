@@ -474,6 +474,8 @@ private struct GeometryEditorShellInspector: View {
     @State private var viewCollapsed = false
     @State private var parametricCollapsed = false
     @State private var scaleAxis = "XY"
+    @State private var showingDuplicateToLayerAlert = false
+    @State private var duplicateLayerName = ""
     @State private var scaleSliderValue = 0.0
     @State private var rotateSliderValue = 0.0
     @State private var transformPivot = GeometryTransformPivot.commonCentre
@@ -726,10 +728,16 @@ private struct GeometryEditorShellInspector: View {
 
             InspectorSection("Multiply", isCollapsed: $multiplyCollapsed) {
                 iconRow {
-                    iconButton(help: "Duplicate", disabled: !controller.canDuplicateSelectedGeometry) {
-                        Image(systemName: "plus.square.on.square").font(.system(size: 15))
+                    iconButton(help: "Duplicate to same layer", disabled: !controller.canDuplicateSelectedGeometry) {
+                        Image(systemName: "plus.square.fill").font(.system(size: 15))
                     } action: {
                         controller.duplicateSelectedGeometry()
+                    }
+                    iconButton(help: "Duplicate to new layer", disabled: !controller.canDuplicateSelectedGeometry) {
+                        Image(systemName: "plus.square.on.square").font(.system(size: 15))
+                    } action: {
+                        duplicateLayerName = ""
+                        showingDuplicateToLayerAlert = true
                     }
                     iconButton(
                         help: "Displacement extrude: select edges, polygons, or open curves, then drag to push a copy sideways and stitch quads back to the originals. Choose another tool to leave extrude mode.",
@@ -1004,6 +1012,15 @@ private struct GeometryEditorShellInspector: View {
             .padding(.horizontal, 12)
             .padding(.vertical, 6)
             Divider()
+        }
+        .alert("New Layer Name", isPresented: $showingDuplicateToLayerAlert) {
+            TextField("Layer name", text: $duplicateLayerName)
+            Button("Duplicate") {
+                controller.duplicateSelectedGeometryToNewLayer(named: duplicateLayerName)
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("Selected geometry will be copied to a new layer at its current position.")
         }
     }
 
