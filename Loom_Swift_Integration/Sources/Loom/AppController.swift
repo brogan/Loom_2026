@@ -221,8 +221,10 @@ final class AppController: ObservableObject, @unchecked Sendable {
     var stampEditorWindow: NSWindow? = nil
     var stampEditorState: StampEditorState? = nil
 
-    private var sentinelTimer:      Timer?
-    private var pausedBySentinel:   Bool = false
+    private var sentinelTimer:         Timer?
+    private var pausedBySentinel:      Bool  = false
+    private var isAutoRelinking:       Bool  = false
+    private var lastAutoRelinkCheck:   Date  = .distantPast
     private var reloadDebounce:     DispatchWorkItem?
     private var configCommitItem:   DispatchWorkItem?
     private let configSaveQueue = DispatchQueue(label: "loom.config.save", qos: .utility)
@@ -5289,6 +5291,7 @@ final class AppController: ObservableObject, @unchecked Sendable {
         loadError          = nil
         animationCompleted = false
         loadEngine(from: projectDirectory)
+        tryAutoRelinkAllMissing()
         playbackState = .stopped
         addToRecent(projectDirectory)
         startSentinelTimer()
@@ -5301,6 +5304,7 @@ final class AppController: ObservableObject, @unchecked Sendable {
         loadError          = nil
         animationCompleted = false
         loadEngine(from: url)
+        tryAutoRelinkAllMissing()
         playbackState = .stopped
     }
 
@@ -5883,7 +5887,109 @@ final class AppController: ObservableObject, @unchecked Sendable {
         return base.appendingPathComponent(dir).appendingPathComponent(filename)
     }
 
-    func relinkGeometryFile(name: String, folder: String, toURL chosenURL: URL) {
+    // MARK: - Geometry auto-relink
+
+    /// True if any registered geometry file is missing on disk.
+    func hasMissingGeometryFiles() -> Bool {
+        guard let cfg = projectConfig, let base = projectURL else { return false }
+        func gone(_ folder: String, _ filename: String) -> Bool {
+            guard !filename.isEmpty else { return false }
+            let dir = (folder == "polygonSet" || folder.isEmpty) ? "polygonSets" : folder
+            return !FileManager.default.fileExists(atPath: base.appendingPathComponent(dir).appendingPathComponent(filename).path)
+        }
+        return cfg.polygonConfig.library.polygonSets.contains { $0.regularParams == nil && gone($0.folder, $0.filename) }
+            || cfg.curveConfig.library.curveSets.contains  { gone($0.folder, $0.filename) }
+            || cfg.pointConfig.library.pointSets.contains  { gone($0.folder, $0.filename) }
+    }
+
+    /// Returns unregistered XML/JSON files in the same directory as the missing file,
+    /// ranked by name similarity to the missing filename.
+    func candidateRelinkFiles(for name: String, folder: String) -> [URL] {
+        guard let base = projectURL, let cfg = projectConfig else { return [] }
+        let resolvedFolder = (folder == "polygonSet" || folder.isEmpty) ? "polygonSets" : folder
+
+        let missingFilename: String
+        switch resolvedFolder {
+        case "polygonSets":
+            missingFilename = cfg.polygonConfig.library.polygonSets.first(where: { $0.name == name })?.filename ?? ""
+        case "curveSets":
+            missingFilename = cfg.curveConfig.library.curveSets.first(where: { $0.name == name })?.filename ?? ""
+        case "pointSets":
+            missingFilename = cfg.pointConfig.library.pointSets.first(where: { $0.name == name })?.filename ?? ""
+        default:
+            missingFilename = ""
+        }
+        guard !missingFilename.isEmpty else { return [] }
+
+        var registered = Set<String>()
+        registered.formUnion(cfg.polygonConfig.library.polygonSets.map { $0.filename })
+        registered.formUnion(cfg.curveConfig.library.curveSets.map { $0.filename })
+        registered.formUnion(cfg.pointConfig.library.pointSets.map { $0.filename })
+        registered.remove(missingFilename)
+
+        let dirURL    = base.appendingPathComponent(resolvedFolder)
+        let allFiles  = (try? FileManager.default.contentsOfDirectory(at: dirURL, includingPropertiesForKeys: nil)) ?? []
+        let candidates = allFiles.filter {
+            let ext = $0.pathExtension.lowercased()
+            return (ext == "xml" || ext == "json") && !registered.contains($0.lastPathComponent)
+        }
+
+        let missingStem = URL(fileURLWithPath: missingFilename).deletingPathExtension().lastPathComponent.lowercased()
+        return candidates.sorted { a, b in
+            relinkSimilarity(missingStem, a.deletingPathExtension().lastPathComponent.lowercased()) >
+            relinkSimilarity(missingStem, b.deletingPathExtension().lastPathComponent.lowercased())
+        }
+    }
+
+    private func relinkSimilarity(_ a: String, _ b: String) -> Int {
+        if a == b                          { return 1000 }
+        if a.contains(b) || b.contains(a) { return  500 }
+        let sep   = CharacterSet(charactersIn: " _-")
+        let aWords = Set(a.components(separatedBy: sep).filter { !$0.isEmpty })
+        let bWords = Set(b.components(separatedBy: sep).filter { !$0.isEmpty })
+        let shared = aWords.intersection(bWords).count
+        if shared > 0                      { return  100 + shared * 10 }
+        return Set(a).intersection(Set(b)).count
+    }
+
+    /// For each missing geometry file with exactly one candidate in its directory,
+    /// relinks it automatically and triggers one engine reload.
+    /// Safe to call repeatedly — exits immediately when nothing is missing.
+    func tryAutoRelinkAllMissing() {
+        guard !isAutoRelinking, hasMissingGeometryFiles() else { return }
+        guard let cfg = projectConfig, let base = projectURL else { return }
+        isAutoRelinking = true
+        defer { isAutoRelinking = false }
+
+        var count = 0
+
+        func attempt(name: String, folder: String, filename: String) {
+            let resolvedFolder = (folder == "polygonSet" || folder.isEmpty) ? "polygonSets" : folder
+            let url = base.appendingPathComponent(resolvedFolder).appendingPathComponent(filename)
+            guard !filename.isEmpty, !FileManager.default.fileExists(atPath: url.path) else { return }
+            let candidates = candidateRelinkFiles(for: name, folder: resolvedFolder)
+            guard candidates.count == 1 else { return }
+            relinkGeometryFile(name: name, folder: resolvedFolder, toURL: candidates[0], reload: false)
+            count += 1
+        }
+
+        for def in cfg.polygonConfig.library.polygonSets where def.regularParams == nil {
+            attempt(name: def.name, folder: def.folder, filename: def.filename)
+        }
+        for def in cfg.curveConfig.library.curveSets {
+            attempt(name: def.name, folder: def.folder, filename: def.filename)
+        }
+        for def in cfg.pointConfig.library.pointSets {
+            attempt(name: def.name, folder: def.folder, filename: def.filename)
+        }
+
+        if count > 0 {
+            appStatusMessage = "Auto-relinked \(count) missing geometry file\(count == 1 ? "" : "s")"
+            reloadEngine()
+        }
+    }
+
+    func relinkGeometryFile(name: String, folder: String, toURL chosenURL: URL, reload: Bool = true) {
         guard let base = projectURL else { return }
         let dir = (folder == "polygonSet" || folder.isEmpty) ? "polygonSets" : folder
         let targetDir   = base.appendingPathComponent(dir, isDirectory: true)
@@ -5910,7 +6016,7 @@ final class AppController: ObservableObject, @unchecked Sendable {
             default: break
             }
         }
-        reloadEngine()
+        if reload { reloadEngine() }
     }
 
     private func clearSelections() {
@@ -5978,6 +6084,12 @@ final class AppController: ObservableObject, @unchecked Sendable {
     private func checkSentinelFiles() {
         guard let dir = projectURL else { return }
         let fm = FileManager.default
+
+        // Check for newly broken geometry references every ~3 s (e.g. file renamed in Finder).
+        if Date().timeIntervalSince(lastAutoRelinkCheck) > 3.0 {
+            lastAutoRelinkCheck = Date()
+            tryAutoRelinkAllMissing()
+        }
 
         let reloadURL = dir.appendingPathComponent(".reload")
         if fm.fileExists(atPath: reloadURL.path) {

@@ -1644,9 +1644,14 @@ private struct EditableGeometryCanvas: View {
             project: project
         )
 
-        for point in polygon.points where point.kind == .anchor || controller.geometryEditorShowsControlPoints {
-            drawPoint(point, isEditable: isEditable, ctx: ctx, at: project(point.position))
-        }
+        drawPointsBatched(
+            points: polygon.points,
+            isEditable: isEditable,
+            showControls: controller.geometryEditorShowsControlPoints,
+            selectionIDs: controller.geometryEditorSelection.pointIDs,
+            ctx: ctx,
+            project: project
+        )
     }
 
     private func draw(
@@ -1724,9 +1729,14 @@ private struct EditableGeometryCanvas: View {
             project: project
         )
 
-        for point in curve.points where point.kind == .anchor || controller.geometryEditorShowsControlPoints {
-            drawPoint(point, isEditable: isEditable, ctx: ctx, at: project(point.position))
-        }
+        drawPointsBatched(
+            points: curve.points,
+            isEditable: isEditable,
+            showControls: controller.geometryEditorShowsControlPoints,
+            selectionIDs: controller.geometryEditorSelection.pointIDs,
+            ctx: ctx,
+            project: project
+        )
     }
 
     private func drawPressureSegments(
@@ -1819,6 +1829,65 @@ private struct EditableGeometryCanvas: View {
         guard !pressures.isEmpty else { return 1.0 }
         let clamped = min(max(index, 0), pressures.count - 1)
         return max(0.05, min(1.0, pressures[clamped]))
+    }
+
+    // Batches all point circles for one polygon or curve into at most 4 path fills/strokes,
+    // instead of one CGPath allocation + draw call per point (which is O(13 k) for the Farm fence layer).
+    private func drawPointsBatched(
+        points: [EditableCubicPoint],
+        isEditable: Bool,
+        showControls: Bool,
+        selectionIDs: Set<EditableGeometryID>,
+        ctx: GraphicsContext,
+        project: (Vector2D) -> CGPoint
+    ) {
+        guard isEditable else {
+            // Non-editable layers: single grey pass, no per-point weld/selection checks.
+            var grey = Path()
+            for point in points where point.kind == .anchor || showControls {
+                let loc = project(point.position)
+                let r: CGFloat = point.kind == .anchor ? 3.6 : 2.6
+                grey.addEllipse(in: CGRect(x: loc.x - r, y: loc.y - r, width: r * 2, height: r * 2))
+            }
+            if !grey.isEmpty {
+                ctx.fill(grey, with: .color(Color.gray.opacity(0.75)))
+            }
+            return
+        }
+
+        var yellowPath  = Path()
+        var weldedPath2 = Path()
+        var bluePath    = Path()
+        var selOutline  = Path()
+
+        for point in points where point.kind == .anchor || showControls {
+            let loc = project(point.position)
+            let r: CGFloat = point.kind == .anchor ? 3.6 : 2.6
+            let rect = CGRect(x: loc.x - r, y: loc.y - r, width: r * 2, height: r * 2)
+
+            if point.kind == .anchor {
+                if isWelded(point.id) {
+                    weldedPath2.addEllipse(in: rect)
+                } else {
+                    yellowPath.addEllipse(in: rect)
+                }
+            } else {
+                bluePath.addEllipse(in: rect)
+            }
+
+            if selectionIDs.contains(point.id) {
+                let ro = CGRect(
+                    x: loc.x - r - 3, y: loc.y - r - 3,
+                    width: (r + 3) * 2, height: (r + 3) * 2
+                )
+                selOutline.addEllipse(in: ro)
+            }
+        }
+
+        if !yellowPath.isEmpty  { ctx.fill(yellowPath,  with: .color(Color.yellow)) }
+        if !weldedPath2.isEmpty { ctx.fill(weldedPath2, with: .color(weldedAnchorColor)) }
+        if !bluePath.isEmpty    { ctx.fill(bluePath,    with: .color(Color(red: 0.42, green: 0.62, blue: 1.0))) }
+        if !selOutline.isEmpty  { ctx.stroke(selOutline, with: .color(Color.white), lineWidth: 1.2) }
     }
 
     private func drawPoint(_ point: EditableCubicPoint, isEditable: Bool, ctx: GraphicsContext, at location: CGPoint) {
@@ -2427,6 +2496,8 @@ private struct EditableGeometryCanvas: View {
 
         for layer in document.layers.reversed() where layerCanEdit(layer) {
             for polygon in layer.polygons.reversed() where polygon.isVisible {
+                // Fast AABB reject before building the full bezier path.
+                guard screenBounds(for: polygon, scale: scale, origin: origin).contains(location) else { continue }
                 let polygonPath = path(for: polygon, scale: scale, origin: origin)
                 if polygonPath.contains(location) {
                     return GeometryPolygonHit(layerID: layer.id, polygonID: polygon.id)

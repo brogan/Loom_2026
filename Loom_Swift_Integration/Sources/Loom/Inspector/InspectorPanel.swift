@@ -399,6 +399,7 @@ private struct GeometryInspector: View {
 
     @ViewBuilder
     private func relinkRow(name: String, folder: String) -> some View {
+        let candidates = controller.candidateRelinkFiles(for: name, folder: folder)
         HStack(spacing: 6) {
             Image(systemName: "exclamationmark.triangle.fill")
                 .font(.system(size: 10))
@@ -407,20 +408,31 @@ private struct GeometryInspector: View {
                 .font(.system(size: 11))
                 .foregroundStyle(.orange)
             Spacer()
-            Button("Re-link…") {
-                let panel = NSOpenPanel()
-                panel.title          = "Locate Missing File"
-                panel.message        = "Choose the replacement geometry file for \"\(name)\""
-                panel.allowsMultipleSelection = false
-                panel.canChooseDirectories    = false
-                panel.allowedContentTypes     = [.json, .xml]
-                panel.begin { response in
-                    guard response == .OK, let url = panel.url else { return }
-                    controller.relinkGeometryFile(name: name, folder: folder, toURL: url)
+            Menu("Re-link…") {
+                if !candidates.isEmpty {
+                    ForEach(candidates.prefix(5), id: \.self) { url in
+                        Button(url.lastPathComponent) {
+                            controller.relinkGeometryFile(name: name, folder: folder, toURL: url)
+                        }
+                    }
+                    Divider()
+                }
+                Button("Browse…") {
+                    let panel = NSOpenPanel()
+                    panel.title                  = "Locate Missing File"
+                    panel.message                = "Choose the replacement geometry file for \"\(name)\""
+                    panel.allowsMultipleSelection = false
+                    panel.canChooseDirectories    = false
+                    panel.allowedContentTypes     = [.json, .xml]
+                    panel.begin { response in
+                        guard response == .OK, let url = panel.url else { return }
+                        controller.relinkGeometryFile(name: name, folder: folder, toURL: url)
+                    }
                 }
             }
             .font(.system(size: 11))
-            .buttonStyle(.plain)
+            .menuStyle(.borderlessButton)
+            .fixedSize()
             .foregroundStyle(Color.accentColor)
         }
         .padding(.horizontal, 12)
