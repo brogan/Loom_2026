@@ -67,6 +67,17 @@ struct SpriteWireframeView: View {
         .onChange(of: controller.selectedSpriteID) { _, _ in
             selectedKeyframeIndex = 0
         }
+        .onChange(of: controller.selectedTimelineKF) { _, kf in
+            guard let kf,
+                  kf.lane == .position || kf.lane == .scale || kf.lane == .rotation,
+                  let cfg = controller.projectConfig,
+                  kf.setIdx < cfg.spriteConfig.library.spriteSets.count,
+                  kf.spriteIdx < cfg.spriteConfig.library.spriteSets[kf.setIdx].sprites.count
+            else { return }
+            let name = cfg.spriteConfig.library.spriteSets[kf.setIdx].sprites[kf.spriteIdx].name
+            controller.selectedSpriteID = name
+            selectedKeyframeIndex = 0
+        }
     }
 
     // MARK: - Control strip
@@ -142,6 +153,16 @@ struct SpriteWireframeView: View {
                 .foregroundStyle(isNeutral ? controlTextDisabled : controlTextPrimary)
                 .disabled(isNeutral)
                 .help("Reset camera to neutral")
+            }
+
+            if let tkf = activeTimelineKF {
+                Text("Timeline KF · \(tkf.lane.label)")
+                    .font(.system(size: 11))
+                    .foregroundStyle(Color(red: 1.0, green: 0.85, blue: 0.3))
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 2)
+                    .background(Color(red: 0.45, green: 0.3, blue: 0.0).opacity(0.7))
+                    .clipShape(RoundedRectangle(cornerRadius: 3))
             }
 
             if !transformText.isEmpty {
@@ -562,7 +583,30 @@ struct SpriteWireframeView: View {
         )
     }
 
-    // MARK: - Resolved def (live drag > KF offset > base params)
+    // MARK: - Active timeline KF (driver-based)
+
+    /// Non-nil when the timeline has a position/scale/rotation KF selected for the current sprite.
+    private var activeTimelineKF: TimelineKFSelection? {
+        guard let kf = controller.selectedTimelineKF,
+              kf.lane == .position || kf.lane == .scale || kf.lane == .rotation,
+              let cfg = controller.projectConfig,
+              kf.setIdx < cfg.spriteConfig.library.spriteSets.count,
+              kf.spriteIdx < cfg.spriteConfig.library.spriteSets[kf.setIdx].sprites.count
+        else { return nil }
+        let sprite = cfg.spriteConfig.library.spriteSets[kf.setIdx].sprites[kf.spriteIdx]
+        guard sprite.name == controller.selectedSpriteID,
+              let drivers = sprite.animation.drivers
+        else { return nil }
+        switch kf.lane {
+        case .position: guard kf.keyframeIdx < drivers.position.keyframes.count else { return nil }
+        case .scale:    guard kf.keyframeIdx < drivers.scale.keyframes.count    else { return nil }
+        case .rotation: guard kf.keyframeIdx < drivers.rotation.keyframes.count else { return nil }
+        default: return nil
+        }
+        return kf
+    }
+
+    // MARK: - Resolved def (live drag > timeline driver KF > legacy KF offset > base params)
 
     private func resolvedDef(_ sprite: SpriteDef) -> SpriteDef {
         guard sprite.name == controller.selectedSpriteID else { return sprite }
@@ -576,7 +620,26 @@ struct SpriteWireframeView: View {
             return d
         }
 
-        // Apply selected keyframe offset (KF values are absolute offsets from base)
+        // Timeline driver KF mode: show sprite at the KF's target transform
+        if let tkf = activeTimelineKF, let drivers = sprite.animation.drivers {
+            var d = sprite
+            switch tkf.lane {
+            case .position:
+                let v = drivers.position.keyframes[tkf.keyframeIdx].value
+                d.position.x += v.x
+                d.position.y += v.y
+            case .scale:
+                let v = drivers.scale.keyframes[tkf.keyframeIdx].value
+                d.scale.x *= v.x
+                d.scale.y *= v.y
+            case .rotation:
+                d.rotation += drivers.rotation.keyframes[tkf.keyframeIdx].value
+            default: break
+            }
+            return d
+        }
+
+        // Apply selected legacy keyframe offset (KF values are absolute offsets from base)
         if selectedKeyframeIndex > 0 && keyframeEnabled {
             let kfs = sprite.animation.keyframes.sorted { $0.drawCycle < $1.drawCycle }
             let kfIdx = selectedKeyframeIndex - 1
@@ -772,7 +835,37 @@ struct SpriteWireframeView: View {
               let (si, pi) = spriteLocation(named: spriteID, in: cfg)
         else { return }
 
-        // Editing a keyframe: write back offsets relative to the base sprite params
+        // Timeline driver KF mode: write the drag result back to the selected driver keyframe.
+        if let tkf = activeTimelineKF {
+            controller.updateProjectConfig { config in
+                let base = config.spriteConfig.library.spriteSets[si].sprites[pi]
+                withDrivers(in: &config, si: si, pi: pi) { drivers in
+                    switch tkf.lane {
+                    case .position:
+                        guard tkf.keyframeIdx < drivers.position.keyframes.count else { return }
+                        drivers.position.keyframes[tkf.keyframeIdx].value = Vector2D(
+                            x: live.posX - base.position.x,
+                            y: live.posY - base.position.y
+                        )
+                    case .scale:
+                        guard tkf.keyframeIdx < drivers.scale.keyframes.count else { return }
+                        let bsx = base.scale.x != 0 ? base.scale.x : 1.0
+                        let bsy = base.scale.y != 0 ? base.scale.y : 1.0
+                        drivers.scale.keyframes[tkf.keyframeIdx].value = Vector2D(
+                            x: live.scaleX / bsx,
+                            y: live.scaleY / bsy
+                        )
+                    case .rotation:
+                        guard tkf.keyframeIdx < drivers.rotation.keyframes.count else { return }
+                        drivers.rotation.keyframes[tkf.keyframeIdx].value = live.rotation - base.rotation
+                    default: break
+                    }
+                }
+            }
+            return
+        }
+
+        // Editing a legacy keyframe: write back offsets relative to the base sprite params
         if editKeyframe && selectedKeyframeIndex > 0 && keyframeEnabled {
             let sprite = cfg.spriteConfig.library.spriteSets[si].sprites[pi]
             let kfs = sprite.animation.keyframes.sorted { $0.drawCycle < $1.drawCycle }
