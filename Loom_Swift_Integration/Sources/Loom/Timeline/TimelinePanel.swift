@@ -1193,6 +1193,10 @@ struct TimelinePanel: View {
             selectedRendererKF = nil
             selectedCameraKFHit = CameraKFSelection(lane: lane, keyframeIdx: keyframeIdx)
         }
+        // Seek the playhead to the earliest frame in the selection.
+        if let earliest = selectedItems.map({ itemFrame($0) }).min() {
+            seekFrame = max(0, min(controller.maxScrubFrames, earliest))
+        }
     }
 
     private func selectionSort(_ lhs: TimelineSelectionItem, _ rhs: TimelineSelectionItem) -> Bool {
