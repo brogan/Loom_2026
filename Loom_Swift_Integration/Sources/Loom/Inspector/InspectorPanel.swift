@@ -2513,7 +2513,7 @@ private struct QuickSetupSection: View {
     }
     private var recommendedShapeSetName: String { "\(baseStem)_Shapes" }
     private var recommendedShapeName: String { "\(sourceNameStem)_Shape" }
-    private var recommendedSpriteSetName: String { "\(stem)_\(baseStem)" }
+    private var recommendedSpriteSetName: String { stem }
     private var recommendedSpriteName: String { baseStem }
     private var recommendedRendererSetName: String { "\(stem)_\(baseStem)" }
     private var recommendedRendererName: String { baseStem }

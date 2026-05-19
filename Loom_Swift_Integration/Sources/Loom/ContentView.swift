@@ -339,7 +339,6 @@ struct ContentView: View {
                 TextField("Project name", text: $newProjectName)
                     .textFieldStyle(.roundedBorder)
                     .frame(width: 240)
-                    .foregroundColor(.black)
 
                 HStack(spacing: 10) {
                     Button("New Project") {

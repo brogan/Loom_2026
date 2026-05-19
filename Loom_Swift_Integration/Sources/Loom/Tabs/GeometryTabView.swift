@@ -1516,11 +1516,12 @@ private struct EditableGeometryCanvas: View {
     }
 
     private func drawGrid(ctx: GraphicsContext, size: CGSize, project: (Vector2D) -> CGPoint) {
+        // Use min/max so the rect is always well-formed regardless of Y orientation.
+        let c1 = project(Vector2D(x: -0.52, y: -0.52))
+        let c2 = project(Vector2D(x:  0.52, y:  0.52))
         let border = Path(CGRect(
-            x: project(Vector2D(x: -0.52, y: -0.52)).x,
-            y: project(Vector2D(x: -0.52, y: -0.52)).y,
-            width: project(Vector2D(x: 0.52, y: 0.52)).x - project(Vector2D(x: -0.52, y: -0.52)).x,
-            height: project(Vector2D(x: 0.52, y: 0.52)).y - project(Vector2D(x: -0.52, y: -0.52)).y
+            x: min(c1.x, c2.x), y: min(c1.y, c2.y),
+            width: abs(c2.x - c1.x), height: abs(c2.y - c1.y)
         ))
         ctx.stroke(border, with: .color(Color.white.opacity(0.28)), lineWidth: 1)
 
@@ -2251,9 +2252,11 @@ private struct EditableGeometryCanvas: View {
     }
 
     private func project(_ point: Vector2D, scale: CGFloat, origin: CGPoint) -> CGPoint {
+        // Y-up: positive Y is toward the top of the canvas (smaller screen-Y).
+        // origin is the screen position of the top-left corner (world x=-0.52, y=+0.52).
         CGPoint(
             x: origin.x + CGFloat((point.x + 0.52) * 1000) * scale,
-            y: origin.y + CGFloat((point.y + 0.52) * 1000) * scale
+            y: origin.y + CGFloat((0.52 - point.y) * 1000) * scale
         )
     }
 
@@ -2261,9 +2264,14 @@ private struct EditableGeometryCanvas: View {
         let canvasSide = min(size.width, size.height)
         let scale = (canvasSide / 1040) * CGFloat(controller.geometryEditorViewZoom)
         let centre = controller.geometryEditorViewCentre
+        // origin = top-left corner of the canvas square in screen space.
+        // In Y-up, that corner is world (−0.52, +0.52).  The view centre maps to the
+        // screen midpoint, so: origin.y = screenMid − project_y_offset_for_centre
+        // project(centre.y) = origin.y + (0.52 − centre.y)*1000*scale = screenMid
+        // → origin.y = screenMid − (0.52 − centre.y)*1000*scale
         let origin = CGPoint(
-            x: size.width / 2 - CGFloat((centre.x + 0.52) * 1000) * scale,
-            y: size.height / 2 - CGFloat((centre.y + 0.52) * 1000) * scale
+            x: size.width  / 2 - CGFloat((centre.x + 0.52) * 1000) * scale,
+            y: size.height / 2 - CGFloat((0.52 - centre.y) * 1000) * scale
         )
         return (scale, origin)
     }
@@ -2277,8 +2285,8 @@ private struct EditableGeometryCanvas: View {
         let clampedX = min(max(point.x, 0), canvasSize)
         let clampedY = min(max(point.y, 0), canvasSize)
         return Vector2D(
-            x: Double((clampedX - origin.x) / (1000 * scale)) - 0.52,
-            y: Double((clampedY - origin.y) / (1000 * scale)) - 0.52
+            x:  Double((clampedX - origin.x) / (1000 * scale)) - 0.52,
+            y: -(Double((clampedY - origin.y) / (1000 * scale)) - 0.52)
         )
     }
 
