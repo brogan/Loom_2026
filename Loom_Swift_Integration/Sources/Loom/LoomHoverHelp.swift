@@ -8,15 +8,25 @@ struct LoomHoverHelp: ViewModifier {
         self.text = text
     }
 
+    @ViewBuilder
     func body(content: Content) -> some View {
-        content
-            .onHover { hovering in
-                if hovering {
-                    controller.hoverHelpText = text
-                } else if controller.hoverHelpText == text {
-                    controller.hoverHelpText = ""
+        if text.isEmpty {
+            content
+        } else {
+            content
+                .onHover { hovering in
+                    if hovering {
+                        controller.hoverHelpText = text
+                    } else if controller.hoverHelpText == text {
+                        controller.hoverHelpText = ""
+                    }
                 }
-            }
+        }
     }
 }
 
+extension View {
+    func loomHelp(_ text: String) -> some View {
+        modifier(LoomHoverHelp(text))
+    }
+}

@@ -3,6 +3,8 @@ import LoomEngine
 
 struct SpriteWireframeView: View {
 
+    var parallaxMode: Bool = false
+
     @EnvironmentObject private var controller: AppController
 
     // MARK: - Drag state
@@ -20,6 +22,9 @@ struct SpriteWireframeView: View {
     @State private var selectedKeyframeIndex: Int    = 0    // 0 = base params, 1..N = KF
     @State private var editKeyframe:          Bool   = true
     @State private var zoomLevel:             Double = 1.0  // 1.0 = 100 %
+    @State private var parallaxCameraX:       Double = 0.0  // position units (% of canvas half)
+    @State private var parallaxCameraY:       Double = 0.0
+    @State private var parallaxZoom:          Double = 1.0  // multiplier, same as camera zoom driver
 
     private static let zoomSteps: [Double] = [0.25, 0.5, 0.75, 1.0, 1.25, 1.5, 2.0]
 
@@ -113,6 +118,32 @@ struct SpriteWireframeView: View {
 
             zoomControls
 
+            if parallaxMode {
+                Divider().frame(height: 16)
+
+                cameraSlider("Pan X", value: $parallaxCameraX, range: -100...100,
+                             format: "%.0f")
+                cameraSlider("Pan Y", value: $parallaxCameraY, range: -100...100,
+                             format: "%.0f")
+                cameraSlider("Zoom",  value: $parallaxZoom,    range: 0.25...4.0,
+                             format: "%.2f×")
+
+                let isNeutral = abs(parallaxCameraX) < 0.5 &&
+                                abs(parallaxCameraY) < 0.5 &&
+                                abs(parallaxZoom - 1.0) < 0.01
+                Button {
+                    parallaxCameraX = 0; parallaxCameraY = 0; parallaxZoom = 1.0
+                } label: {
+                    Image(systemName: "scope")
+                        .font(.system(size: 11))
+                        .frame(width: 20)
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(isNeutral ? controlTextDisabled : controlTextPrimary)
+                .disabled(isNeutral)
+                .help("Reset camera to neutral")
+            }
+
             if !transformText.isEmpty {
                 Text(transformText)
                     .font(.system(size: 11, design: .monospaced))
@@ -179,6 +210,26 @@ struct SpriteWireframeView: View {
         .contentShape(Rectangle())
         .disabled(disabled)
         .help(tooltip)
+    }
+
+    private func cameraSlider(
+        _ label: String,
+        value: Binding<Double>,
+        range: ClosedRange<Double>,
+        format: String
+    ) -> some View {
+        HStack(spacing: 3) {
+            Text(label)
+                .font(.system(size: 10))
+                .foregroundStyle(controlTextSecondary)
+                .frame(width: 38, alignment: .trailing)
+            Slider(value: value, in: range)
+                .frame(width: 80)
+            Text(String(format: format, value.wrappedValue))
+                .font(.system(size: 10, design: .monospaced))
+                .foregroundStyle(controlTextPrimary)
+                .frame(width: 38, alignment: .leading)
+        }
     }
 
     // MARK: - Types
@@ -311,10 +362,15 @@ struct SpriteWireframeView: View {
         guard let cfg = controller.projectConfig else { return }
         let sprites     = cfg.spriteConfig.library.allSprites
         let instanceMap = makeInstanceMap()
+        let liveOffsets = computeLiveChildOffsets(sprites: sprites)
 
         for sprite in sprites {
             let isSelected = controller.selectedSpriteID == sprite.name
-            let eff        = resolvedDef(sprite)
+            var eff        = resolvedDef(sprite)
+            if let off = liveOffsets[sprite.name] {
+                eff.position.x += off.x
+                eff.position.y += off.y
+            }
 
             let strokeColor: Color = isSelected
                 ? Color(red: 0.31, green: 0.78, blue: 0.47)
@@ -335,7 +391,7 @@ struct SpriteWireframeView: View {
                 }
             } else {
                 // Placeholder cross for sprites with no engine instance
-                let centre = positionToScreen(eff.position, rect: rect)
+                let centre = parallaxAdjustedScreen(eff.position, depth: eff.depth, rect: rect)
                 drawPlaceholder(ctx: ctx, centre: centre, color: strokeColor)
                 if isSelected {
                     let pad: CGFloat = 12
@@ -347,6 +403,32 @@ struct SpriteWireframeView: View {
                     ])
                 }
             }
+        }
+    }
+
+    // Compute position deltas that children should apply during a live drag of their parent.
+    private func computeLiveChildOffsets(sprites: [SpriteDef]) -> [String: Vector2D] {
+        guard activeDragHandle != nil,
+              let draggedID = controller.selectedSpriteID,
+              let live = liveTransform,
+              let draggedSprite = sprites.first(where: { $0.name == draggedID })
+        else { return [:] }
+        let dx = live.posX - draggedSprite.position.x
+        let dy = live.posY - draggedSprite.position.y
+        guard dx != 0 || dy != 0 else { return [:] }
+        var offsets: [String: Vector2D] = [:]
+        collectChildOffsets(parentName: draggedID, dx: dx, dy: dy, sprites: sprites, offsets: &offsets)
+        return offsets
+    }
+
+    private func collectChildOffsets(parentName: String, dx: Double, dy: Double,
+                                     sprites: [SpriteDef], offsets: inout [String: Vector2D]) {
+        for sprite in sprites where sprite.parentName == parentName {
+            if sprite.inheritMask.position {
+                let cur = offsets[sprite.name] ?? .zero
+                offsets[sprite.name] = Vector2D(x: cur.x + dx, y: cur.y + dy)
+            }
+            collectChildOffsets(parentName: sprite.name, dx: dx, dy: dy, sprites: sprites, offsets: &offsets)
         }
     }
 
@@ -436,8 +518,34 @@ struct SpriteWireframeView: View {
 
     // MARK: - Coordinate transform (polygon point → screen)
 
+    /// Depth factor for a sprite: f = 1/(1 + depth×strength). Returns 1 outside parallax mode.
+    private func parallaxDepthFactor(for depth: Double) -> Double {
+        guard parallaxMode else { return 1.0 }
+        let strength = controller.projectConfig?.globalConfig.camera.perspectiveStrength ?? 0
+        guard strength > 0 else { return 1.0 }
+        return 1.0 / (1.0 + depth * strength)
+    }
+
+    /// Position → screen applying zoom, pan X/Y, and depth factor when in parallax mode.
+    /// Formula mirrors the engine: visual = (worldPos × zoom + pan) × f(depth).
+    private func parallaxAdjustedScreen(_ pos: Vector2D, depth: Double, rect: CGRect) -> CGPoint {
+        if parallaxMode {
+            let f = parallaxDepthFactor(for: depth)
+            let adjX = (pos.x * parallaxZoom + parallaxCameraX) * f
+            let adjY = (pos.y * parallaxZoom + parallaxCameraY) * f
+            return CGPoint(
+                x: rect.minX + (adjX / 100.0 + 1.0) / 2.0 * rect.width,
+                y: rect.minY + (1.0 - adjY / 100.0) / 2.0 * rect.height
+            )
+        }
+        return positionToScreen(pos, rect: rect)
+    }
+
     private func transformPoint(_ pt: Vector2D, def: SpriteDef, rect: CGRect) -> CGPoint {
-        let sx = def.scale.x * 2.0, sy = def.scale.y * 2.0
+        // In parallax mode, sprite size also scales with zoom × f so far sprites appear smaller.
+        let scaleBoost = parallaxMode ? parallaxZoom * parallaxDepthFactor(for: def.depth) : 1.0
+        let sx = def.scale.x * 2.0 * scaleBoost
+        let sy = def.scale.y * 2.0 * scaleBoost
         let rotRad = def.rotation * .pi / 180.0
         let cosR = cos(rotRad), sinR = sin(rotRad)
         var wx = pt.x * sx, wy = pt.y * sy
@@ -446,7 +554,7 @@ struct SpriteWireframeView: View {
             let ry = wx * sinR + wy * cosR
             wx = rx; wy = ry
         }
-        let centre = positionToScreen(def.position, rect: rect)
+        let centre = parallaxAdjustedScreen(def.position, depth: def.depth, rect: rect)
         let basis = geometryBasis(rect)
         return CGPoint(
             x: centre.x + CGFloat(wx) * basis,
@@ -530,7 +638,7 @@ struct SpriteWireframeView: View {
         // Fall back to placeholder sprites (no engine instance)
         for sprite in cfg.spriteConfig.library.allSprites.reversed() {
             guard instanceMap[sprite.name] == nil else { continue }
-            let centre = positionToScreen(sprite.position, rect: rect)
+            let centre = parallaxAdjustedScreen(sprite.position, depth: sprite.depth, rect: rect)
             let hitRect = CGRect(x: centre.x - 14, y: centre.y - 14, width: 28, height: 28)
             if hitRect.contains(location) {
                 controller.selectedSpriteID = sprite.name
@@ -604,7 +712,7 @@ struct SpriteWireframeView: View {
         let rect     = canvasRect(viewSize: viewSize)
         let startW   = screenToWorld(dragStartPos, in: rect)
         let currW    = screenToWorld(currentLoc,   in: rect)
-        let centreScreen = positionToScreen(startDef.position, rect: rect)
+        let centreScreen = parallaxAdjustedScreen(startDef.position, depth: startDef.depth, rect: rect)
         var live = LiveTransform(startDef)
 
         switch handle {
@@ -692,13 +800,26 @@ struct SpriteWireframeView: View {
             return
         }
 
-        // Default: write back to sprite base params
+        // Default: write back to sprite base params and propagate to children
+        let oldPosX = cfg.spriteConfig.library.spriteSets[si].sprites[pi].position.x
+        let oldPosY = cfg.spriteConfig.library.spriteSets[si].sprites[pi].position.y
+        let oldRot  = cfg.spriteConfig.library.spriteSets[si].sprites[pi].rotation
         controller.updateProjectConfig { config in
             config.spriteConfig.library.spriteSets[si].sprites[pi].position.x = live.posX
             config.spriteConfig.library.spriteSets[si].sprites[pi].position.y = live.posY
             config.spriteConfig.library.spriteSets[si].sprites[pi].scale.x    = live.scaleX
             config.spriteConfig.library.spriteSets[si].sprites[pi].scale.y    = live.scaleY
             config.spriteConfig.library.spriteSets[si].sprites[pi].rotation   = live.rotation
+            let dx = live.posX - oldPosX
+            let dy = live.posY - oldPosY
+            if dx != 0 || dy != 0 {
+                SpritesInspector.propagatePosition(dx: dx, dy: dy, from: spriteID, in: &config, setIdx: si)
+            }
+            let dRot = live.rotation - oldRot
+            if dRot != 0 {
+                SpritesInspector.propagateRotation(dRot: dRot, pivotX: live.posX, pivotY: live.posY,
+                                                   from: spriteID, in: &config, setIdx: si)
+            }
         }
     }
 }

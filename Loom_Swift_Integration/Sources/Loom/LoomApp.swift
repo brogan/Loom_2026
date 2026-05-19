@@ -16,19 +16,40 @@ struct LoomIntegrationApp: App {
         }
         .windowStyle(.titleBar)
         .windowToolbarStyle(.unifiedCompact)
-        .commands {
-            CommandGroup(replacing: .newItem) {
-                Button("New Project…") { controller.newProject() }
-                    .keyboardShortcut("n", modifiers: .command)
-                Button("Open Project…") { controller.presentOpenPanel() }
-                    .keyboardShortcut("o", modifiers: .command)
+        .commands { LoomCommands() }
+    }
+}
+
+struct LoomCommands: Commands {
+    @FocusedObject private var controller: AppController?
+
+    var body: some Commands {
+        CommandGroup(replacing: .newItem) {
+            Button("New Project…") { controller?.newProject() }
+                .keyboardShortcut("n", modifiers: .command)
+            Button("Open Project…") { controller?.presentOpenPanel() }
+                .keyboardShortcut("o", modifiers: .command)
+        }
+        CommandGroup(replacing: .saveItem) {
+            Button("Save") { controller?.saveNow() }
+                .keyboardShortcut("s", modifiers: .command)
+                .disabled(controller?.projectURL == nil)
+        }
+        CommandMenu("Playback") {
+            Button(controller?.playbackState == .paused ? "Resume" : "Pause") {
+                switch controller?.playbackState {
+                case .playing: controller?.pause()
+                case .paused:  controller?.play()
+                default: break
+                }
             }
-            CommandGroup(replacing: .saveItem) { }
-            CommandGroup(replacing: .help) {
-                Button("Loom Help") { HelpWindowController.shared.show() }
-                    .keyboardShortcut("?", modifiers: .command)
-                Button("Reveal Loom Log") { LoomLogger.revealInFinder() }
-            }
+            .keyboardShortcut(" ", modifiers: [])
+            .disabled(controller?.playbackState != .playing && controller?.playbackState != .paused)
+        }
+        CommandGroup(replacing: .help) {
+            Button("Loom Help") { HelpWindowController.shared.show() }
+                .keyboardShortcut("?", modifiers: .command)
+            Button("Reveal Loom Log") { LoomLogger.revealInFinder() }
         }
     }
 }

@@ -161,13 +161,16 @@ public enum BezierMath {
         let perA = dAUp_Mb > 1e-12 ? dA_ACh / dAUp_Mb : 0
         let perB = dBUp_Mb > 1e-12 ? dB_BCh / dBUp_Mb : 0
 
-        // Inner control points of the two sub-segments
-        let MbAC = Vector2D.lerp(Mb, A_Up, t: perA)  // left sub-seg cp2
-        let MbBC = Vector2D.lerp(Mb, B_Up, t: perB)  // right sub-seg cp1
+        // Inner control points of the two sub-segments, referenced from M
+        // (the geometric anchor midpoint) so that the split point is always
+        // at the linear-interpolated edge midpoint regardless of how the
+        // original control points are parameterised.
+        let MAC = Vector2D.lerp(M, A_Up, t: perA)
+        let MBC = Vector2D.lerp(M, B_Up, t: perB)
 
         return (
-            left:  [A, AC_h, MbAC, Mb],
-            right: [Mb, MbBC, BC_h, B]
+            left:  [A, AC_h, MAC, M],
+            right: [M, MBC, BC_h, B]
         )
     }
 

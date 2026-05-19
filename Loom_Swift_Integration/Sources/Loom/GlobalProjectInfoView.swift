@@ -5,10 +5,10 @@ import LoomEngine
 struct GlobalProjectInfoView: View {
     @EnvironmentObject private var controller: AppController
 
-    @State private var geometryExpanded = true
-    @State private var subdivisionExpanded = true
-    @State private var spritesExpanded = true
-    @State private var renderersExpanded = true
+    @State private var geometryExpanded = false
+    @State private var subdivisionExpanded = false
+    @State private var spritesExpanded = false
+    @State private var renderersExpanded = false
 
     var body: some View {
         ScrollView {
@@ -39,6 +39,12 @@ struct GlobalProjectInfoView: View {
             .padding(.vertical, 8)
         }
         .background(Color(nsColor: .controlBackgroundColor))
+        .onChange(of: controller.projectURL) { _, _ in
+            geometryExpanded    = false
+            subdivisionExpanded = false
+            spritesExpanded     = false
+            renderersExpanded   = false
+        }
     }
 
     @ViewBuilder

@@ -560,6 +560,7 @@ private struct DriverSectionsView: View {
     var body: some View {
         let db = driversBinding()
         VStack(alignment: .leading, spacing: 0) {
+            batchEyeButton
             VectorDriverEditor(label: "Position", driver: db.position, isCollapsed: $posCollapsed,
                                isHighlighted: selectedLane == .position)
             VectorDriverEditor(label: "Scale",    driver: db.scale,    isCollapsed: $sclCollapsed,
@@ -682,16 +683,16 @@ private struct DriverSectionsView: View {
 
     private func syncCollapsed() {
         guard let d = currentDrivers else { return }
-        posCollapsed = !isVectorInUse(d.position, identity: .zero)
-        sclCollapsed = !isVectorInUse(d.scale, identity: Vector2D(x: 1, y: 1))
-        rotCollapsed = !isDoubleInUse(d.rotation)
-        mphCollapsed = !isDoubleInUse(d.morph)
-        opacCollapsed = !isDoubleInUse(d.opacity, identity: 1)
-        shpCollapsed = !isDoubleInUse(d.shape)
-        let sprite   = controller.projectConfig?.spriteConfig.library
-                           .spriteSets[safe: setIdx]?.sprites[safe: spriteIdx]
-        mtCollapsed  = sprite?.morphTargetNames.isEmpty != false
-        svCollapsed  = sprite?.spriteVariants.isEmpty != false
+        posCollapsed  = !d.position.enabled && d.position.keyframes.isEmpty
+        sclCollapsed  = !d.scale.enabled    && d.scale.keyframes.isEmpty
+        rotCollapsed  = !d.rotation.enabled && d.rotation.keyframes.isEmpty
+        mphCollapsed  = !d.morph.enabled    && d.morph.keyframes.isEmpty
+        opacCollapsed = !d.opacity.enabled  && d.opacity.keyframes.isEmpty
+        shpCollapsed  = !d.shape.enabled    && d.shape.keyframes.isEmpty
+        let sprite = controller.projectConfig?.spriteConfig.library
+                         .spriteSets[safe: setIdx]?.sprites[safe: spriteIdx]
+        mtCollapsed = sprite?.morphTargetNames.isEmpty != false
+        svCollapsed = sprite?.spriteVariants.isEmpty != false
     }
 
     private var currentDrivers: TransformDrivers? {
@@ -700,12 +701,70 @@ private struct DriverSectionsView: View {
             .animation.drivers
     }
 
-    private func isDoubleInUse(_ d: DoubleDriver, identity: Double = 0) -> Bool {
-        d.mode != .constant || !d.keyframes.isEmpty || d.base != identity
+    private var driverCollapsedCount: Int {
+        [posCollapsed, sclCollapsed, rotCollapsed, mphCollapsed, opacCollapsed, shpCollapsed]
+            .filter { $0 }.count
     }
 
-    private func isVectorInUse(_ d: VectorDriver, identity: Vector2D) -> Bool {
-        d.mode != .constant || !d.keyframes.isEmpty || d.base != identity
+    private var unusedDriverCount: Int {
+        guard let d = currentDrivers else { return 0 }
+        return [
+            !d.position.enabled && d.position.keyframes.isEmpty && !posCollapsed,
+            !d.scale.enabled    && d.scale.keyframes.isEmpty    && !sclCollapsed,
+            !d.rotation.enabled && d.rotation.keyframes.isEmpty && !rotCollapsed,
+            !d.morph.enabled    && d.morph.keyframes.isEmpty    && !mphCollapsed,
+            !d.opacity.enabled  && d.opacity.keyframes.isEmpty  && !opacCollapsed,
+            !d.shape.enabled    && d.shape.keyframes.isEmpty    && !shpCollapsed,
+        ].filter { $0 }.count
+    }
+
+    private func collapseUnusedDriverSections() {
+        guard let d = currentDrivers else { return }
+        if !d.position.enabled && d.position.keyframes.isEmpty { posCollapsed = true }
+        if !d.scale.enabled    && d.scale.keyframes.isEmpty    { sclCollapsed = true }
+        if !d.rotation.enabled && d.rotation.keyframes.isEmpty { rotCollapsed = true }
+        if !d.morph.enabled    && d.morph.keyframes.isEmpty    { mphCollapsed = true }
+        if !d.opacity.enabled  && d.opacity.keyframes.isEmpty  { opacCollapsed = true }
+        if !d.shape.enabled    && d.shape.keyframes.isEmpty    { shpCollapsed = true }
+    }
+
+    private func expandAllDriverSections() {
+        posCollapsed = false; sclCollapsed = false; rotCollapsed = false
+        mphCollapsed = false; opacCollapsed = false; shpCollapsed = false
+    }
+
+    @ViewBuilder
+    private var batchEyeButton: some View {
+        let collapsed = driverCollapsedCount
+        if collapsed > 0 {
+            HStack {
+                Spacer()
+                Button { expandAllDriverSections() } label: {
+                    HStack(spacing: 3) {
+                        Image(systemName: "eye.slash").font(.system(size: 10))
+                        Text("\(collapsed)").font(.system(size: 10))
+                    }
+                    .foregroundStyle(.secondary)
+                }
+                .buttonStyle(.plain)
+                .loomHelp("\(collapsed) driver section\(collapsed == 1 ? "" : "s") collapsed. Click to expand all.")
+                .padding(.trailing, 12)
+                .padding(.vertical, 4)
+            }
+        } else if unusedDriverCount > 0 {
+            HStack {
+                Spacer()
+                Button { collapseUnusedDriverSections() } label: {
+                    Image(systemName: "eye")
+                        .font(.system(size: 10))
+                        .foregroundStyle(.secondary)
+                }
+                .buttonStyle(.plain)
+                .loomHelp("Collapse all driver sections that are disabled and have no keyframes.")
+                .padding(.trailing, 12)
+                .padding(.vertical, 4)
+            }
+        }
     }
 
     // MARK: - Bindings

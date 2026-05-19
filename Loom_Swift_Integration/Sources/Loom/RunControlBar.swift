@@ -37,7 +37,6 @@ struct RunControlBar: View {
                             help: controller.playbackState == .playing ? "Pause" : "Play") {
                     controller.playbackState == .playing ? controller.pause() : controller.play()
                 }
-                .keyboardShortcut(" ", modifiers: [])
                 .disabled(controller.engine == nil || controller.isExporting || !controller.canPlay)
 
                 Button {

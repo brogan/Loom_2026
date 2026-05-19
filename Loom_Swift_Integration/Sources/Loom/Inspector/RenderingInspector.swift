@@ -178,6 +178,7 @@ struct RenderingInspector: View {
     @ViewBuilder
     private func rendererDriversSection(renderer: Renderer, setIdx: Int, itemIdx: Int) -> some View {
         VStack(alignment: .leading, spacing: 0) {
+            rendererBatchEyeButton(for: renderer)
             ColorDriverEditor(
                 label: "Fill Color Driver",
                 driver: bindRendererFillColorDriver(setIdx, itemIdx, fallback: renderer.fillColor),
@@ -202,6 +203,60 @@ struct RenderingInspector: View {
                 isCollapsed: $opacityDriverCollapsed,
                 isHighlighted: selectedRendererLane(setIdx: setIdx, itemIdx: itemIdx) == .opacity
             )
+        }
+    }
+
+    @ViewBuilder
+    private func rendererBatchEyeButton(for renderer: Renderer) -> some View {
+        let d = renderer.drivers
+        let fillUnused   = !(d?.fillColor?.enabled   ?? false) && (d?.fillColor?.keyframes.isEmpty   ?? true)
+        let sColorUnused = !(d?.strokeColor?.enabled ?? false) && (d?.strokeColor?.keyframes.isEmpty ?? true)
+        let sWidthUnused = !(d?.strokeWidth.enabled  ?? false) && (d?.strokeWidth.keyframes.isEmpty  ?? true)
+        let opacUnused   = !(d?.opacity.enabled      ?? false) && (d?.opacity.keyframes.isEmpty      ?? true)
+
+        let collapsed = [fillColorDriverCollapsed, strokeColorDriverCollapsed,
+                         strokeWidthDriverCollapsed, opacityDriverCollapsed].filter { $0 }.count
+        let unusedVisible = [fillUnused   && !fillColorDriverCollapsed,
+                              sColorUnused && !strokeColorDriverCollapsed,
+                              sWidthUnused && !strokeWidthDriverCollapsed,
+                              opacUnused   && !opacityDriverCollapsed].filter { $0 }.count
+
+        if collapsed > 0 {
+            HStack {
+                Spacer()
+                Button {
+                    fillColorDriverCollapsed = false; strokeColorDriverCollapsed = false
+                    strokeWidthDriverCollapsed = false; opacityDriverCollapsed = false
+                } label: {
+                    HStack(spacing: 3) {
+                        Image(systemName: "eye.slash").font(.system(size: 10))
+                        Text("\(collapsed)").font(.system(size: 10))
+                    }
+                    .foregroundStyle(.secondary)
+                }
+                .buttonStyle(.plain)
+                .loomHelp("\(collapsed) renderer driver section\(collapsed == 1 ? "" : "s") collapsed. Click to expand all.")
+                .padding(.trailing, 12)
+                .padding(.vertical, 4)
+            }
+        } else if unusedVisible > 0 {
+            HStack {
+                Spacer()
+                Button {
+                    if fillUnused   { fillColorDriverCollapsed = true }
+                    if sColorUnused { strokeColorDriverCollapsed = true }
+                    if sWidthUnused { strokeWidthDriverCollapsed = true }
+                    if opacUnused   { opacityDriverCollapsed = true }
+                } label: {
+                    Image(systemName: "eye")
+                        .font(.system(size: 10))
+                        .foregroundStyle(.secondary)
+                }
+                .buttonStyle(.plain)
+                .loomHelp("Collapse all renderer driver sections that are disabled and have no keyframes.")
+                .padding(.trailing, 12)
+                .padding(.vertical, 4)
+            }
         }
     }
 

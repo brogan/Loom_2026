@@ -79,11 +79,6 @@ struct SpritesTabView: View {
             toolbar
         }
         .onAppear { autoExpand() }
-        .onChange(of: controller.selectedSpriteID) { _, name in
-            guard let name, let (setIdx, _) = location(ofSprite: name) else { return }
-            selectedSetIndex = setIdx
-            if let sn = setName(at: setIdx) { expandedSets.insert(sn) }
-        }
         .alert("Rename", isPresented: $showingRenameAlert) {
             TextField("Name", text: $renameText)
             Button("Rename") { commitRename() }
@@ -196,7 +191,9 @@ struct SpritesTabView: View {
                 ScrollView {
                     VStack(alignment: .leading, spacing: 0) {
                         ForEach(entries, id: \.setIdx) { entry in
-                            let isExpanded = isFiltering || expandedSets.contains(entry.set.name)
+                            let isExpanded = isFiltering
+                                || expandedSets.contains(entry.set.name)
+                                || entry.set.sprites.contains(where: { $0.name == controller.selectedSpriteID })
                             setRow(set: entry.set, setIdx: entry.setIdx)
                             if isExpanded {
                                 let nodes = buildDisplayNodes(for: entry)
@@ -257,8 +254,7 @@ struct SpritesTabView: View {
                 .foregroundStyle(.secondary)
         }
         .padding(.horizontal, 8)
-        .padding(.vertical, 4)
-        .frame(maxWidth: .infinity, alignment: .leading)
+        .frame(maxWidth: .infinity, minHeight: 24, maxHeight: 24, alignment: .leading)
         .background(isSelected ? Color.accentColor.opacity(0.18) : Color.clear)
         .contentShape(Rectangle())
         .onTapGesture { handleSetSelected(setIdx: setIdx, setName: set.name) }
@@ -313,8 +309,7 @@ struct SpritesTabView: View {
                 .frame(width: 18)
         }
         .padding(.horizontal, 8)
-        .padding(.vertical, 2)
-        .frame(maxWidth: .infinity, alignment: .leading)
+        .frame(maxWidth: .infinity, minHeight: 22, maxHeight: 22, alignment: .leading)
         .background(isSelected ? Color.accentColor.opacity(0.12) : Color.clear)
         .contentShape(Rectangle())
         .onTapGesture { handleSpriteSelected(setIdx: setIdx, itemIdx: itemIdx, sprite: sprite) }
@@ -382,8 +377,7 @@ struct SpritesTabView: View {
                 .frame(width: 18)
         }
         .padding(.horizontal, 8)
-        .padding(.vertical, 2)
-        .frame(maxWidth: .infinity, alignment: .leading)
+        .frame(maxWidth: .infinity, minHeight: 22, maxHeight: 22, alignment: .leading)
         .background(isSelected ? Color.accentColor.opacity(0.12) : Color.clear)
         .contentShape(Rectangle())
         .onTapGesture { handleSpriteSelected(setIdx: setIdx, itemIdx: spriteIdx, sprite: sprite) }

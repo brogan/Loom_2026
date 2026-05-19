@@ -173,6 +173,7 @@
   <a class="nav-link" href="#animation">Drivers &amp; Keyframes</a>
   <a class="nav-link nav-sub" href="#animation-drivers">Driver Types</a>
   <a class="nav-link nav-sub" href="#animation-timeline">Timeline</a>
+  <a class="nav-link nav-sub" href="#animation-lane-controls">Lane Controls</a>
   <a class="nav-link nav-sub" href="#animation-editing">Timeline Editing</a>
   <a class="nav-link nav-sub" href="#animation-camera">Camera</a>
   <a class="nav-link nav-sub" href="#animation-parallax">Depth &amp; Parallax</a>
@@ -679,7 +680,7 @@
     <tbody>
       <tr><td>Sprite</td><td>Name, renderer set, subdivision set, and SVG sprite picker (when <code>svgs/sprites/</code> contains files — see <a href="#sprites-svg">SVG Sprites</a>)</td></tr>
       <tr><td>Transform</td><td>X/Y position, X/Y scale, rotation in degrees, depth (see below)</td></tr>
-      <tr><td>Animation</td><td>Per-property animation drivers, including position, scale, rotation, morph, shape index, and sprite opacity (see <a href="#animation">Animation</a>)</td></tr>
+      <tr><td>Animation</td><td>Six per-property animation drivers: position, scale, rotation, morph, shape index, and opacity. Each driver section header shows a <strong>keyframe indicator</strong> (circle — green when keyframes exist) and an <strong>enabled checkbox</strong>. A batch eye above all six sections collapses unused driver panels at once. See <a href="#animation-lane-controls">Driver enabled state and lane visibility</a> and <a href="#animation">Animation</a>.</td></tr>
       <tr><td>Hierarchy</td><td>Parent selector, P/R/S inherit toggles</td></tr>
     </tbody>
   </table>
@@ -1180,6 +1181,7 @@
       <tr><td>Hold length</td><td>Frames to keep geometry drawn before clearing (ghost/trail effect).</td></tr>
     </tbody>
   </table>
+  <p>Each renderer driver section header in the inspector shows the same <strong>keyframe indicator</strong> and <strong>enabled checkbox</strong> as sprite drivers — see <a href="#animation-lane-controls">Driver enabled state and lane visibility</a>. A batch eye above the four driver sections collapses all unused renderer driver panels at once. Renderer driver lanes in the timeline also carry per-lane enabled checkboxes, keyframe indicators, and eye hide controls, and are included in the sprite-row batch eye.</p>
 
   <h4>Internal renderer changes</h4>
   <p>Fill colour, stroke colour, and stroke width changes can operate at different scales. <strong>Poly</strong> applies changes per subdivision child polygon; <strong>Sprite</strong> applies one value to the whole sprite; <strong>Global</strong> applies one value across the render. Random palette changes do not require global animation to be enabled when a static randomised result is desired.</p>
@@ -1259,7 +1261,7 @@
 <!-- ────────────────────────────────────────────────── -->
 <section id="animation">
   <h2>Animation</h2>
-  <p>Loom animates sprite, camera, and renderer properties via <em>drivers</em> — self-contained generators that produce a value for each frame. Sprite drivers affect the entire sprite; renderer drivers affect individual renderer layers inside a renderer set.</p>
+  <p>Loom animates sprite, camera, and renderer properties via <em>drivers</em> — self-contained generators that produce a value for each frame. Sprite drivers affect the entire sprite; renderer drivers affect individual renderer layers inside a renderer set. Every driver has an <strong>enabled</strong> flag; drivers are off by default and must be explicitly enabled before they affect rendered output.</p>
 
   <h3 id="animation-drivers">Driver types</h3>
   <table>
@@ -1274,7 +1276,7 @@
   </table>
 
   <h3 id="animation-timeline">Timeline</h3>
-  <p>The Timeline panel appears at the bottom of the window when a project is open. It shows keyframe lanes for the camera, sprites, and renderer drivers associated with a selected sprite's renderer set. Renderer lanes use a slightly darker background so they are visually distinct from sprite transform lanes.</p>
+  <p>The Timeline panel appears at the bottom of the window when a project is open. It shows keyframe lanes for the camera, sprites, and renderer drivers associated with a selected sprite's renderer set. Renderer lanes use a slightly darker background so they are visually distinct from sprite transform lanes. Each lane header shows an <strong>enabled checkbox</strong>, a <strong>keyframe indicator</strong>, and an <strong>eye icon</strong> for hiding unused lanes — see <a href="#animation-lane-controls">Driver enabled state and lane visibility</a>.</p>
 
   <div class="diagram">
     <svg width="520" height="90" viewBox="0 0 520 90" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -1323,6 +1325,39 @@
     <li>Set the <strong>Easing</strong> per keyframe (Linear, Ease In, Ease Out, Ease In-Out, or a custom curve).</li>
     <li>Adjust the <strong>Loop Mode</strong> (None / Loop / Ping-Pong) on the driver to control what happens after the last keyframe.</li>
   </ul>
+
+  <h3 id="animation-lane-controls">Driver enabled state and lane visibility</h3>
+  <p>Every driver lane row in the timeline header — and every driver section header in the inspector (Sprites and Rendering tabs) — carries three controls at its right edge:</p>
+  <table>
+    <thead><tr><th>Control</th><th>Available in</th><th>What it does</th></tr></thead>
+    <tbody>
+      <tr>
+        <td><strong>Enabled checkbox</strong></td>
+        <td>Timeline lane header &amp; inspector section header</td>
+        <td>Toggles the driver on or off at the engine level. A disabled driver outputs its identity value every frame — zero position offset, uniform scale, zero rotation, zero morph, full opacity — regardless of mode or keyframes. Drivers are <strong>disabled by default</strong>. Adding a keyframe via the timeline automatically enables the driver.</td>
+      </tr>
+      <tr>
+        <td><strong>Keyframe indicator (circle)</strong></td>
+        <td>Timeline lane header &amp; inspector section header</td>
+        <td>A hollow circle means no keyframes have been created for this driver. A solid green circle means one or more keyframes exist. The indicator is read-only and updates immediately when keyframes are added or removed.</td>
+      </tr>
+      <tr>
+        <td><strong>Eye icon (per lane)</strong></td>
+        <td>Timeline lane header only</td>
+        <td>Hides or reveals this specific lane row in the timeline canvas. Hiding a lane is purely visual — it does not affect rendering or the driver's enabled state. Hidden lanes can be restored individually, or with the batch eye on the sprite/camera summary row.</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <h4 id="animation-batch-eye">Batch hide and restore</h4>
+  <p>The sprite and camera summary rows in the timeline header carry a combined eye control that acts on all lanes for that entity at once:</p>
+  <ul>
+    <li><strong>Plain eye</strong> — appears when one or more lanes are unused (disabled <em>and</em> no keyframes) but still visible. Click to hide all unused lanes in one step.</li>
+    <li><strong>Eye-slash with count</strong> — appears when N lanes are currently hidden. Click to restore all N lanes.</li>
+    <li><strong>No icon</strong> — every lane is either actively in use, or all unused lanes are already hidden.</li>
+  </ul>
+  <p>The same batch eye appears at the top of the driver section group in the inspector. In the inspector it collapses or expands section panels rather than hiding timeline rows — the two states are independent.</p>
+  <div class="tip"><strong>Typical workflow:</strong> Open a new sprite, click the plain eye on the sprite row to collapse all six unused driver sections, then enable and expand only the drivers you actually need. This keeps both the timeline and the inspector compact as you build up animation.</div>
 
   <h3 id="animation-editing">Timeline editing</h3>
   <table>

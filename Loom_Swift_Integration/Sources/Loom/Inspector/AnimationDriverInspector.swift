@@ -14,12 +14,18 @@ struct DoubleDriverEditor: View {
     var isHighlighted: Bool = false
 
     var body: some View {
-        InspectorSection(label, isCollapsed: $isCollapsed, isHighlighted: isHighlighted) {
+        DriverSection(label, isCollapsed: $isCollapsed,
+                      hasKeyframes: !driver.keyframes.isEmpty,
+                      isEnabled: $driver.enabled,
+                      isHighlighted: isHighlighted) {
             InspectorField("Mode") {
                 LoomPicker(selection: $driver.mode, maxWidth: 120)
             }
             .loomHelp("Animation mode — Constant (fixed value), Jitter (random per-frame noise), Noise (smooth random), Oscillator (periodic wave), Keyframe (interpolated between saved values).")
             modeFields
+        }
+        .onChange(of: driver.keyframes.count) { old, new in
+            if new > 0 && !driver.enabled { driver.enabled = true }
         }
     }
 
@@ -101,12 +107,18 @@ struct VectorDriverEditor: View {
     var isHighlighted: Bool = false
 
     var body: some View {
-        InspectorSection(label, isCollapsed: $isCollapsed, isHighlighted: isHighlighted) {
+        DriverSection(label, isCollapsed: $isCollapsed,
+                      hasKeyframes: !driver.keyframes.isEmpty,
+                      isEnabled: $driver.enabled,
+                      isHighlighted: isHighlighted) {
             InspectorField("Mode") {
                 LoomPicker(selection: $driver.mode, maxWidth: 120)
             }
             .loomHelp("Animation mode — Constant (fixed XY), Jitter (random per-frame XY noise), Noise (smooth random XY), Oscillator (periodic XY wave), Keyframe (interpolated XY between saved values).")
             modeFields
+        }
+        .onChange(of: driver.keyframes.count) { old, new in
+            if new > 0 && !driver.enabled { driver.enabled = true }
         }
     }
 
@@ -312,7 +324,10 @@ struct ColorDriverEditor: View {
     var isHighlighted: Bool = false
 
     var body: some View {
-        InspectorSection(label, isCollapsed: $isCollapsed, isHighlighted: isHighlighted) {
+        DriverSection(label, isCollapsed: $isCollapsed,
+                      hasKeyframes: !driver.keyframes.isEmpty,
+                      isEnabled: $driver.enabled,
+                      isHighlighted: isHighlighted) {
             InspectorField("Mode") {
                 LoomPicker(selection: $driver.mode, maxWidth: 120)
             }
@@ -397,6 +412,9 @@ struct ColorDriverEditor: View {
                 .loomHelp("Wave shape controlling the blend between Color A and Color B — Sine (smooth), Triangle, Square (hard switch), Sawtooth.")
             }
         }
+        .onChange(of: driver.keyframes.count) { old, new in
+            if new > 0 && !driver.enabled { driver.enabled = true }
+        }
     }
 }
 
@@ -475,6 +493,64 @@ struct ColorKeyframeTable: View {
 
     private func clamp255(_ v: CGFloat) -> Int {
         Int(max(0, min(255, (v * 255 + 0.5).rounded(.down))))
+    }
+}
+
+// MARK: - DriverSection
+
+private struct DriverSection<Content: View>: View {
+    let label: String
+    @Binding var isCollapsed: Bool
+    let hasKeyframes: Bool
+    @Binding var isEnabled: Bool
+    let isHighlighted: Bool
+    let content: Content
+
+    init(_ label: String, isCollapsed: Binding<Bool>, hasKeyframes: Bool,
+         isEnabled: Binding<Bool>, isHighlighted: Bool = false,
+         @ViewBuilder content: () -> Content) {
+        self.label         = label
+        self._isCollapsed  = isCollapsed
+        self.hasKeyframes  = hasKeyframes
+        self._isEnabled    = isEnabled
+        self.isHighlighted = isHighlighted
+        self.content       = content()
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            HStack(spacing: 5) {
+                Button { isCollapsed = !isCollapsed } label: {
+                    HStack(spacing: 5) {
+                        Image(systemName: isCollapsed ? "chevron.right" : "chevron.down")
+                            .font(.system(size: 9, weight: .semibold))
+                            .foregroundStyle(.secondary)
+                            .frame(width: 10)
+                        Text(label)
+                            .font(.system(size: 11, weight: .semibold))
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                .buttonStyle(.plain)
+                Spacer()
+                Image(systemName: hasKeyframes ? "circle.fill" : "circle")
+                    .font(.system(size: 8))
+                    .foregroundStyle(hasKeyframes ? Color.green : Color.secondary.opacity(0.4))
+                    .loomHelp("Green when this driver has keyframes; hollow when no keyframes exist. The indicator updates automatically.")
+                Toggle("", isOn: $isEnabled)
+                    .labelsHidden()
+                    .toggleStyle(.checkbox)
+                    .loomHelp("Enable or disable this driver. When disabled the driver outputs its identity value (zero offset, scale 1, etc.) regardless of mode or keyframes. Drivers start disabled; adding a keyframe in the timeline enables the driver automatically.")
+            }
+            .padding(.horizontal, 12)
+            .padding(.top, 10)
+            .padding(.bottom, 4)
+            if !isCollapsed {
+                content
+            }
+            Divider().padding(.top, isCollapsed ? 0 : 4)
+        }
+        .background(isHighlighted ? Color.accentColor.opacity(0.08) : Color.clear)
     }
 }
 

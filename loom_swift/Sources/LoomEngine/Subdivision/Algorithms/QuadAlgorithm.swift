@@ -35,7 +35,7 @@ func subdivideQuad(
         let (l, r) = BezierMath.scalaSplit(seg: sides[i], t: t)
         lefts[i]  = l
         rights[i] = r
-        splits[i] = l[3]  // the split point (Bezier point at t)
+        splits[i] = l[3]  // geometric edge midpoint (lerp of anchors at t)
     }
 
     // Internal edges from each split point to the centre
