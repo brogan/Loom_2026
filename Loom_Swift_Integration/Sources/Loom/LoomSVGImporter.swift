@@ -173,13 +173,18 @@ enum LoomSVGImporter {
                     viewBox = CGRect(x: 0, y: 0, width: w, height: h)
                 }
                 xformStack.append(effective)
-            case "g", "a", "symbol", "use":
+            case "g", "a", "symbol":
                 xformStack.append(effective)
             case "path":
                 if let d = attrs["d"], !d.trimmingCharacters(in: .whitespaces).isEmpty {
                     paths.append((d: d, transform: effective))
                 }
-                // Paths are leaf elements — don't push to stack
+                // Leaf element — don't push to stack
+            case "rect", "circle", "ellipse", "line", "polygon", "polyline":
+                if let d = primitiveToPathD(element: element.lowercased(), attrs: attrs) {
+                    paths.append((d: d, transform: effective))
+                }
+                // Leaf elements — don't push to stack
             default:
                 xformStack.append(effective)
             }
@@ -199,6 +204,61 @@ enum LoomSVGImporter {
             default:
                 if xformStack.count > 1 { xformStack.removeLast() }
             }
+        }
+
+        // MARK: Primitive-to-path conversion
+
+        private func primitiveToPathD(element: String, attrs: [String: String]) -> String? {
+            func n(_ key: String) -> Double { Double(attrs[key] ?? "") ?? 0 }
+            switch element {
+            case "rect":
+                let x = n("x"), y = n("y"), w = n("width"), h = n("height")
+                guard w > 0 && h > 0 else { return nil }
+                // rx/ry: if one absent use the other; clamp to half-dimension
+                let rxRaw = attrs["rx"].flatMap { Double($0) }
+                let ryRaw = attrs["ry"].flatMap { Double($0) }
+                var rx = min(rxRaw ?? ryRaw ?? 0, w / 2)
+                var ry = min(ryRaw ?? rxRaw ?? 0, h / 2)
+                if rx == 0 || ry == 0 { rx = 0; ry = 0 }
+                if rx == 0 {
+                    return "M \(x),\(y) H \(x+w) V \(y+h) H \(x) Z"
+                } else {
+                    return "M \(x+rx),\(y) H \(x+w-rx) A \(rx),\(ry) 0 0,1 \(x+w),\(y+ry)" +
+                           " V \(y+h-ry) A \(rx),\(ry) 0 0,1 \(x+w-rx),\(y+h)" +
+                           " H \(x+rx) A \(rx),\(ry) 0 0,1 \(x),\(y+h-ry)" +
+                           " V \(y+ry) A \(rx),\(ry) 0 0,1 \(x+rx),\(y) Z"
+                }
+            case "circle":
+                let cx = n("cx"), cy = n("cy"), r = n("r")
+                guard r > 0 else { return nil }
+                return "M \(cx-r),\(cy) A \(r),\(r) 0 0,1 \(cx+r),\(cy) A \(r),\(r) 0 0,1 \(cx-r),\(cy) Z"
+            case "ellipse":
+                let cx = n("cx"), cy = n("cy"), rx = n("rx"), ry = n("ry")
+                guard rx > 0 && ry > 0 else { return nil }
+                return "M \(cx-rx),\(cy) A \(rx),\(ry) 0 0,1 \(cx+rx),\(cy) A \(rx),\(ry) 0 0,1 \(cx-rx),\(cy) Z"
+            case "line":
+                let x1 = n("x1"), y1 = n("y1"), x2 = n("x2"), y2 = n("y2")
+                guard x1 != x2 || y1 != y2 else { return nil }
+                return "M \(x1),\(y1) L \(x2),\(y2)"
+            case "polygon":
+                return pointsAttrToD(attrs["points"] ?? "", close: true)
+            case "polyline":
+                return pointsAttrToD(attrs["points"] ?? "", close: false)
+            default:
+                return nil
+            }
+        }
+
+        private func pointsAttrToD(_ s: String, close: Bool) -> String? {
+            let nums = s.components(separatedBy: .init(charactersIn: ", \t\n"))
+                        .compactMap { Double($0) }
+            guard nums.count >= 4, nums.count.isMultiple(of: 2) else { return nil }
+            var d = "M \(nums[0]),\(nums[1])"
+            for i in stride(from: 2, to: nums.count, by: 2) {
+                d += " L \(nums[i]),\(nums[i+1])"
+            }
+            if close { d += " Z" }
+            return d
         }
 
         private func parseViewBox(_ s: String) -> CGRect? {
