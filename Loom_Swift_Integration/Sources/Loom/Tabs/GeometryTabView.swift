@@ -753,18 +753,38 @@ struct GeometryMainView: View {
     }
 
     private func makeEditableDocument(key: String, polygons: [Polygon2D]) throws -> EditableGeometryDocument {
-        let closed = polygons.filter { $0.type == .spline }
-        if closed.isEmpty, key.hasPrefix("polygonSets/") {
-            let name = String(key.split(separator: "/", maxSplits: 1).last ?? "Editable Geometry")
-            var document = EditableGeometryDocument(name: name)
-            document.ensureActiveLayer()
-            return document
-        }
-        guard !closed.isEmpty else {
+        let name = String(key.split(separator: "/", maxSplits: 1).last ?? "Editable Geometry")
+
+        let closedPolygons = polygons.filter { $0.type == .spline }
+        let openPolygons   = polygons.filter { $0.type == .openSpline }
+
+        // Empty source — start blank.
+        if closedPolygons.isEmpty && openPolygons.isEmpty {
+            if key.hasPrefix("polygonSets/") {
+                var document = EditableGeometryDocument(name: name)
+                document.ensureActiveLayer()
+                return document
+            }
             throw EditableGeometryError.unsupportedPolygonType(polygons.first?.type ?? .line)
         }
-        let name = String(key.split(separator: "/", maxSplits: 1).last ?? "Editable Geometry")
-        return try EditableGeometryDocument.closedPolygonDocument(name: name, polygons: closed)
+
+        var layers: [EditableGeometryLayer] = []
+
+        if !closedPolygons.isEmpty {
+            let editablePolygons = try closedPolygons.enumerated().map { index, polygon in
+                try EditableClosedPolygon(name: "Polygon \(index + 1)", polygon: polygon)
+            }
+            layers.append(EditableGeometryLayer(name: "Closed Paths", polygons: editablePolygons))
+        }
+
+        if !openPolygons.isEmpty {
+            let editableCurves = try openPolygons.enumerated().map { index, polygon in
+                try EditableOpenCurve(name: "Curve \(index + 1)", polygon: polygon)
+            }
+            layers.append(EditableGeometryLayer(name: "Open Curves", openCurves: editableCurves))
+        }
+
+        return EditableGeometryDocument(name: name, layers: layers, activeLayerID: layers[0].id)
     }
 
     private func resolvePolygons(key: String) throws -> [Polygon2D] {
