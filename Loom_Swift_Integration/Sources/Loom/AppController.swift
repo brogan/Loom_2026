@@ -128,6 +128,7 @@ final class AppController: ObservableObject, @unchecked Sendable {
 
     @Published var selectedGeometryKey:           String? = nil
     @Published var appStatusMessage:              String  = "Ready"
+    @Published var isCollectingRenders:           Bool    = false
     @Published var isGeometryEditorActive:        Bool    = false
     @Published var geometryEditorTool:            GeometryEditorTool = .points
     @Published var geometryEditorDocument:        EditableGeometryDocument? = nil { didSet { refreshGeometryEditorSaveState() } }
@@ -5397,6 +5398,152 @@ final class AppController: ObservableObject, @unchecked Sendable {
         case .still:     return stillRendersDirectory()     ?? animationRendersDirectory()
         case .animation: return animationRendersDirectory() ?? stillRendersDirectory()
         case nil:        return animationRendersDirectory() ?? stillRendersDirectory()
+        }
+    }
+
+    // MARK: - Render collector
+
+    var allRendersDirectory: URL {
+        Self.defaultProjectsDirectory.appendingPathComponent("All")
+    }
+
+    var allRendersDirectoryExists: Bool {
+        FileManager.default.fileExists(atPath: allRendersDirectory.path)
+    }
+
+    func collectRenders() {
+        guard !isCollectingRenders else { return }
+        isCollectingRenders = true
+        appStatusMessage = "Scanning projects…"
+
+        let projectsDir = Self.defaultProjectsDirectory
+        let allStills   = allRendersDirectory.appendingPathComponent("stills")
+        let allAnims    = allRendersDirectory.appendingPathComponent("animations")
+
+        Task.detached(priority: .userInitiated) { [weak self] in
+            guard let self else { return }
+
+            let fm = FileManager.default
+
+            do {
+                try fm.createDirectory(at: allStills, withIntermediateDirectories: true)
+                try fm.createDirectory(at: allAnims,  withIntermediateDirectories: true)
+            } catch {
+                await MainActor.run {
+                    self.appStatusMessage    = "Error creating All: \(error.localizedDescription)"
+                    self.isCollectingRenders = false
+                }
+                return
+            }
+
+            guard let entries = try? fm.contentsOfDirectory(
+                at: projectsDir,
+                includingPropertiesForKeys: [.isDirectoryKey],
+                options: [.skipsHiddenFiles]
+            ) else {
+                await MainActor.run {
+                    self.appStatusMessage    = "Could not read \(projectsDir.lastPathComponent)"
+                    self.isCollectingRenders = false
+                }
+                return
+            }
+
+            let projectDirs = entries
+                .filter {
+                    $0.lastPathComponent != "All" &&
+                    ((try? $0.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true)
+                }
+                .sorted { $0.lastPathComponent.lowercased() < $1.lastPathComponent.lowercased() }
+
+            let stillExts: Set<String> = ["png", "jpg", "jpeg", "tiff", "tif", "bmp", "heic"]
+            let animExts:  Set<String> = ["mp4", "mov", "gif"]
+
+            var movedStills: Int   = 0
+            var movedAnims:  Int   = 0
+            var stillBytes:  Int64 = 0
+            var animBytes:   Int64 = 0
+            var skipped:     Int   = 0
+
+            func filesIn(_ dir: URL, exts: Set<String>) -> [(url: URL, date: Date, size: Int64)] {
+                guard let items = try? fm.contentsOfDirectory(
+                    at: dir,
+                    includingPropertiesForKeys: [.contentModificationDateKey, .fileSizeKey],
+                    options: [.skipsHiddenFiles]
+                ) else { return [] }
+                return items.compactMap { u in
+                    guard exts.contains(u.pathExtension.lowercased()) else { return nil }
+                    let rv   = try? u.resourceValues(forKeys: [.contentModificationDateKey, .fileSizeKey])
+                    let date = rv?.contentModificationDate ?? Date.distantPast
+                    let size = Int64(rv?.fileSize ?? 0)
+                    return (u, date, size)
+                }.sorted { $0.date < $1.date }
+            }
+
+            func nextIndex(prefix: String, in destDir: URL) -> Int {
+                guard let existing = try? fm.contentsOfDirectory(at: destDir, includingPropertiesForKeys: nil)
+                else { return 1 }
+                let needle = prefix + "_"
+                let maxIdx = existing.compactMap { f -> Int? in
+                    let stem = f.deletingPathExtension().lastPathComponent
+                    guard stem.hasPrefix(needle) else { return nil }
+                    return Int(stem.dropFirst(needle.count))
+                }.max() ?? 0
+                return maxIdx + 1
+            }
+
+            for projDir in projectDirs {
+                let projName = projDir.lastPathComponent
+                let renders  = projDir.appendingPathComponent("renders")
+
+                // Stills
+                var si = nextIndex(prefix: projName, in: allStills)
+                for sub in ["stills", "still"] {
+                    let dir = renders.appendingPathComponent(sub)
+                    guard fm.fileExists(atPath: dir.path) else { continue }
+                    for f in filesIn(dir, exts: stillExts) {
+                        let dest = allStills.appendingPathComponent(
+                            String(format: "%@_%04d.%@", projName, si, f.url.pathExtension.lowercased()))
+                        if (try? fm.moveItem(at: f.url, to: dest)) != nil {
+                            movedStills += 1; stillBytes += f.size; si += 1
+                        } else { skipped += 1 }
+                    }
+                    break
+                }
+
+                // Animations
+                var ai = nextIndex(prefix: projName, in: allAnims)
+                for sub in ["animations", "animation"] {
+                    let dir = renders.appendingPathComponent(sub)
+                    guard fm.fileExists(atPath: dir.path) else { continue }
+                    for f in filesIn(dir, exts: animExts) {
+                        let dest = allAnims.appendingPathComponent(
+                            String(format: "%@_%04d.%@", projName, ai, f.url.pathExtension.lowercased()))
+                        if (try? fm.moveItem(at: f.url, to: dest)) != nil {
+                            movedAnims += 1; animBytes += f.size; ai += 1
+                        } else { skipped += 1 }
+                    }
+                    break
+                }
+            }
+
+            let fmt = ByteCountFormatter()
+            fmt.allowedUnits = [.useKB, .useMB, .useGB]
+            fmt.countStyle   = .file
+            var msg: String
+            if movedStills == 0 && movedAnims == 0 {
+                msg = "Nothing to collect — no renders found, or all are already in All."
+            } else {
+                msg = "Collected: \(movedStills) still\(movedStills == 1 ? "" : "s") (\(fmt.string(fromByteCount: stillBytes))), "
+                    + "\(movedAnims) animation\(movedAnims == 1 ? "" : "s") (\(fmt.string(fromByteCount: animBytes)))"
+                if skipped > 0 {
+                    msg += "\n\(skipped) file\(skipped == 1 ? "" : "s") could not be moved"
+                }
+            }
+
+            await MainActor.run {
+                self.appStatusMessage    = msg
+                self.isCollectingRenders = false
+            }
         }
     }
 

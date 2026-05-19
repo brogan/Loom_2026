@@ -45,6 +45,8 @@ struct GlobalInspector: View {
             cameraSection
             noteSection
             statusSection
+            Divider()
+            utilitySection
         } else {
             Text("No project open")
                 .font(.caption)
@@ -240,7 +242,55 @@ struct GlobalInspector: View {
         }
     }
 
+    private var utilitySection: some View {
+        InspectorSection("Utility") {
+            Text("Move all renders from every project into a single folder for easy archiving or offloading to another disk.")
+                .font(.system(size: 11))
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+                .padding(.horizontal, 12)
+                .padding(.top, 4)
+                .padding(.bottom, 6)
+
+            HStack(spacing: 8) {
+                Button("Collect All Renders…") { confirmAndCollect() }
+                    .disabled(controller.isCollectingRenders)
+                    .loomHelp("Scan every project in the Loom projects directory and move stills → All/stills and animations → All/animations. Files are renamed ProjectName_0001.ext in chronological order. Running again only moves new renders.")
+
+                if controller.isCollectingRenders {
+                    ProgressView()
+                        .scaleEffect(0.65)
+                        .frame(height: 16)
+                }
+
+                Spacer()
+
+                if controller.allRendersDirectoryExists {
+                    Button("Reveal") {
+                        NSWorkspace.shared.selectFile(
+                            nil,
+                            inFileViewerRootedAtPath: controller.allRendersDirectory.path)
+                    }
+                    .loomHelp("Open the All renders folder in Finder.")
+                }
+            }
+            .padding(.horizontal, 12)
+            .padding(.bottom, 8)
+        }
+    }
+
     // MARK: - Actions
+
+    private func confirmAndCollect() {
+        let alert             = NSAlert()
+        alert.messageText     = "Collect all renders?"
+        alert.informativeText = "Stills and animations from every project in \(AppController.defaultProjectsDirectory.lastPathComponent) will be moved to the All folder. Files in All that are already collected will not be duplicated. This action cannot be undone."
+        alert.alertStyle      = .warning
+        alert.addButton(withTitle: "Collect")
+        alert.addButton(withTitle: "Cancel")
+        guard alert.runModal() == .alertFirstButtonReturn else { return }
+        controller.collectRenders()
+    }
 
     private func pickBackgroundImage() {
         let panel = NSOpenPanel()
