@@ -385,7 +385,7 @@
     <thead><tr><th>Field</th><th>Description</th></tr></thead>
     <tbody>
       <tr><td>Enabled</td><td>Activates the animated camera system. When off, the viewport is fixed at the default world-centre view.</td></tr>
-      <tr><td>Perspective</td><td>Controls the strength of the 2.5D depth/parallax effect. <strong>0 = flat</strong> (no effect). A value around <code>0.003</code> gives a gentle parallax; <code>0.01</code> is more dramatic. See <a href="#sprites-depth">Depth &amp; Parallax</a>.</td></tr>
+      <tr><td>Perspective</td><td>Controls the strength of the 2.5D depth/parallax effect. <strong>0 = flat</strong> (no effect). A value around <code>0.3</code> gives a gentle parallax with small integer depths; <code>0.5</code> is more dramatic. See <a href="#sprites-depth">Depth &amp; Parallax</a>.</td></tr>
     </tbody>
   </table>
 
@@ -827,39 +827,40 @@
         </marker>
       </defs>
 
-      <!-- Row 1: Background, depth 200, f≈0.63 -->
+      <!-- Row 1: Far background, depth 5, f=0.40 at strength 0.3 -->
       <rect x="8" y="8" width="290" height="30" rx="3" fill="#1a2a1a" stroke="#2d5a2d" stroke-width="1"/>
-      <text x="18" y="26" font-size="10" fill="#5a9a5a" font-family="-apple-system">Background · depth 200</text>
-      <text x="220" y="27" font-size="9" fill="#3a7a3a" font-family="Menlo, monospace">f = 0.63</text>
-      <line x1="305" y1="23" x2="422" y2="23" stroke="#4a8a5a" stroke-width="1.5" marker-end="url(#darr-g)"/>
+      <text x="18" y="26" font-size="10" fill="#5a9a5a" font-family="-apple-system">Far background · depth 5</text>
+      <text x="220" y="27" font-size="9" fill="#3a7a3a" font-family="Menlo, monospace">f = 0.40</text>
+      <line x1="305" y1="23" x2="367" y2="23" stroke="#4a8a5a" stroke-width="1.5" marker-end="url(#darr-g)"/>
 
-      <!-- Row 2: Near-background, depth 100, f≈0.77 -->
+      <!-- Row 2: Background, depth 2, f=0.63 at strength 0.3 -->
       <rect x="8" y="48" width="290" height="30" rx="3" fill="#1a1a2a" stroke="#2d3a5a" stroke-width="1"/>
-      <text x="18" y="66" font-size="10" fill="#5a7aaa" font-family="-apple-system">Near-background · depth 100</text>
-      <text x="220" y="67" font-size="9" fill="#4a6a9a" font-family="Menlo, monospace">f = 0.77</text>
-      <line x1="305" y1="63" x2="447" y2="63" stroke="#4a6a9a" stroke-width="1.5" marker-end="url(#darr-b)"/>
+      <text x="18" y="66" font-size="10" fill="#5a7aaa" font-family="-apple-system">Background · depth 2</text>
+      <text x="220" y="67" font-size="9" fill="#4a6a9a" font-family="Menlo, monospace">f = 0.63</text>
+      <line x1="305" y1="63" x2="402" y2="63" stroke="#4a6a9a" stroke-width="1.5" marker-end="url(#darr-b)"/>
 
       <!-- Row 3: Focal plane, depth 0, f=1.00 -->
       <rect x="8" y="88" width="290" height="30" rx="3" fill="#252526" stroke="#0e7fd4" stroke-width="1" stroke-dasharray="4,2"/>
       <text x="18" y="106" font-size="10" fill="#0e7fd4" font-family="-apple-system">Focal plane · depth 0</text>
       <text x="220" y="107" font-size="9" fill="#0e7fd4" font-family="Menlo, monospace">f = 1.00</text>
-      <line x1="305" y1="103" x2="490" y2="103" stroke="#0e7fd4" stroke-width="2" marker-end="url(#darr-a)"/>
+      <line x1="305" y1="103" x2="460" y2="103" stroke="#0e7fd4" stroke-width="2" marker-end="url(#darr-a)"/>
 
-      <!-- Row 4: Foreground, depth -50, f≈1.18 -->
+      <!-- Row 4: Foreground, depth -0.5, f=1.18 at strength 0.3 -->
       <rect x="8" y="128" width="290" height="30" rx="3" fill="#2a1a0a" stroke="#7a5a2a" stroke-width="1"/>
-      <text x="18" y="146" font-size="10" fill="#c08040" font-family="-apple-system">Foreground · depth −50</text>
+      <text x="18" y="146" font-size="10" fill="#c08040" font-family="-apple-system">Foreground · depth −0.5</text>
       <text x="220" y="147" font-size="9" fill="#c08040" font-family="Menlo, monospace">f = 1.18</text>
-      <line x1="305" y1="143" x2="523" y2="143" stroke="#c08040" stroke-width="1.5" marker-end="url(#darr-o)"/>
+      <line x1="305" y1="143" x2="488" y2="143" stroke="#c08040" stroke-width="1.5" marker-end="url(#darr-o)"/>
 
       <text x="415" y="166" font-size="9" fill="#555555" text-anchor="middle" font-family="-apple-system">displacement per frame when camera pans →</text>
     </svg>
-    <figcaption>Arrow length shows how far each layer moves when the camera pans — at perspectiveStrength 0.003. Foreground moves more; background moves less.</figcaption>
+    <figcaption>Arrow length shows how far each layer moves when the camera pans — at perspectiveStrength 0.3. Foreground moves more; background moves less.</figcaption>
   </div>
 
   <h4>The depth formula</h4>
   <p>For each sprite the engine computes a <em>parallax factor</em> from its depth and the global perspective strength:</p>
   <p style="font-family: Menlo, monospace; font-size: 12px; padding: 8px 14px; background: var(--surface2); border-radius: 4px; border: 1px solid var(--border);">f = 1 / (1 + depth × perspectiveStrength)</p>
   <p>This factor scales <em>both</em> the camera's pan offset and zoom for that sprite, every frame. At depth 0 (the focal plane) <code>f = 1.00</code> and the sprite follows the camera exactly. Positive depth (background) gives <code>f &lt; 1</code> — the sprite lags and appears to zoom more slowly. Negative depth (foreground) gives <code>f &gt; 1</code> — the sprite leads and appears to zoom more aggressively.</p>
+  <p>Only the <em>product</em> <code>depth × perspectiveStrength</code> determines the parallax factor. A depth of 2 at strength 0.3 is identical to a depth of 200 at strength 0.003 — both give <code>f = 0.63</code>. Use whichever scale feels more natural for your scene. Small integer depths (1–5) with a strength around 0.3 are a good default.</p>
 
   <h4>Parallax factor reference</h4>
   <table>
@@ -867,31 +868,31 @@
       <tr>
         <th>Depth</th>
         <th>Layer</th>
-        <th>f at strength 0.003</th>
-        <th>f at strength 0.005</th>
-        <th>f at strength 0.010</th>
+        <th>f at strength 0.1</th>
+        <th>f at strength 0.3</th>
+        <th>f at strength 0.5</th>
       </tr>
     </thead>
     <tbody>
-      <tr><td>−50</td><td>Foreground</td><td>1.18</td><td>1.33</td><td>2.00</td></tr>
-      <tr><td>−20</td><td>Near foreground</td><td>1.06</td><td>1.11</td><td>1.25</td></tr>
+      <tr><td>−1</td><td>Foreground</td><td>1.11</td><td>1.43</td><td>2.00</td></tr>
+      <tr><td>−0.5</td><td>Near foreground</td><td>1.05</td><td>1.18</td><td>1.33</td></tr>
       <tr><td>0</td><td>Focal plane</td><td>1.00</td><td>1.00</td><td>1.00</td></tr>
-      <tr><td>50</td><td>Shallow background</td><td>0.87</td><td>0.80</td><td>0.67</td></tr>
-      <tr><td>100</td><td>Near background</td><td>0.77</td><td>0.67</td><td>0.50</td></tr>
-      <tr><td>200</td><td>Background</td><td>0.63</td><td>0.50</td><td>0.33</td></tr>
-      <tr><td>500</td><td>Far background</td><td>0.40</td><td>0.29</td><td>0.17</td></tr>
+      <tr><td>1</td><td>Shallow background</td><td>0.91</td><td>0.77</td><td>0.67</td></tr>
+      <tr><td>2</td><td>Background</td><td>0.83</td><td>0.63</td><td>0.50</td></tr>
+      <tr><td>3</td><td>Mid background</td><td>0.77</td><td>0.53</td><td>0.40</td></tr>
+      <tr><td>5</td><td>Far background</td><td>0.67</td><td>0.40</td><td>0.29</td></tr>
     </tbody>
   </table>
 
-  <div class="note">When <code>depth × perspectiveStrength</code> approaches <code>−1</code>, the factor approaches infinity and a foreground sprite will fly to an extreme screen position. With strength <code>0.010</code>, keep foreground depths above <code>−50</code>. With <code>0.005</code>, above <code>−100</code>. With <code>0.003</code>, you have room down to about <code>−200</code>.</div>
+  <div class="note">When <code>depth × perspectiveStrength</code> approaches <code>−1</code>, the factor approaches infinity and a foreground sprite will fly to an extreme screen position. With strength <code>0.3</code>, the singularity is at depth <code>−3.3</code> — keep foreground depths above <code>−3</code>. With strength <code>0.5</code>, the limit is around <code>−2</code>, so keep foreground depths above <code>−1.5</code>. With strength <code>0.1</code> there is plenty of room down to <code>−9</code>. Use fractional depths (e.g. <code>−0.5</code>, <code>0.5</code>, <code>1.5</code>) for finer-grained layer separation within the safe range.</div>
 
   <h4>Draw order</h4>
   <p>Sprites are automatically drawn back-to-front based on depth — the greatest depth value is drawn first (furthest away), the most negative depth is drawn last (on top). You do not need to manually order sprites to get correct occlusion between depth layers.</p>
 
   <h4>Quick setup</h4>
   <ol class="steps">
-    <li>In the Global tab, set <strong>Camera → Enabled</strong> on and enter a <strong>Perspective</strong> value — start with <code>0.003</code>.</li>
-    <li>In the Sprites tab, select each sprite and set its <strong>Depth</strong> in the Transform section. Use <code>0</code> for the focal-plane layer, positive values (e.g. <code>100</code>, <code>200</code>) for background sprites, and negative values (e.g. <code>−30</code>) for foreground sprites.</li>
+    <li>In the Global tab, set <strong>Camera → Enabled</strong> on and enter a <strong>Perspective</strong> value — start with <code>0.3</code>.</li>
+    <li>In the Sprites tab, select each sprite and set its <strong>Depth</strong> in the Transform section. Use <code>0</code> for the focal-plane layer, small positive values (<code>2</code>–<code>3</code> for background, <code>5</code> for far background) and small negative values (e.g. <code>−0.5</code>) for foreground sprites. Use fractional values for finer layer separation.</li>
     <li>Animate the camera <strong>Pan X/Y</strong> in the Timeline. Background sprites drift more slowly than focal-plane sprites, creating the parallax sense of depth.</li>
   </ol>
 
