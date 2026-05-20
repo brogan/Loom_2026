@@ -117,6 +117,7 @@ struct TimelinePanel: View {
     @State private var selectedCameraKFHit:   CameraKFSelection? = nil
     @State private var cameraDragState:       (lane: CameraLane, kfIdx: Int, previewFrame: Int)? = nil
     @State private var hiddenLanes:           Set<String>   = []
+    @State private var kfScalePercent:        String        = "100"
 
     private let headerWidth:  CGFloat = 160
     private let rowHeight:    CGFloat = 22
@@ -188,6 +189,8 @@ struct TimelinePanel: View {
             Button("Timeline Delete") { deleteSelectedKeyframes() }
                 .keyboardShortcut(.delete, modifiers: [])
                 .disabled(activeSelectionItems.isEmpty)
+            Button("Timeline Select All") { selectAllKeyframes() }
+                .keyboardShortcut("a", modifiers: .command)
         }
     }
 
@@ -260,6 +263,31 @@ struct TimelinePanel: View {
                         .frame(width: 24, height: 24).contentShape(Rectangle())
                 }.buttonStyle(.plain).foregroundStyle(.secondary)
                 Spacer()
+                if activeSelectionItems.count >= 2 {
+                    HStack(spacing: 2) {
+                        TextField("", text: $kfScalePercent)
+                            .textFieldStyle(.squareBorder)
+                            .font(.system(size: 10, design: .monospaced))
+                            .frame(width: 36)
+                            .multilineTextAlignment(.trailing)
+                            .onSubmit { scaleSelectedKeyframes() }
+                            .help("Scale selected keyframe timing by this percentage, then press Return")
+                            .modifier(LoomHoverHelp("Scale selected keyframe timing by this percentage, then press Return"))
+                        Text("%")
+                            .font(.system(size: 10))
+                            .foregroundStyle(.secondary)
+                        Button { scaleSelectedKeyframes() } label: {
+                            Image(systemName: "arrow.left.and.right")
+                                .font(.system(size: 9, weight: .semibold))
+                                .frame(width: 16, height: 16)
+                                .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                        .foregroundStyle(Color.accentColor)
+                        .help("Apply timing scale to selected keyframes")
+                        .modifier(LoomHoverHelp("Apply timing scale to selected keyframes"))
+                    }
+                }
                 if !activeSelectionItems.isEmpty {
                     Button {
                         deleteSelectedKeyframes()
@@ -1691,6 +1719,142 @@ struct TimelinePanel: View {
             }
         }
         clearTimelineSelection()
+    }
+
+    // MARK: - Select All
+
+    private func selectAllKeyframes() {
+        var items = Set<TimelineSelectionItem>()
+        if let cam = controller.projectConfig?.globalConfig.camera {
+            for lane in CameraLane.allCases {
+                for ki in lane.keyframeFrames(from: cam).indices {
+                    items.insert(.camera(lane: lane, keyframeIdx: ki))
+                }
+            }
+        }
+        for (si, node) in timelineNodes.enumerated() {
+            if let drivers = node.sprite.animation.drivers {
+                for lane in DriverLane.allCases {
+                    for ki in lane.keyframeFrames(from: drivers).indices {
+                        items.insert(.sprite(spriteListIdx: si, lane: lane, keyframeIdx: ki))
+                    }
+                }
+            }
+            for row in rendererRows(for: node) {
+                let frames = row.lane.keyframeFrames(
+                    from: renderer(atSet: row.rendererSetIdx, item: row.rendererItemIdx)?.drivers)
+                for ki in frames.indices {
+                    items.insert(.renderer(spriteListIdx: si,
+                                          rendererSetIdx: row.rendererSetIdx,
+                                          rendererItemIdx: row.rendererItemIdx,
+                                          lane: row.lane,
+                                          keyframeIdx: ki))
+                }
+            }
+        }
+        guard !items.isEmpty else { return }
+        setSelection(items, additive: false)
+        syncPrimarySelectionFromSet()
+    }
+
+    // MARK: - Scale timing
+
+    private func scaleSelectedKeyframes() {
+        guard let percent = Double(kfScalePercent), percent > 0 else { return }
+        let items = activeSelectionItems
+        guard items.count >= 2 else { return }
+        let scale = percent / 100.0
+        guard let pivot = items.map({ itemFrame($0) }).min() else { return }
+
+        // Pre-compute new frames and sprite locations before mutating the config.
+        var newFrames: [TimelineSelectionItem: Int] = [:]
+        for item in items {
+            let old = itemFrame(item)
+            newFrames[item] = max(0, pivot + Int((Double(old - pivot) * scale).rounded()))
+        }
+        var spriteLocations: [Int: (setIdx: Int, spriteIdx: Int)] = [:]
+        for item in items {
+            if case .sprite(let si, _, _) = item, spriteLocations[si] == nil {
+                spriteLocations[si] = spriteLocation(listIdx: si)
+            }
+        }
+
+        recordTimelineUndoSnapshot()
+        controller.updateProjectConfig { cfg in
+            // Encode affected sprite/renderer locations as a single Int key so they
+            // can be tracked in a Set without defining an extra Hashable type.
+            var sortSprites:   Set<Int> = []
+            var sortRenderers: Set<Int> = []
+            var sortCamLanes:  Set<Int> = []
+
+            // Step 1: Apply all frame mutations without sorting.
+            for item in items {
+                guard let newFrame = newFrames[item] else { continue }
+                switch item {
+                case .sprite(let si, let lane, let ki):
+                    guard let loc = spriteLocations[si] else { continue }
+                    withDrivers(in: &cfg, si: loc.setIdx, pi: loc.spriteIdx) { d in
+                        switch lane {
+                        case .position: if ki < d.position.keyframes.count { d.position.keyframes[ki].frame = newFrame }
+                        case .scale:    if ki < d.scale.keyframes.count    { d.scale.keyframes[ki].frame    = newFrame }
+                        case .rotation: if ki < d.rotation.keyframes.count { d.rotation.keyframes[ki].frame = newFrame }
+                        case .morph:    if ki < d.morph.keyframes.count    { d.morph.keyframes[ki].frame    = newFrame }
+                        case .opacity:  if ki < d.opacity.keyframes.count  { d.opacity.keyframes[ki].frame  = newFrame }
+                        case .shape:    if ki < d.shape.keyframes.count    { d.shape.keyframes[ki].frame    = newFrame }
+                        }
+                    }
+                    sortSprites.insert(loc.setIdx * 100_000 + loc.spriteIdx)
+                case .renderer(_, let rsi, let rii, let lane, let ki):
+                    withRendererDrivers(in: &cfg, setIdx: rsi, itemIdx: rii) { d, _ in
+                        switch lane {
+                        case .fillColor:   if ki < (d.fillColor?.keyframes.count ?? 0)   { d.fillColor!.keyframes[ki].frame   = newFrame }
+                        case .strokeColor: if ki < (d.strokeColor?.keyframes.count ?? 0) { d.strokeColor!.keyframes[ki].frame = newFrame }
+                        case .strokeWidth: if ki < d.strokeWidth.keyframes.count          { d.strokeWidth.keyframes[ki].frame  = newFrame }
+                        case .opacity:     if ki < d.opacity.keyframes.count              { d.opacity.keyframes[ki].frame      = newFrame }
+                        }
+                    }
+                    sortRenderers.insert(rsi * 100_000 + rii)
+                case .camera(let lane, let ki):
+                    switch lane {
+                    case .tracking: if ki < cfg.globalConfig.camera.tracking.keyframes.count { cfg.globalConfig.camera.tracking.keyframes[ki].frame = newFrame }
+                    case .pan:      if ki < cfg.globalConfig.camera.pan.keyframes.count      { cfg.globalConfig.camera.pan.keyframes[ki].frame      = newFrame }
+                    case .zoom:     if ki < cfg.globalConfig.camera.zoom.keyframes.count     { cfg.globalConfig.camera.zoom.keyframes[ki].frame     = newFrame }
+                    case .rotation: if ki < cfg.globalConfig.camera.rotation.keyframes.count { cfg.globalConfig.camera.rotation.keyframes[ki].frame = newFrame }
+                    }
+                    sortCamLanes.insert(lane.rawValue)
+                }
+            }
+
+            // Step 2: Sort all affected lanes now that all mutations are applied.
+            for key in sortSprites {
+                let si = key / 100_000; let pi = key % 100_000
+                withDrivers(in: &cfg, si: si, pi: pi) { d in
+                    d.position.keyframes.sort { $0.frame < $1.frame }
+                    d.scale.keyframes.sort    { $0.frame < $1.frame }
+                    d.rotation.keyframes.sort { $0.frame < $1.frame }
+                    d.morph.keyframes.sort    { $0.frame < $1.frame }
+                    d.opacity.keyframes.sort  { $0.frame < $1.frame }
+                    d.shape.keyframes.sort    { $0.frame < $1.frame }
+                }
+            }
+            for key in sortRenderers {
+                let rsi = key / 100_000; let rii = key % 100_000
+                withRendererDrivers(in: &cfg, setIdx: rsi, itemIdx: rii) { d, _ in
+                    d.fillColor?.keyframes.sort   { $0.frame < $1.frame }
+                    d.strokeColor?.keyframes.sort { $0.frame < $1.frame }
+                    d.strokeWidth.keyframes.sort  { $0.frame < $1.frame }
+                    d.opacity.keyframes.sort      { $0.frame < $1.frame }
+                }
+            }
+            for laneRaw in sortCamLanes {
+                if laneRaw == CameraLane.tracking.rawValue { cfg.globalConfig.camera.tracking.keyframes.sort { $0.frame < $1.frame } }
+                if laneRaw == CameraLane.pan.rawValue      { cfg.globalConfig.camera.pan.keyframes.sort      { $0.frame < $1.frame } }
+                if laneRaw == CameraLane.zoom.rawValue     { cfg.globalConfig.camera.zoom.keyframes.sort     { $0.frame < $1.frame } }
+                if laneRaw == CameraLane.rotation.rawValue { cfg.globalConfig.camera.rotation.keyframes.sort { $0.frame < $1.frame } }
+            }
+        }
+        clearTimelineSelection()
+        kfScalePercent = "100"
     }
 
     private func commitDrag(_ state: KFDragState) {
