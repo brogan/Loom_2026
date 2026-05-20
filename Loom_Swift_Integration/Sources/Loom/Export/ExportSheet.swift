@@ -10,7 +10,8 @@ struct ExportSheet: View {
     @Environment(\.dismiss) private var dismiss
 
     @State private var fps:             Int              = 30
-    @State private var duration:        Double           = 5.0
+    @State private var startFrame:      Int              = 0
+    @State private var endFrame:        Int              = 0
     @State private var codec:           AVVideoCodecType = .h264
     @State private var restartFromZero: Bool             = true
     @State private var isExporting      = false
@@ -20,6 +21,9 @@ struct ExportSheet: View {
     private let codecOptions: [(AVVideoCodecType, String)]    = [
         (.h264, "H.264"), (.hevc, "HEVC (H.265)"), (.proRes4444, "ProRes 4444")
     ]
+
+    private var totalFrames: Int { max(1, endFrame - max(0, startFrame)) }
+    private var durationSeconds: Double { Double(totalFrames) / Double(fps) }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -47,25 +51,35 @@ struct ExportSheet: View {
                         Text("\(engine.globalConfig.qualityMultiple)×").foregroundStyle(.secondary)
                     }
                 }
+                Section("Frame Range") {
+                    HStack {
+                        Text("Start frame")
+                        Spacer()
+                        TextField("", value: $startFrame, format: .number)
+                            .frame(width: 72)
+                            .textFieldStyle(.roundedBorder)
+                            .multilineTextAlignment(.trailing)
+                    }
+                    HStack {
+                        Text("End frame")
+                        Spacer()
+                        TextField("", value: $endFrame, format: .number)
+                            .frame(width: 72)
+                            .textFieldStyle(.roundedBorder)
+                            .multilineTextAlignment(.trailing)
+                    }
+                    LabeledContent("Total frames") {
+                        Text("\(totalFrames)").foregroundStyle(.secondary)
+                    }
+                    LabeledContent("Duration") {
+                        Text(String(format: "%.2f s", durationSeconds)).foregroundStyle(.secondary)
+                    }
+                }
                 Section("Video") {
                     Picker("Frame rate", selection: $fps) {
                         ForEach(fpsOptions, id: \.self) { Text("\($0) fps").tag($0) }
                     }
                     .pickerStyle(.segmented)
-
-                    HStack {
-                        Text("Duration")
-                        Spacer()
-                        TextField("s", value: $duration, format: .number)
-                            .frame(width: 60)
-                            .textFieldStyle(.roundedBorder)
-                            .multilineTextAlignment(.trailing)
-                        Text("s").foregroundStyle(.secondary)
-                    }
-
-                    LabeledContent("Total frames") {
-                        Text("\(max(1, Int(duration * Double(fps))))").foregroundStyle(.secondary)
-                    }
 
                     Picker("Codec", selection: $codec) {
                         ForEach(codecOptions, id: \.0.rawValue) { Text($1).tag($0) }
@@ -82,7 +96,7 @@ struct ExportSheet: View {
             VStack(spacing: 8) {
                 if isExporting {
                     ProgressView(value: controller.exportProgress).padding(.horizontal)
-                    Text("Frame \(Int(controller.exportProgress * Double(max(1, Int(duration * Double(fps)))))) of \(max(1, Int(duration * Double(fps))))")
+                    Text("Frame \(Int(controller.exportProgress * Double(totalFrames))) of \(totalFrames)")
                         .font(.caption).foregroundStyle(.secondary)
                 }
                 if let err = exportError {
@@ -94,7 +108,7 @@ struct ExportSheet: View {
                     Spacer()
                     Button(isExporting ? "Exporting…" : "Export") { startExport() }
                         .buttonStyle(.borderedProminent)
-                        .disabled(isExporting || duration <= 0)
+                        .disabled(isExporting || endFrame <= startFrame)
                 }
                 .padding(.horizontal)
             }
@@ -102,10 +116,18 @@ struct ExportSheet: View {
         }
         .frame(width: 380)
         .fixedSize(horizontal: false, vertical: true)
+        .onAppear {
+            startFrame = engine.globalConfig.startFrame
+            fps        = Int(engine.globalConfig.targetFPS)
+            let max = engine.maxAnimationFrames
+            // For purely parametric animations maxAnimationFrames is 0 (unbounded).
+            // Default to 10 seconds so the export field has a usable starting value.
+            endFrame = max > 0 ? max : Int(engine.globalConfig.targetFPS) * 10
+        }
     }
 
     private func startExport() {
-        guard duration > 0 else { return }
+        guard endFrame > startFrame else { return }
         let name = engine.globalConfig.name.isEmpty
             ? (controller.projectURL?.lastPathComponent ?? "loom")
             : engine.globalConfig.name
@@ -115,7 +137,7 @@ struct ExportSheet: View {
         panel.nameFieldStringValue = "\(name)_\(f.string(from: Date())).mov"
         if let dir = controller.animationRendersDirectory() { panel.directoryURL = dir }
 
-        let fps = self.fps; let duration = self.duration
+        let fps = self.fps; let startFrame = self.startFrame; let endFrame = self.endFrame
         let codec = self.codec; let restart = self.restartFromZero
         let engine = self.engine
 
@@ -127,8 +149,9 @@ struct ExportSheet: View {
             Task {
                 do {
                     if restart { try engine.reset() }
-                    let settings = VideoExporter.Settings(fps: fps, duration: duration,
-                                                          codec: codec, outputURL: url)
+                    let settings = VideoExporter.Settings(fps: fps, startFrame: startFrame,
+                                                          endFrame: endFrame, codec: codec,
+                                                          outputURL: url)
                     let progress: @Sendable (Double) -> Void = { p in
                         Task { @MainActor in controller.exportProgress = p }
                     }

@@ -303,7 +303,7 @@ final class RenderSurfaceNSView: NSView {
         let maxFrames = engine.maxAnimationFrames
         guard maxFrames > 0 else { return false }
         // Global duration takes priority: stop when frameCount reaches it.
-        if engine.globalConfig.duration > 0 {
+        if engine.globalConfig.endFrame > 0 {
             return engine.currentFrame >= maxFrames
         }
         // Legacy: stop when all sprite draw cycles have completed.

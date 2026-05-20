@@ -24,14 +24,27 @@ public struct GlobalConfig: Equatable, Codable, Sendable {
     /// Default 30 matches the typical Scala Loom frame rate.
     public var targetFPS: Double          = 30.0
     public var note: String               = ""
-    /// Project duration in frames.  0 = derive from sprite totalDraws (legacy behaviour).
-    public var duration: Int              = 0
+    /// First frame included in playback and export. 0 = from the beginning.
+    public var startFrame: Int            = 0
+    /// Last frame included in playback and export. 0 = derive from sprite totalDraws (auto).
+    public var endFrame: Int              = 0
     /// Animated camera.  `camera.enabled` must be true for pan/zoom/rotation to apply.
     public var camera: CameraConfig       = .disabled
 
     public init() {}
 
     public static let `default` = GlobalConfig()
+
+    // Explicit CodingKeys: endFrame serialises as "duration" for backward compatibility
+    // with project files written before the start/end frame range feature was added.
+    private enum CodingKeys: String, CodingKey {
+        case name, width, height, qualityMultiple, scaleImage, animating
+        case drawBackgroundOnce, fullscreen, borderColor, borderWidth
+        case backgroundColor, overlayColor, backgroundImagePath
+        case threeD, cameraViewAngle, subdividing, targetFPS, note, camera
+        case startFrame
+        case endFrame = "duration"
+    }
 
     // Custom decoder: every field uses decodeIfPresent so that old project JSON files
     // that pre-date any given field can still load with the field's default value.
@@ -55,7 +68,8 @@ public struct GlobalConfig: Equatable, Codable, Sendable {
         subdividing        = try c.decodeIfPresent(Bool.self,          forKey: .subdividing)        ?? true
         targetFPS          = try c.decodeIfPresent(Double.self,        forKey: .targetFPS)          ?? 30.0
         note               = try c.decodeIfPresent(String.self,        forKey: .note)               ?? ""
-        duration           = try c.decodeIfPresent(Int.self,           forKey: .duration)           ?? 0
+        startFrame         = try c.decodeIfPresent(Int.self,           forKey: .startFrame)         ?? 0
+        endFrame           = try c.decodeIfPresent(Int.self,           forKey: .endFrame)           ?? 0
         camera             = try c.decodeIfPresent(CameraConfig.self,  forKey: .camera)             ?? .disabled
     }
 }

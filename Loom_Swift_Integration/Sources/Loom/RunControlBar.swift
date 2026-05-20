@@ -11,6 +11,7 @@ struct RunControlBar: View {
     @State private var isScrubbing:           Bool   = false
     @State private var scrubValue:            Double = 0
     @State private var wasPlayingBeforeScrub: Bool   = false
+    @State private var endFrameFieldActive:   Bool   = false
 
     var body: some View {
         VStack(spacing: 0) {
@@ -124,15 +125,45 @@ struct RunControlBar: View {
     private var playbackGlobals: some View {
         HStack(spacing: 8) {
             HStack(spacing: 4) {
-                Text("Duration")
+                Text("Start")
                     .font(.system(size: 10))
                     .foregroundStyle(.secondary)
-                TextField("", value: bindGlobal(\.duration), format: .number)
+                TextField("", value: bindGlobal(\.startFrame), format: .number)
                     .textFieldStyle(.squareBorder)
                     .font(.system(size: 11, design: .monospaced))
-                    .frame(width: 54)
-                    .help("Duration in frames. 0 uses the automatic duration.")
-                    .modifier(LoomHoverHelp("Duration in frames. 0 uses the automatic duration."))
+                    .frame(width: 48)
+                    .help("First frame of playback range.")
+                    .modifier(LoomHoverHelp("First frame of playback range."))
+            }
+            HStack(spacing: 4) {
+                Text("End")
+                    .font(.system(size: 10))
+                    .foregroundStyle(.secondary)
+                if isParametricUnbounded && !endFrameFieldActive {
+                    Text("∞")
+                        .font(.system(size: 13, design: .monospaced))
+                        .foregroundStyle(.secondary)
+                        .frame(width: 48, alignment: .center)
+                        .background(Color(nsColor: .controlBackgroundColor))
+                        .overlay(RoundedRectangle(cornerRadius: 2).strokeBorder(Color.secondary.opacity(0.3)))
+                        .help("Parametric animation plays until stopped. Click to set an end frame.")
+                        .modifier(LoomHoverHelp("Parametric animation plays until stopped. Click to set an end frame."))
+                        .onTapGesture {
+                            let fps = controller.projectConfig?.globalConfig.targetFPS ?? 30
+                            controller.updateProjectConfig { $0.globalConfig.endFrame = Int(fps * 10) }
+                            endFrameFieldActive = true
+                        }
+                } else {
+                    TextField("", value: endFrameBinding, format: .number)
+                        .textFieldStyle(.squareBorder)
+                        .font(.system(size: 11, design: .monospaced))
+                        .frame(width: 48)
+                        .help("Last frame of playback range.")
+                        .modifier(LoomHoverHelp("Last frame of playback range."))
+                        .onChange(of: controller.projectConfig?.globalConfig.endFrame) { _, val in
+                            if val == 0 { endFrameFieldActive = false }
+                        }
+                }
             }
             Toggle("Animating", isOn: bindGlobal(\.animating))
                 .font(.system(size: 10))
@@ -146,6 +177,26 @@ struct RunControlBar: View {
                 .modifier(LoomHoverHelp("Draw the background once rather than every frame."))
         }
         .disabled(controller.engine == nil || controller.projectConfig == nil)
+    }
+
+    // True when endFrame is 0 and there are no keyframes to derive a natural end from.
+    private var isParametricUnbounded: Bool {
+        (controller.projectConfig?.globalConfig.endFrame ?? 0) == 0
+            && (controller.engine?.maxAnimationFrames ?? 0) == 0
+    }
+
+    // Shows the computed max frames when endFrame == 0 (but animation has keyframes),
+    // so the user always sees a real frame number rather than "0".
+    private var endFrameBinding: Binding<Int> {
+        Binding(
+            get: {
+                let stored = controller.projectConfig?.globalConfig.endFrame ?? 0
+                return stored == 0 ? (controller.engine?.maxAnimationFrames ?? 0) : stored
+            },
+            set: { value in
+                controller.updateProjectConfig { $0.globalConfig.endFrame = value }
+            }
+        )
     }
 
     private var scrubRow: some View {

@@ -120,7 +120,7 @@ public struct LoomEngine: @unchecked Sendable {
     /// finite sprite or camera keyframe end frame, which is 0 when everything is
     /// unlimited/static.
     public var maxAnimationFrames: Int {
-        let d = globalConfig.duration
+        let d = globalConfig.endFrame
         if d > 0 { return d }
         let spriteEnd = scene.instances.reduce(0) { max($0, $1.def.animation.totalDraws) }
         return max(spriteEnd, globalConfig.camera.animationEndFrame)

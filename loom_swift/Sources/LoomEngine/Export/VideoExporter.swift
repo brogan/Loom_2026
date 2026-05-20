@@ -33,8 +33,11 @@ public final class VideoExporter {
         /// Frames per second. Default: 30.
         public var fps: Int
 
-        /// Total duration in seconds.
-        public var duration: Double
+        /// First frame to include in the export (0-based). Default: 0.
+        public var startFrame: Int
+
+        /// Last frame to include (exclusive upper bound). Must be > startFrame.
+        public var endFrame: Int
 
         /// Video codec. Default: `.h264`.
         public var codec: AVVideoCodecType
@@ -44,18 +47,23 @@ public final class VideoExporter {
 
         public init(
             fps: Int = 30,
-            duration: Double,
+            startFrame: Int = 0,
+            endFrame: Int,
             codec: AVVideoCodecType = .h264,
             outputURL: URL
         ) {
-            self.fps       = fps
-            self.duration  = duration
-            self.codec     = codec
-            self.outputURL = outputURL
+            self.fps        = fps
+            self.startFrame = max(0, startFrame)
+            self.endFrame   = endFrame
+            self.codec      = codec
+            self.outputURL  = outputURL
         }
 
-        /// Total frame count derived from `duration × fps` (minimum 1).
-        public var totalFrames: Int { max(1, Int(duration * Double(fps))) }
+        /// Number of frames to capture.
+        public var totalFrames: Int { max(1, endFrame - max(0, startFrame)) }
+
+        /// Duration in seconds derived from frame range and fps.
+        public var durationSeconds: Double { Double(totalFrames) / Double(fps) }
     }
 
     // MARK: - Init
@@ -130,7 +138,13 @@ public final class VideoExporter {
         }
 
         // ── Frame loop ───────────────────────────────────────────────────────
-        let dt = 1.0 / Double(fps)
+        let dt         = 1.0 / Double(fps)
+        let startFrame = settings.startFrame
+
+        // Pre-advance to startFrame without capturing any output.
+        for _ in 0..<startFrame {
+            engine.update(deltaTime: dt)
+        }
 
         for frameIndex in 0..<totalFrames {
 
@@ -184,7 +198,7 @@ public final class VideoExporter {
                              timescale: CMTimeScale(fps))
             adaptor.append(pb, withPresentationTime: pts)
 
-            // 6. Report progress: value in (0, 1].
+            // 7. Report progress: value in (0, 1].
             let p = Double(frameIndex + 1) / Double(totalFrames)
             progress?(p)
         }
