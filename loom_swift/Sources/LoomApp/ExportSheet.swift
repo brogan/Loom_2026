@@ -14,7 +14,8 @@ struct ExportSheet: View {
     // MARK: - Export settings state
 
     @State private var fps:           Int              = 30
-    @State private var duration:      Double           = 5.0
+    @State private var startFrame:    Int              = 0
+    @State private var endFrame:      Int              = 0
     @State private var codec:         AVVideoCodecType = .h264
     @State private var restartFromZero: Bool           = true
 
@@ -64,6 +65,30 @@ struct ExportSheet: View {
                     }
                 }
 
+                Section("Frame Range") {
+                    HStack {
+                        Text("Start frame")
+                        Spacer()
+                        TextField("", value: $startFrame, format: .number)
+                            .frame(width: 72).textFieldStyle(.roundedBorder)
+                            .multilineTextAlignment(.trailing)
+                    }
+                    HStack {
+                        Text("End frame")
+                        Spacer()
+                        TextField("", value: $endFrame, format: .number)
+                            .frame(width: 72).textFieldStyle(.roundedBorder)
+                            .multilineTextAlignment(.trailing)
+                    }
+                    LabeledContent("Total frames") {
+                        Text("\(max(1, endFrame - max(0, startFrame)))").foregroundStyle(.secondary)
+                    }
+                    LabeledContent("Duration") {
+                        let total = max(1, endFrame - max(0, startFrame))
+                        Text(String(format: "%.2f s", Double(total) / Double(fps))).foregroundStyle(.secondary)
+                    }
+                }
+
                 Section("Video") {
                     Picker("Frame rate", selection: $fps) {
                         ForEach(fpsOptions, id: \.self) { f in
@@ -71,21 +96,6 @@ struct ExportSheet: View {
                         }
                     }
                     .pickerStyle(.segmented)
-
-                    HStack {
-                        Text("Duration")
-                        Spacer()
-                        TextField("seconds", value: $duration, format: .number)
-                            .frame(width: 70)
-                            .textFieldStyle(.roundedBorder)
-                            .multilineTextAlignment(.trailing)
-                        Text("s").foregroundStyle(.secondary)
-                    }
-
-                    LabeledContent("Total frames") {
-                        let total = max(1, Int(duration * Double(fps)))
-                        Text("\(total)").foregroundStyle(.secondary)
-                    }
 
                     Picker("Codec", selection: $codec) {
                         ForEach(codecOptions, id: \.0.rawValue) { option in
@@ -130,7 +140,7 @@ struct ExportSheet: View {
                         startExport()
                     }
                     .buttonStyle(.borderedProminent)
-                    .disabled(isExporting || duration <= 0)
+                    .disabled(isExporting || endFrame <= startFrame)
                 }
                 .padding(.horizontal)
             }
@@ -142,16 +152,17 @@ struct ExportSheet: View {
 
     // MARK: - Helpers
 
+    private var totalFrames: Int { max(1, endFrame - max(0, startFrame)) }
+
     private var progressLabel: String {
-        let total = max(1, Int(duration * Double(fps)))
-        let done  = Int(controller.exportProgress * Double(total))
-        return "Frame \(done) of \(total)"
+        let done = Int(controller.exportProgress * Double(totalFrames))
+        return "Frame \(done) of \(totalFrames)"
     }
 
     // MARK: - Export action
 
     private func startExport() {
-        guard duration > 0 else { return }
+        guard endFrame > startFrame else { return }
 
         let projectName = engine.globalConfig.name.isEmpty
             ? (controller.projectURL?.lastPathComponent ?? "loom")
@@ -169,7 +180,8 @@ struct ExportSheet: View {
         }
 
         let fps           = self.fps
-        let duration      = self.duration
+        let startFrame    = self.startFrame
+        let endFrame      = self.endFrame
         let codec         = self.codec
         let shouldRestart = self.restartFromZero
         let engine        = self.engine
@@ -180,10 +192,11 @@ struct ExportSheet: View {
             controller.beginExport()
 
             let settings = VideoExporter.Settings(
-                fps:       fps,
-                duration:  duration,
-                codec:     codec,
-                outputURL: url
+                fps:        fps,
+                startFrame: startFrame,
+                endFrame:   endFrame,
+                codec:      codec,
+                outputURL:  url
             )
 
             let progressCallback: @Sendable (Double) -> Void = { [weak controller] p in

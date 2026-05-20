@@ -10,7 +10,6 @@ func subdivideTri(
 
     // centre passed in (may be jittered by ranMiddle)
     let sides  = BezierMath.extractSides(points, sidesTotal: sidesTotal)
-    let cp     = params.controlPointRatios
 
     // Build two internal edges per side:
     //   edge0: last anchor of side i → centre
@@ -23,9 +22,9 @@ func subdivideTri(
         let a1 = sides[i][3]  // last anchor of side i
 
         // Internal edge a1 → centre
-        let int0 = BezierMath.connector(from: a1, to: centre, cpRatios: cp)
+        let int0 = params.connector(from: a1, to: centre, centre: centre)
         // Internal edge centre → a0 (reversed direction of a0 → centre)
-        let int1 = BezierMath.connector(from: centre, to: a0, cpRatios: cp)
+        let int1 = params.connector(from: centre, to: a0, centre: centre)
 
         // Triangle:
         //   Side 0: outer edge i  (a0 → a1, full bezier)

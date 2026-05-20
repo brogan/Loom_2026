@@ -20,7 +20,8 @@ func subdivideSplit(
     let rotation = findBestSideOffset(points: points, sidesTotal: sidesTotal, orientation: orientation)
     let shifted  = rotateSideOffset(points, by: rotation, sidesTotal: sidesTotal)
     let sides    = BezierMath.extractSides(shifted, sidesTotal: sidesTotal)
-    return performSplit(sides: sides, sidesTotal: sidesTotal, params: params)
+    let centre   = BezierMath.centreLine(sides.map { $0[0] })
+    return performSplit(sides: sides, sidesTotal: sidesTotal, params: params, centre: centre)
 }
 
 // MARK: - Orientation search
@@ -88,12 +89,13 @@ private func rotateSideOffset(_ pts: [Vector2D], by sideOffset: Int, sidesTotal:
 private func performSplit(
     sides: [[Vector2D]],
     sidesTotal n: Int,
-    params: SubdivisionParams
+    params: SubdivisionParams,
+    centre: Vector2D
 ) -> [Polygon2D] {
     if n % 2 == 0 {
-        return splitEven(sides: sides, n: n, params: params)
+        return splitEven(sides: sides, n: n, params: params, centre: centre)
     } else {
-        return splitOdd(sides: sides, n: n, params: params)
+        return splitOdd(sides: sides, n: n, params: params, centre: centre)
     }
 }
 
@@ -101,12 +103,12 @@ private func performSplit(
 private func splitEven(
     sides: [[Vector2D]],
     n: Int,
-    params: SubdivisionParams
+    params: SubdivisionParams,
+    centre: Vector2D
 ) -> [Polygon2D] {
     let half = n / 2
     let t0   = params.lineRatios.x
     let tH   = params.continuous ? params.lineRatios.y : params.lineRatios.x
-    let cp   = params.controlPointRatios
 
     let (left0,  right0)  = BezierMath.split(seg: sides[0],    t: t0)
     let (leftH,  rightH)  = BezierMath.split(seg: sides[half], t: tH)
@@ -117,13 +119,13 @@ private func splitEven(
     var pts1 = right0
     for s in 1..<half { pts1 += sides[s] }
     pts1 += leftH
-    pts1 += BezierMath.connector(from: midH, to: mid0, cpRatios: cp)
+    pts1 += params.connector(from: midH, to: mid0, centre: centre)
 
     // Poly 2: rightH, sides[half+1..<n], left0, connector(mid0→midH)
     var pts2 = rightH
     for s in (half + 1)..<n { pts2 += sides[s] }
     pts2 += left0
-    pts2 += BezierMath.connector(from: mid0, to: midH, cpRatios: cp)
+    pts2 += params.connector(from: mid0, to: midH, centre: centre)
 
     return [
         Polygon2D(points: pts1, type: .spline),
@@ -135,11 +137,11 @@ private func splitEven(
 private func splitOdd(
     sides: [[Vector2D]],
     n: Int,
-    params: SubdivisionParams
+    params: SubdivisionParams,
+    centre: Vector2D
 ) -> [Polygon2D] {
     let half    = n / 2
     let t       = params.lineRatios.x
-    let cp      = params.controlPointRatios
     let anchor0 = sides[0][0]
 
     let (leftH, rightH) = BezierMath.split(seg: sides[half], t: t)
@@ -149,12 +151,12 @@ private func splitOdd(
     var pts1 = [Vector2D]()
     for s in 0..<half { pts1 += sides[s] }
     pts1 += leftH
-    pts1 += BezierMath.connector(from: midH, to: anchor0, cpRatios: cp)
+    pts1 += params.connector(from: midH, to: anchor0, centre: centre)
 
     // Poly 2: rightH, sides[half+1..<n], connector(anchor0→midH)
     var pts2 = rightH
     for s in (half + 1)..<n { pts2 += sides[s] }
-    pts2 += BezierMath.connector(from: anchor0, to: midH, cpRatios: cp)
+    pts2 += params.connector(from: anchor0, to: midH, centre: centre)
 
     return [
         Polygon2D(points: pts1, type: .spline),

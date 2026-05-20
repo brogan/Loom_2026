@@ -98,7 +98,14 @@ struct SubdivisionInspector: View {
             .loomHelp("Horizontal (X) and vertical (Y) split positions within the polygon, in the range 0–1. Controls exactly where the subdivision lines land.")
             vector2DField("CP ratios", xKP: \.controlPointRatios.x, yKP: \.controlPointRatios.y,
                           setIdx: setIdx, paramIdx: paramIdx)
-            .loomHelp("Bézier control-point ratios that curve the subdivision split edges. 0.5 produces a straight line; values above or below introduce curvature.")
+            .loomHelp("Parametric position of each control point along the internal connector edge (0 = start anchor, 1 = end anchor). Affects the spacing distribution of subdivision vertices but not the geometric curvature of the edge.")
+            vector2DField("CP normals", xKP: \.cpNormalOffsets.x, yKP: \.cpNormalOffsets.y,
+                          setIdx: setIdx, paramIdx: paramIdx)
+            .loomHelp("Perpendicular offset for each control point, expressed as a fraction of the segment length. Non-zero values produce genuine Bézier curvature on internal edges. X offsets CP1; Y offsets CP2. Positive/negative flip the bow direction.")
+            InspectorField("Normalise") {
+                Toggle("", isOn: bindP(setIdx, paramIdx, \.cpNormalizeTowardsCentre)).labelsHidden()
+            }
+            .loomHelp("When on, positive CP normals offset away from the polygon centroid (outward bow); when off, positive is the fixed left-perpendicular of each edge direction.")
             InspectorField("Continuous") {
                 Toggle("", isOn: bindP(setIdx, paramIdx, \.continuous)).labelsHidden()
             }

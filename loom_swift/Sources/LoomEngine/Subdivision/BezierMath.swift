@@ -100,15 +100,55 @@ public enum BezierMath {
         return pts
     }
 
-    /// Straight-line Bézier connector from `from` to `to` with control points
-    /// at `cpRatios.x` and `cpRatios.y` along the line.
+    /// Bézier connector from `from` to `to`.
+    ///
+    /// Control points are placed at parametric positions `cpRatios.x` / `cpRatios.y`
+    /// along the segment, then displaced perpendicular to it by `cpNormalOffsets.x`
+    /// and `cpNormalOffsets.y` (expressed as fractions of the segment length).
+    ///
+    /// When `normalizeToCentre` is true the positive normal direction points away
+    /// from `centre`; otherwise it is the left-perpendicular (90° CCW) of the
+    /// from→to direction vector.
     public static func connector(
-        from: Vector2D, to: Vector2D, cpRatios: Vector2D
+        from: Vector2D, to: Vector2D,
+        cpRatios: Vector2D,
+        cpNormalOffsets: Vector2D = .zero,
+        normalizeToCentre: Bool = false,
+        centre: Vector2D = .zero
     ) -> [Vector2D] {
-        [from,
-         Vector2D.lerp(from, to, t: cpRatios.x),
-         Vector2D.lerp(from, to, t: cpRatios.y),
-         to]
+        let cp0 = Vector2D.lerp(from, to, t: cpRatios.x)
+        let cp1 = Vector2D.lerp(from, to, t: cpRatios.y)
+
+        guard cpNormalOffsets.x != 0 || cpNormalOffsets.y != 0 else {
+            return [from, cp0, cp1, to]
+        }
+
+        let dx  = to.x - from.x
+        let dy  = to.y - from.y
+        let len = (dx * dx + dy * dy).squareRoot()
+        guard len > 1e-12 else { return [from, cp0, cp1, to] }
+
+        // Left-perpendicular unit vector (90° CCW of from→to).
+        var nx = -dy / len
+        var ny =  dx / len
+
+        if normalizeToCentre {
+            // Flip so positive offset points away from the polygon centroid.
+            let midX = (from.x + to.x) * 0.5
+            let midY = (from.y + to.y) * 0.5
+            if nx * (midX - centre.x) + ny * (midY - centre.y) < 0 {
+                nx = -nx; ny = -ny
+            }
+        }
+
+        return [
+            from,
+            Vector2D(x: cp0.x + nx * cpNormalOffsets.x * len,
+                     y: cp0.y + ny * cpNormalOffsets.x * len),
+            Vector2D(x: cp1.x + nx * cpNormalOffsets.y * len,
+                     y: cp1.y + ny * cpNormalOffsets.y * len),
+            to
+        ]
     }
 
     // MARK: - Scala-compatible edge split

@@ -32,6 +32,12 @@ public struct SubdivisionParams: Equatable, Codable, Sendable {
     public var lineRatios: Vector2D
     /// Bézier control point positions along each new internal line.
     public var controlPointRatios: Vector2D
+    /// Perpendicular offset for each control point on internal connector edges,
+    /// as a fraction of segment length. Zero = straight line (pure tangential).
+    public var cpNormalOffsets: Vector2D
+    /// When true, positive offsets point away from the polygon centroid;
+    /// when false, positive is the left-perpendicular of the from→to direction.
+    public var cpNormalizeTowardsCentre: Bool
     /// When `lineRatios.x ≠ lineRatios.y`, enforces shared split points on
     /// adjacent edges so the mesh is seamless. Has no effect when ratios are equal.
     public var continuous: Bool
@@ -104,6 +110,8 @@ public struct SubdivisionParams: Equatable, Codable, Sendable {
         subdivisionType: SubdivisionType      = .quad,
         lineRatios: Vector2D                  = Vector2D(x: 0.5, y: 0.5),
         controlPointRatios: Vector2D          = Vector2D(x: 0.25, y: 0.75),
+        cpNormalOffsets: Vector2D             = .zero,
+        cpNormalizeTowardsCentre: Bool        = false,
         continuous: Bool                      = true,
         insetTransform: InsetTransform        = .default,
         ranMiddle: Bool                       = false,
@@ -132,6 +140,8 @@ public struct SubdivisionParams: Equatable, Codable, Sendable {
         self.subdivisionType            = subdivisionType
         self.lineRatios                 = lineRatios
         self.controlPointRatios         = controlPointRatios
+        self.cpNormalOffsets            = cpNormalOffsets
+        self.cpNormalizeTowardsCentre   = cpNormalizeTowardsCentre
         self.continuous                 = continuous
         self.insetTransform             = insetTransform
         self.ranMiddle                  = ranMiddle
@@ -157,7 +167,7 @@ public struct SubdivisionParams: Equatable, Codable, Sendable {
     }
 
     private enum CodingKeys: String, CodingKey {
-        case name, enabled, subdivisionType, lineRatios, controlPointRatios, continuous, insetTransform
+        case name, enabled, subdivisionType, lineRatios, controlPointRatios, cpNormalOffsets, cpNormalizeTowardsCentre, continuous, insetTransform
         case ranMiddle, ranDiv, visibilityRule
         case pressureSubdivisionMode, pressureRandomGroups
         case polysTransform, polysTranformWhole, pTW_probability, pTW_commonCentre
@@ -175,6 +185,8 @@ public struct SubdivisionParams: Equatable, Codable, Sendable {
             subdivisionType: try c.decodeIfPresent(SubdivisionType.self, forKey: .subdivisionType) ?? defaults.subdivisionType,
             lineRatios: try c.decodeIfPresent(Vector2D.self, forKey: .lineRatios) ?? defaults.lineRatios,
             controlPointRatios: try c.decodeIfPresent(Vector2D.self, forKey: .controlPointRatios) ?? defaults.controlPointRatios,
+            cpNormalOffsets: try c.decodeIfPresent(Vector2D.self, forKey: .cpNormalOffsets) ?? defaults.cpNormalOffsets,
+            cpNormalizeTowardsCentre: try c.decodeIfPresent(Bool.self, forKey: .cpNormalizeTowardsCentre) ?? defaults.cpNormalizeTowardsCentre,
             continuous: try c.decodeIfPresent(Bool.self, forKey: .continuous) ?? defaults.continuous,
             insetTransform: try c.decodeIfPresent(InsetTransform.self, forKey: .insetTransform) ?? defaults.insetTransform,
             ranMiddle: try c.decodeIfPresent(Bool.self, forKey: .ranMiddle) ?? defaults.ranMiddle,
@@ -207,6 +219,8 @@ public struct SubdivisionParams: Equatable, Codable, Sendable {
         try c.encode(subdivisionType, forKey: .subdivisionType)
         try c.encode(lineRatios, forKey: .lineRatios)
         try c.encode(controlPointRatios, forKey: .controlPointRatios)
+        try c.encode(cpNormalOffsets, forKey: .cpNormalOffsets)
+        try c.encode(cpNormalizeTowardsCentre, forKey: .cpNormalizeTowardsCentre)
         try c.encode(continuous, forKey: .continuous)
         try c.encode(insetTransform, forKey: .insetTransform)
         try c.encode(ranMiddle, forKey: .ranMiddle)
@@ -232,6 +246,15 @@ public struct SubdivisionParams: Equatable, Codable, Sendable {
     }
 
     // MARK: - Convenience
+
+    /// Build a Bézier connector segment applying this param's CP ratios and normal offsets.
+    public func connector(from: Vector2D, to: Vector2D, centre: Vector2D) -> [Vector2D] {
+        BezierMath.connector(from: from, to: to,
+                             cpRatios: controlPointRatios,
+                             cpNormalOffsets: cpNormalOffsets,
+                             normalizeToCentre: cpNormalizeTowardsCentre,
+                             centre: centre)
+    }
 
     /// The effective split ratio for side `index`, respecting `continuous` mode.
     public func splitRatio(forSideIndex index: Int) -> Double {

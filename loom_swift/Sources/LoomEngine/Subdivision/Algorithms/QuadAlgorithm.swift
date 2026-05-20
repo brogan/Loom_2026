@@ -39,9 +39,8 @@ func subdivideQuad(
     }
 
     // Internal edges from each split point to the centre
-    let cp = params.controlPointRatios
     let internalSides: [[Vector2D]] = splits.map { m in
-        BezierMath.connector(from: m, to: centre, cpRatios: cp)
+        params.connector(from: m, to: centre, centre: centre)
     }
 
     // Assemble N quads

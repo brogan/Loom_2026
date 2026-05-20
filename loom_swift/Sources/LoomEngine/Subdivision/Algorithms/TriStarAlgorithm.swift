@@ -14,7 +14,6 @@ func subdivideTriStar(
     let insetPts   = BezierMath.insetPoints(points, transform: params.insetTransform, centre: centre)
     let innerSides = BezierMath.extractSides(insetPts, sidesTotal: sidesTotal)
     let mids       = starInsetMidPoints(sides: innerSides, sidesTotal: sidesTotal, params: params)
-    let cp         = params.controlPointRatios
 
     var polys = [Polygon2D]()
     polys.reserveCapacity(sidesTotal + 1)
@@ -26,14 +25,14 @@ func subdivideTriStar(
         let prevMid    = mids[prev]
         let currMid    = mids[i]
 
-        let s0 = BezierMath.connector(from: outerAnch, to: prevMid, cpRatios: cp)
-        let s1 = BezierMath.connector(from: prevMid,   to: currMid, cpRatios: cp)
-        let s2 = BezierMath.connector(from: currMid,   to: outerAnch, cpRatios: cp)
+        let s0 = params.connector(from: outerAnch, to: prevMid,    centre: centre)
+        let s1 = params.connector(from: prevMid,   to: currMid,    centre: centre)
+        let s2 = params.connector(from: currMid,   to: outerAnch,  centre: centre)
         polys.append(Polygon2D(points: s0 + s1 + s2, type: .spline))
     }
 
     // 1 inner polygon
-    polys.append(innerRingPoly(mids: mids, sidesTotal: sidesTotal, cpRatios: cp))
+    polys.append(innerRingPoly(mids: mids, sidesTotal: sidesTotal, params: params))
     return polys
 }
 
@@ -53,7 +52,6 @@ func subdivideTriStarFill(
     let insetPts   = BezierMath.insetPoints(revPts, transform: params.insetTransform, centre: centre)
     let innerSides = BezierMath.extractSides(insetPts, sidesTotal: sidesTotal)
     let mids       = starInsetMidPoints(sides: innerSides, sidesTotal: sidesTotal, params: params)
-    let cp         = params.controlPointRatios
 
     var polys = [Polygon2D]()
     polys.reserveCapacity(sidesTotal * 2 + 1)
@@ -65,19 +63,19 @@ func subdivideTriStarFill(
         let prevMid   = mids[prev]
 
         // Star triangle: outerAnch → currMid → prevMid
-        let st0 = BezierMath.connector(from: outerAnch, to: currMid, cpRatios: cp)
-        let st1 = BezierMath.connector(from: currMid,   to: prevMid, cpRatios: cp)
-        let st2 = BezierMath.connector(from: prevMid,   to: outerAnch, cpRatios: cp)
+        let st0 = params.connector(from: outerAnch, to: currMid,    centre: centre)
+        let st1 = params.connector(from: currMid,   to: prevMid,    centre: centre)
+        let st2 = params.connector(from: prevMid,   to: outerAnch,  centre: centre)
         polys.append(Polygon2D(points: st0 + st1 + st2, type: .spline))
 
         // Fill triangle: outer side i → outer[i].end→currMid → currMid→outerAnch
         let ft0 = outerSides[i]
-        let ft1 = BezierMath.connector(from: outerSides[i][3], to: currMid,   cpRatios: cp)
-        let ft2 = BezierMath.connector(from: currMid,          to: outerAnch, cpRatios: cp)
+        let ft1 = params.connector(from: outerSides[i][3], to: currMid,   centre: centre)
+        let ft2 = params.connector(from: currMid,          to: outerAnch, centre: centre)
         polys.append(Polygon2D(points: ft0 + ft1 + ft2, type: .spline))
     }
 
-    polys.append(innerRingPoly(mids: mids, sidesTotal: sidesTotal, cpRatios: cp))
+    polys.append(innerRingPoly(mids: mids, sidesTotal: sidesTotal, params: params))
     return polys
 }
 
@@ -99,13 +97,14 @@ private func starInsetMidPoints(
 private func innerRingPoly(
     mids: [Vector2D],
     sidesTotal: Int,
-    cpRatios: Vector2D
+    params: SubdivisionParams
 ) -> Polygon2D {
+    let ringCentre = BezierMath.centreLine(mids)
     var pts = [Vector2D]()
     pts.reserveCapacity(sidesTotal * 4)
     for i in 0..<sidesTotal {
         let next = (i + 1) % sidesTotal
-        pts += BezierMath.connector(from: mids[i], to: mids[next], cpRatios: cpRatios)
+        pts += params.connector(from: mids[i], to: mids[next], centre: ringCentre)
     }
     return Polygon2D(points: pts, type: .spline)
 }
