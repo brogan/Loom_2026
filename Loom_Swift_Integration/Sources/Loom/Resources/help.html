@@ -209,6 +209,7 @@
   <a class="nav-link nav-sub" href="#sprites-svg">SVG Sprites</a>
   <a class="nav-link" href="#subdivision">Subdivision</a>
   <a class="nav-link nav-sub" href="#subdivision-algorithms">Algorithms</a>
+  <a class="nav-link nav-sub" href="#subdivision-edge-curvature">Edge Curvature</a>
   <a class="nav-link nav-sub" href="#subdivision-ptw">PTW</a>
   <a class="nav-link nav-sub" href="#subdivision-ptp">PTP</a>
   <a class="nav-link nav-sub" href="#subdivision-pressure">Pressure</a>
@@ -1116,15 +1117,75 @@
     <thead><tr><th>Parameter</th><th>Description</th></tr></thead>
     <tbody>
       <tr><td>Algorithm</td><td>The subdivision type (see above).</td></tr>
-      <tr><td>Ratio X / Y</td><td>Horizontal and vertical split positions (0–1 within the polygon).</td></tr>
-      <tr><td>Control X / Y</td><td>Bézier control ratios for curved subdivision edges.</td></tr>
+      <tr><td>Line ratios X / Y</td><td>Horizontal and vertical split positions (0–1 within the polygon). X controls even-indexed edges; Y controls odd-indexed edges.</td></tr>
+      <tr><td>CP ratios X / Y</td><td>Parametric position of each control point along the internal connector edge (0 = start anchor, 1 = end anchor). Affects the spacing distribution of subdivision vertices along the edge but not its geometric shape. Default 0.25 / 0.75. See <a href="#subdivision-edge-curvature">Edge Curvature</a>.</td></tr>
+      <tr><td>CP normals X / Y</td><td>Perpendicular offset for each control point, as a fraction of the segment length. Non-zero values produce genuine Bézier curvature on internal connector edges. X offsets CP1; Y offsets CP2. Positive and negative values bow in opposite directions. See <a href="#subdivision-edge-curvature">Edge Curvature</a>.</td></tr>
+      <tr><td>Normalise</td><td>When on, positive CP normals push away from the polygon centroid (consistent outward bow regardless of edge winding); when off, positive is the fixed left-perpendicular of each edge direction. See <a href="#subdivision-edge-curvature">Edge Curvature</a>.</td></tr>
       <tr><td>Continuous</td><td>Propagate the same parameter index to all child polygons.</td></tr>
       <tr><td>Visibility rule</td><td>Filter which polygons are rendered — all, random, every nth, etc.</td></tr>
       <tr><td>Inset</td><td>Distance of the echo inset (for Echo and Bord variants).</td></tr>
-      <tr><td>Apply to border</td><td>Whether the inset also applies to the border polygon.</td></tr>
+      <tr><td>Ran middle</td><td>Jitters the subdivision midpoint position randomly each frame, breaking the regularity of the split.</td></tr>
+      <tr><td>Ran divisor</td><td>Scales the midpoint jitter amount — higher values produce smaller offsets. Default 100.</td></tr>
       <tr><td>Enabled</td><td>Checkbox to temporarily disable a parameter without deleting it.</td></tr>
     </tbody>
   </table>
+
+  <h3 id="subdivision-edge-curvature">Edge Curvature — CP Ratios and CP Normals</h3>
+  <p>Internal connector edges are the lines that algorithms draw inward — from split points on the outer polygon boundary to the polygon centroid (Quad, Tri) or between computed midpoints (TriStar, Split). By default they are geometrically straight. Two complementary parameters control their shape:</p>
+
+  <h4>CP ratios — parametric distribution</h4>
+  <p>CP ratios place the two Bézier control points at specific positions <em>along</em> the connector line (0 = start anchor, 1 = end anchor). Because all four Bézier points are collinear, the curve remains geometrically straight regardless of the ratio values. What the ratios <em>do</em> control is the parametric speed along the edge: they determine where subdivision algorithms place new vertices when they later split this edge, and therefore subtly reshape the tessellation topology at deeper levels. The default values of 0.25 / 0.75 give a symmetric, uniformly distributed result.</p>
+
+  <h4>CP normals — perpendicular offset</h4>
+  <p>CP normals displace each control point <em>perpendicular</em> to the connector segment by an amount expressed as a fraction of the segment length. This lifts the control points off the straight line and produces genuine Bézier curvature. X offsets CP1 (near the start); Y offsets CP2 (near the end).</p>
+
+  <div class="diagram">
+    <svg width="420" height="160" viewBox="0 0 420 160" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <!-- Left: straight connector (normals = 0) -->
+      <text x="90" y="18" text-anchor="middle" font-size="11" fill="#aaaaaa" font-family="-apple-system">CP normals 0 / 0</text>
+      <line x1="30" y1="130" x2="150" y2="40" stroke="#555" stroke-width="1" stroke-dasharray="4,3"/>
+      <path d="M30,130 C58,112 122,58 150,40" stroke="#0e7fd4" stroke-width="2" fill="none"/>
+      <circle cx="30"  cy="130" r="5" fill="#0e7fd4"/>
+      <circle cx="150" cy="40"  r="5" fill="#0e7fd4"/>
+      <circle cx="58"  cy="112" r="4" fill="#aaaaaa" stroke="#555" stroke-width="0.8"/>
+      <circle cx="122" cy="58"  r="4" fill="#aaaaaa" stroke="#555" stroke-width="0.8"/>
+      <text x="90" y="150" text-anchor="middle" font-size="10" fill="#888" font-family="-apple-system">straight line</text>
+
+      <!-- Right: curved connector (normals != 0) -->
+      <text x="330" y="18" text-anchor="middle" font-size="11" fill="#aaaaaa" font-family="-apple-system">CP normals 0.4 / 0.4</text>
+      <line x1="270" y1="130" x2="390" y2="40" stroke="#555" stroke-width="1" stroke-dasharray="4,3"/>
+      <!-- control point lines -->
+      <line x1="298" y1="112" x2="328" y2="88" stroke="#555" stroke-width="0.8" stroke-dasharray="2,2"/>
+      <line x1="362" y1="58" x2="392" y2="34" stroke="#555" stroke-width="0.8" stroke-dasharray="2,2"/>
+      <!-- curved path -->
+      <path d="M270,130 C328,88 392,34 390,40" stroke="#0e7fd4" stroke-width="2" fill="none"/>
+      <circle cx="270" cy="130" r="5" fill="#0e7fd4"/>
+      <circle cx="390" cy="40"  r="5" fill="#0e7fd4"/>
+      <!-- offset CPs -->
+      <circle cx="328" cy="88" r="4" fill="#f0c040" stroke="#555" stroke-width="0.8"/>
+      <circle cx="392" cy="34" r="4" fill="#f0c040" stroke="#555" stroke-width="0.8"/>
+      <text x="330" y="150" text-anchor="middle" font-size="10" fill="#888" font-family="-apple-system">curved (bowed)</text>
+
+      <!-- legend -->
+      <circle cx="185" cy="82" r="4" fill="#0e7fd4"/>
+      <text x="194" y="86" font-size="10" fill="#aaaaaa" font-family="-apple-system">anchor</text>
+      <circle cx="185" cy="100" r="4" fill="#aaaaaa" stroke="#555" stroke-width="0.8"/>
+      <text x="194" y="104" font-size="10" fill="#aaaaaa" font-family="-apple-system">CP on line</text>
+      <circle cx="185" cy="118" r="4" fill="#f0c040" stroke="#555" stroke-width="0.8"/>
+      <text x="194" y="122" font-size="10" fill="#aaaaaa" font-family="-apple-system">CP offset</text>
+    </svg>
+  </div>
+
+  <h4>Normalise checkbox</h4>
+  <p>The perpendicular direction is inherently ambiguous: it has two sides. The <strong>Normalise</strong> checkbox resolves this:</p>
+  <ul>
+    <li><strong>Off (default)</strong> — positive normals always go to the left-perpendicular of the edge direction (i.e. the geometric "left" as you travel from start to end). The bow direction depends on how each edge is wound in the polygon, so adjacent edges may curve in opposite or inconsistent directions. Useful for exploratory results and asymmetric effects.</li>
+    <li><strong>On</strong> — positive normals always point <em>away</em> from the polygon centroid, negative normals toward it. This gives consistent outward or inward bowing on every internal edge regardless of winding. Use this when you want a regular "puffed" or "pinched" look across all children.</li>
+  </ul>
+
+  <div class="tip"><strong>Tip:</strong> Start with equal X and Y values (e.g. 0.3 / 0.3) and Normalise on. Increase toward 1.0 for dramatic bowing; go negative for inward pinch. Once you have the overall shape, try X and Y values that differ to create asymmetric curves — a gentle approach at CP1 and a sharper exit at CP2, for example.</div>
+
+  <div class="note"><strong>Note:</strong> CP normals apply only to <em>internal connector edges</em> — the lines drawn by the algorithm from split points or midpoints to the centroid. The outer edges of the source polygon are split using the Bézier scalaSplit method and are not affected by these settings.</div>
 
   <h3 id="subdivision-ptw">PTW — Polygons Transform Whole</h3>
   <p>PTW applies geometric transformations to entire output polygons as units. When first enabled, geometry remains at its existing 100% scale until you deliberately adjust the transform values. Each polygon produced by the subdivision step can then be independently translated, scaled, and rotated by a randomly sampled amount within configurable ranges. This breaks the regularity of subdivided geometry, producing scattered, fragmented, or organically varied results from otherwise structured forms.</p>
