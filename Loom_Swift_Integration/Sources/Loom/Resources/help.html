@@ -186,6 +186,7 @@
   <a class="nav-link nav-sub" href="#export-still">Still Image</a>
   <a class="nav-link nav-sub" href="#export-svg">SVG Export</a>
   <a class="nav-link nav-sub" href="#export-video">Video Export</a>
+  <a class="nav-link nav-sub" href="#export-frame-range">Frame Range</a>
 
   <div class="nav-section">Reference</div>
   <a class="nav-link" href="#shortcuts">Keyboard Shortcuts</a>
@@ -314,7 +315,8 @@
       <tr><td>■ Stop</td><td>Stop and return to frame 0</td></tr>
       <tr><td>⟳ Loop</td><td>Toggle loop-forever / play-once</td></tr>
       <tr><td>Frame counter</td><td>Displays the current frame number</td></tr>
-      <tr><td>Duration</td><td>Total frame count. Set to 0 to derive duration from the longest keyframe lane.</td></tr>
+      <tr><td>Start</td><td>First frame of the playback range. 0 = play from the beginning.</td></tr>
+      <tr><td>End</td><td>Last frame of the playback range. Derived automatically from the longest keyframe lane when not set. For purely parametric animations with no keyframes, the field shows <strong>∞</strong> — playback continues until you press Stop. Click <strong>∞</strong> to enter a concrete end frame.</td></tr>
       <tr><td>Animating</td><td>Master animation on/off toggle. When off, Play is disabled and the scene remains at the current static frame.</td></tr>
       <tr><td>BG once</td><td>Draw the background once and composite animated layers on top when possible.</td></tr>
       <tr><td>Scrub bar</td><td>Drag to seek (enabled in Global settings)</td></tr>
@@ -1730,13 +1732,36 @@
   <h3 id="export-video">Video export</h3>
   <ol class="steps">
     <li>Click the <strong>movieclapper</strong> icon in the toolbar to open the Export Sheet.</li>
-    <li>Set the desired <strong>FPS</strong> (24, 25, 30, or 60).</li>
-    <li>Set the <strong>Duration</strong> in seconds, or leave at 0 to use the project duration.</li>
+    <li>Review or adjust the <strong>Frame Range</strong> (Start and End frame). These default to the project's playback range — see <a href="#export-frame-range">Frame Range</a> below.</li>
+    <li>Set the desired <strong>FPS</strong> (24, 25, 30, or 60). Total frames and Duration in seconds update immediately.</li>
     <li>Choose a <strong>Codec</strong>: H.264, HEVC (H.265), or ProRes 4444.</li>
     <li>Toggle <strong>Restart from beginning</strong> if the playhead should reset before export starts.</li>
     <li>Click <strong>Export…</strong>, choose a destination file, and wait for the progress indicator to complete.</li>
   </ol>
-  <div class="note">The exported video resolution is canvas size × Quality multiplier. Higher quality values increase render time and file size but do not change video duration or frame rate. If a 5-second video takes 30 seconds to render, it still exports as a 5-second video. ProRes 4444 produces larger files but preserves alpha and is better for compositing workflows.</div>
+  <div class="note">The exported video resolution is canvas size × Quality multiplier. Higher quality values increase render time and file size but do not change the frame range or frame rate. ProRes 4444 produces larger files but preserves alpha and is better for compositing workflows.</div>
+
+  <h3 id="export-frame-range">Frame range</h3>
+  <p>The frame range controls which portion of the animation is captured, for both live playback and video export.</p>
+
+  <table>
+    <thead><tr><th>Field</th><th>Location</th><th>Behaviour</th></tr></thead>
+    <tbody>
+      <tr><td><strong>Start</strong></td><td>Toolbar &amp; Export Sheet</td><td>First frame to include. 0 = from the very beginning. The engine advances silently through any pre-start frames before capturing begins.</td></tr>
+      <tr><td><strong>End</strong></td><td>Toolbar &amp; Export Sheet</td><td>Last frame (exclusive). When not set, Loom derives this from the longest keyframe lane. For purely parametric animations the toolbar shows <strong>∞</strong>.</td></tr>
+      <tr><td>Total frames</td><td>Export Sheet (derived)</td><td>End − Start. Read-only; updates as you change Start, End, or FPS.</td></tr>
+      <tr><td>Duration</td><td>Export Sheet (derived)</td><td>Total frames ÷ FPS, shown in seconds. Read-only; use this to verify the exported clip length without doing the arithmetic yourself.</td></tr>
+    </tbody>
+  </table>
+
+  <h4>Keyframe-driven animations</h4>
+  <p>When the project contains keyframes, the End field in the toolbar shows the frame of the last keyframe across all driver lanes. You can shorten the range by entering a smaller End value, or extend it to export past the last keyframe (useful when drivers use <strong>Loop Once</strong> and you want to capture the held final pose).</p>
+
+  <h4>Purely parametric animations</h4>
+  <p>Drivers that use <strong>Sine</strong>, <strong>Noise</strong>, <strong>Drift</strong>, or other formula modes without keyframes have no natural stopping point. The toolbar End field shows <strong>∞</strong> and playback continues until you press Stop.</p>
+  <p>To export a parametric animation, click <strong>∞</strong> in the toolbar to enter a concrete end frame, or open the Export Sheet — it initialises End to 10 seconds worth of frames at the project FPS, giving you an immediate starting point to adjust.</p>
+
+  <h4>Mixed animations</h4>
+  <p>Most projects combine keyframe and parametric drivers. The effective end frame is derived from the keyframe data; the parametric layers simply keep running past that point if they have no natural stopping point of their own.</p>
 
   <h3>Output folder</h3>
   <p>Click the <strong>folder</strong> icon in the toolbar to open the most recently used renders folder in Finder. Loom remembers the last export directory across sessions.</p>
