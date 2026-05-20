@@ -176,6 +176,7 @@
   <a class="nav-link nav-sub" href="#animation-timeline">Timeline</a>
   <a class="nav-link nav-sub" href="#animation-lane-controls">Lane Controls</a>
   <a class="nav-link nav-sub" href="#animation-editing">Timeline Editing</a>
+  <a class="nav-link nav-sub" href="#animation-scale-timing">Scale Timing</a>
   <a class="nav-link nav-sub" href="#animation-visual-kf">Visual KF Editing</a>
   <a class="nav-link nav-sub" href="#animation-camera">Camera</a>
   <a class="nav-link nav-sub" href="#animation-parallax">Depth &amp; Parallax</a>
@@ -1486,6 +1487,7 @@
       <tr><td>Add or remove from selection</td><td><kbd>Shift</kbd>-click a keyframe.</td></tr>
       <tr><td>Rubber-band select</td><td>Drag across the timeline body to select keyframes across one or more lanes.</td></tr>
       <tr><td>Select a full lane</td><td>Click the lane label to select all keyframes in that lane.</td></tr>
+      <tr><td>Select all keyframes</td><td>Press <kbd>⌘A</kbd> to select every keyframe in the entire timeline — all sprites, all lanes, all renderer lanes, and all camera lanes — regardless of whether rows are expanded.</td></tr>
       <tr><td>Delete selected</td><td>Press <kbd>Delete</kbd> or <kbd>Backspace</kbd>.</td></tr>
       <tr><td>Copy selected</td><td>Press <kbd>⌘C</kbd>. Relative frame offsets are preserved.</td></tr>
       <tr><td>Paste selected</td><td>Move the playhead to the insertion frame and press <kbd>⌘V</kbd>. Existing keyframes at matching target frames are replaced.</td></tr>
@@ -1498,6 +1500,30 @@
 
   <h4>Zoom and scroll</h4>
   <p>Use the <strong>×1.5 / ÷1.5</strong> buttons to zoom the timeline ruler horizontally. The timeline lane list scrolls vertically when there are more rows than can fit. Drag the larger top grab area to resize the timeline vertically; it can open high enough to inspect dense sprite and renderer lane stacks.</p>
+
+  <h3 id="animation-scale-timing">Scale timing</h3>
+  <p>Keyframe timing scale lets you stretch or compress a group of keyframes in one step — useful when a section of animation is paced too fast or too slow and you would otherwise need to reposition many individual keyframes by hand.</p>
+
+  <h4>Workflow</h4>
+  <ol class="steps">
+    <li>Select the keyframes you want to retime. Use rubber-band drag for a region, click a lane label for a full lane, or press <kbd>⌘A</kbd> to select everything.</li>
+    <li>When two or more keyframes are selected, a <strong>scale field</strong> appears in the top-left corner of the timeline header alongside the zoom buttons. It shows <strong>100</strong> (percent).</li>
+    <li>Type a new percentage value:
+      <ul>
+        <li><strong>&gt; 100%</strong> — spreads keyframes further apart (slower timing, longer animation)</li>
+        <li><strong>&lt; 100%</strong> — compresses keyframes closer together (faster timing, shorter animation)</li>
+      </ul>
+    </li>
+    <li>Press <kbd>Return</kbd> or click the <strong>↔ button</strong> to apply. The scale field resets to 100 and the selection is cleared.</li>
+  </ol>
+
+  <h4>How the pivot works</h4>
+  <p>Scaling always pivots around the <strong>earliest selected keyframe</strong>. That keyframe stays fixed; all other selected keyframes move relative to it. This means scaling a group of keyframes that starts at frame 30 leaves frame 30 in place and stretches or compresses the subsequent keyframes away from it.</p>
+  <p>To retime the whole animation relative to frame 0, use <kbd>⌘A</kbd> (select all) before scaling — the earliest keyframe in the entire project becomes the pivot, which is typically frame 0.</p>
+
+  <h4>Scope and undo</h4>
+  <p>Scale applies to all selected keyframe types together: sprite transform lanes (position, scale, rotation, morph, opacity, shape), renderer driver lanes (fill, stroke, width, opacity), and camera lanes. The operation is a single undoable step — press <kbd>⌘Z</kbd> to reverse it in full.</p>
+  <div class="tip"><strong>Tip:</strong> Scaling can cause two keyframes in the same lane to land on the same frame when compressing aggressively. The values are preserved but the duplicate frames will be adjacent in the sorted lane — drag one to a different frame or delete it to clean up.</div>
 
   <h3 id="animation-visual-kf">Visual sprite keyframe editing</h3>
   <p>When a <strong>Position</strong>, <strong>Scale</strong>, or <strong>Rotation</strong> keyframe is selected in the timeline, Loom lets you set its value by directly manipulating the sprite in the <em>Edit</em> or <em>Parallax</em> wireframe view — no need to type numeric values.</p>
