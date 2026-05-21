@@ -20,12 +20,21 @@ public enum LoopMode: String, Codable, Sendable, CaseIterable {
 /// Easing function applied between two keyframes.
 public enum EasingType: String, Codable, Sendable, CaseIterable {
     case linear          = "LINEAR"
-    case easeInOutQuad   = "EASE_IN_OUT_QUAD"
     case easeInQuad      = "EASE_IN_QUAD"
     case easeOutQuad     = "EASE_OUT_QUAD"
-    case easeInOutCubic  = "EASE_IN_OUT_CUBIC"
+    case easeInOutQuad   = "EASE_IN_OUT_QUAD"
     case easeInCubic     = "EASE_IN_CUBIC"
     case easeOutCubic    = "EASE_OUT_CUBIC"
+    case easeInOutCubic  = "EASE_IN_OUT_CUBIC"
+    case easeInSine      = "EASE_IN_SINE"
+    case easeOutSine     = "EASE_OUT_SINE"
+    case easeInOutSine   = "EASE_IN_OUT_SINE"
+    case easeInExpo      = "EASE_IN_EXPO"
+    case easeOutExpo     = "EASE_OUT_EXPO"
+    case easeInOutExpo   = "EASE_IN_OUT_EXPO"
+    case easeInBack      = "EASE_IN_BACK"
+    case easeOutBack     = "EASE_OUT_BACK"
+    case easeInOutBack   = "EASE_IN_OUT_BACK"
 }
 
 // MARK: - Keyframe

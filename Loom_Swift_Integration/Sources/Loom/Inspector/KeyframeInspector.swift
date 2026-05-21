@@ -507,13 +507,22 @@ struct KeyframeInspector: View {
 private extension EasingType {
     var kfLabel: String {
         switch self {
-        case .linear:         return "Linear"
-        case .easeInOutQuad:  return "In-Out ²"
-        case .easeInQuad:     return "In ²"
-        case .easeOutQuad:    return "Out ²"
-        case .easeInOutCubic: return "In-Out ³"
-        case .easeInCubic:    return "In ³"
-        case .easeOutCubic:   return "Out ³"
+        case .linear:          return "Linear"
+        case .easeInQuad:      return "In ²"
+        case .easeOutQuad:     return "Out ²"
+        case .easeInOutQuad:   return "In-Out ²"
+        case .easeInCubic:     return "In ³"
+        case .easeOutCubic:    return "Out ³"
+        case .easeInOutCubic:  return "In-Out ³"
+        case .easeInSine:      return "In sin"
+        case .easeOutSine:     return "Out sin"
+        case .easeInOutSine:   return "In-Out sin"
+        case .easeInExpo:      return "In exp"
+        case .easeOutExpo:     return "Out exp"
+        case .easeInOutExpo:   return "In-Out exp"
+        case .easeInBack:      return "In back"
+        case .easeOutBack:     return "Out back"
+        case .easeInOutBack:   return "In-Out back"
         }
     }
 }

@@ -232,6 +232,7 @@
   <a class="nav-link nav-sub" href="#animation-camera">Camera</a>
   <a class="nav-link nav-sub" href="#animation-parallax">Depth &amp; Parallax</a>
   <a class="nav-link nav-sub" href="#animation-morph">Morph Targets</a>
+  <a class="nav-link nav-sub" href="#animation-easing">Easing Algorithms</a>
 
   <div class="nav-section">Export</div>
   <a class="nav-link" href="#export">Output Options</a>
@@ -1892,6 +1893,228 @@
   <p>See the full step-by-step guide at <a href="#geometry-morph-layers">Morph Layer Import</a> in the Geometry section.</p>
 
   <div class="tip"><strong>Tip:</strong> Morph Amount is not limited to 0–1. Values above 1 exaggerate the morph beyond the target; negative values push geometry in the opposite direction. Both produce valid (if extreme) results when used intentionally.</div>
+
+  <h3 id="animation-easing">Easing algorithms</h3>
+  <p>Easing controls the <em>velocity profile</em> of a keyframe segment — how fast the interpolated value moves through its range between two keyframes. Every keyframe has an individual easing setting that applies from that keyframe to the next. Easing affects all driver types equally: position, scale, rotation, morph, opacity, shape, and all renderer driver lanes.</p>
+
+  <p>All easings map a linear progress value <em>t</em> ∈ [0, 1] to an eased output in the same range. The output reaches exactly 0 at the start keyframe and exactly 1 at the end keyframe in all cases — only the shape of the journey between them differs.</p>
+
+  <h4>The three families</h4>
+  <p>The 16 available easings span four distinct speed profiles — <strong>flat</strong> (Linear), <strong>polynomial</strong> (Quad, Cubic), <strong>sinusoidal</strong> (Sin), <strong>exponential</strong> (Exp), and <strong>overshoot</strong> (Back) — each available in three directional variants:</p>
+
+  <table>
+    <thead>
+      <tr>
+        <th>Variant</th><th>Meaning</th><th>Shape</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><strong>In</strong></td>
+        <td>Slow start, fast finish. Acceleration from rest.</td>
+        <td>Concave curve — stays near zero longer before accelerating.</td>
+      </tr>
+      <tr>
+        <td><strong>Out</strong></td>
+        <td>Fast start, slow finish. Deceleration to rest.</td>
+        <td>Convex curve — moves quickly then tapers to the end value.</td>
+      </tr>
+      <tr>
+        <td><strong>In-Out</strong></td>
+        <td>Slow start and slow end, fastest in the middle.</td>
+        <td>S-shaped curve — symmetrical, both extremes are gentle.</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <h4>Linear</h4>
+  <p>No easing applied. The value advances at a perfectly constant rate. Mechanical and precise — useful when you want explicitly robotic timing or when you are chaining many keyframes that collectively form a hand-crafted velocity curve.</p>
+
+  <!-- Linear diagram -->
+  <div class="diagram">
+    <svg width="460" height="110" viewBox="0 0 460 110" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <rect x="0" y="0" width="460" height="110" rx="4" fill="#1e1e1e"/>
+      <text x="230" y="14" text-anchor="middle" font-size="10" font-weight="600" fill="#ccc" font-family="-apple-system">LINEAR</text>
+      <!-- axes -->
+      <line x1="30" y1="90" x2="210" y2="90" stroke="#444" stroke-width="0.8"/>
+      <line x1="30" y1="90" x2="30" y2="18" stroke="#444" stroke-width="0.8"/>
+      <text x="23" y="93" font-size="8" fill="#666" text-anchor="end" font-family="Menlo,monospace">0</text>
+      <text x="23" y="21" font-size="8" fill="#666" text-anchor="end" font-family="Menlo,monospace">1</text>
+      <text x="30" y="103" font-size="8" fill="#666" text-anchor="middle" font-family="Menlo,monospace">t=0</text>
+      <text x="210" y="103" font-size="8" fill="#666" text-anchor="middle" font-family="Menlo,monospace">t=1</text>
+      <line x1="30" y1="90" x2="210" y2="20" stroke="#7aafff" stroke-width="2"/>
+      <text x="230" y="55" font-size="9" fill="#888" font-family="-apple-system">Constant velocity.</text>
+      <text x="230" y="69" font-size="9" fill="#888" font-family="-apple-system">Best for: mechanical motion,</text>
+      <text x="230" y="81" font-size="9" fill="#888" font-family="-apple-system">hand-crafted velocity sequences.</text>
+    </svg>
+    <figcaption>Linear — equal distance covered each frame</figcaption>
+  </div>
+
+  <h4>Quadratic (²) and Cubic (³)</h4>
+  <p>Polynomial easings are the workhorses of animation. Quadratic (<em>t</em>²) gives a moderate, smooth ease. Cubic (<em>t</em>³) is noticeably stronger — slower starts and faster midpoints, with a crisper arrival or departure. Use quadratic for everyday position and scale transitions; use cubic when the motion needs more personality or punch.</p>
+
+  <!-- Quad + Cubic diagram -->
+  <div class="diagram">
+    <svg width="460" height="130" viewBox="0 0 460 130" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <rect x="0" y="0" width="460" height="130" rx="4" fill="#1e1e1e"/>
+      <!-- LEFT: Quad In-Out -->
+      <text x="115" y="14" text-anchor="middle" font-size="10" font-weight="600" fill="#ccc" font-family="-apple-system">IN-OUT ²  vs  IN-OUT ³</text>
+      <line x1="30" y1="110" x2="200" y2="110" stroke="#444" stroke-width="0.8"/>
+      <line x1="30" y1="110" x2="30" y2="22" stroke="#444" stroke-width="0.8"/>
+      <text x="23" y="113" font-size="8" fill="#666" text-anchor="end" font-family="Menlo,monospace">0</text>
+      <text x="23" y="25" font-size="8" fill="#666" text-anchor="end" font-family="Menlo,monospace">1</text>
+      <text x="30" y="122" font-size="8" fill="#666" text-anchor="middle" font-family="Menlo,monospace">0</text>
+      <text x="200" y="122" font-size="8" fill="#666" text-anchor="middle" font-family="Menlo,monospace">1</text>
+      <!-- Quad In-Out: t<0.5 → 2t², else -1+(4-2t)t, scaled to 200×88 -->
+      <polyline stroke="#7aafff" stroke-width="1.8" fill="none"
+        points="30,110 39,108.5 48,104 57,97 66,88.5 75,79 84,69.5 93,60.5 102,52.5 111,45.5 120,40 129,35.5 138,32 147,29.5 156,28.5 165,28.5 174,31 183,36 192,44 200,55"/>
+      <!-- actually let me just draw approximate curves with key points -->
+      <!-- Cubic In-Out: stronger S -->
+      <polyline stroke="#f0a040" stroke-width="1.8" fill="none"
+        points="30,110 39,109 48,107 57,103 66,96 75,86 84,73 93,59 102,46 111,36 120,30 129,26 138,24 147,24 156,26 165,30 174,37 183,48 192,63 200,80"/>
+      <!-- legend -->
+      <line x1="220" y1="40" x2="245" y2="40" stroke="#7aafff" stroke-width="1.8"/>
+      <text x="250" y="44" font-size="9" fill="#7aafff" font-family="-apple-system">Quadratic (²) — moderate</text>
+      <line x1="220" y1="60" x2="245" y2="60" stroke="#f0a040" stroke-width="1.8"/>
+      <text x="250" y="64" font-size="9" fill="#f0a040" font-family="-apple-system">Cubic (³) — stronger S-curve</text>
+      <text x="220" y="85" font-size="9" fill="#888" font-family="-apple-system">Both reach 0 at t=0 and 1 at t=1.</text>
+      <text x="220" y="99" font-size="9" fill="#888" font-family="-apple-system">Cubic spends more time near</text>
+      <text x="220" y="112" font-size="9" fill="#888" font-family="-apple-system">the extremes before accelerating.</text>
+    </svg>
+    <figcaption>In-Out comparison: cubic (orange) has a more pronounced S than quadratic (blue)</figcaption>
+  </div>
+
+  <h4>Sine (sin)</h4>
+  <p>Sine easing uses a quarter or half period of a cosine/sine wave instead of a polynomial. It is <em>softer</em> than quadratic — the curve is less aggressive at the extremes, producing the most natural-feeling motion of all the families. Use sine for organic movement, breathing effects, slow floats, or any animation that should feel effortless rather than driven.</p>
+
+  <!-- Sine diagram -->
+  <div class="diagram">
+    <svg width="460" height="130" viewBox="0 0 460 130" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <rect x="0" y="0" width="460" height="130" rx="4" fill="#1e1e1e"/>
+      <text x="115" y="14" text-anchor="middle" font-size="10" font-weight="600" fill="#ccc" font-family="-apple-system">SINE — three variants</text>
+      <line x1="30" y1="110" x2="200" y2="110" stroke="#444" stroke-width="0.8"/>
+      <line x1="30" y1="110" x2="30" y2="22" stroke="#444" stroke-width="0.8"/>
+      <text x="23" y="113" font-size="8" fill="#666" text-anchor="end" font-family="Menlo,monospace">0</text>
+      <text x="23" y="25" font-size="8" fill="#666" text-anchor="end" font-family="Menlo,monospace">1</text>
+      <text x="30" y="122" font-size="8" fill="#666" text-anchor="middle" font-family="Menlo,monospace">0</text>
+      <text x="200" y="122" font-size="8" fill="#666" text-anchor="middle" font-family="Menlo,monospace">1</text>
+      <!-- In sine: 1 - cos(t*π/2) -->
+      <polyline stroke="#7aafff" stroke-width="1.8" fill="none"
+        points="30,110 48,108 66,104 84,97 102,87 120,75 138,61 156,46 174,30 200,22"/>
+      <!-- Out sine: sin(t*π/2) -->
+      <polyline stroke="#5ac85a" stroke-width="1.8" fill="none"
+        points="30,110 48,92 66,75 84,61 102,49 120,38 138,30 156,25 174,22 200,22"/>
+      <!-- In-Out sine -->
+      <polyline stroke="#f0a040" stroke-width="1.8" fill="none"
+        points="30,110 39,109 48,107 57,103 75,95 93,82 111,69 120,66 129,63 147,50 165,38 183,28 192,25 200,22"/>
+      <!-- legend -->
+      <line x1="220" y1="35" x2="245" y2="35" stroke="#7aafff" stroke-width="1.8"/>
+      <text x="250" y="39" font-size="9" fill="#7aafff" font-family="-apple-system">In sin — slow start</text>
+      <line x1="220" y1="55" x2="245" y2="55" stroke="#5ac85a" stroke-width="1.8"/>
+      <text x="250" y="59" font-size="9" fill="#5ac85a" font-family="-apple-system">Out sin — slow finish</text>
+      <line x1="220" y1="75" x2="245" y2="75" stroke="#f0a040" stroke-width="1.8"/>
+      <text x="250" y="79" font-size="9" fill="#f0a040" font-family="-apple-system">In-Out sin — softest S-curve</text>
+      <text x="220" y="100" font-size="9" fill="#888" font-family="-apple-system">Gentlest of all families.</text>
+      <text x="220" y="114" font-size="9" fill="#888" font-family="-apple-system">Ideal for organic, floating motion.</text>
+    </svg>
+    <figcaption>Sine easing — softer than quadratic, based on sinusoidal curve</figcaption>
+  </div>
+
+  <h4>Exponential (exp)</h4>
+  <p>Exponential easing uses a base-2 power curve (<em>2</em><sup>10t−10</sup>). The difference from cubic is dramatic: the value barely moves for most of the segment then accelerates explosively, or vice versa. Use expo for snap zooms, dramatic entrances, reveal effects — any moment where you want a decisive, almost discontinuous-looking change. The curve is nearly flat at the quiet end, so easing values near 0 or 1 are almost imperceptibly small.</p>
+
+  <!-- Expo diagram -->
+  <div class="diagram">
+    <svg width="460" height="130" viewBox="0 0 460 130" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <rect x="0" y="0" width="460" height="130" rx="4" fill="#1e1e1e"/>
+      <text x="115" y="14" text-anchor="middle" font-size="10" font-weight="600" fill="#ccc" font-family="-apple-system">EXPONENTIAL — three variants</text>
+      <line x1="30" y1="110" x2="200" y2="110" stroke="#444" stroke-width="0.8"/>
+      <line x1="30" y1="110" x2="30" y2="22" stroke="#444" stroke-width="0.8"/>
+      <text x="23" y="113" font-size="8" fill="#666" text-anchor="end" font-family="Menlo,monospace">0</text>
+      <text x="23" y="25" font-size="8" fill="#666" text-anchor="end" font-family="Menlo,monospace">1</text>
+      <text x="30" y="122" font-size="8" fill="#666" text-anchor="middle" font-family="Menlo,monospace">0</text>
+      <text x="200" y="122" font-size="8" fill="#666" text-anchor="middle" font-family="Menlo,monospace">1</text>
+      <!-- In expo: nearly flat, then explosive at end -->
+      <polyline stroke="#7aafff" stroke-width="1.8" fill="none"
+        points="30,110 57,110 84,109.5 102,109 120,108 138,105 156,98 165,91 174,79 183,60 192,34 200,22"/>
+      <!-- Out expo: explosive start, nearly flat at end -->
+      <polyline stroke="#5ac85a" stroke-width="1.8" fill="none"
+        points="30,110 39,88 48,68 57,51 66,38 75,29 84,24 102,22.5 120,22 156,22 200,22"/>
+      <!-- In-Out expo -->
+      <polyline stroke="#f0a040" stroke-width="1.8" fill="none"
+        points="30,110 48,110 66,109.5 84,108 93,105 102,97 111,83 120,66 129,49 138,35 147,27 156,24 165,22.5 183,22 200,22"/>
+      <!-- legend -->
+      <line x1="220" y1="35" x2="245" y2="35" stroke="#7aafff" stroke-width="1.8"/>
+      <text x="250" y="39" font-size="9" fill="#7aafff" font-family="-apple-system">In exp — near-zero, then explosive</text>
+      <line x1="220" y1="55" x2="245" y2="55" stroke="#5ac85a" stroke-width="1.8"/>
+      <text x="250" y="59" font-size="9" fill="#5ac85a" font-family="-apple-system">Out exp — explosive, then snap-halt</text>
+      <line x1="220" y1="75" x2="245" y2="75" stroke="#f0a040" stroke-width="1.8"/>
+      <text x="250" y="79" font-size="9" fill="#f0a040" font-family="-apple-system">In-Out exp — explosive mid-point</text>
+      <text x="220" y="100" font-size="9" fill="#888" font-family="-apple-system">Much sharper than cubic.</text>
+      <text x="220" y="114" font-size="9" fill="#888" font-family="-apple-system">Ideal for snaps, zooms, reveals.</text>
+    </svg>
+    <figcaption>Exponential easing — dramatic; barely perceptible at one end, explosive at the other</figcaption>
+  </div>
+
+  <h4>Back (overshoot)</h4>
+  <p>Back easing goes slightly <em>past</em> the target value before settling. On <strong>In back</strong>, the value pulls back in the opposite direction first (anticipation) before moving toward the destination. On <strong>Out back</strong>, it overshoots the end value and rebounds (follow-through). <strong>In-Out back</strong> combines both. The overshoot amount is fixed (approximately 10% past the value range) — it does not require configuration. Values momentarily outside [0, 1] are produced intentionally; this is physically correct and expected.</p>
+
+  <!-- Back diagram -->
+  <div class="diagram">
+    <svg width="460" height="150" viewBox="0 0 460 150" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <rect x="0" y="0" width="460" height="150" rx="4" fill="#1e1e1e"/>
+      <text x="115" y="14" text-anchor="middle" font-size="10" font-weight="600" fill="#ccc" font-family="-apple-system">BACK (overshoot) — three variants</text>
+      <!-- y axis spans a bit beyond 0–1 to show overshoot -->
+      <line x1="30" y1="125" x2="200" y2="125" stroke="#444" stroke-width="0.8"/>
+      <line x1="30" y1="125" x2="30" y2="18" stroke="#444" stroke-width="0.8"/>
+      <!-- 0 line and 1 line markers -->
+      <line x1="28" y1="125" x2="200" y2="125" stroke="#333" stroke-width="0.5" stroke-dasharray="3,2"/>
+      <line x1="28" y1="40" x2="200" y2="40" stroke="#333" stroke-width="0.5" stroke-dasharray="3,2"/>
+      <text x="23" y="128" font-size="8" fill="#666" text-anchor="end" font-family="Menlo,monospace">0</text>
+      <text x="23" y="43" font-size="8" fill="#666" text-anchor="end" font-family="Menlo,monospace">1</text>
+      <text x="30" y="142" font-size="8" fill="#666" text-anchor="middle" font-family="Menlo,monospace">0</text>
+      <text x="200" y="142" font-size="8" fill="#666" text-anchor="middle" font-family="Menlo,monospace">1</text>
+      <!-- In back: pullback then forward; overshoot below 0 at start -->
+      <!-- c3=2.70158, c1=1.70158: y = c3*t³ - c1*t² -->
+      <polyline stroke="#7aafff" stroke-width="1.8" fill="none"
+        points="30,125 39,127 48,131 57,133 66,132 75,128 84,121 93,112 102,100 111,87 120,73 138,48 156,33 174,28 192,30 200,40"/>
+      <!-- Out back: overshoots 1, comes back -->
+      <polyline stroke="#5ac85a" stroke-width="1.8" fill="none"
+        points="30,125 48,95 66,67 84,46 102,32 120,24 138,20 156,21 165,23 174,28 183,33 192,38 200,40"/>
+      <!-- In-Out back -->
+      <polyline stroke="#f0a040" stroke-width="1.8" fill="none"
+        points="30,125 39,128 48,133 57,134 66,130 75,121 93,99 111,75 120,65 138,46 156,31 165,29 174,32 183,37 192,40 200,40"/>
+      <!-- legend -->
+      <line x1="220" y1="40" x2="245" y2="40" stroke="#7aafff" stroke-width="1.8"/>
+      <text x="250" y="44" font-size="9" fill="#7aafff" font-family="-apple-system">In back — anticipation pullback</text>
+      <line x1="220" y1="60" x2="245" y2="60" stroke="#5ac85a" stroke-width="1.8"/>
+      <text x="250" y="64" font-size="9" fill="#5ac85a" font-family="-apple-system">Out back — follow-through overshoot</text>
+      <line x1="220" y1="80" x2="245" y2="80" stroke="#f0a040" stroke-width="1.8"/>
+      <text x="250" y="84" font-size="9" fill="#f0a040" font-family="-apple-system">In-Out back — both ends</text>
+      <text x="220" y="108" font-size="9" fill="#888" font-family="-apple-system">Values briefly exceed [0,1].</text>
+      <text x="220" y="122" font-size="9" fill="#888" font-family="-apple-system">Ideal for organic character,</text>
+      <text x="220" y="136" font-size="9" fill="#888" font-family="-apple-system">morph targets, scale pulses.</text>
+    </svg>
+    <figcaption>Back easing — overshoots target value; dashed lines mark the 0 and 1 boundaries</figcaption>
+  </div>
+
+  <h4>Choosing an easing — quick reference</h4>
+  <table>
+    <thead><tr><th>Family</th><th>Feel</th><th>Typical use in Loom</th></tr></thead>
+    <tbody>
+      <tr><td><strong>Linear</strong></td><td>Mechanical, constant</td><td>Rotation loops, deliberately robotic timing, chained micro-keyframes</td></tr>
+      <tr><td><strong>In-Out sin</strong></td><td>Softest, most natural</td><td>Slow floats, breathing, gentle position drifts, oscillator-like morph</td></tr>
+      <tr><td><strong>In-Out ²</strong></td><td>Smooth, general-purpose</td><td>Position transitions, camera pan, opacity fades — the everyday default</td></tr>
+      <tr><td><strong>In-Out ³</strong></td><td>More decisive than quad</td><td>Scale pops, camera zoom, any move that needs a crisper onset and landing</td></tr>
+      <tr><td><strong>Out exp</strong></td><td>Explosive then instant stop</td><td>Snap zoom in, fast reveal, UI-style arrival</td></tr>
+      <tr><td><strong>In exp</strong></td><td>Dead still then explosive</td><td>Fast exit, snap zoom out, object disappearing at speed</td></tr>
+      <tr><td><strong>Out back</strong></td><td>Overshoot then settle</td><td>Morph targets, scale pulses — adds organic follow-through</td></tr>
+      <tr><td><strong>In back</strong></td><td>Wind-up then launch</td><td>Departure anticipation — a slight pull before a move</td></tr>
+    </tbody>
+  </table>
+
+  <div class="tip"><strong>Tip:</strong> In and Out are mirror images: <strong>In</strong> applied to a move from A→B produces the same curve shape as <strong>Out</strong> applied to the reverse move B→A. If motion in one direction feels wrong, try switching between In and Out rather than adjusting keyframe values.</div>
+  <div class="note"><strong>Back easing and driver ranges:</strong> Because Back easing briefly pushes values outside [0, 1], it can carry position, morph, or opacity values slightly beyond their expected range. This is intentional and usually imperceptible at the default overshoot amount. If you see unexpected geometry extension or colour clipping, switch to a cubic or sine variant.</div>
 </section>
 
 <!-- ────────────────────────────────────────────────── -->
