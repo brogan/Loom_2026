@@ -631,6 +631,49 @@ final class AppController: ObservableObject, @unchecked Sendable {
         setGeometryEditorDocument(document)
     }
 
+    func importBakedGeometryAsLayer() {
+        let panel = NSOpenPanel()
+        panel.canChooseFiles          = true
+        panel.canChooseDirectories    = false
+        panel.allowsMultipleSelection = false
+        panel.allowsOtherFileTypes    = true
+        panel.allowedContentTypes     = [.json, .xml]
+        panel.title  = "Import Baked Geometry as Layer"
+        panel.prompt = "Import"
+        if let projURL = projectURL {
+            panel.directoryURL = projURL.appendingPathComponent("polygonSets")
+        }
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+
+        let stem = url.deletingPathExtension().lastPathComponent
+        do {
+            let polygons: [Polygon2D]
+            if url.pathExtension.lowercased() == "json" {
+                polygons = try EditableGeometryJSONLoader.load(url: url).runtimePolygons(includeHiddenLayers: true)
+            } else {
+                polygons = try XMLPolygonLoader.load(url: url)
+            }
+            guard !polygons.isEmpty else { return }
+
+            var document = geometryEditorDocumentForLayerMutation() ?? EditableGeometryDocument(name: stem)
+            document.ensureActiveLayer()
+            recordGeometryEditorUndoSnapshot()
+            for index in document.layers.indices {
+                document.layers[index].isEditable = false
+            }
+            let layerID = try document.appendLayer(from: polygons, named: stem)
+            document.activeLayerID       = layerID
+            selectedGeometryEditorLayerID = layerID
+            setGeometryEditorDocument(document)
+        } catch {
+            let alert = NSAlert()
+            alert.messageText     = "Import Failed"
+            alert.informativeText = error.localizedDescription
+            alert.alertStyle      = .warning
+            alert.runModal()
+        }
+    }
+
     func renameSelectedGeometryEditorLayer(to newName: String) {
         let trimmed = newName.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty,

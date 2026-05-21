@@ -503,6 +503,20 @@ private struct GeometryLayerPanel: View {
 
             Divider()
 
+            if morphLayerVertexMismatch {
+                HStack(spacing: 6) {
+                    Image(systemName: "exclamationmark.triangle.fill")
+                        .foregroundStyle(.orange)
+                        .font(.system(size: 11))
+                    Text("Layers have different vertex counts — morph targets may not work.")
+                        .font(.system(size: 10))
+                        .foregroundStyle(.orange)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                .padding(.horizontal, 8)
+                .padding(.vertical, 5)
+            }
+
             VStack(spacing: 6) {
                 let morphLocked = controller.isCurrentGeometryMorphTargetLocked
                 HStack {
@@ -528,6 +542,11 @@ private struct GeometryLayerPanel: View {
                     }
                     .disabled(controller.geometryEditorLayers.count <= 1 || morphLocked)
                     .foregroundStyle(controller.geometryEditorLayers.count > 1 && !morphLocked ? Color.red : Color.secondary)
+                }
+                HStack {
+                    Button("Import layer…") { controller.importBakedGeometryAsLayer() }
+                        .disabled(morphLocked)
+                    Spacer()
                 }
             }
             .buttonStyle(.borderless)
@@ -656,6 +675,15 @@ private struct GeometryLayerPanel: View {
               let layer = document.layers.first(where: { $0.id == id })
         else { return false }
         return !layer.polygons.isEmpty || !layer.openCurves.isEmpty || !layer.points.isEmpty
+    }
+
+    // True when the document has 2+ layers and any layer's polygon vertex-count
+    // profile differs from the first layer — warns the user that morph targets
+    // may be broken.
+    private var morphLayerVertexMismatch: Bool {
+        guard let layers = controller.geometryEditorDocument?.layers, layers.count > 1 else { return false }
+        let baseline = layers[0].polygons.map { $0.points.count }
+        return layers.dropFirst().contains { $0.polygons.map { $0.points.count } != baseline }
     }
 }
 

@@ -1412,6 +1412,35 @@ public struct EditableGeometryDocument: Codable, Equatable, Identifiable, Sendab
         let layer = EditableGeometryLayer(name: layerName, polygons: editablePolygons)
         return EditableGeometryDocument(name: name, layers: [layer], activeLayerID: layer.id)
     }
+
+    /// Append a new layer populated from `polygons` to this document.
+    /// Spline polygons become `EditableClosedPolygon`; open splines become `EditableOpenCurve`.
+    /// Other polygon types (line, point, oval) are silently skipped.
+    /// Returns the new layer's ID.
+    @discardableResult
+    public mutating func appendLayer(from polygons: [Polygon2D], named name: String) throws -> EditableGeometryID {
+        var closedCount = 0
+        var openCount   = 0
+        var editablePolygons: [EditableClosedPolygon] = []
+        var editableCurves:   [EditableOpenCurve]     = []
+        for polygon in polygons {
+            switch polygon.type {
+            case .spline:
+                closedCount += 1
+                editablePolygons.append(
+                    try EditableClosedPolygon(name: "Polygon \(closedCount)", polygon: polygon))
+            case .openSpline:
+                openCount += 1
+                editableCurves.append(
+                    try EditableOpenCurve(name: "Curve \(openCount)", polygon: polygon))
+            default:
+                break
+            }
+        }
+        let layer = EditableGeometryLayer(name: name, polygons: editablePolygons, openCurves: editableCurves)
+        layers.append(layer)
+        return layer.id
+    }
 }
 
 public struct EditableGeometrySnapshot: Codable, Equatable, Sendable {
