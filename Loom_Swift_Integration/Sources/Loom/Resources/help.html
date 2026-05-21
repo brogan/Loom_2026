@@ -200,6 +200,7 @@
   <a class="nav-link" href="#geometry">Geometry</a>
   <a class="nav-link nav-sub" href="#geometry-editor">Editor Tools</a>
   <a class="nav-link nav-sub" href="#geometry-layers">Layers</a>
+  <a class="nav-link nav-sub" href="#geometry-morph-layers">Morph Layer Import</a>
   <a class="nav-link nav-sub" href="#geometry-pressure">Pressure Sensitivity</a>
   <a class="nav-link nav-sub" href="#geometry-svg-import">SVG Geometry Import</a>
   <a class="nav-link" href="#sprites">Sprites</a>
@@ -629,6 +630,63 @@
     <li>Add, rename, duplicate, delete, and reorder layers with the layer controls.</li>
     <li>Layered JSON is the source of truth. Pipeline targets can still address individual layers for subdivision, sprite, and rendering setup without losing the full editable layered document.</li>
   </ul>
+
+  <table>
+    <thead><tr><th>Layer control</th><th>Action</th></tr></thead>
+    <tbody>
+      <tr><td>New</td><td>Add a blank layer above the current active layer.</td></tr>
+      <tr><td>Rename</td><td>Rename the selected layer.</td></tr>
+      <tr><td>Duplicate</td><td>Copy the selected layer and all its geometry into a new layer directly below it.</td></tr>
+      <tr><td>Delete</td><td>Remove the selected layer. A confirmation is shown if the layer contains geometry.</td></tr>
+      <tr><td>Import layer…</td><td>Load a baked polygon file (XML) or editable geometry file (JSON) and append its polygons as a new named layer. Used to assemble multi-state morph target documents. See <a href="#geometry-morph-layers">Morph Layer Import</a>.</td></tr>
+    </tbody>
+  </table>
+
+  <div class="note"><strong>Vertex-count warning:</strong> When a document has two or more layers and any layer's per-polygon point count differs from the first layer, an orange warning appears at the bottom of the layer panel. Mismatched vertex counts mean morph interpolation will not work correctly — address the mismatch before saving if you intend to use the file as a morph target source.</div>
+
+  <h3 id="geometry-morph-layers">Morph Layer Import — building multi-state targets from subdivision</h3>
+  <p>Loom's morph system interpolates between polygon vertex positions. For this to work, every morph state must have <strong>exactly the same number of polygons</strong> with <strong>exactly the same vertex count</strong> in each. The cleanest way to guarantee this is to produce all states from the same subdivision setup — varying only the PTW/PTP transforms — and assemble them into a single layered geometry file using <strong>Import layer…</strong>.</p>
+
+  <h4>How vertex count consistency is guaranteed</h4>
+  <p>Baking a polygon with a fixed algorithm, subdivision level, and line ratios always produces the same vertex count regardless of what PTW or PTP transforms are active, because transforms move existing vertices without adding or removing them. Two bakes of the same source polygon at the same subdivision settings are therefore guaranteed to match, even if their point positions differ dramatically.</p>
+
+  <h4>Step-by-step: assembling morph targets from subdivision bakes</h4>
+  <ol class="steps">
+    <li>
+      <strong>Set up the base subdivision state.</strong> In the Subdivision tab, configure the algorithm, levels, and line ratios you want. Disable all PTW and PTP transforms. This is your base state — the geometry as it naturally subdivides with no deformation.
+    </li>
+    <li>
+      <strong>Bake the base state.</strong> Click the bake button. Give the output file a descriptive name such as <code>myshape_base</code>. The baked XML file is written to your project's <code>polygonSets/</code> folder.
+    </li>
+    <li>
+      <strong>Bake each variant state.</strong> Enable PTW or PTP transforms to create a deformed version of the same geometry — for example, spike outward, pinch inward, rotate children. Bake each variant under a different filename: <code>myshape_expanded</code>, <code>myshape_pinched</code>, etc. Keep the algorithm, level, and line ratios identical to step 1; change only the transform settings.
+    </li>
+    <li>
+      <strong>Open (or create) the geometry document.</strong> In the Geometry tab, open or create the polygon set document that will hold all states as layers. Switch to the Editor.
+    </li>
+    <li>
+      <strong>Import the base layer.</strong> In the Layers panel, click <strong>Import layer…</strong>. Navigate to the baked base file (<code>myshape_base.xml</code>) and click Import. It is added as a new layer named after the file.
+    </li>
+    <li>
+      <strong>Import each variant layer.</strong> Click <strong>Import layer…</strong> again for each additional baked file. Each becomes its own named layer in the same document.
+    </li>
+    <li>
+      <strong>Check the vertex-count warning.</strong> If an orange warning appears at the bottom of the layer panel, one or more layers have a different vertex count from the first layer. This means the bakes used different settings — correct the mismatch before proceeding. If counts match, no warning appears.
+    </li>
+    <li>
+      <strong>Rename the layers.</strong> Select each layer and click <strong>Rename</strong> to give it a meaningful name: <em>Base</em>, <em>Expanded</em>, <em>Pinched</em>, and so on. Clear names make the document easier to work with when assigning morph targets in the Sprites inspector.
+    </li>
+    <li>
+      <strong>Save the document.</strong> Click <strong>Save</strong> in the geometry editor toolbar. All layers are saved together in the single <code>.json</code> file. The file is now ready to use as a morph target source.
+    </li>
+    <li>
+      <strong>Assign in the Sprites inspector.</strong> With the sprite selected, set <strong>Morph Target</strong> to this geometry document (or a specific named layer within it). Enable the <strong>Morph Amount</strong> driver and animate between 0 (base) and 1 (target). See <a href="#animation-morph">Morph Targets</a> for the full animation workflow.
+    </li>
+  </ol>
+
+  <div class="tip"><strong>Tip:</strong> You are not limited to one morph target. Loom selects a target layer by name. If you create multiple variants and assign each to a different sprite (or swap the target name at keyframe time), you can chain multiple morph states across a single animation without separate geometry files for each.</div>
+
+  <div class="note"><strong>Note:</strong> Import layer… accepts both baked XML files (from the Subdivision tab bake button) and editable JSON geometry files (from the Geometry editor Save). When importing a JSON file, all visible polygons from all visible layers are merged into the new layer.</div>
 
   <h3 id="geometry-pressure">Pressure sensitivity</h3>
   <p>Loom can store pressure samples on freehand and traced geometry. Pressure data is used by SVG export and brush rendering to create hand-drawn variation in stroke weight and opacity. Geometry that contains pressure data is visually marked in the editor so it is clear which shapes carry pressure information.</p>
@@ -1818,14 +1876,22 @@
   <div class="tip"><strong>Tracking + depth:</strong> A strong compositional technique is to set tracking to a world point at the focal plane (depth 0) and animate zoom. The focal-plane subject stays locked at screen centre while background and foreground layers scale at different rates around it — a physically accurate dolly-zoom into a parallax scene.</div>
 
   <h3 id="animation-morph">Morph targets</h3>
-  <p>Morphing smoothly interpolates a sprite's geometry between two states: the <em>base</em> geometry and a <em>morph target</em> geometry. The <strong>Morph Amount</strong> driver (0 = base, 1 = target) controls the blend.</p>
+  <p>Morphing smoothly interpolates a sprite's geometry between two states: the <em>base</em> geometry and a <em>morph target</em> geometry. The <strong>Morph Amount</strong> driver (0 = base, 1 = target) controls the blend. Both geometries must have the same number of polygons with identical vertex counts — the interpolation pairs vertices by index.</p>
+
+  <h4>Basic workflow</h4>
   <ol class="steps">
-    <li>Create two geometry documents with the same topology (same point count and order).</li>
+    <li>Ensure both the base and target geometry have matching polygon and vertex counts.</li>
     <li>Assign the base geometry to the sprite as normal.</li>
-    <li>In the inspector, set the <strong>Morph Target</strong> field to the second geometry document.</li>
-    <li>Enable a <strong>Morph Amount</strong> animation driver (Oscillator or Keyframe for smooth transitions).</li>
-    <li>Use <strong>Morph Lock</strong> on the target geometry document to prevent accidental edits.</li>
+    <li>In the inspector, set the <strong>Morph Target</strong> field to the target geometry document (or a specific named layer within it).</li>
+    <li>Enable a <strong>Morph Amount</strong> animation driver — Oscillator for continuous looping, Keyframe for manually timed transitions.</li>
+    <li>Use <strong>Morph Lock</strong> on the target geometry document to prevent accidental topology edits.</li>
   </ol>
+
+  <h4>Building morph targets from subdivision states</h4>
+  <p>The most reliable way to create matched morph geometries is to derive all states from the same subdivision bake setup, varying only the PTW/PTP transforms between bakes. This guarantees identical vertex counts because transforms move vertices without adding or removing them. Use <strong>Import layer…</strong> in the Geometry editor's layer panel to assemble multiple baked states into a single layered document.</p>
+  <p>See the full step-by-step guide at <a href="#geometry-morph-layers">Morph Layer Import</a> in the Geometry section.</p>
+
+  <div class="tip"><strong>Tip:</strong> Morph Amount is not limited to 0–1. Values above 1 exaggerate the morph beyond the target; negative values push geometry in the opposite direction. Both produce valid (if extreme) results when used intentionally.</div>
 </section>
 
 <!-- ────────────────────────────────────────────────── -->
