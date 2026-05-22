@@ -123,25 +123,62 @@ public struct SpriteScene: @unchecked Sendable {
         }
 
         // ── 3. Load morph targets ────────────────────────────────────────────
-        // New path: same-set shape names take precedence over legacy file refs.
+        // Priority 1: shape name in the same shapeset.
+        // Priority 2: layer name in the base shape's own polygon file (for
+        //             multi-layer editable geometry documents where the user
+        //             names layers "base", "drift", etc.).
+        // Legacy fallback: load from morphTargets/ subdirectory.
         let morphTargetPolygons: [[Polygon2D]]
         if !sprite.morphTargetNames.isEmpty {
             let shapeSet = config.shapeConfig.library.shapeSets
                 .first(where: { $0.name == sprite.shapeSetName })
-            let basePointCounts = basePolygons.map { $0.points.count }
-            morphTargetPolygons = sprite.morphTargetNames.compactMap { targetName in
-                guard let sd = shapeSet?.shapes.first(where: { $0.name == targetName }),
-                      let polys = try? loadBasePolygons(shapeDef: sd, config: config,
-                                                        projectDirectory: projectDirectory)
+
+            // Pre-resolve the base shape's polygon file URL for layer-name fallback.
+            let basePolyURL: URL? = {
+                guard let sd = shapeDef,
+                      sd.sourceType == .polygonSet,
+                      let polyDef = config.polygonConfig.library.polygonSets
+                          .first(where: { $0.name == sd.polygonSetName }),
+                      polyDef.filename.lowercased().hasSuffix(".json")
                 else { return nil }
-                // Skip targets whose point structure doesn't match the base.
-                guard polys.count == basePolygons.count,
-                      zip(polys, basePolygons).allSatisfy({ $0.points.count == $1.points.count })
-                else {
-                    print("[Morph] '\(targetName)' skipped: point count mismatch with '\(sprite.shapeName)'")
-                    return nil
+                let folder = (polyDef.folder == "polygonSet" || polyDef.folder.isEmpty)
+                    ? "polygonSets" : polyDef.folder
+                return projectDirectory.appendingPathComponent(folder)
+                                       .appendingPathComponent(polyDef.filename)
+            }()
+
+            morphTargetPolygons = sprite.morphTargetNames.compactMap { targetName in
+                guard !targetName.isEmpty else { return nil }
+
+                // Priority 1: shape name lookup.
+                if let sd = shapeSet?.shapes.first(where: { $0.name == targetName }),
+                   let polys = try? loadBasePolygons(shapeDef: sd, config: config,
+                                                     projectDirectory: projectDirectory) {
+                    guard polys.count == basePolygons.count,
+                          zip(polys, basePolygons).allSatisfy({ $0.points.count == $1.points.count })
+                    else {
+                        print("[Morph] shape '\(targetName)' skipped: point count mismatch")
+                        return nil
+                    }
+                    return polys
                 }
-                return polys
+
+                // Priority 2: layer name in the base geometry file.
+                if let url = basePolyURL,
+                   let polys = try? EditableGeometryJSONLoader.load(url: url)
+                       .runtimePolygons(targetLayerName: targetName),
+                   !polys.isEmpty {
+                    guard polys.count == basePolygons.count,
+                          zip(polys, basePolygons).allSatisfy({ $0.points.count == $1.points.count })
+                    else {
+                        print("[Morph] layer '\(targetName)' skipped: point count mismatch")
+                        return nil
+                    }
+                    return polys
+                }
+
+                print("[Morph] '\(targetName)': no matching shape or layer found")
+                return nil
             }
         } else {
             // Legacy: load from morphTargets/ subdirectory.

@@ -591,12 +591,19 @@ private struct DriverSectionsView: View {
 
     @ViewBuilder
     private var morphTargetsSection: some View {
-        let sprite    = controller.projectConfig?.spriteConfig.library
-                            .spriteSets[safe: setIdx]?.sprites[safe: spriteIdx]
-        let allShapes = controller.projectConfig?.shapeConfig.library.shapeSets
-                            .first(where: { $0.name == sprite?.shapeSetName })?
-                            .shapes.map { $0.name } ?? []
-        let mtBinding = morphTargetNamesBinding()
+        // Prefer layer names from the geometry file (for multi-layer editable docs).
+        // Fall back to shape names if the file is XML or has no named layers.
+        let layerNames = controller.morphLayerNames(setIdx: setIdx, spriteIdx: spriteIdx)
+        let sprite     = controller.projectConfig?.spriteConfig.library
+                             .spriteSets[safe: setIdx]?.sprites[safe: spriteIdx]
+        let shapeNames = controller.projectConfig?.shapeConfig.library.shapeSets
+                             .first(where: { $0.name == sprite?.shapeSetName })?
+                             .shapes.map { $0.name } ?? []
+        let options    = layerNames.isEmpty ? shapeNames : layerNames
+        let helpText   = layerNames.isEmpty
+            ? "Shape (from this sprite's shape set) to blend toward when the Morph driver reaches 1.0."
+            : "Layer name within the sprite's geometry file to blend toward when the Morph driver reaches 1.0."
+        let mtBinding  = morphTargetNamesBinding()
         InspectorSection("Morph Targets", isCollapsed: $mtCollapsed) {
             ForEach(mtBinding.wrappedValue.indices, id: \.self) { i in
                 InspectorField("Target \(i + 1)") {
@@ -608,7 +615,8 @@ private struct DriverSectionsView: View {
                             mtBinding.wrappedValue = arr
                         }
                     )) {
-                        ForEach(allShapes, id: \.self) { Text($0).tag($0) }
+                        Text("— none —").tag("")
+                        ForEach(options, id: \.self) { Text($0).tag($0) }
                     }
                     .labelsHidden()
                     .frame(maxWidth: 150)
@@ -621,11 +629,11 @@ private struct DriverSectionsView: View {
                     }
                     .buttonStyle(.plain).foregroundStyle(.secondary)
                 }
-                .loomHelp("Shape (from this sprite's shape set) to blend toward when the Morph driver reaches 1.0.")
+                .loomHelp(helpText)
             }
             Button {
                 var arr = mtBinding.wrappedValue
-                arr.append(allShapes.first(where: { !arr.contains($0) }) ?? "")
+                arr.append(options.first(where: { !arr.contains($0) }) ?? "")
                 mtBinding.wrappedValue = arr
             } label: {
                 Label("Add target", systemImage: "plus").font(.system(size: 11))

@@ -307,6 +307,27 @@ final class AppController: ObservableObject, @unchecked Sendable {
         }
     }
 
+    /// Returns the editable layer names from the polygon file backing the given sprite.
+    /// Empty when the file is XML, not found, or has only one (unnamed) layer.
+    func morphLayerNames(setIdx: Int, spriteIdx: Int) -> [String] {
+        guard let cfg = projectConfig,
+              let projectURL,
+              let sprite  = cfg.spriteConfig.library.spriteSets[safe: setIdx]?.sprites[safe: spriteIdx],
+              let shapeDef = cfg.shapeConfig.library.shapeSets
+                  .first(where: { $0.name == sprite.shapeSetName })?
+                  .shapes.first(where: { $0.name == sprite.shapeName }),
+              shapeDef.sourceType == .polygonSet,
+              let polyDef = cfg.polygonConfig.library.polygonSets
+                  .first(where: { $0.name == shapeDef.polygonSetName }),
+              polyDef.filename.lowercased().hasSuffix(".json")
+        else { return [] }
+        let folder = (polyDef.folder == "polygonSet" || polyDef.folder.isEmpty)
+            ? "polygonSets" : polyDef.folder
+        let url = projectURL.appendingPathComponent(folder).appendingPathComponent(polyDef.filename)
+        guard let doc = try? EditableGeometryJSONLoader.load(url: url) else { return [] }
+        return doc.layers.compactMap { $0.name.isEmpty ? nil : $0.name }
+    }
+
     func requestTabSelection(_ tab: AppTab) {
         guard tab != selectedTab else { return }
         if selectedTab == .geometry,
