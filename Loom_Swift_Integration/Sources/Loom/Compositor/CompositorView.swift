@@ -190,7 +190,7 @@ struct CompositorView: View {
         VStack(alignment: .leading, spacing: 3) {
             if kind.hasT {
                 paramRow("t", description: "fraction along edge") {
-                    Slider(value: pt.primitive.t, in: 0...1)
+                    ResettableSlider(value: pt.primitive.t, range: 0...1, defaultValue: 0.5)
                         .frame(maxWidth: 100)
                     Text(String(format: "%.3f", pt.primitive.t.wrappedValue))
                         .font(.system(size: 11, design: .monospaced))
@@ -209,7 +209,7 @@ struct CompositorView: View {
             }
             if kind.hasS {
                 paramRow("s", description: "0=midpoint → 1=centroid") {
-                    Slider(value: pt.primitive.s, in: 0...1)
+                    ResettableSlider(value: pt.primitive.s, range: 0...1, defaultValue: 0.5)
                         .frame(maxWidth: 100)
                     Text(String(format: "%.3f", pt.primitive.s.wrappedValue))
                         .font(.system(size: 11, design: .monospaced))

@@ -129,3 +129,17 @@ private struct LoomPickerRow<T: LoomPickerOption>: View {
         }
     }
 }
+
+// Slider that resets to `defaultValue` on double-click.
+struct ResettableSlider: View {
+    @Binding var value: Double
+    var range: ClosedRange<Double>
+    var defaultValue: Double
+
+    var body: some View {
+        Slider(value: $value, in: range)
+            .simultaneousGesture(
+                TapGesture(count: 2).onEnded { value = defaultValue }
+            )
+    }
+}
