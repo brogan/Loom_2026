@@ -6,8 +6,11 @@ struct SubdivisionTabView: View {
     @EnvironmentObject private var controller: AppController
 
     // Expansion state for the subdivision sets tree (index-based so renames don't lose state)
-    @State private var expandedSets: Set<Int> = []
-    @State private var bakeAlert: BakeAlert?  = nil
+    @State private var expandedSets:        Set<Int>    = []
+    @State private var hiddenSubdivSprites: Set<String> = []
+    @State private var hiddenParams:        Set<String> = []
+    @State private var hasAppeared                      = false
+    @State private var bakeAlert: BakeAlert?            = nil
     @State private var paramRenameTarget: ParamRenameTarget? = nil
     @State private var paramRenameDraft = ""
 
@@ -68,8 +71,11 @@ struct SubdivisionTabView: View {
                         ForEach(spriteSets, id: \.name) { spriteSet in
                             let relevant = spriteSet.sprites.filter { isPolygonSetSprite($0, in: cfg) }
                             if !relevant.isEmpty {
-                                spriteSetHeader(spriteSet.name)
-                                ForEach(relevant, id: \.name) { sprite in
+                                spriteSetHeader(spriteSet.name, sprites: relevant)
+                                let visible = relevant.filter {
+                                    !hiddenSubdivSprites.contains(subdivSpriteKey(spriteSet.name, $0.name))
+                                }
+                                ForEach(visible, id: \.name) { sprite in
                                     spriteRow(sprite, cfg: cfg)
                                         .onTapGesture { handleSpriteSelected(sprite, cfg: cfg) }
                                 }
@@ -83,14 +89,45 @@ struct SubdivisionTabView: View {
         }
     }
 
-    private func spriteSetHeader(_ name: String) -> some View {
-        Text(name)
-            .font(.system(size: 10, weight: .semibold))
-            .foregroundStyle(.secondary)
-            .padding(.horizontal, 10)
-            .padding(.top, 6)
-            .padding(.bottom, 2)
-            .frame(maxWidth: .infinity, alignment: .leading)
+    private func spriteSetHeader(_ setName: String, sprites: [SpriteDef]) -> some View {
+        let hiddenCount  = sprites.filter { hiddenSubdivSprites.contains(subdivSpriteKey(setName, $0.name)) }.count
+        let hidableCount = sprites.filter { !$0.enabled && !hiddenSubdivSprites.contains(subdivSpriteKey(setName, $0.name)) }.count
+
+        return HStack(spacing: 4) {
+            Text(setName)
+                .font(.system(size: 10, weight: .semibold))
+                .foregroundStyle(.secondary)
+                .padding(.horizontal, 10)
+                .padding(.top, 6)
+                .padding(.bottom, 2)
+            Spacer()
+            if hiddenCount > 0 {
+                Button {
+                    for s in sprites { hiddenSubdivSprites.remove(subdivSpriteKey(setName, s.name)) }
+                } label: {
+                    HStack(spacing: 2) {
+                        Image(systemName: "eye.slash").font(.system(size: 9))
+                        Text("\(hiddenCount)").font(.system(size: 9, design: .monospaced))
+                    }
+                    .foregroundStyle(Color.orange.opacity(0.8))
+                }
+                .buttonStyle(.plain)
+                .padding(.trailing, 8)
+                .padding(.top, 4)
+                .help("Restore \(hiddenCount) hidden sprite\(hiddenCount == 1 ? "" : "s")")
+            } else if hidableCount > 0 {
+                Button {
+                    for s in sprites where !s.enabled { hiddenSubdivSprites.insert(subdivSpriteKey(setName, s.name)) }
+                } label: {
+                    Image(systemName: "eye").font(.system(size: 9)).foregroundStyle(.tertiary)
+                }
+                .buttonStyle(.plain)
+                .padding(.trailing, 8)
+                .padding(.top, 4)
+                .help("Hide \(hidableCount) disabled sprite\(hidableCount == 1 ? "" : "s")")
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     private func spriteRow(_ sprite: SpriteDef, cfg: ProjectConfig) -> some View {
@@ -183,9 +220,11 @@ struct SubdivisionTabView: View {
                         setDisclosureRow(set: set, setIdx: setIdx)
                         if expandedSets.contains(setIdx) {
                             ForEach(set.params.indices, id: \.self) { paramIdx in
-                                paramRow(param: set.params[paramIdx],
-                                         setIdx: setIdx, paramIdx: paramIdx)
-                                    .onTapGesture { handleParamSelected(setIdx: setIdx, paramIdx: paramIdx) }
+                                if !hiddenParams.contains(paramKey(set.name, paramIdx)) {
+                                    paramRow(param: set.params[paramIdx],
+                                             setIdx: setIdx, paramIdx: paramIdx)
+                                        .onTapGesture { handleParamSelected(setIdx: setIdx, paramIdx: paramIdx) }
+                                }
                             }
                             if set.params.isEmpty {
                                 Text("No params — use + to add")
@@ -202,9 +241,11 @@ struct SubdivisionTabView: View {
     }
 
     private func setDisclosureRow(set: SubdivisionParamsSet, setIdx: Int) -> some View {
-        let isSelected  = controller.selectedSubdivisionIndex == setIdx
-        let isExpanded  = expandedSets.contains(setIdx)
-        let isPreviewed = controller.subdivPreviewSetName == set.name
+        let isSelected   = controller.selectedSubdivisionIndex == setIdx
+        let isExpanded   = expandedSets.contains(setIdx)
+        let isPreviewed  = controller.subdivPreviewSetName == set.name
+        let hiddenCount  = set.params.indices.filter { hiddenParams.contains(paramKey(set.name, $0)) }.count
+        let hidableCount = set.params.indices.filter { !set.params[$0].enabled && !hiddenParams.contains(paramKey(set.name, $0)) }.count
 
         return HStack(spacing: 5) {
             Button {
@@ -227,6 +268,30 @@ struct SubdivisionTabView: View {
                 Image(systemName: "eye.fill")
                     .font(.system(size: 9))
                     .foregroundStyle(Color.accentColor.opacity(0.8))
+            }
+
+            if hiddenCount > 0 {
+                Button {
+                    for idx in set.params.indices { hiddenParams.remove(paramKey(set.name, idx)) }
+                } label: {
+                    HStack(spacing: 2) {
+                        Image(systemName: "eye.slash").font(.system(size: 9))
+                        Text("\(hiddenCount)").font(.system(size: 9, design: .monospaced))
+                    }
+                    .foregroundStyle(Color.orange.opacity(0.8))
+                }
+                .buttonStyle(.plain)
+                .help("Restore \(hiddenCount) hidden param\(hiddenCount == 1 ? "" : "s")")
+            } else if hidableCount > 0 {
+                Button {
+                    for idx in set.params.indices where !set.params[idx].enabled {
+                        hiddenParams.insert(paramKey(set.name, idx))
+                    }
+                } label: {
+                    Image(systemName: "eye").font(.system(size: 9)).foregroundStyle(.tertiary)
+                }
+                .buttonStyle(.plain)
+                .help("Hide \(hidableCount) disabled param\(hidableCount == 1 ? "" : "s")")
             }
 
             Text("\(set.params.count)")
@@ -817,10 +882,15 @@ struct SubdivisionTabView: View {
     // MARK: - Auto-select on appear
 
     private func autoSelectFirstSprite() {
+        if !hasAppeared {
+            hasAppeared = true
+            let sets = controller.projectConfig?.subdivisionConfig.paramsSets ?? []
+            for idx in sets.indices { expandedSets.insert(idx) }
+        }
+
         guard controller.subdivSelectedSpriteID == nil,
               let cfg = controller.projectConfig
         else {
-            // Restore expansion for already-selected sprite's set
             if let setName = controller.subdivPreviewSetName,
                let idx = controller.projectConfig?.subdivisionConfig.paramsSets
                    .firstIndex(where: { $0.name == setName }) {
@@ -841,6 +911,9 @@ struct SubdivisionTabView: View {
     }
 
     // MARK: - Helpers
+
+    private func subdivSpriteKey(_ setName: String, _ spriteName: String) -> String { "\(setName)\t\(spriteName)" }
+    private func paramKey(_ setName: String, _ paramIdx: Int) -> String { "\(setName)\t\(paramIdx)" }
 
     private func polygonSetSprites(in cfg: ProjectConfig) -> [SpriteDef] {
         cfg.spriteConfig.library.allSprites.filter { isPolygonSetSprite($0, in: cfg) }
