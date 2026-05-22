@@ -131,15 +131,47 @@ private struct LoomPickerRow<T: LoomPickerOption>: View {
 }
 
 // Slider that resets to `defaultValue` on double-click.
-struct ResettableSlider: View {
+// Uses NSViewRepresentable + NSClickGestureRecognizer because SwiftUI's
+// simultaneousGesture(TapGesture(count:2)) is consumed by NSSlider's own
+// mouse-tracking loop and never fires reliably on macOS.
+struct ResettableSlider: NSViewRepresentable {
     @Binding var value: Double
     var range: ClosedRange<Double>
     var defaultValue: Double
 
-    var body: some View {
-        Slider(value: $value, in: range)
-            .simultaneousGesture(
-                TapGesture(count: 2).onEnded { value = defaultValue }
-            )
+    func makeCoordinator() -> Coordinator { Coordinator(self) }
+
+    func makeNSView(context: Context) -> NSSlider {
+        let slider = NSSlider(value: value,
+                              minValue: range.lowerBound,
+                              maxValue: range.upperBound,
+                              target: context.coordinator,
+                              action: #selector(Coordinator.sliderChanged(_:)))
+        slider.isContinuous = true
+        let dbl = NSClickGestureRecognizer(target: context.coordinator,
+                                           action: #selector(Coordinator.doubleClicked(_:)))
+        dbl.numberOfClicksRequired = 2
+        slider.addGestureRecognizer(dbl)
+        return slider
+    }
+
+    func updateNSView(_ nsView: NSSlider, context: Context) {
+        nsView.doubleValue = value
+        nsView.minValue    = range.lowerBound
+        nsView.maxValue    = range.upperBound
+    }
+
+    @MainActor
+    class Coordinator: NSObject {
+        var parent: ResettableSlider
+        init(_ parent: ResettableSlider) { self.parent = parent }
+
+        @objc func sliderChanged(_ sender: NSSlider) {
+            parent.value = sender.doubleValue
+        }
+
+        @objc func doubleClicked(_ sender: NSClickGestureRecognizer) {
+            parent.value = parent.defaultValue
+        }
     }
 }
