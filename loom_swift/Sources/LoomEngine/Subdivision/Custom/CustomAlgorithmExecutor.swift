@@ -96,15 +96,19 @@ public enum CustomAlgorithmExecutor {
         case .edgeFrac:
             return Vector2D.lerp(start, end, t: prim.t)
         case .edgeNormal:
-            return Vector2D.lerp(start, end, t: prim.t) + perp(from: start, to: end) * prim.d
+            // d is a fraction of edge length (d=0.1 → offset of 10% of edge length)
+            let sp = Vector2D(x: -(end.y - start.y), y: end.x - start.x)
+            return Vector2D.lerp(start, end, t: prim.t) + sp * prim.d
         case .edgePrevFrac:
             return Vector2D.lerp(prev, start, t: prim.t)
         case .edgePrevNormal:
-            return Vector2D.lerp(prev, start, t: prim.t) + perp(from: prev, to: start) * prim.d
+            let pp = Vector2D(x: -(start.y - prev.y), y: start.x - prev.x)
+            return Vector2D.lerp(prev, start, t: prim.t) + pp * prim.d
         case .edgeNextFrac:
             return Vector2D.lerp(end, next, t: prim.t)
         case .edgeNextNormal:
-            return Vector2D.lerp(end, next, t: prim.t) + perp(from: end, to: next) * prim.d
+            let np = Vector2D(x: -(next.y - end.y), y: next.x - end.x)
+            return Vector2D.lerp(end, next, t: prim.t) + np * prim.d
         case .centroid:
             return centroid
         case .centroidOffset:

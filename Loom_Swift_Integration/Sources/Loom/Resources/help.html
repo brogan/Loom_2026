@@ -1446,11 +1446,11 @@
     <thead><tr><th>Kind</th><th>Parameters</th><th>Description</th></tr></thead>
     <tbody>
       <tr><td>Edge fraction</td><td>t (0–1)</td><td>A point at fractional position t along the current edge. t = 0.5 is the midpoint.</td></tr>
-      <tr><td>Edge normal</td><td>t, d</td><td>A point at position t along the edge, offset perpendicularly by d (in edge-length units). Positive d is left of the edge direction; negative d is right.</td></tr>
+      <tr><td>Edge normal</td><td>t, d</td><td>A point at position t along the edge, offset perpendicularly by d as a <em>fraction of edge length</em>. d = 0.1 means 10% of the edge length; d = −0.1 is the same offset in the opposite direction. Positive d is left of the edge direction (inward for a clockwise polygon); negative d is right. Typical values are −0.5 to 0.5.</td></tr>
       <tr><td>Prev edge fraction</td><td>t</td><td>A point at position t along the <em>previous</em> edge of the polygon.</td></tr>
-      <tr><td>Prev edge normal</td><td>t, d</td><td>Previous edge, offset perpendicularly.</td></tr>
+      <tr><td>Prev edge normal</td><td>t, d</td><td>Previous edge, offset perpendicularly by d as a fraction of the previous edge's length.</td></tr>
       <tr><td>Next edge fraction</td><td>t</td><td>A point at position t along the <em>next</em> edge of the polygon.</td></tr>
-      <tr><td>Next edge normal</td><td>t, d</td><td>Next edge, offset perpendicularly.</td></tr>
+      <tr><td>Next edge normal</td><td>t, d</td><td>Next edge, offset perpendicularly by d as a fraction of the next edge's length.</td></tr>
       <tr><td>Centroid offset</td><td>d, angle</td><td>A point near the polygon centroid, displaced by d at angle degrees (0 = rightward, 90 = upward).</td></tr>
       <tr><td>Midring interpolation</td><td>s</td><td>Blends between the centroid (s = 0) and the current edge midpoint (s = 1). Useful for concentric ring patterns.</td></tr>
     </tbody>

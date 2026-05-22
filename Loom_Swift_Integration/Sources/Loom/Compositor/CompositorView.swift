@@ -198,7 +198,7 @@ struct CompositorView: View {
                 }
             }
             if kind.hasD {
-                paramRow("d", description: "inward offset") {
+                paramRow("d", description: "normal offset (fraction of edge length)") {
                     FloatEntryField(value: pt.primitive.d, width: 60, fractionDigits: 3)
                 }
             }
