@@ -229,13 +229,16 @@ final class RenderSurfaceNSView: NSView {
         queuedSeekFrame = nil
         renderGeneration += 1
         let gen = renderGeneration
-        clearDisplay()
+        // Do NOT clearDisplay() here: keep showing the last frame while the engine
+        // resets so there is no black flash on loop restart or manual stop.
+        // clearDisplay() is only called if the engine cannot produce a frame at all.
         let progressToken = beginRenderProgress(initial: 0.20)
         renderQueue.async { [weak self] in
             guard let self else { return }
             try? self.engine.reset()
             guard let frame = self.engine.makeFrame() else {
                 DispatchQueue.main.async { [weak self] in
+                    self?.clearDisplay()   // nothing to show — clear to avoid stale image
                     self?.finishRenderProgress(token: progressToken, showCompletion: false)
                 }
                 return
