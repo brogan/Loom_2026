@@ -118,6 +118,8 @@ struct TimelinePanel: View {
     @State private var cameraDragState:       (lane: CameraLane, kfIdx: Int, previewFrame: Int)? = nil
     @State private var hiddenLanes:           Set<String>   = []
     @State private var kfScalePercent:        String        = "100"
+    @State private var scrollMonitor:         Any?          = nil
+    @State private var mouseOverTimeline:     Bool          = false
 
     private let headerWidth:  CGFloat = 160
     private let rowHeight:    CGFloat = 22
@@ -160,6 +162,21 @@ struct TimelinePanel: View {
         .frame(height: isCollapsed ? resizeHandleHeight : panelHeight)
         .background(Color(NSColor.controlBackgroundColor))
         .background(timelineCommandButtons.frame(width: 0, height: 0).opacity(0))
+        .onHover { mouseOverTimeline = $0 }
+        .onAppear {
+            scrollMonitor = NSEvent.addLocalMonitorForEvents(matching: .scrollWheel) { event in
+                guard event.modifierFlags.contains(.option),
+                      self.mouseOverTimeline else { return event }
+                let dx = event.scrollingDeltaX
+                let dy = event.scrollingDeltaY
+                let delta = abs(dx) > abs(dy) ? Double(dx) : Double(dy)
+                self.hOffset = max(0, self.hOffset + delta)
+                return nil
+            }
+        }
+        .onDisappear {
+            if let m = scrollMonitor { NSEvent.removeMonitor(m); scrollMonitor = nil }
+        }
         .onChange(of: selectedKF) { _, newKF in syncSelection(newKF) }
         .onChange(of: selectedRendererKF) { _, newKF in syncRendererSelection(newKF) }
         .onChange(of: selectedCameraKFHit) { _, hit in controller.selectedCameraKF = hit }
@@ -661,6 +678,7 @@ struct TimelinePanel: View {
     private func timelineCanvas(size: CGSize) -> some View {
         Canvas { ctx, sz in
             self.drawBackground(&ctx, size: sz)
+            self.drawGrid(&ctx, size: sz)
             self.drawRuler(&ctx, size: sz)
             self.drawKeyframes(&ctx, size: sz)
             self.drawRubberBand(&ctx)
@@ -910,6 +928,47 @@ struct TimelinePanel: View {
                 }
             }
         }
+    }
+
+    private func drawGrid(_ ctx: inout GraphicsContext, size: CGSize) {
+        let pxPerFrame  = CGFloat(zoom)
+        let (major, _)  = tickIntervals()
+
+        // Vertical lines at major frame ticks, extending from ruler bottom into all lanes
+        var vPath = Path()
+        let firstTick = (Int(CGFloat(hOffset) / pxPerFrame) / major) * major
+        let lastFrame = Int((CGFloat(hOffset) + size.width) / pxPerFrame) + major
+        var f = firstTick
+        while f <= lastFrame {
+            let x = CGFloat(f) * pxPerFrame - CGFloat(hOffset)
+            if x >= 0 && x <= size.width {
+                vPath.move(to: CGPoint(x: x, y: rulerHeight))
+                vPath.addLine(to: CGPoint(x: x, y: size.height))
+            }
+            f += major
+        }
+        ctx.stroke(vPath, with: .color(Color.secondary.opacity(0.07)), lineWidth: 0.5)
+
+        // Horizontal row separators
+        var hPath = Path()
+        func sep(_ y: CGFloat) {
+            hPath.move(to: CGPoint(x: 0, y: y))
+            hPath.addLine(to: CGPoint(x: size.width, y: y))
+        }
+
+        var rowY = rulerHeight + rowHeight
+        sep(rowY)
+        if cameraExpanded {
+            for _ in 0..<visibleCameraLanes().count { rowY += rowHeight; sep(rowY) }
+        }
+        for node in timelineNodes {
+            rowY += rowHeight; sep(rowY)
+            if expandedSprites.contains(node.sprite.name) {
+                let laneCount = visibleSpriteLanes(for: node).count + visibleRendererRows(for: node).count
+                for _ in 0..<laneCount { rowY += rowHeight; sep(rowY) }
+            }
+        }
+        ctx.stroke(hPath, with: .color(Color.secondary.opacity(0.13)), lineWidth: 0.5)
     }
 
     private func drawRuler(_ ctx: inout GraphicsContext, size: CGSize) {
