@@ -298,6 +298,15 @@ final class AppController: ObservableObject, @unchecked Sendable {
         scheduleConfigCommit(config)    // debounced save + reload
     }
 
+    func updateCustomAlgorithm(_ alg: CustomSubdivisionAlgorithm, setIdx: Int, paramIdx: Int) {
+        updateProjectConfig { cfg in
+            guard setIdx  < cfg.subdivisionConfig.paramsSets.count,
+                  paramIdx < cfg.subdivisionConfig.paramsSets[setIdx].params.count
+            else { return }
+            cfg.subdivisionConfig.paramsSets[setIdx].params[paramIdx].customAlgorithm = alg
+        }
+    }
+
     func requestTabSelection(_ tab: AppTab) {
         guard tab != selectedTab else { return }
         if selectedTab == .geometry,

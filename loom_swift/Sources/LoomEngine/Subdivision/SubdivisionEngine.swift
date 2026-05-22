@@ -133,6 +133,15 @@ public enum SubdivisionEngine {
             return subdivideEcho(points: points, params: params)
         case .echoAbsCenter:
             return subdivideEchoAbsCenter(points: points, params: params)
+        case .custom:
+            guard let alg = params.customAlgorithm else { return [] }
+            let anchors = (0..<sidesTotal).map { points[$0 * 4] }
+            return CustomAlgorithmExecutor.subdivide(
+                points: anchors,
+                sidesTotal: sidesTotal,
+                algorithm: alg,
+                params: params
+            )
         }
     }
 

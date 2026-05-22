@@ -102,12 +102,18 @@ public struct SubdivisionParams: Equatable, Codable, Sendable {
     /// When non-nil, used in place of the legacy random-translation PTP path.
     public var ptpTransformSet: PTPTransformSet?
 
+    // MARK: - Custom algorithm
+
+    /// User-defined algorithm. Only used when `subdivisionType == .custom`.
+    public var customAlgorithm: CustomSubdivisionAlgorithm?
+
     // MARK: - Init
 
     public init(
         name: String                         = "",
         enabled: Bool                         = true,
         subdivisionType: SubdivisionType      = .quad,
+        customAlgorithm: CustomSubdivisionAlgorithm? = nil,
         lineRatios: Vector2D                  = Vector2D(x: 0.5, y: 0.5),
         controlPointRatios: Vector2D          = Vector2D(x: 0.25, y: 0.75),
         cpNormalOffsets: Vector2D             = .zero,
@@ -138,6 +144,7 @@ public struct SubdivisionParams: Equatable, Codable, Sendable {
         self.name                       = name
         self.enabled                    = enabled
         self.subdivisionType            = subdivisionType
+        self.customAlgorithm            = customAlgorithm
         self.lineRatios                 = lineRatios
         self.controlPointRatios         = controlPointRatios
         self.cpNormalOffsets            = cpNormalOffsets
@@ -167,7 +174,8 @@ public struct SubdivisionParams: Equatable, Codable, Sendable {
     }
 
     private enum CodingKeys: String, CodingKey {
-        case name, enabled, subdivisionType, lineRatios, controlPointRatios, cpNormalOffsets, cpNormalizeTowardsCentre, continuous, insetTransform
+        case name, enabled, subdivisionType, customAlgorithm
+        case lineRatios, controlPointRatios, cpNormalOffsets, cpNormalizeTowardsCentre, continuous, insetTransform
         case ranMiddle, ranDiv, visibilityRule
         case pressureSubdivisionMode, pressureRandomGroups
         case polysTransform, polysTranformWhole, pTW_probability, pTW_commonCentre
@@ -183,6 +191,7 @@ public struct SubdivisionParams: Equatable, Codable, Sendable {
             name: try c.decodeIfPresent(String.self, forKey: .name) ?? defaults.name,
             enabled: try c.decodeIfPresent(Bool.self, forKey: .enabled) ?? defaults.enabled,
             subdivisionType: try c.decodeIfPresent(SubdivisionType.self, forKey: .subdivisionType) ?? defaults.subdivisionType,
+            customAlgorithm: try c.decodeIfPresent(CustomSubdivisionAlgorithm.self, forKey: .customAlgorithm),
             lineRatios: try c.decodeIfPresent(Vector2D.self, forKey: .lineRatios) ?? defaults.lineRatios,
             controlPointRatios: try c.decodeIfPresent(Vector2D.self, forKey: .controlPointRatios) ?? defaults.controlPointRatios,
             cpNormalOffsets: try c.decodeIfPresent(Vector2D.self, forKey: .cpNormalOffsets) ?? defaults.cpNormalOffsets,
@@ -217,6 +226,7 @@ public struct SubdivisionParams: Equatable, Codable, Sendable {
         try c.encode(name, forKey: .name)
         try c.encode(enabled, forKey: .enabled)
         try c.encode(subdivisionType, forKey: .subdivisionType)
+        try c.encodeIfPresent(customAlgorithm, forKey: .customAlgorithm)
         try c.encode(lineRatios, forKey: .lineRatios)
         try c.encode(controlPointRatios, forKey: .controlPointRatios)
         try c.encode(cpNormalOffsets, forKey: .cpNormalOffsets)

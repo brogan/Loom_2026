@@ -920,6 +920,7 @@ private extension SubdivisionType {
         case .splitDiag:          return "SplitDiag"
         case .echo:               return "Echo"
         case .echoAbsCenter:      return "EchoAbsCtr"
+        case .custom:             return "Custom"
         }
     }
 }

@@ -22,6 +22,7 @@ extension SubdivisionType {
         case .splitDiag:          return "SPLIT_DIAG"
         case .echo:               return "ECHO"
         case .echoAbsCenter:      return "ECHO_ABS_CENTER"
+        case .custom:             return "CUSTOM"
         }
     }
 
@@ -47,6 +48,7 @@ extension SubdivisionType {
         case "SPLIT_DIAG":             self = .splitDiag
         case "ECHO":                   self = .echo
         case "ECHO_ABS_CENTER":        self = .echoAbsCenter
+        case "CUSTOM":                 self = .custom
         default:                       return nil
         }
     }

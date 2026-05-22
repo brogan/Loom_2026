@@ -5,6 +5,7 @@ struct SubdivisionInspector: View {
 
     @EnvironmentObject private var controller: AppController
     @State private var activePTPTab: PTPTab = .exterior
+    @State private var showCompositor = false
     @State private var generalCollapsed  = false
     @State private var insetCollapsed    = false
     @State private var pressureCollapsed = false
@@ -63,6 +64,9 @@ struct SubdivisionInspector: View {
     @ViewBuilder
     private func paramEditor(param: SubdivisionParams, setIdx: Int, paramIdx: Int) -> some View {
         generalSection(setIdx: setIdx, paramIdx: paramIdx)
+        if param.subdivisionType == .custom {
+            compositorButton(setIdx: setIdx, paramIdx: paramIdx)
+        }
         if param.subdivisionType.usesInsetTransform {
             insetSection(setIdx: setIdx, paramIdx: paramIdx)
         }
@@ -70,6 +74,38 @@ struct SubdivisionInspector: View {
         polygonTransformEnabledSection(setIdx: setIdx, paramIdx: paramIdx)
         ptwSection(setIdx: setIdx, paramIdx: paramIdx)
         ptpSection(setIdx: setIdx, paramIdx: paramIdx)
+    }
+
+    // MARK: - Custom compositor
+
+    private func compositorButton(setIdx: Int, paramIdx: Int) -> some View {
+        InspectorSection("Custom Algorithm") {
+            InspectorRow(
+                label: controller.projectConfig?
+                    .subdivisionConfig.paramsSets[safe: setIdx]?
+                    .params[safe: paramIdx]?
+                    .customAlgorithm?.name ?? "Untitled",
+                value: ""
+            )
+            Button("Configure…") { showCompositor = true }
+                .font(.system(size: 12))
+                .padding(.vertical, 4)
+        }
+        .sheet(isPresented: $showCompositor) {
+            if let setIdx = controller.selectedSubdivisionIndex,
+               let paramIdx = controller.selectedSubdivisionParamIndex {
+                CompositorView(
+                    algorithm: controller.projectConfig?
+                        .subdivisionConfig.paramsSets[safe: setIdx]?
+                        .params[safe: paramIdx]?
+                        .customAlgorithm ?? CustomSubdivisionAlgorithm.starter,
+                    onSave: { updated in
+                        controller.updateCustomAlgorithm(updated, setIdx: setIdx, paramIdx: paramIdx)
+                    }
+                )
+                .frame(minWidth: 860, minHeight: 560)
+            }
+        }
     }
 
     // MARK: - General
@@ -823,7 +859,7 @@ private extension SubdivisionType {
              .quadBord, .quadBordEcho, .quadBordDouble, .quadBordDoubleEcho,
              .triBordA, .triBordAEcho, .triBordB, .triBordBEcho, .triBordC, .triBordCEcho:
             return true
-        case .quad, .tri, .splitVert, .splitHoriz, .splitDiag, .triStar, .triStarFill:
+        case .quad, .tri, .splitVert, .splitHoriz, .splitDiag, .triStar, .triStarFill, .custom:
             return false
         }
     }
@@ -849,6 +885,7 @@ private extension SubdivisionType {
         case .splitDiag:          return "SplitDiag"
         case .echo:               return "Echo"
         case .echoAbsCenter:      return "EchoAbsCenter"
+        case .custom:             return "Custom…"
         }
     }
 }

@@ -34,6 +34,9 @@ public enum SubdivisionType: Int, CaseIterable, Codable, Sendable {
     case triBordBEcho       = 18
     case triStarFill        = 19
 
+    // MARK: - User-defined
+    case custom             = 20
+
     // MARK: - Output counts
 
     /// Number of child polygons produced from a polygon with `sidesTotal` sides.
@@ -58,6 +61,7 @@ public enum SubdivisionType: Int, CaseIterable, Codable, Sendable {
              .splitDiag:          return 2
         case .echo,
              .echoAbsCenter:      return 1
+        case .custom:             return n        // approximate; exact count depends on algorithm
         }
     }
 }
