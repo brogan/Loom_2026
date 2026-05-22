@@ -678,10 +678,16 @@ struct SubdivisionTabView: View {
             return
         }
 
-        // Load polygons without normalisation — same as LoomBake CLI.
+        // Load polygons — JSON editable geometry files and legacy XML files both supported.
         let polys: [Polygon2D]
         do {
-            polys = try XMLPolygonLoader.load(url: sourceURL, normalise: false)
+            if sourceURL.pathExtension.lowercased() == "json" {
+                polys = try EditableGeometryJSONLoader.load(url: sourceURL)
+                    .runtimePolygons(targetLayerID: polyDef.editableLayerID,
+                                     targetLayerName: polyDef.editableLayerName)
+            } else {
+                polys = try XMLPolygonLoader.load(url: sourceURL, normalise: false)
+            }
         } catch {
             bakeAlert = BakeAlert(title: "Bake Failed",
                                   message: "Could not load polygon file:\n\(error.localizedDescription)")
