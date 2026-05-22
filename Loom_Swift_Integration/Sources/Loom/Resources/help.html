@@ -215,6 +215,7 @@
   <a class="nav-link nav-sub" href="#subdivision-ptp">PTP</a>
   <a class="nav-link nav-sub" href="#subdivision-pressure">Pressure</a>
   <a class="nav-link nav-sub" href="#subdivision-bake">Baking</a>
+  <a class="nav-link nav-sub" href="#subdivision-custom">Custom Compositor</a>
   <a class="nav-link" href="#rendering">Rendering</a>
   <a class="nav-link nav-sub" href="#rendering-modes">Render Modes</a>
   <a class="nav-link nav-sub" href="#rendering-brush">Brushes &amp; Stamps</a>
@@ -1168,6 +1169,7 @@
       <tr><td>SplitDiag</td><td>Splits each polygon diagonally.</td></tr>
       <tr><td>Echo</td><td>Produces an inset echo polygon inside each source polygon.</td></tr>
       <tr><td>EchoAbsCenter</td><td>Echo pinned to the canvas absolute centre rather than the polygon centroid.</td></tr>
+      <tr><td>Custom</td><td>User-defined algorithm built in the <a href="#subdivision-custom">Custom Compositor</a>. Opens an interactive editor where you define your own point vocabulary and child polygon sequences.</td></tr>
     </tbody>
   </table>
 
@@ -1409,6 +1411,88 @@
     <li>Loom writes the output polygons to <code>polygonSets/</code>, auto-registers the new file, and shows a confirmation with the polygon count.</li>
   </ol>
   <p>To export the subdivided geometry as an SVG wireframe without baking, click the <strong>folder-arrow</strong> (SVG export) button next to the bake button.</p>
+
+  <h3 id="subdivision-custom">Custom Compositor</h3>
+  <p>The Custom Compositor lets you define your own subdivision algorithm from scratch. Instead of choosing one of the built-in types, you describe what happens to a single edge — which points to place near it, and what child polygons to build from those points. The engine then repeats your definition for every edge of every polygon, automatically generalising it to triangles, quads, and any higher-order polygon without further effort from you.</p>
+
+  <p>To open it, set the <strong>Algorithm</strong> picker to <strong>Custom</strong> for any subdivision generation. A <strong>Custom…</strong> button appears; click it to open the compositor as a sheet.</p>
+
+  <h4>The per-edge template model</h4>
+  <p>Every point and every child polygon you define is relative to the <em>current edge</em>. The engine iterates over all edges of the input polygon and applies your template at each one. This means you never need to count sides or hard-code coordinates — your algorithm works identically on a triangle, a quad, or an arbitrary polygon.</p>
+
+  <h4>Point Library</h4>
+  <p>The Point Library defines named coordinate locations that your child polygons can reference.</p>
+
+  <h5>Built-in points (always available)</h5>
+  <table>
+    <thead><tr><th>Name</th><th>Meaning</th></tr></thead>
+    <tbody>
+      <tr><td><code>V.start</code></td><td>The first anchor of the current edge</td></tr>
+      <tr><td><code>V.end</code></td><td>The second anchor of the current edge</td></tr>
+      <tr><td><code>C</code></td><td>The centroid of the whole polygon</td></tr>
+    </tbody>
+  </table>
+  <p>These cannot be removed or renamed. They cover the majority of simple algorithms without any user-defined points needed.</p>
+
+  <h5>Adding user points</h5>
+  <ol class="steps">
+    <li>Click <strong>+ Point</strong> in the Point Library section header.</li>
+    <li>Expand the new row with the chevron and give the point a short name (e.g. <code>mid</code>).</li>
+    <li>Choose a <strong>Kind</strong> from the picker and set its parameters.</li>
+  </ol>
+
+  <h5>Point kinds</h5>
+  <table>
+    <thead><tr><th>Kind</th><th>Parameters</th><th>Description</th></tr></thead>
+    <tbody>
+      <tr><td>Edge fraction</td><td>t (0–1)</td><td>A point at fractional position t along the current edge. t = 0.5 is the midpoint.</td></tr>
+      <tr><td>Edge normal</td><td>t, d</td><td>A point at position t along the edge, offset perpendicularly by d (in edge-length units). Positive d is left of the edge direction; negative d is right.</td></tr>
+      <tr><td>Prev edge fraction</td><td>t</td><td>A point at position t along the <em>previous</em> edge of the polygon.</td></tr>
+      <tr><td>Prev edge normal</td><td>t, d</td><td>Previous edge, offset perpendicularly.</td></tr>
+      <tr><td>Next edge fraction</td><td>t</td><td>A point at position t along the <em>next</em> edge of the polygon.</td></tr>
+      <tr><td>Next edge normal</td><td>t, d</td><td>Next edge, offset perpendicularly.</td></tr>
+      <tr><td>Centroid offset</td><td>d, angle</td><td>A point near the polygon centroid, displaced by d at angle degrees (0 = rightward, 90 = upward).</td></tr>
+      <tr><td>Midring interpolation</td><td>s</td><td>Blends between the centroid (s = 0) and the current edge midpoint (s = 1). Useful for concentric ring patterns.</td></tr>
+    </tbody>
+  </table>
+
+  <h5>Cross-edge references</h5>
+  <p>Any user point named <code>X</code> is also automatically available as <code>prev.X</code> and <code>next.X</code>. These evaluate the same point definition against the previous or next edge respectively. You use these in child polygon sequences to share vertices between adjacent edge iterations — essential for producing seamless, gap-free meshes.</p>
+  <div class="tip"><strong>Example:</strong> If you define a point <code>mid</code> at edge fraction 0.5, then <code>prev.mid</code> is the midpoint of the preceding edge and <code>next.mid</code> is the midpoint of the following edge. The built-in points <code>V.start</code>, <code>V.end</code>, and <code>C</code> do not have prev/next variants.</div>
+
+  <h4>Edge Children</h4>
+  <p>Edge Children define the actual output polygons. Each child is one polygon that the engine generates for every edge iteration. You must define at least one Edge Child with a point sequence of at least two points before any output appears in the preview.</p>
+
+  <ol class="steps">
+    <li>Click <strong>+ Child</strong> in the Edge Children section header.</li>
+    <li>Expand the child row and optionally name it.</li>
+    <li>Use the <strong>Add</strong> dropdown at the right of the point chip row to append point references one at a time. The chips appear in sequence order.</li>
+    <li>Build up the sequence to form a closed polygon. The engine connects each pair of consecutive points with a Bézier connector and closes back to the first point.</li>
+  </ol>
+
+  <div class="note">The order of points in the sequence determines polygon winding. Consistent winding matters for rendering fill correctly. Go either clockwise or counter-clockwise and be consistent across all your children.</div>
+
+  <h4>Worked example: Quad-style subdivision</h4>
+  <p>To reproduce a Quad-like split (four children sharing a common centroid point):</p>
+  <ol class="steps">
+    <li>Add a user point named <code>mid</code>, Kind = <strong>Edge fraction</strong>, t = 0.5.</li>
+    <li>Add one Edge Child. Build its sequence: <code>V.start</code> → <code>mid</code> → <code>C</code> → <code>prev.mid</code>.</li>
+    <li>The preview shows 4 quadrilateral children arranged around the centroid, one per edge. Set Preview level to 2 or 3 to verify the pattern recurses correctly.</li>
+  </ol>
+  <p>Breaking down the sequence: <em>V.start</em> is the current edge's start vertex; <em>mid</em> is this edge's midpoint; <em>C</em> is the polygon centre; <em>prev.mid</em> is the midpoint of the previous edge. Together they trace one quadrant without gaps or overlaps.</p>
+
+  <h4>Global Child (optional)</h4>
+  <p>Some patterns require a single polygon connecting one point from each edge — for example, an inner ring that links all the edge midpoints together. Toggle <strong>Global Child</strong> on and choose a point name. The engine collects that one named point from every edge iteration in order and builds a single closed polygon from the resulting sequence.</p>
+  <p>This is how algorithms like TriStar produce their interior fill polygon. It is independent of any Edge Children you have defined and is generated once per input polygon rather than once per edge.</p>
+
+  <h4>Preview</h4>
+  <p>The dark preview panel on the right of the compositor sheet renders the algorithm live against a test square. The <strong>Preview level</strong> control (1 / 2 / 3 in the toolbar) sets how many rounds of subdivision to apply. Use level 2 or 3 to verify that recursion generalises correctly — that child polygons are themselves subdivided cleanly without gaps, overlaps, or degenerate geometry.</p>
+  <p>If the preview is blank, check that you have at least one Edge Child with a point sequence of at least two points. A message reading <em>"No output — add an Edge Child and define its point sequence"</em> confirms that the algorithm produces no polygons yet.</p>
+
+  <h4>Saving</h4>
+  <p>Click <strong>Save</strong> in the compositor toolbar. The algorithm is written back to the subdivision generation's params and immediately used by the live render in the main canvas. Custom algorithms are stored inline in <code>project_config.json</code> alongside all other subdivision parameters and round-trip cleanly through save/load.</p>
+
+  <div class="tip"><strong>Tip:</strong> Custom algorithms respect all the same subdivision parameters as built-in types — CP ratios, CP normals, visibility rules, PTW, and PTP all apply. Use CP normals in the main inspector to add curvature to the connectors between your anchor points.</div>
 </section>
 
 <!-- ────────────────────────────────────────────────── -->
