@@ -62,6 +62,8 @@ struct SpritesTabView: View {
     @EnvironmentObject private var controller: AppController
 
     @State private var expandedSets:       Set<String>   = []
+    @State private var hiddenSprites:      Set<String>   = []
+    @State private var hasAppeared                       = false
     @State private var selectedSetIndex:   Int?          = nil
     @State private var dragItem:           LoomDragItem? = nil
     @State private var dropTarget:         SpriteDropTarget? = nil
@@ -196,7 +198,13 @@ struct SpritesTabView: View {
                                 || entry.set.sprites.contains(where: { $0.name == controller.selectedSpriteID })
                             setRow(set: entry.set, setIdx: entry.setIdx)
                             if isExpanded {
-                                let nodes = buildDisplayNodes(for: entry)
+                                let filteredEntry = DisplayEntry(
+                                    setIdx: entry.setIdx, set: entry.set,
+                                    spriteIndices: isFiltering ? entry.spriteIndices
+                                        : entry.spriteIndices.filter {
+                                            !hiddenSprites.contains(spriteKey(entry.set.name, entry.set.sprites[$0].name))
+                                        })
+                                let nodes = buildDisplayNodes(for: filteredEntry)
                                 ForEach(nodes, id: \.spriteIdx) { node in
                                     spriteTreeRow(node: node)
                                 }
@@ -227,6 +235,8 @@ struct SpritesTabView: View {
         let isExpanded     = isFiltering || expandedSets.contains(set.name)
         let isBeforeTarget = !isFiltering && dropTarget == .beforeSet(setIdx)
         let isOntoTarget   = !isFiltering && dropTarget == .ontoSet(setIdx)
+        let hiddenCount    = isFiltering ? 0 : set.sprites.filter { hiddenSprites.contains(spriteKey(set.name, $0.name)) }.count
+        let hidableCount   = isFiltering ? 0 : set.sprites.filter { !$0.enabled && !hiddenSprites.contains(spriteKey(set.name, $0.name)) }.count
 
         return HStack(spacing: 5) {
             Button { if !isFiltering { toggleExpansion(set.name) } } label: {
@@ -248,6 +258,30 @@ struct SpritesTabView: View {
                 }
 
             Spacer(minLength: 2)
+
+            if hiddenCount > 0 {
+                Button {
+                    for sprite in set.sprites { hiddenSprites.remove(spriteKey(set.name, sprite.name)) }
+                } label: {
+                    HStack(spacing: 2) {
+                        Image(systemName: "eye.slash").font(.system(size: 9))
+                        Text("\(hiddenCount)").font(.system(size: 9, design: .monospaced))
+                    }
+                    .foregroundStyle(Color.orange.opacity(0.8))
+                }
+                .buttonStyle(.plain)
+                .help("Restore \(hiddenCount) hidden sprite\(hiddenCount == 1 ? "" : "s")")
+            } else if hidableCount > 0 {
+                Button {
+                    for sprite in set.sprites where !sprite.enabled {
+                        hiddenSprites.insert(spriteKey(set.name, sprite.name))
+                    }
+                } label: {
+                    Image(systemName: "eye").font(.system(size: 9)).foregroundStyle(.tertiary)
+                }
+                .buttonStyle(.plain)
+                .help("Hide \(hidableCount) disabled sprite\(hidableCount == 1 ? "" : "s")")
+            }
 
             Text("\(set.sprites.count)")
                 .font(.system(size: 10, design: .monospaced))
@@ -572,12 +606,16 @@ struct SpritesTabView: View {
     }
 
     private func autoExpand() {
-        guard let name = controller.selectedSpriteID,
-              let (setIdx, _) = location(ofSprite: name),
-              let sn = setName(at: setIdx)
-        else { return }
-        selectedSetIndex = setIdx
-        expandedSets.insert(sn)
+        guard !hasAppeared else { return }
+        hasAppeared = true
+        let sets = controller.projectConfig?.spriteConfig.library.spriteSets ?? []
+        for set in sets { expandedSets.insert(set.name) }
+        if let name = controller.selectedSpriteID,
+           let (setIdx, _) = location(ofSprite: name),
+           let sn = setName(at: setIdx) {
+            selectedSetIndex = setIdx
+            expandedSets.insert(sn)
+        }
     }
 
     // MARK: - Drop mutations
@@ -831,6 +869,8 @@ struct SpritesTabView: View {
     }
 
     // MARK: - Helpers
+
+    private func spriteKey(_ setName: String, _ spriteName: String) -> String { "\(setName)\t\(spriteName)" }
 
     private func location(ofSprite name: String) -> (Int, Int)? {
         guard let sets = controller.projectConfig?.spriteConfig.library.spriteSets else { return nil }

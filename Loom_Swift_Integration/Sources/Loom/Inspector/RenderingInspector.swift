@@ -6,6 +6,8 @@ struct RenderingInspector: View {
 
     @EnvironmentObject private var controller: AppController
 
+    @State private var hiddenRenderers: Set<String> = []
+
     // Collapse state — primary sections default open, secondary default closed
     @State private var renderersCollapsed    = false
     @State private var rendererCollapsed     = false
@@ -107,16 +109,57 @@ struct RenderingInspector: View {
 
     // MARK: - Renderers mini-list
 
+    private func rendererKey(_ setName: String, _ rendererName: String) -> String { "\(setName)\t\(rendererName)" }
+
     private func renderersList(set: RendererSet, setIdx: Int) -> some View {
-        InspectorSection("Renderers", isCollapsed: $renderersCollapsed) {
-            InspectorPickList(
-                items: set.renderers,
-                labelFor: { $0.name.isEmpty ? "(unnamed)" : $0.name },
-                selection: Binding(
-                    get: { controller.selectedRendererItemIndex },
-                    set: { controller.selectedRendererItemIndex = $0 }
-                )
-            )
+        let hiddenCount  = set.renderers.filter { hiddenRenderers.contains(rendererKey(set.name, $0.name)) }.count
+        let hidableCount = set.renderers.filter { !$0.enabled && !hiddenRenderers.contains(rendererKey(set.name, $0.name)) }.count
+
+        return InspectorSection("Renderers", isCollapsed: $renderersCollapsed, trailing: {
+            if hiddenCount > 0 {
+                Button {
+                    for r in set.renderers { hiddenRenderers.remove(rendererKey(set.name, r.name)) }
+                } label: {
+                    HStack(spacing: 2) {
+                        Image(systemName: "eye.slash").font(.system(size: 9))
+                        Text("\(hiddenCount)").font(.system(size: 9, design: .monospaced))
+                    }
+                    .foregroundStyle(Color.orange.opacity(0.8))
+                }
+                .buttonStyle(.plain)
+                .help("Restore \(hiddenCount) hidden renderer\(hiddenCount == 1 ? "" : "s")")
+            } else if hidableCount > 0 {
+                Button {
+                    for r in set.renderers where !r.enabled {
+                        hiddenRenderers.insert(rendererKey(set.name, r.name))
+                    }
+                } label: {
+                    Image(systemName: "eye").font(.system(size: 9)).foregroundStyle(.tertiary)
+                }
+                .buttonStyle(.plain)
+                .help("Hide \(hidableCount) disabled renderer\(hidableCount == 1 ? "" : "s")")
+            }
+        }) {
+            ForEach(Array(set.renderers.enumerated()), id: \.offset) { idx, renderer in
+                if !hiddenRenderers.contains(rendererKey(set.name, renderer.name)) {
+                    let selected = controller.selectedRendererItemIndex == idx
+                    HStack(spacing: 6) {
+                        Text("\(idx)")
+                            .font(.system(size: 10, design: .monospaced))
+                            .foregroundStyle(.tertiary)
+                            .frame(width: 18, alignment: .trailing)
+                        Text(renderer.name.isEmpty ? "(unnamed)" : renderer.name)
+                            .font(.system(size: 12))
+                            .lineLimit(1)
+                        Spacer()
+                    }
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 4)
+                    .background(selected ? Color.accentColor.opacity(0.15) : Color.clear)
+                    .contentShape(Rectangle())
+                    .onTapGesture { controller.selectedRendererItemIndex = idx }
+                }
+            }
         }
         .onChange(of: controller.selectedRendererIndex) { _, _ in
             controller.selectedRendererItemIndex = nil

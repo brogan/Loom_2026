@@ -87,19 +87,33 @@ struct InspectorSection<Content: View>: View {
     private let isHighlighted: Bool
     private let content: Content
     private let collapseState: Binding<Bool>?
+    private let trailingButton: AnyView?
 
     init(_ title: String, isHighlighted: Bool = false, @ViewBuilder content: () -> Content) {
-        self.title         = title
-        self.isHighlighted = isHighlighted
-        self.content       = content()
-        self.collapseState = nil
+        self.title           = title
+        self.isHighlighted   = isHighlighted
+        self.content         = content()
+        self.collapseState   = nil
+        self.trailingButton  = nil
     }
 
     init(_ title: String, isCollapsed: Binding<Bool>, isHighlighted: Bool = false, @ViewBuilder content: () -> Content) {
-        self.title         = title
-        self.isHighlighted = isHighlighted
-        self.content       = content()
-        self.collapseState = isCollapsed
+        self.title           = title
+        self.isHighlighted   = isHighlighted
+        self.content         = content()
+        self.collapseState   = isCollapsed
+        self.trailingButton  = nil
+    }
+
+    /// Collapsible section with an optional trailing button in the header.
+    init<T: View>(_ title: String, isCollapsed: Binding<Bool>, isHighlighted: Bool = false,
+                  @ViewBuilder trailing: () -> T,
+                  @ViewBuilder content: () -> Content) {
+        self.title           = title
+        self.isHighlighted   = isHighlighted
+        self.content         = content()
+        self.collapseState   = isCollapsed
+        self.trailingButton  = AnyView(trailing())
     }
 
     private var collapsed: Bool { collapseState?.wrappedValue ?? false }
@@ -107,22 +121,27 @@ struct InspectorSection<Content: View>: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             if let binding = collapseState {
-                Button { binding.wrappedValue.toggle() } label: {
-                    HStack(spacing: 5) {
-                        Image(systemName: binding.wrappedValue ? "chevron.right" : "chevron.down")
-                            .font(.system(size: 9, weight: .semibold))
-                            .foregroundStyle(.secondary)
-                            .frame(width: 10)
-                        Text(title)
-                            .font(.system(size: 11, weight: .semibold))
-                            .foregroundStyle(.secondary)
-                        Spacer()
+                HStack(spacing: 0) {
+                    Button { binding.wrappedValue.toggle() } label: {
+                        HStack(spacing: 5) {
+                            Image(systemName: binding.wrappedValue ? "chevron.right" : "chevron.down")
+                                .font(.system(size: 9, weight: .semibold))
+                                .foregroundStyle(.secondary)
+                                .frame(width: 10)
+                            Text(title)
+                                .font(.system(size: 11, weight: .semibold))
+                                .foregroundStyle(.secondary)
+                            Spacer()
+                        }
+                        .padding(.horizontal, 12)
+                        .padding(.top, 10)
+                        .padding(.bottom, 4)
                     }
-                    .padding(.horizontal, 12)
-                    .padding(.top, 10)
-                    .padding(.bottom, 4)
+                    .buttonStyle(.plain)
+                    if let tb = trailingButton {
+                        tb.padding(.trailing, 10).padding(.top, 6)
+                    }
                 }
-                .buttonStyle(.plain)
             } else {
                 Text(title)
                     .font(.system(size: 11, weight: .semibold))
