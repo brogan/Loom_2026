@@ -5,7 +5,9 @@ struct RenderingTabView: View {
 
     @EnvironmentObject private var controller: AppController
 
-    @State private var expandedSets: Set<Int> = []
+    @State private var expandedSets:    Set<Int>    = []
+    @State private var hiddenRenderers: Set<String> = []
+    @State private var hasAppeared                  = false
 
     var body: some View {
         VStack(spacing: 0) {
@@ -33,10 +35,10 @@ struct RenderingTabView: View {
                             setRow(set: sets[setIdx], setIdx: setIdx)
                             if expandedSets.contains(setIdx) {
                                 ForEach(sets[setIdx].renderers.indices, id: \.self) { itemIdx in
-                                    rendererRow(
-                                        renderer: sets[setIdx].renderers[itemIdx],
-                                        setIdx: setIdx, itemIdx: itemIdx
-                                    )
+                                    let r = sets[setIdx].renderers[itemIdx]
+                                    if !hiddenRenderers.contains(rendererKey(sets[setIdx].name, r.name)) {
+                                        rendererRow(renderer: r, setIdx: setIdx, itemIdx: itemIdx)
+                                    }
                                 }
                                 if sets[setIdx].renderers.isEmpty {
                                     Text("No renderers — use + to add")
@@ -56,8 +58,10 @@ struct RenderingTabView: View {
     // MARK: - Set row
 
     private func setRow(set: RendererSet, setIdx: Int) -> some View {
-        let isSelected = controller.selectedRendererIndex == setIdx
-        let isExpanded = expandedSets.contains(setIdx)
+        let isSelected   = controller.selectedRendererIndex == setIdx
+        let isExpanded   = expandedSets.contains(setIdx)
+        let hiddenCount  = set.renderers.filter { hiddenRenderers.contains(rendererKey(set.name, $0.name)) }.count
+        let hidableCount = set.renderers.filter { !$0.enabled && !hiddenRenderers.contains(rendererKey(set.name, $0.name)) }.count
 
         return HStack(spacing: 5) {
             Button {
@@ -75,6 +79,30 @@ struct RenderingTabView: View {
                 .lineLimit(1)
 
             Spacer(minLength: 2)
+
+            if hiddenCount > 0 {
+                Button {
+                    for r in set.renderers { hiddenRenderers.remove(rendererKey(set.name, r.name)) }
+                } label: {
+                    HStack(spacing: 2) {
+                        Image(systemName: "eye.slash").font(.system(size: 9))
+                        Text("\(hiddenCount)").font(.system(size: 9, design: .monospaced))
+                    }
+                    .foregroundStyle(Color.orange.opacity(0.8))
+                }
+                .buttonStyle(.plain)
+                .help("Restore \(hiddenCount) hidden renderer\(hiddenCount == 1 ? "" : "s")")
+            } else if hidableCount > 0 {
+                Button {
+                    for r in set.renderers where !r.enabled {
+                        hiddenRenderers.insert(rendererKey(set.name, r.name))
+                    }
+                } label: {
+                    Image(systemName: "eye").font(.system(size: 9)).foregroundStyle(.tertiary)
+                }
+                .buttonStyle(.plain)
+                .help("Hide \(hidableCount) disabled renderer\(hidableCount == 1 ? "" : "s")")
+            }
 
             Text("\(set.renderers.count)")
                 .font(.system(size: 10, design: .monospaced))
@@ -187,6 +215,10 @@ struct RenderingTabView: View {
     }
 
     private func autoExpand() {
+        guard !hasAppeared else { return }
+        hasAppeared = true
+        let sets = controller.projectConfig?.renderingConfig.library.rendererSets ?? []
+        for idx in sets.indices { expandedSets.insert(idx) }
         if let idx = controller.selectedRendererIndex { expandedSets.insert(idx) }
     }
 
@@ -300,6 +332,8 @@ struct RenderingTabView: View {
     }
 
     // MARK: - Helpers
+
+    private func rendererKey(_ setName: String, _ rendererName: String) -> String { "\(setName)\t\(rendererName)" }
 
     private func uniqueName(base: String, existing: [String]) -> String {
         guard existing.contains(base) else { return base }
