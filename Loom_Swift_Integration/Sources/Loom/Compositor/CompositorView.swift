@@ -408,7 +408,7 @@ struct CompositorView: View {
 
             CompositorPreviewCanvas(algorithm: algorithm, levels: previewLevel)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .background(Color(nsColor: .windowBackgroundColor))
+                .background(Color(red: 0.12, green: 0.12, blue: 0.13))
         }
     }
 
@@ -539,24 +539,37 @@ struct CompositorPreviewCanvas: View {
 
     var body: some View {
         Canvas { ctx, size in
+            guard size.width > 10, size.height > 10 else { return }
             let polys = buildPolygons(size: size)
-            let stroke = GraphicsContext.Shading.color(.white.opacity(0.7))
+
+            // Draw each child with a faint fill + visible stroke
+            let fillShading  = GraphicsContext.Shading.color(Color(red: 0.3, green: 0.55, blue: 0.8, opacity: 0.08))
+            let strokeShading = GraphicsContext.Shading.color(Color(red: 0.5, green: 0.75, blue: 1.0, opacity: 0.85))
 
             for poly in polys {
                 guard poly.points.count >= 4, poly.points.count % 4 == 0 else { continue }
                 var path = Path()
                 let n = poly.points.count / 4
-                path.move(to: point(poly.points[0], size: size))
+                path.move(to: cvt(poly.points[0], size: size))
                 for i in 0..<n {
-                    let base = i * 4
+                    let b = i * 4
                     path.addCurve(
-                        to: point(poly.points[base + 3], size: size),
-                        control1: point(poly.points[base + 1], size: size),
-                        control2: point(poly.points[base + 2], size: size)
+                        to:       cvt(poly.points[b + 3], size: size),
+                        control1: cvt(poly.points[b + 1], size: size),
+                        control2: cvt(poly.points[b + 2], size: size)
                     )
                 }
                 path.closeSubpath()
-                ctx.stroke(path, with: stroke, lineWidth: 0.6)
+                ctx.fill(path, with: fillShading)
+                ctx.stroke(path, with: strokeShading, lineWidth: 1.0)
+            }
+
+            // Empty-state message
+            if polys.isEmpty {
+                var text = AttributedString("No output — add an Edge Child and define its point sequence")
+                text.foregroundColor = .init(white: 0.45)
+                text.font = .system(size: 11)
+                ctx.draw(Text(text), at: CGPoint(x: size.width / 2, y: size.height / 2))
             }
         }
     }
@@ -596,7 +609,7 @@ struct CompositorPreviewCanvas: View {
         return polys
     }
 
-    private func point(_ v: Vector2D, size: CGSize) -> CGPoint {
-        CGPoint(x: v.x, y: size.height - v.y)   // flip Y (Loom is Y-up)
+    private func cvt(_ v: Vector2D, size: CGSize) -> CGPoint {
+        CGPoint(x: v.x, y: size.height - v.y)
     }
 }
