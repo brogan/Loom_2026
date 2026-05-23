@@ -219,7 +219,7 @@
   <a class="nav-link" href="#rendering">Rendering</a>
   <a class="nav-link nav-sub" href="#rendering-modes">Render Modes</a>
   <a class="nav-link nav-sub" href="#rendering-brush">Brushes &amp; Stamps</a>
-  <a class="nav-link nav-sub" href="#rendering-drivers">Renderer Drivers</a>
+  <a class="nav-link nav-sub" href="#rendering-drivers">Renderer Drivers &amp; Blur</a>
   <a class="nav-link nav-sub" href="#rendering-color-drivers">Colour Blend Modes</a>
 
   <div class="nav-section">Animation</div>
@@ -386,14 +386,27 @@
   <h2>Global Tab</h2>
   <p>The Global tab configures project-wide settings that affect the canvas, output quality, background, camera, and notes. Duration, Animating, and BG once now live beside the playback controls so they remain available from every tab.</p>
 
+  <h3>Project</h3>
+  <p>The <strong>Project</strong> section shows the current project name and its location on disk. The name and folder name are always kept in sync — renaming here renames the directory on disk.</p>
+  <table>
+    <thead><tr><th>Control</th><th>Description</th></tr></thead>
+    <tbody>
+      <tr><td>Name field + Rename button</td><td>Edit the project name and press <kbd>Return</kbd> or click <strong>Rename</strong>. Loom saves the project, renames the folder on disk, updates any internal file paths that pointed inside the old folder, and updates the recent projects list. The button is disabled if the name has not changed or is empty.</td></tr>
+      <tr><td>Change…</td><td>Opens the project picker to switch to a different project.</td></tr>
+    </tbody>
+  </table>
+  <div class="note">All geometry, brush, stamp, and configuration paths inside a project are relative, so they are unaffected by renaming. Only the project folder name and the recent-projects history are updated.</div>
+
   <h3>Canvas</h3>
   <table>
     <thead><tr><th>Field</th><th>Description</th></tr></thead>
     <tbody>
-      <tr><td>Name</td><td>Display name shown in the toolbar centre. Also used as the video export filename stem.</td></tr>
       <tr><td>Format</td><td>Standard output size preset. Choosing a preset immediately sets Width and Height. If you edit either dimension manually, the picker switches to <strong>Custom</strong>.</td></tr>
       <tr><td>Width / Height</td><td>Canvas dimensions in pixels. Renderers and SVG export use these dimensions. Edit freely — the Format picker will show Custom for any size that does not match a preset.</td></tr>
-      <tr><td>Quality</td><td>Multiplier applied to output resolution (e.g. 2× renders at twice the canvas size).</td></tr>
+      <tr><td>Quality</td><td>Multiplier applied to output resolution (e.g. 2× renders at twice the canvas size). The actual render dimensions are <em>Width × Quality</em> by <em>Height × Quality</em>.</td></tr>
+      <tr><td>Scale img</td><td>When on, stroke widths, point sizes, and brush/stamp metrics are multiplied by the quality multiplier so the output looks visually identical to the 1× preview when scaled down. When off, those pixel values stay at their original logical-pixel size.</td></tr>
+      <tr><td>Softness</td><td>Gaussian blur radius applied to every rendered frame in logical pixels, scaled by the quality multiplier. Use a small value (e.g. 0.5–2) to soften the anti-aliasing at 1× quality so it more closely matches the appearance of a downscaled high-quality render. 0 = off.</td></tr>
+      <tr><td>BG image</td><td>Background image drawn behind all sprites. Supported formats: PNG, JPEG, TIFF, BMP, HEIC. Click <strong>Choose…</strong> to pick a file; click <strong>✕</strong> to remove it.</td></tr>
     </tbody>
   </table>
   <table>
@@ -415,7 +428,8 @@
     <thead><tr><th>Field</th><th>Description</th></tr></thead>
     <tbody>
       <tr><td>Background</td><td>Canvas background colour. RGBA — use alpha &lt; 1 for transparent still exports.</td></tr>
-      <tr><td>Border</td><td>Optional border drawn around the canvas edge. Use the border width field to set thickness; width 0 disables the border.</td></tr>
+      <tr><td>Border</td><td>Colour of an optional border drawn around the canvas edge.</td></tr>
+      <tr><td>Border width</td><td>Thickness of the border in logical pixels. Set to 0 for no border. Automatically scaled by the quality multiplier at render time so the border maintains its visual proportions regardless of output resolution.</td></tr>
       <tr><td>Overlay</td><td>Colour composited over everything — useful for a global tint, veil, or alpha reduction. The default is black with 0 alpha, so it has no effect until edited.</td></tr>
     </tbody>
   </table>
@@ -1544,19 +1558,26 @@
   <h4>Progressive brush mode</h4>
   <p>In Progressive mode, brush strokes can be drawn gradually across frames. With global animation enabled, the path advances from first polygon/edge toward last; in static rendering it draws the complete path.</p>
 
-  <h3 id="rendering-drivers">Colour, width, and opacity drivers</h3>
+  <h3 id="rendering-drivers">Colour, width, opacity, and blur drivers</h3>
   <p>Renderer properties can be static values or animated via drivers. Renderer drivers differ from sprite drivers: they affect only a specific renderer layer. This is especially useful when a renderer set uses Playback <strong>All</strong>.</p>
+
+  <h4>Per-renderer Gaussian blur</h4>
+  <p>Every renderer has a <strong>Blur radius</strong> field (in logical pixels, scaled by the quality multiplier at render time). When non-zero, the renderer's output is drawn into an offscreen buffer, a Gaussian blur is applied, and the blurred result is composited back onto the canvas. Renderers with blur = 0 use a zero-overhead direct path.</p>
+  <p>Blur radius can be animated with the <strong>Blur Driver</strong> — the same scalar driver types available for stroke width and opacity. The timeline adds a <strong>Blur</strong> lane (mint colour) to each renderer's driver lanes.</p>
+  <div class="tip"><strong>Tip:</strong> In a renderer set with Playback <strong>All</strong>, stack a filled renderer with a blurred stroked renderer to create a glow or halo effect without affecting the fill layer.</div>
+
   <table>
     <thead><tr><th>Property</th><th>Animation driver support</th></tr></thead>
     <tbody>
       <tr><td>Fill colour</td><td>Constant, Keyframe, Jitter, Noise, Oscillator — see <a href="#rendering-color-drivers">Colour Blend Modes</a>.</td></tr>
       <tr><td>Stroke colour</td><td>Constant, Keyframe, Jitter, Noise, Oscillator — see <a href="#rendering-color-drivers">Colour Blend Modes</a>.</td></tr>
       <tr><td>Stroke width</td><td>Yes — animate width over time using any scalar driver.</td></tr>
-      <tr><td>Renderer opacity</td><td>Yes — per-renderer alpha multiplier. Fades only this renderer layer, not the whole sprite.</td></tr>
+      <tr><td>Opacity</td><td>Yes — per-renderer alpha multiplier. Fades only this renderer layer, not the whole sprite.</td></tr>
+      <tr><td>Blur radius</td><td>Yes — animate Gaussian blur radius using any scalar driver. Useful for focus-pull effects, glow pulses, and organic softening over time.</td></tr>
       <tr><td>Hold length</td><td>Frames to keep geometry drawn before clearing (ghost/trail effect).</td></tr>
     </tbody>
   </table>
-  <p>Each renderer driver section header in the inspector shows the same <strong>keyframe indicator</strong> and <strong>enabled checkbox</strong> as sprite drivers — see <a href="#animation-lane-controls">Driver enabled state and lane visibility</a>. A batch eye above the four driver sections collapses all unused renderer driver panels at once. Renderer driver lanes in the timeline also carry per-lane enabled checkboxes, keyframe indicators, and eye hide controls, and are included in the sprite-row batch eye.</p>
+  <p>Each renderer driver section header in the inspector shows the same <strong>keyframe indicator</strong> and <strong>enabled checkbox</strong> as sprite drivers — see <a href="#animation-lane-controls">Driver enabled state and lane visibility</a>. A batch eye above the five driver sections collapses all unused renderer driver panels at once. Renderer driver lanes in the timeline also carry per-lane enabled checkboxes, keyframe indicators, and eye hide controls, and are included in the sprite-row batch eye.</p>
 
   <h4>Internal renderer changes</h4>
   <p>Fill colour, stroke colour, and stroke width changes can operate at different scales. <strong>Poly</strong> applies changes per subdivision child polygon; <strong>Sprite</strong> applies one value to the whole sprite; <strong>Global</strong> applies one value across the render. Random palette changes do not require global animation to be enabled when a static randomised result is desired.</p>
@@ -1751,7 +1772,7 @@
   </table>
 
   <h4>Renderer keyframe lanes</h4>
-  <p>Renderer lanes are shown beneath the sprite lanes for sprites that use renderer sets with animated renderer drivers. Current renderer lanes are <strong>Fill</strong>, <strong>Stroke</strong>, <strong>Width</strong>, and <strong>Opacity</strong>. The renderer opacity lane is a per-renderer alpha multiplier and is ideal for crossfading layers in Playback <strong>All</strong>.</p>
+  <p>Renderer lanes are shown beneath the sprite lanes for sprites that use renderer sets with animated renderer drivers. Current renderer lanes are <strong>Fill</strong>, <strong>Stroke</strong>, <strong>Width</strong>, <strong>Opacity</strong>, and <strong>Blur</strong>. The renderer opacity lane is a per-renderer alpha multiplier and is ideal for crossfading layers in Playback <strong>All</strong>. The blur lane animates the Gaussian blur radius applied to that renderer's output.</p>
 
   <h4>Zoom and scroll</h4>
   <p>Use the <strong>×1.5 / ÷1.5</strong> buttons to zoom the timeline ruler horizontally. The timeline lane list scrolls vertically when there are more rows than can fit. Drag the larger top grab area to resize the timeline vertically; it can open high enough to inspect dense sprite and renderer lane stacks.</p>
