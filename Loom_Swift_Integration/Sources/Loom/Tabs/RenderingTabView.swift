@@ -41,11 +41,30 @@ struct RenderingTabView: View {
     @State private var dragItem:        RendererDragItem?     = nil
     @State private var dropTarget:      RendererDropTarget?   = nil
 
+    private let setsToolbarHeight: CGFloat = 56
+
     var body: some View {
-        VStack(spacing: 0) {
-            rendererList
-            Divider()
-            toolbar
+        GeometryReader { geo in
+            VStack(spacing: 0) {
+                spriteSection
+                    .frame(height: geo.size.height * 0.36)
+
+                applyBar
+                    .frame(height: shouldShowApplyBar ? 32 : 0)
+                    .clipped()
+
+                Divider()
+
+                setsSection
+                    .frame(height: max(0, geo.size.height * 0.64
+                                       - (shouldShowApplyBar ? 32 : 0)
+                                       - 1
+                                       - setsToolbarHeight))
+
+                Divider()
+                setsToolbar
+                    .frame(height: setsToolbarHeight)
+            }
         }
         .onAppear { autoExpand() }
         .onChange(of: controller.selectedRendererIndex) { _, idx in
@@ -53,13 +72,132 @@ struct RenderingTabView: View {
         }
     }
 
-    // MARK: - List
+    // MARK: - Sprite section (top)
+
+    private var spriteSection: some View {
+        VStack(spacing: 0) {
+            sectionLabel("Sprites")
+            Divider()
+            spriteTree
+        }
+    }
+
+    private var spriteTree: some View {
+        ScrollView {
+            LazyVStack(alignment: .leading, spacing: 0) {
+                if let cfg = controller.projectConfig {
+                    let sets = cfg.spriteConfig.library.spriteSets
+                    if sets.isEmpty || sets.allSatisfy({ $0.sprites.isEmpty }) {
+                        emptyText("No sprites")
+                    } else {
+                        ForEach(sets, id: \.name) { spriteSet in
+                            if !spriteSet.sprites.isEmpty {
+                                spriteSetHeader(spriteSet.name, sprites: spriteSet.sprites)
+                                ForEach(spriteSet.sprites, id: \.name) { sprite in
+                                    spriteRow(sprite, cfg: cfg)
+                                        .onTapGesture { handleSpriteSelected(sprite) }
+                                }
+                            }
+                        }
+                    }
+                } else {
+                    emptyText("No project open")
+                }
+            }
+        }
+    }
+
+    private func spriteSetHeader(_ setName: String, sprites: [SpriteDef]) -> some View {
+        Text(setName)
+            .font(.system(size: 10, weight: .semibold))
+            .foregroundStyle(.secondary)
+            .padding(.horizontal, 10)
+            .padding(.top, 6)
+            .padding(.bottom, 2)
+            .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private func spriteRow(_ sprite: SpriteDef, cfg: ProjectConfig) -> some View {
+        let isSelected  = controller.renderingSelectedSpriteID == sprite.name
+        let assigned    = sprite.rendererSetName.nonEmpty
+        return HStack(spacing: 6) {
+            Image(systemName: isSelected ? "circle.fill" : "circle")
+                .font(.system(size: 9))
+                .foregroundStyle(isSelected ? Color.accentColor : Color.secondary)
+            Text(sprite.name.isEmpty ? "(unnamed)" : sprite.name)
+                .font(.system(size: 12))
+                .lineLimit(1)
+            Spacer(minLength: 2)
+            if let setName = assigned {
+                Text(setName)
+                    .font(.system(size: 10))
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+            } else {
+                Text("—")
+                    .font(.system(size: 10))
+                    .foregroundStyle(.tertiary)
+            }
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 3)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(isSelected ? Color.accentColor.opacity(0.18) : Color.clear)
+        .contentShape(Rectangle())
+    }
+
+    // MARK: - Apply bar
+
+    private var applyBar: some View {
+        Group {
+            if shouldShowApplyBar, let previewName = controller.renderingPreviewSetName {
+                HStack(spacing: 6) {
+                    Image(systemName: "eye.fill")
+                        .font(.system(size: 10))
+                        .foregroundStyle(Color.accentColor)
+                    Text("Previewing: \(previewName)")
+                        .font(.system(size: 11))
+                        .lineLimit(1)
+                    Spacer()
+                    Button("Revert") { revertPreviewSet() }
+                        .font(.system(size: 11))
+                        .buttonStyle(.plain)
+                        .foregroundStyle(.secondary)
+                    Button("Apply") { applyPreviewSet() }
+                        .font(.system(size: 11, weight: .semibold))
+                        .buttonStyle(.borderedProminent)
+                        .controlSize(.mini)
+                }
+                .padding(.horizontal, 8)
+                .background(Color.accentColor.opacity(0.08))
+            }
+        }
+    }
+
+    private var shouldShowApplyBar: Bool {
+        guard let spriteID = controller.renderingSelectedSpriteID,
+              let cfg = controller.projectConfig,
+              let sprite = cfg.spriteConfig.library.allSprites.first(where: { $0.name == spriteID })
+        else { return false }
+        return controller.renderingPreviewSetName != sprite.rendererSetName.nonEmpty
+    }
+
+    // MARK: - Sets section (bottom)
+
+    private var setsSection: some View {
+        VStack(spacing: 0) {
+            sectionLabel("Renderer Sets")
+            Divider()
+            rendererList
+        }
+    }
 
     private var rendererList: some View {
         let sets = controller.projectConfig?.renderingConfig.library.rendererSets ?? []
         return Group {
             if sets.isEmpty {
-                emptyState(controller.projectConfig == nil ? "No project open" : "No renderer sets")
+                emptyText(controller.projectConfig == nil ? "No project open" : "No renderer sets")
             } else {
                 ScrollView {
                     VStack(alignment: .leading, spacing: 0) {
@@ -93,10 +231,11 @@ struct RenderingTabView: View {
     // MARK: - Set row
 
     private func setRow(set: RendererSet, setIdx: Int) -> some View {
-        let isSelected    = controller.selectedRendererIndex == setIdx
-        let isExpanded    = expandedSets.contains(setIdx)
-        let hiddenCount   = set.renderers.filter { hiddenRenderers.contains(rendererKey(set.name, $0.name)) }.count
-        let hidableCount  = set.renderers.filter { !$0.enabled && !hiddenRenderers.contains(rendererKey(set.name, $0.name)) }.count
+        let isSelected     = controller.selectedRendererIndex == setIdx
+        let isExpanded     = expandedSets.contains(setIdx)
+        let isPreviewed    = controller.renderingPreviewSetName == set.name
+        let hiddenCount    = set.renderers.filter { hiddenRenderers.contains(rendererKey(set.name, $0.name)) }.count
+        let hidableCount   = set.renderers.filter { !$0.enabled && !hiddenRenderers.contains(rendererKey(set.name, $0.name)) }.count
         let isBeforeTarget = dropTarget == .beforeSet(setIdx)
         let isOntoTarget   = dropTarget == .ontoSet(setIdx)
 
@@ -115,10 +254,16 @@ struct RenderingTabView: View {
                 .buttonStyle(.plain)
 
                 Text(set.name.isEmpty ? "(unnamed)" : set.name)
-                    .font(.system(size: 12, weight: .medium))
+                    .font(.system(size: 12, weight: isSelected ? .semibold : .regular))
                     .lineLimit(1)
 
                 Spacer(minLength: 2)
+
+                if isPreviewed {
+                    Image(systemName: "eye.fill")
+                        .font(.system(size: 9))
+                        .foregroundStyle(Color.accentColor.opacity(0.8))
+                }
 
                 if hiddenCount > 0 {
                     Button {
@@ -247,29 +392,42 @@ struct RenderingTabView: View {
             .padding(.horizontal, 8)
     }
 
-    // MARK: - Toolbar
+    // MARK: - Sets toolbar
 
-    private var toolbar: some View {
-        HStack(spacing: 0) {
-            toolbarButton("plus",                   tooltip: "New renderer set")       { addSet() }
-            toolbarButton("minus",                  tooltip: "Delete renderer set")    { deleteSelectedSet() }
-                .disabled(controller.selectedRendererIndex == nil)
-            toolbarButton("plus.square.on.square",  tooltip: "Duplicate renderer set") { duplicateSelectedSet() }
-                .disabled(controller.selectedRendererIndex == nil)
+    private var setsToolbar: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            HStack(spacing: 0) {
+                Text("Sets")
+                    .font(.system(size: 10, weight: .semibold))
+                    .foregroundStyle(.secondary)
+                    .frame(width: 42, alignment: .leading)
+                toolbarButton("plus",                  tooltip: "New renderer set")       { addSet() }
+                toolbarButton("minus",                 tooltip: "Delete renderer set")    { deleteSelectedSet() }
+                    .disabled(controller.selectedRendererIndex == nil)
+                toolbarButton("plus.square.on.square", tooltip: "Duplicate renderer set") { duplicateSelectedSet() }
+                    .disabled(controller.selectedRendererIndex == nil)
+                Spacer()
+            }
+            .frame(height: 28)
 
-            Divider().frame(height: 14).padding(.horizontal, 4)
-
-            toolbarButton("plus.circle",            tooltip: "Add renderer")           { addRenderer() }
-                .disabled(controller.selectedRendererIndex == nil)
-            toolbarButton("minus.circle",           tooltip: "Delete renderer")        { deleteSelectedRenderer() }
-                .disabled(controller.selectedRendererItemIndex == nil)
-            toolbarButton("arrow.triangle.2.circlepath", tooltip: "Duplicate renderer") { duplicateSelectedRenderer() }
-                .disabled(controller.selectedRendererItemIndex == nil)
-
-            Spacer()
+            HStack(spacing: 0) {
+                Spacer().frame(width: 28)
+                Text("Items")
+                    .font(.system(size: 10, weight: .semibold))
+                    .foregroundStyle(.secondary)
+                    .frame(width: 42, alignment: .leading)
+                toolbarButton("plus.circle",  tooltip: "Add renderer") { addRenderer() }
+                    .disabled(controller.selectedRendererIndex == nil)
+                toolbarButton("minus.circle", tooltip: "Delete renderer") { deleteSelectedRenderer() }
+                    .disabled(controller.selectedRendererItemIndex == nil)
+                toolbarButton("arrow.triangle.2.circlepath", tooltip: "Duplicate renderer") { duplicateSelectedRenderer() }
+                    .disabled(controller.selectedRendererItemIndex == nil)
+                Spacer()
+            }
+            .frame(height: 28)
         }
-        .padding(.horizontal, 4)
-        .frame(height: 30)
+        .padding(.horizontal, 6)
+        .padding(.vertical, 0)
     }
 
     private func toolbarButton(_ icon: String, tooltip: String, action: @escaping () -> Void) -> some View {
@@ -284,6 +442,24 @@ struct RenderingTabView: View {
         .modifier(LoomHoverHelp(tooltip))
     }
 
+    private func sectionLabel(_ title: String) -> some View {
+        Text(title)
+            .font(.system(size: 10, weight: .semibold))
+            .foregroundStyle(.tertiary)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 4)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(Color(nsColor: .windowBackgroundColor))
+    }
+
+    private func emptyText(_ message: String) -> some View {
+        Text(message)
+            .font(.caption)
+            .foregroundStyle(.tertiary)
+            .padding(12)
+            .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
     private func emptyState(_ message: String) -> some View {
         Text(message)
             .foregroundStyle(.tertiary)
@@ -291,23 +467,57 @@ struct RenderingTabView: View {
             .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
-    // MARK: - Interaction
+    // MARK: - Interaction: sprites
+
+    private func handleSpriteSelected(_ sprite: SpriteDef) {
+        controller.renderingSelectedSpriteID     = sprite.name
+        controller.selectedRendererItemIndex     = nil
+        let assigned = sprite.rendererSetName.nonEmpty
+        controller.renderingPreviewSetName = assigned
+        if let assigned,
+           let idx = controller.projectConfig?.renderingConfig.library.rendererSets
+               .firstIndex(where: { $0.name == assigned }) {
+            controller.selectedRendererIndex = idx
+            expandedSets.insert(idx)
+        } else {
+            controller.selectedRendererIndex = nil
+        }
+    }
+
+    // MARK: - Interaction: sets
 
     private func handleSetSelected(_ setIdx: Int) {
         if controller.selectedRendererIndex == setIdx,
-           controller.selectedRendererItemIndex == nil {
-            toggleExpansion(setIdx)
-            return
-        }
+           controller.selectedRendererItemIndex == nil { return }
+
+        guard let cfg = controller.projectConfig,
+              setIdx < cfg.renderingConfig.library.rendererSets.count else { return }
+
+        let setName = cfg.renderingConfig.library.rendererSets[setIdx].name
         controller.selectedRendererIndex     = setIdx
         controller.selectedRendererItemIndex = nil
         expandedSets.insert(setIdx)
+
+        if controller.renderingSelectedSpriteID != nil {
+            controller.renderingPreviewSetName = setName
+        }
     }
 
     private func handleItemSelected(setIdx: Int, itemIdx: Int) {
+        if controller.selectedRendererIndex == setIdx,
+           controller.selectedRendererItemIndex == itemIdx { return }
+
+        guard let cfg = controller.projectConfig,
+              setIdx < cfg.renderingConfig.library.rendererSets.count else { return }
+
+        let setName = cfg.renderingConfig.library.rendererSets[setIdx].name
         controller.selectedRendererIndex     = setIdx
         controller.selectedRendererItemIndex = itemIdx
         expandedSets.insert(setIdx)
+
+        if controller.renderingSelectedSpriteID != nil {
+            controller.renderingPreviewSetName = setName
+        }
     }
 
     private func toggleExpansion(_ setIdx: Int) {
@@ -321,6 +531,39 @@ struct RenderingTabView: View {
         let sets = controller.projectConfig?.renderingConfig.library.rendererSets ?? []
         for idx in sets.indices { expandedSets.insert(idx) }
         if let idx = controller.selectedRendererIndex { expandedSets.insert(idx) }
+    }
+
+    // MARK: - Apply / Revert
+
+    private func applyPreviewSet() {
+        guard let spriteID = controller.renderingSelectedSpriteID,
+              let preview  = controller.renderingPreviewSetName,
+              controller.projectConfig != nil
+        else { return }
+        controller.updateProjectConfig { config in
+            for ssIdx in config.spriteConfig.library.spriteSets.indices {
+                for sIdx in config.spriteConfig.library.spriteSets[ssIdx].sprites.indices
+                where config.spriteConfig.library.spriteSets[ssIdx].sprites[sIdx].name == spriteID {
+                    config.spriteConfig.library.spriteSets[ssIdx].sprites[sIdx].rendererSetName = preview
+                }
+            }
+        }
+    }
+
+    private func revertPreviewSet() {
+        guard let spriteID = controller.renderingSelectedSpriteID,
+              let cfg      = controller.projectConfig,
+              let sprite   = cfg.spriteConfig.library.allSprites.first(where: { $0.name == spriteID })
+        else { return }
+        let assigned = sprite.rendererSetName.nonEmpty
+        controller.renderingPreviewSetName = assigned
+        if let assigned,
+           let idx = cfg.renderingConfig.library.rendererSets.firstIndex(where: { $0.name == assigned }) {
+            controller.selectedRendererIndex = idx
+        } else {
+            controller.selectedRendererIndex = nil
+        }
+        controller.selectedRendererItemIndex = nil
     }
 
     // MARK: - Drop delegates
@@ -345,9 +588,9 @@ struct RenderingTabView: View {
             perform: {
                 defer { self.dragItem = nil; self.dropTarget = nil }
                 switch self.dragItem {
-                case .set(let name):                      return self.dropSet(named: name, beforeSetIdx: setIdx)
-                case .renderer(let setName, let rName):   return self.dropRenderer(fromSet: setName, named: rName, ontoSetIdx: setIdx)
-                case nil:                                 return false
+                case .set(let name):                     return self.dropSet(named: name, beforeSetIdx: setIdx)
+                case .renderer(let setName, let rName):  return self.dropRenderer(fromSet: setName, named: rName, ontoSetIdx: setIdx)
+                case nil:                                return false
                 }
             }
         )
@@ -498,12 +741,24 @@ struct RenderingTabView: View {
         controller.selectedRendererIndex     = newIdx
         controller.selectedRendererItemIndex = nil
         expandedSets.insert(newIdx)
+
+        // If a sprite is selected with no renderer set, auto-apply the new set
+        if let spriteID = controller.renderingSelectedSpriteID,
+           let cfg2 = controller.projectConfig,
+           let sprite = cfg2.spriteConfig.library.allSprites.first(where: { $0.name == spriteID }),
+           sprite.rendererSetName.isEmpty {
+            controller.renderingPreviewSetName = name
+            applyPreviewSet()
+        } else {
+            controller.renderingPreviewSetName = name
+        }
     }
 
     private func deleteSelectedSet() {
         guard let idx = controller.selectedRendererIndex,
               let cfg = controller.projectConfig,
               idx < cfg.renderingConfig.library.rendererSets.count else { return }
+        let deletedName = cfg.renderingConfig.library.rendererSets[idx].name
         controller.updateProjectConfig { c in
             c.renderingConfig.library.rendererSets.remove(at: idx)
         }
@@ -511,6 +766,9 @@ struct RenderingTabView: View {
         let remaining = controller.projectConfig?.renderingConfig.library.rendererSets.count ?? 0
         controller.selectedRendererIndex     = remaining > 0 ? min(idx, remaining - 1) : nil
         controller.selectedRendererItemIndex = nil
+        if controller.renderingPreviewSetName == deletedName {
+            controller.renderingPreviewSetName = nil
+        }
     }
 
     private func duplicateSelectedSet() {
@@ -520,12 +778,16 @@ struct RenderingTabView: View {
         var copy = cfg.renderingConfig.library.rendererSets[idx]
         copy.name = uniqueName(base: "\(copy.name)_copy",
                                existing: cfg.renderingConfig.library.rendererSets.map(\.name))
+        let copyName = copy.name
         controller.updateProjectConfig { c in
             c.renderingConfig.library.rendererSets.insert(copy, at: idx + 1)
         }
         controller.selectedRendererIndex     = idx + 1
         controller.selectedRendererItemIndex = nil
         expandedSets.insert(idx + 1)
+        if controller.renderingSelectedSpriteID != nil {
+            controller.renderingPreviewSetName = copyName
+        }
     }
 
     // MARK: - CRUD: renderers within selected set

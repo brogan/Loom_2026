@@ -189,6 +189,8 @@ final class AppController: ObservableObject, @unchecked Sendable {
     @Published var selectedRendererItemIndex:     Int?    = nil   // within selected set
     @Published var subdivSelectedSpriteID:        String? = nil   // sprite selected in subdivision tab
     @Published var subdivPreviewSetName:          String? = nil   // set currently previewed (may differ from sprite's assigned set)
+    @Published var renderingSelectedSpriteID:     String? = nil   // sprite selected in rendering tab
+    @Published var renderingPreviewSetName:       String? = nil   // renderer set currently previewed (may differ from sprite's assigned set)
 
     // MARK: - Published: export
 
@@ -6139,6 +6141,8 @@ final class AppController: ObservableObject, @unchecked Sendable {
         selectedSpriteID              = nil
         subdivSelectedSpriteID        = nil
         subdivPreviewSetName          = nil
+        renderingSelectedSpriteID     = nil
+        renderingPreviewSetName       = nil
         selectedRendererIndex         = nil
         selectedRendererItemIndex     = nil
     }
