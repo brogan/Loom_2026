@@ -1,13 +1,45 @@
 import SwiftUI
 import LoomEngine
+import UniformTypeIdentifiers
+
+// MARK: - Drag/drop helpers
+
+private enum RendererDragItem: Equatable {
+    case set(name: String)
+    case renderer(setName: String, name: String)
+}
+
+private enum RendererDropTarget: Equatable {
+    case beforeSet(Int)
+    case afterSets
+    case beforeRenderer(setIdx: Int, rendererIdx: Int)
+    case afterRenderers(setIdx: Int)
+    case ontoSet(Int)
+}
+
+private struct RendererDropDelegate: DropDelegate {
+    var validate: () -> Bool
+    var entered:  () -> Void
+    var exited:   () -> Void
+    var perform:  () -> Bool
+
+    func validateDrop(info: DropInfo) -> Bool { validate() }
+    func dropEntered(info: DropInfo)           { entered() }
+    func dropExited(info: DropInfo)            { exited() }
+    func performDrop(info: DropInfo) -> Bool   { perform() }
+}
+
+// MARK: - View
 
 struct RenderingTabView: View {
 
     @EnvironmentObject private var controller: AppController
 
-    @State private var expandedSets:    Set<Int>    = []
-    @State private var hiddenRenderers: Set<String> = []
-    @State private var hasAppeared                  = false
+    @State private var expandedSets:    Set<Int>              = []
+    @State private var hiddenRenderers: Set<String>           = []
+    @State private var hasAppeared                            = false
+    @State private var dragItem:        RendererDragItem?     = nil
+    @State private var dropTarget:      RendererDropTarget?   = nil
 
     var body: some View {
         VStack(spacing: 0) {
@@ -47,8 +79,11 @@ struct RenderingTabView: View {
                                         .padding(.leading, 28)
                                         .padding(.vertical, 3)
                                 }
+                                afterRenderersRow(setIdx: setIdx,
+                                                  count: sets[setIdx].renderers.count)
                             }
                         }
+                        afterSetsRow(total: sets.count)
                     }
                 }
             }
@@ -58,93 +93,158 @@ struct RenderingTabView: View {
     // MARK: - Set row
 
     private func setRow(set: RendererSet, setIdx: Int) -> some View {
-        let isSelected   = controller.selectedRendererIndex == setIdx
-        let isExpanded   = expandedSets.contains(setIdx)
-        let hiddenCount  = set.renderers.filter { hiddenRenderers.contains(rendererKey(set.name, $0.name)) }.count
-        let hidableCount = set.renderers.filter { !$0.enabled && !hiddenRenderers.contains(rendererKey(set.name, $0.name)) }.count
+        let isSelected    = controller.selectedRendererIndex == setIdx
+        let isExpanded    = expandedSets.contains(setIdx)
+        let hiddenCount   = set.renderers.filter { hiddenRenderers.contains(rendererKey(set.name, $0.name)) }.count
+        let hidableCount  = set.renderers.filter { !$0.enabled && !hiddenRenderers.contains(rendererKey(set.name, $0.name)) }.count
+        let isBeforeTarget = dropTarget == .beforeSet(setIdx)
+        let isOntoTarget   = dropTarget == .ontoSet(setIdx)
 
-        return HStack(spacing: 5) {
-            Button {
-                toggleExpansion(setIdx)
-            } label: {
-                Image(systemName: isExpanded ? "chevron.down" : "chevron.right")
-                    .font(.system(size: 9, weight: .semibold))
+        return VStack(spacing: 0) {
+            if isBeforeTarget { insertionLine }
+            HStack(spacing: 5) {
+                Button {
+                    toggleExpansion(setIdx)
+                } label: {
+                    Image(systemName: isExpanded ? "chevron.down" : "chevron.right")
+                        .font(.system(size: 9, weight: .semibold))
+                        .foregroundStyle(.secondary)
+                        .frame(width: 14, height: 22)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+
+                Text(set.name.isEmpty ? "(unnamed)" : set.name)
+                    .font(.system(size: 12, weight: .medium))
+                    .lineLimit(1)
+
+                Spacer(minLength: 2)
+
+                if hiddenCount > 0 {
+                    Button {
+                        for r in set.renderers { hiddenRenderers.remove(rendererKey(set.name, r.name)) }
+                    } label: {
+                        HStack(spacing: 2) {
+                            Image(systemName: "eye.slash").font(.system(size: 9))
+                            Text("\(hiddenCount)").font(.system(size: 9, design: .monospaced))
+                        }
+                        .foregroundStyle(Color.orange.opacity(0.8))
+                        .frame(minWidth: 22, minHeight: 22)
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .help("Restore \(hiddenCount) hidden renderer\(hiddenCount == 1 ? "" : "s")")
+                } else if hidableCount > 0 {
+                    Button {
+                        for r in set.renderers where !r.enabled {
+                            hiddenRenderers.insert(rendererKey(set.name, r.name))
+                        }
+                    } label: {
+                        Image(systemName: "eye").font(.system(size: 9)).foregroundStyle(.tertiary)
+                            .frame(width: 22, height: 22)
+                            .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .help("Hide \(hidableCount) disabled renderer\(hidableCount == 1 ? "" : "s")")
+                }
+
+                Text("\(set.renderers.count)")
+                    .font(.system(size: 10, design: .monospaced))
                     .foregroundStyle(.secondary)
-                    .frame(width: 14)
             }
-            .buttonStyle(.plain)
-
-            Text(set.name.isEmpty ? "(unnamed)" : set.name)
-                .font(.system(size: 12, weight: .medium))
-                .lineLimit(1)
-
-            Spacer(minLength: 2)
-
-            if hiddenCount > 0 {
-                Button {
-                    for r in set.renderers { hiddenRenderers.remove(rendererKey(set.name, r.name)) }
-                } label: {
-                    HStack(spacing: 2) {
-                        Image(systemName: "eye.slash").font(.system(size: 9))
-                        Text("\(hiddenCount)").font(.system(size: 9, design: .monospaced))
-                    }
-                    .foregroundStyle(Color.orange.opacity(0.8))
-                }
-                .buttonStyle(.plain)
-                .help("Restore \(hiddenCount) hidden renderer\(hiddenCount == 1 ? "" : "s")")
-            } else if hidableCount > 0 {
-                Button {
-                    for r in set.renderers where !r.enabled {
-                        hiddenRenderers.insert(rendererKey(set.name, r.name))
-                    }
-                } label: {
-                    Image(systemName: "eye").font(.system(size: 9)).foregroundStyle(.tertiary)
-                }
-                .buttonStyle(.plain)
-                .help("Hide \(hidableCount) disabled renderer\(hidableCount == 1 ? "" : "s")")
+            .padding(.horizontal, 8)
+            .padding(.vertical, 4)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(isOntoTarget
+                ? Color.accentColor.opacity(0.22)
+                : (isSelected ? Color.accentColor.opacity(0.18) : Color.clear))
+            .contentShape(Rectangle())
+            .onTapGesture { handleSetSelected(setIdx) }
+            .onDrag {
+                self.dragItem = .set(name: set.name)
+                return NSItemProvider(object: set.name as NSString)
             }
-
-            Text("\(set.renderers.count)")
-                .font(.system(size: 10, design: .monospaced))
-                .foregroundStyle(.secondary)
+            .onDrop(of: [UTType.utf8PlainText], delegate: setHeaderDelegate(setIdx: setIdx))
         }
-        .padding(.horizontal, 8)
-        .padding(.vertical, 4)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(isSelected ? Color.accentColor.opacity(0.18) : Color.clear)
-        .contentShape(Rectangle())
-        .onTapGesture { handleSetSelected(setIdx) }
     }
 
     // MARK: - Renderer row
 
     private func rendererRow(renderer: Renderer, setIdx: Int, itemIdx: Int) -> some View {
-        let isSelected = controller.selectedRendererIndex == setIdx
-                      && controller.selectedRendererItemIndex == itemIdx
+        let isSelected    = controller.selectedRendererIndex == setIdx
+                         && controller.selectedRendererItemIndex == itemIdx
+        let isBeforeTarget = dropTarget == .beforeRenderer(setIdx: setIdx, rendererIdx: itemIdx)
 
-        return HStack(spacing: 5) {
-            Spacer().frame(width: 22)
-            Text(renderer.name.isEmpty ? "(unnamed)" : renderer.name)
-                .font(.system(size: 11))
-                .lineLimit(1)
-                .opacity(renderer.enabled ? 1.0 : 0.38)
-            Spacer(minLength: 2)
-            Text(renderer.mode.shortLabel)
-                .font(.system(size: 10))
-                .foregroundStyle(.secondary)
-                .opacity(renderer.enabled ? 1.0 : 0.38)
-            Toggle("", isOn: bindRendererEnabled(setIdx: setIdx, itemIdx: itemIdx))
-                .labelsHidden()
-                .toggleStyle(.checkbox)
-                .scaleEffect(0.82)
-                .frame(width: 18)
+        return VStack(spacing: 0) {
+            if isBeforeTarget {
+                insertionLine.padding(.leading, 22)
+            }
+            HStack(spacing: 5) {
+                Spacer().frame(width: 22)
+                Text(renderer.name.isEmpty ? "(unnamed)" : renderer.name)
+                    .font(.system(size: 11))
+                    .lineLimit(1)
+                    .opacity(renderer.enabled ? 1.0 : 0.38)
+                Spacer(minLength: 2)
+                Text(renderer.mode.shortLabel)
+                    .font(.system(size: 10))
+                    .foregroundStyle(.secondary)
+                    .opacity(renderer.enabled ? 1.0 : 0.38)
+                Toggle("", isOn: bindRendererEnabled(setIdx: setIdx, itemIdx: itemIdx))
+                    .labelsHidden()
+                    .toggleStyle(.checkbox)
+                    .scaleEffect(0.82)
+                    .frame(width: 18)
+            }
+            .padding(.horizontal, 8)
+            .padding(.vertical, 2)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(isSelected ? Color.accentColor.opacity(0.12) : Color.clear)
+            .contentShape(Rectangle())
+            .onTapGesture { handleItemSelected(setIdx: setIdx, itemIdx: itemIdx) }
+            .onDrag {
+                let sets = self.controller.projectConfig?.renderingConfig.library.rendererSets ?? []
+                let setName = sets[safe: setIdx]?.name ?? ""
+                self.dragItem = .renderer(setName: setName, name: renderer.name)
+                return NSItemProvider(object: renderer.name as NSString)
+            }
+            .onDrop(of: [UTType.utf8PlainText],
+                    delegate: rendererDropDelegate(setIdx: setIdx, rendererIdx: itemIdx))
         }
-        .padding(.horizontal, 8)
-        .padding(.vertical, 2)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(isSelected ? Color.accentColor.opacity(0.12) : Color.clear)
-        .contentShape(Rectangle())
-        .onTapGesture { handleItemSelected(setIdx: setIdx, itemIdx: itemIdx) }
+    }
+
+    // MARK: - After-last drop zones
+
+    private func afterRenderersRow(setIdx: Int, count: Int) -> some View {
+        let t = RendererDropTarget.afterRenderers(setIdx: setIdx)
+        return Color.clear
+            .frame(height: 8)
+            .contentShape(Rectangle())
+            .onDrop(of: [UTType.utf8PlainText],
+                    delegate: afterRenderersDelegate(setIdx: setIdx, count: count))
+            .overlay(alignment: .bottom) {
+                if dropTarget == t { insertionLine.padding(.leading, 22) }
+            }
+    }
+
+    private func afterSetsRow(total: Int) -> some View {
+        let t = RendererDropTarget.afterSets
+        return Color.clear
+            .frame(height: 10)
+            .contentShape(Rectangle())
+            .onDrop(of: [UTType.utf8PlainText], delegate: afterSetsDelegate(total: total))
+            .overlay(alignment: .bottom) {
+                if dropTarget == t { insertionLine }
+            }
+    }
+
+    // MARK: - Insertion indicator
+
+    private var insertionLine: some View {
+        Rectangle()
+            .fill(Color.accentColor)
+            .frame(height: 2)
+            .padding(.horizontal, 8)
     }
 
     // MARK: - Toolbar
@@ -221,6 +321,148 @@ struct RenderingTabView: View {
         let sets = controller.projectConfig?.renderingConfig.library.rendererSets ?? []
         for idx in sets.indices { expandedSets.insert(idx) }
         if let idx = controller.selectedRendererIndex { expandedSets.insert(idx) }
+    }
+
+    // MARK: - Drop delegates
+
+    private func setHeaderDelegate(setIdx: Int) -> RendererDropDelegate {
+        let beforeT = RendererDropTarget.beforeSet(setIdx)
+        let ontoT   = RendererDropTarget.ontoSet(setIdx)
+        return RendererDropDelegate(
+            validate: { self.dragItem != nil },
+            entered: {
+                switch self.dragItem {
+                case .set:      self.dropTarget = beforeT
+                case .renderer: self.dropTarget = ontoT
+                case nil:       break
+                }
+            },
+            exited: {
+                if self.dropTarget == beforeT || self.dropTarget == ontoT {
+                    self.dropTarget = nil
+                }
+            },
+            perform: {
+                defer { self.dragItem = nil; self.dropTarget = nil }
+                switch self.dragItem {
+                case .set(let name):                      return self.dropSet(named: name, beforeSetIdx: setIdx)
+                case .renderer(let setName, let rName):   return self.dropRenderer(fromSet: setName, named: rName, ontoSetIdx: setIdx)
+                case nil:                                 return false
+                }
+            }
+        )
+    }
+
+    private func rendererDropDelegate(setIdx: Int, rendererIdx: Int) -> RendererDropDelegate {
+        let t = RendererDropTarget.beforeRenderer(setIdx: setIdx, rendererIdx: rendererIdx)
+        return RendererDropDelegate(
+            validate: { if case .renderer = self.dragItem { return true }; return false },
+            entered:  { self.dropTarget = t },
+            exited:   { if self.dropTarget == t { self.dropTarget = nil } },
+            perform: {
+                guard case .renderer(let setName, let rName) = self.dragItem else { return false }
+                defer { self.dragItem = nil; self.dropTarget = nil }
+                return self.dropRenderer(fromSet: setName, named: rName,
+                                         toSetIdx: setIdx, beforeIdx: rendererIdx)
+            }
+        )
+    }
+
+    private func afterRenderersDelegate(setIdx: Int, count: Int) -> RendererDropDelegate {
+        let t = RendererDropTarget.afterRenderers(setIdx: setIdx)
+        return RendererDropDelegate(
+            validate: { if case .renderer = self.dragItem { return true }; return false },
+            entered:  { self.dropTarget = t },
+            exited:   { if self.dropTarget == t { self.dropTarget = nil } },
+            perform: {
+                guard case .renderer(let setName, let rName) = self.dragItem else { return false }
+                defer { self.dragItem = nil; self.dropTarget = nil }
+                return self.dropRenderer(fromSet: setName, named: rName,
+                                         toSetIdx: setIdx, beforeIdx: count)
+            }
+        )
+    }
+
+    private func afterSetsDelegate(total: Int) -> RendererDropDelegate {
+        let t = RendererDropTarget.afterSets
+        return RendererDropDelegate(
+            validate: { if case .set = self.dragItem { return true }; return false },
+            entered:  { self.dropTarget = t },
+            exited:   { if self.dropTarget == t { self.dropTarget = nil } },
+            perform: {
+                guard case .set(let name) = self.dragItem else { return false }
+                defer { self.dragItem = nil; self.dropTarget = nil }
+                return self.dropSet(named: name, beforeSetIdx: total)
+            }
+        )
+    }
+
+    // MARK: - Drop mutations
+
+    private func dropSet(named name: String, beforeSetIdx target: Int) -> Bool {
+        guard let sets = controller.projectConfig?.renderingConfig.library.rendererSets,
+              let fromIdx = sets.firstIndex(where: { $0.name == name })
+        else { return false }
+        guard target != fromIdx && target != fromIdx + 1 else { return false }
+
+        controller.updateProjectConfig { cfg in
+            var s = cfg.renderingConfig.library.rendererSets
+            let set = s.remove(at: fromIdx)
+            let insertAt = fromIdx < target ? target - 1 : target
+            s.insert(set, at: max(0, min(insertAt, s.count)))
+            cfg.renderingConfig.library.rendererSets = s
+        }
+        let newSets = controller.projectConfig?.renderingConfig.library.rendererSets ?? []
+        controller.selectedRendererIndex = newSets.firstIndex(where: { $0.name == name })
+        controller.selectedRendererItemIndex = nil
+        return true
+    }
+
+    private func dropRenderer(fromSet srcSetName: String, named rName: String,
+                               ontoSetIdx toSetIdx: Int) -> Bool {
+        guard let sets = controller.projectConfig?.renderingConfig.library.rendererSets,
+              let srcSetIdx = sets.firstIndex(where: { $0.name == srcSetName }),
+              let srcItemIdx = sets[srcSetIdx].renderers.firstIndex(where: { $0.name == rName }),
+              toSetIdx < sets.count
+        else { return false }
+        let toCount = sets[toSetIdx].renderers.count
+        if srcSetIdx == toSetIdx, toCount > 0, srcItemIdx == toCount - 1 { return false }
+
+        controller.updateProjectConfig { cfg in
+            let r = cfg.renderingConfig.library.rendererSets[srcSetIdx].renderers.remove(at: srcItemIdx)
+            cfg.renderingConfig.library.rendererSets[toSetIdx].renderers.append(r)
+        }
+        controller.selectedRendererIndex     = toSetIdx
+        controller.selectedRendererItemIndex = (controller.projectConfig?.renderingConfig.library
+            .rendererSets[safe: toSetIdx]?.renderers.count ?? 1) - 1
+        expandedSets.insert(toSetIdx)
+        return true
+    }
+
+    private func dropRenderer(fromSet srcSetName: String, named rName: String,
+                               toSetIdx: Int, beforeIdx: Int) -> Bool {
+        guard let sets = controller.projectConfig?.renderingConfig.library.rendererSets,
+              let srcSetIdx = sets.firstIndex(where: { $0.name == srcSetName }),
+              let srcItemIdx = sets[srcSetIdx].renderers.firstIndex(where: { $0.name == rName }),
+              toSetIdx < sets.count
+        else { return false }
+        if srcSetIdx == toSetIdx,
+           beforeIdx == srcItemIdx || beforeIdx == srcItemIdx + 1 { return false }
+
+        controller.updateProjectConfig { cfg in
+            let r = cfg.renderingConfig.library.rendererSets[srcSetIdx].renderers.remove(at: srcItemIdx)
+            var insertIdx = beforeIdx
+            if srcSetIdx == toSetIdx && srcItemIdx < beforeIdx { insertIdx -= 1 }
+            let count = cfg.renderingConfig.library.rendererSets[toSetIdx].renderers.count
+            cfg.renderingConfig.library.rendererSets[toSetIdx].renderers
+                .insert(r, at: max(0, min(insertIdx, count)))
+        }
+        let newSets = controller.projectConfig?.renderingConfig.library.rendererSets ?? []
+        let newItemIdx = newSets[safe: toSetIdx]?.renderers.firstIndex(where: { $0.name == rName })
+        controller.selectedRendererIndex     = toSetIdx
+        controller.selectedRendererItemIndex = newItemIdx
+        expandedSets.insert(toSetIdx)
+        return true
     }
 
     // MARK: - Binding: renderer enabled
