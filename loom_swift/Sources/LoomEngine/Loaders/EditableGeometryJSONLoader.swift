@@ -37,7 +37,7 @@ public enum EditableGeometryJSONError: Error, Equatable, LocalizedError {
 /// `XMLPolygonLoader`/`XMLPolygonWriter`.
 public enum EditableGeometryJSONLoader {
     public static let schema = "loom.editableGeometry"
-    public static let schemaVersion = 1
+    public static let schemaVersion = 2
 
     private static let encoder: JSONEncoder = {
         let e = JSONEncoder()
@@ -56,8 +56,13 @@ public enum EditableGeometryJSONLoader {
         guard file.schema == schema else {
             throw EditableGeometryJSONError.unsupportedSchema(file.schema)
         }
-        guard file.schemaVersion == schemaVersion else {
+        guard file.schemaVersion == 1 || file.schemaVersion == schemaVersion else {
             throw EditableGeometryJSONError.unsupportedVersion(file.schemaVersion)
+        }
+        // v1 stored positions with Y negated relative to world space.
+        // v2 stores directly in Y-UP world space — migrate on load.
+        if file.schemaVersion == 1 {
+            return file.document.mirroringY()
         }
         return file.document
     }

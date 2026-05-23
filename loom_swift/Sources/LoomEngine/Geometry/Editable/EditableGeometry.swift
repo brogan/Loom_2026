@@ -3,13 +3,13 @@ import Foundation
 public typealias EditableGeometryID = UUID
 
 private extension Vector2D {
-    func runtimeWorldToEditor() -> Vector2D {
-        Vector2D(x: x, y: -y)
-    }
-
-    func editorToRuntimeWorld() -> Vector2D {
-        Vector2D(x: x, y: -y)
-    }
+    // Editor space and runtime world space both use Y-UP (positive Y = up).
+    // These are identity transforms; they exist so call sites are explicit about
+    // the conceptual boundary, and so the v1 → v2 JSON migration can negate Y
+    // on load without touching call sites.
+    func runtimeWorldToEditor() -> Vector2D { self }
+    func editorToRuntimeWorld() -> Vector2D { self }
+    func mirroredY() -> Vector2D { Vector2D(x: x, y: -y) }
 }
 
 public enum EditablePointKind: String, Codable, Equatable, Sendable {
@@ -1399,6 +1399,39 @@ public struct EditableGeometryDocument: Codable, Equatable, Identifiable, Sendab
             }
         }
         return runtime
+    }
+
+    /// Migrate a v1 JSON document to the v2 coordinate convention.
+    /// v1 stored editor positions with Y negated relative to world space.
+    /// v2 stores positions directly in Y-UP world space (identity conversion).
+    public func mirroringY() -> EditableGeometryDocument {
+        var doc = self
+        doc.layers = layers.map { layer in
+            var l = layer
+            l.polygons = layer.polygons.map { poly in
+                var p = poly
+                p.points = poly.points.map { pt in
+                    var q = pt; q.position = pt.position.mirroredY(); return q
+                }
+                if case .regularPolygon(var params) = p.parametricSource {
+                    params.centre = params.centre.mirroredY()
+                    p.parametricSource = .regularPolygon(params)
+                }
+                return p
+            }
+            l.openCurves = layer.openCurves.map { curve in
+                var c = curve
+                c.points = curve.points.map { pt in
+                    var q = pt; q.position = pt.position.mirroredY(); return q
+                }
+                return c
+            }
+            l.points = layer.points.map { sp in
+                var s = sp; s.position = sp.position.mirroredY(); return s
+            }
+            return l
+        }
+        return doc
     }
 
     public static func closedPolygonDocument(
