@@ -108,6 +108,8 @@ struct BrushLibraryView: View {
             } label: {
                 Image(systemName: "minus")
                     .font(.system(size: 11))
+                    .frame(width: 22, height: 22)
+                    .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
             .foregroundStyle(selectedIndex == nil ? Color.secondary : Color.primary)

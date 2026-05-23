@@ -626,6 +626,8 @@ private struct DriverSectionsView: View {
                         mtBinding.wrappedValue = arr
                     } label: {
                         Image(systemName: "minus.circle").font(.system(size: 11))
+                            .frame(width: 22, height: 22)
+                            .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain).foregroundStyle(.secondary)
                 }
@@ -671,6 +673,8 @@ private struct DriverSectionsView: View {
                         svBinding.wrappedValue = arr
                     } label: {
                         Image(systemName: "minus.circle").font(.system(size: 11))
+                            .frame(width: 22, height: 22)
+                            .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain).foregroundStyle(.secondary)
                 }

@@ -437,7 +437,8 @@ struct SubdivisionTabView: View {
     ) -> some View {
         Button(action: action) {
             label()
-                .frame(width: 26, height: 24)
+                .frame(width: 26, height: 26)
+                .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .help(tooltip)

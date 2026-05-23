@@ -39,10 +39,11 @@ struct ColorPaletteEditor: View {
                 selectedIndex = palette.count - 1
             } label: {
                 Image(systemName: "plus").font(.system(size: 11))
+                    .frame(width: 20, height: 20)
+                    .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
             .foregroundStyle(.secondary)
-            .frame(width: 20)
         }
         .padding(.horizontal, 12)
         .padding(.top, 6)
@@ -63,6 +64,8 @@ struct ColorPaletteEditor: View {
                     removeColor(at: ci)
                 } label: {
                     Image(systemName: "minus").font(.system(size: 10))
+                        .frame(width: 20, height: 20)
+                        .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
                 .foregroundStyle(.secondary)
@@ -163,10 +166,11 @@ struct SizePaletteEditor: View {
                 selectedIndex = palette.count - 1
             } label: {
                 Image(systemName: "plus").font(.system(size: 11))
+                    .frame(width: 20, height: 20)
+                    .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
             .foregroundStyle(.secondary)
-            .frame(width: 20)
         }
         .padding(.horizontal, 12)
         .padding(.top, 6)
@@ -189,6 +193,8 @@ struct SizePaletteEditor: View {
                     removeSize(at: si)
                 } label: {
                     Image(systemName: "minus").font(.system(size: 10))
+                        .frame(width: 20, height: 20)
+                        .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
                 .foregroundStyle(.secondary)

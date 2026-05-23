@@ -228,10 +228,11 @@ struct DoubleKeyframeTable: View {
                     .frame(minWidth: 0, maxWidth: .infinity)
                     Button { keyframes.remove(at: i) } label: {
                         Image(systemName: "minus.circle").font(.system(size: 11))
+                            .frame(width: 22, height: 22)
+                            .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
                     .foregroundStyle(.secondary)
-                    .frame(width: 18)
                 }
                 .padding(.horizontal, 12)
             }
@@ -288,10 +289,11 @@ struct VectorKeyframeTable: View {
                     .frame(minWidth: 0, maxWidth: .infinity)
                     Button { keyframes.remove(at: i) } label: {
                         Image(systemName: "minus.circle").font(.system(size: 11))
+                            .frame(width: 22, height: 22)
+                            .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
                     .foregroundStyle(.secondary)
-                    .frame(width: 18)
                 }
                 .padding(.horizontal, 12)
             }
@@ -451,10 +453,11 @@ struct ColorKeyframeTable: View {
                     .frame(minWidth: 0, maxWidth: .infinity)
                     Button { keyframes.remove(at: i) } label: {
                         Image(systemName: "minus.circle").font(.system(size: 11))
+                            .frame(width: 22, height: 22)
+                            .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
                     .foregroundStyle(.secondary)
-                    .frame(width: 18)
                 }
                 .padding(.horizontal, 12)
             }

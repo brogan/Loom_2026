@@ -126,6 +126,8 @@ struct RenderingInspector: View {
                         Text("\(hiddenCount)").font(.system(size: 9, design: .monospaced))
                     }
                     .foregroundStyle(Color.orange.opacity(0.8))
+                    .frame(minWidth: 22, minHeight: 22)
+                    .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
                 .help("Restore \(hiddenCount) hidden renderer\(hiddenCount == 1 ? "" : "s")")
@@ -136,6 +138,8 @@ struct RenderingInspector: View {
                     }
                 } label: {
                     Image(systemName: "eye").font(.system(size: 9)).foregroundStyle(.tertiary)
+                        .frame(width: 22, height: 22)
+                        .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
                 .help("Hide \(hidableCount) disabled renderer\(hidableCount == 1 ? "" : "s")")
@@ -292,6 +296,8 @@ struct RenderingInspector: View {
                         Text("\(collapsed)").font(.system(size: 10))
                     }
                     .foregroundStyle(.secondary)
+                    .frame(minHeight: 22)
+                    .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
                 .loomHelp("\(collapsed) renderer driver section\(collapsed == 1 ? "" : "s") collapsed. Click to expand all.")
@@ -311,6 +317,8 @@ struct RenderingInspector: View {
                     Image(systemName: "eye")
                         .font(.system(size: 10))
                         .foregroundStyle(.secondary)
+                        .frame(width: 22, height: 22)
+                        .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
                 .loomHelp("Collapse all renderer driver sections that are disabled and have no keyframes.")

@@ -570,6 +570,7 @@ struct SpritesTabView: View {
             Image(systemName: icon)
                 .font(.system(size: 12))
                 .frame(width: 26, height: 26)
+                .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .help(tooltip)
