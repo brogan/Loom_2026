@@ -36,6 +36,10 @@ struct GlobalInspector: View {
 
     @EnvironmentObject private var controller: AppController
 
+    @State private var renameText:  String  = ""
+    @State private var renameError: String? = nil
+    @State private var renameActive: Bool   = false
+
     var body: some View {
         if controller.projectConfig != nil {
             projectSection
@@ -59,23 +63,40 @@ struct GlobalInspector: View {
 
     private var projectSection: some View {
         InspectorSection("Project") {
-            VStack(alignment: .leading, spacing: 3) {
+            VStack(alignment: .leading, spacing: 6) {
                 if let url = controller.projectURL {
-                    Text(url.lastPathComponent)
-                        .font(.system(size: 12, weight: .medium))
-                        .lineLimit(1)
+                    HStack(spacing: 6) {
+                        TextField("Project name", text: $renameText)
+                            .textFieldStyle(.squareBorder)
+                            .font(.system(size: 12, weight: .medium))
+                            .onAppear { renameText = url.lastPathComponent }
+                            .onChange(of: url.lastPathComponent) { _, name in renameText = name }
+                            .onSubmit { doRename() }
+                        Button("Rename") { doRename() }
+                            .font(.system(size: 11))
+                            .disabled(renameText.isEmpty || renameText == url.lastPathComponent)
+                    }
+                    .padding(.horizontal, 12)
+                    if let err = renameError {
+                        Text(err)
+                            .font(.system(size: 11))
+                            .foregroundStyle(.red)
+                            .padding(.horizontal, 12)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
                     Text(url.deletingLastPathComponent().path)
                         .font(.system(size: 11))
                         .foregroundStyle(.tertiary)
                         .lineLimit(1)
                         .truncationMode(.middle)
+                        .padding(.horizontal, 12)
                 } else {
                     Text("No project")
                         .font(.system(size: 12))
                         .foregroundStyle(.tertiary)
+                        .padding(.horizontal, 12)
                 }
             }
-            .padding(.horizontal, 12)
             .padding(.vertical, 4)
 
             HStack {
@@ -86,6 +107,10 @@ struct GlobalInspector: View {
                     .padding(.bottom, 4)
             }
         }
+    }
+
+    private func doRename() {
+        renameError = controller.renameProject(to: renameText)
     }
 
     private var presetBinding: Binding<CanvasPreset> {
@@ -107,13 +132,6 @@ struct GlobalInspector: View {
 
     private var canvasSection: some View {
         InspectorSection("Canvas") {
-            InspectorField("Name") {
-                TextField("", text: bind(\.name))
-                    .textFieldStyle(.squareBorder)
-                    .font(.system(size: 12))
-                    .frame(maxWidth: 120)
-            }
-            .loomHelp("Name for this project — used in exported filenames and window titles.")
             InspectorField("Format") {
                 Picker("", selection: presetBinding) {
                     ForEach(CanvasPreset.allCases) { preset in

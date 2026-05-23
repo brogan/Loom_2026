@@ -5358,6 +5358,46 @@ final class AppController: ObservableObject, @unchecked Sendable {
         return String(scalars).replacingOccurrences(of: " ", with: "_")
     }
 
+    /// Rename the current project directory on disk.
+    /// Returns nil on success or a user-facing error string on failure.
+    /// All internal asset references use relative paths and are unaffected.
+    /// backgroundImagePath is rewritten if the image lives inside the project.
+    @discardableResult
+    func renameProject(to newName: String) -> String? {
+        guard let oldURL = projectURL else { return "No project is open." }
+        let sanitized = sanitizedProjectName(newName)
+        guard !sanitized.isEmpty else { return "Name cannot be empty." }
+        guard sanitized != oldURL.lastPathComponent else { return nil }
+        let newURL = oldURL.deletingLastPathComponent()
+                          .appendingPathComponent(sanitized, isDirectory: true)
+        guard !FileManager.default.fileExists(atPath: newURL.path) else {
+            return "A project named \"\(sanitized)\" already exists in this folder."
+        }
+        // Flush any pending debounced save before moving the directory.
+        saveNow()
+        do {
+            try FileManager.default.moveItem(at: oldURL, to: newURL)
+        } catch {
+            return "Could not rename: \(error.localizedDescription)"
+        }
+        projectURL = newURL
+        // Fix backgroundImagePath if the image was inside the old project directory.
+        let oldPrefix = oldURL.path + "/"
+        let newPrefix = newURL.path + "/"
+        updateProjectConfig { cfg in
+            cfg.globalConfig.name = sanitized
+            if cfg.globalConfig.backgroundImagePath.hasPrefix(oldPrefix) {
+                cfg.globalConfig.backgroundImagePath =
+                    newPrefix + cfg.globalConfig.backgroundImagePath.dropFirst(oldPrefix.count)
+            }
+        }
+        // Update the recents list to point at the new path.
+        recentProjects.removeAll { $0 == oldURL }
+        addToRecent(newURL)
+        LoomLogger.info("Renamed project \"\(oldURL.lastPathComponent)\" -> \"\(sanitized)\"")
+        return nil
+    }
+
     func open(projectDirectory: URL) {
         LoomLogger.info("Opening project: \(projectDirectory.path)")
         projectURL         = projectDirectory
