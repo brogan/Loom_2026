@@ -43,7 +43,7 @@ enum TimelineLane: Int, CaseIterable, Hashable {
 // MARK: - RendererTimelineLane
 
 enum RendererTimelineLane: Int, CaseIterable, Hashable {
-    case fillColor = 0, strokeColor, strokeWidth, opacity
+    case fillColor = 0, strokeColor, strokeWidth, opacity, blur
 
     var label: String {
         switch self {
@@ -51,6 +51,7 @@ enum RendererTimelineLane: Int, CaseIterable, Hashable {
         case .strokeColor: return "Stroke"
         case .strokeWidth: return "Width"
         case .opacity:     return "Opacity"
+        case .blur:        return "Blur"
         }
     }
 
@@ -60,6 +61,7 @@ enum RendererTimelineLane: Int, CaseIterable, Hashable {
         case .strokeColor: return .red
         case .strokeWidth: return .indigo
         case .opacity:     return .pink
+        case .blur:        return .mint
         }
     }
 
@@ -70,6 +72,7 @@ enum RendererTimelineLane: Int, CaseIterable, Hashable {
         case .strokeColor: return drivers.strokeColor?.keyframes.map(\.frame) ?? []
         case .strokeWidth: return drivers.strokeWidth.keyframes.map(\.frame)
         case .opacity:     return drivers.opacity.keyframes.map(\.frame)
+        case .blur:        return drivers.blur.keyframes.map(\.frame)
         }
     }
 }

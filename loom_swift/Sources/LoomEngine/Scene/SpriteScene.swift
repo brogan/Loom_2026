@@ -1,4 +1,5 @@
 import CoreGraphics
+import CoreImage
 import Foundation
 #if canImport(AppKit)
 import AppKit
@@ -36,6 +37,10 @@ public enum SpriteSceneError: Error, LocalizedError {
 /// `render` expects the caller to have applied a Y-flip transform to the
 /// `CGContext` before the call (matching the contract of `RenderEngine`).
 public struct SpriteScene: @unchecked Sendable {
+
+    // Shared CIContext for per-renderer Gaussian blur. CIContext is internally
+    // thread-safe for createCGImage calls.
+    private nonisolated(unsafe) static let ciContext = CIContext(options: [.useSoftwareRenderer: false])
 
     /// All resolved sprite instances, in declaration order from `sprites.xml`.
     public var instances: [SpriteInstance]
@@ -796,6 +801,11 @@ public struct SpriteScene: @unchecked Sendable {
             guard rendererOpacity > 0 else { continue }
             var elementState = rendererAnimationState(for: activeInstance, rendererIndex: rendererIndex)
 
+            // Determine whether to use an offscreen context for per-renderer Gaussian blur.
+            let scaledBlur = max(0, resolved.blurRadius) * Double(effectiveQuality)
+            let offscreen: CGContext? = scaledBlur > 0 ? makeOffscreenContext(size: viewTransform.canvasSize) : nil
+            let drawTarget = offscreen ?? context
+
             if resolved.mode == .brushed, let brushCfg = resolved.brushConfig {
                 // Brush mode: stamp images along perturbed edge paths.
                 let scaledBrush = effectiveQuality > 1
@@ -818,7 +828,7 @@ public struct SpriteScene: @unchecked Sendable {
                                 state: &state,
                                 config: scaledBrush,
                                 color: resolved.strokeColor,
-                                context: context,
+                                context: drawTarget,
                                 brushImages: brushImages,
                                 opacityMultiplier: effectiveOpacity
                             )
@@ -831,7 +841,7 @@ public struct SpriteScene: @unchecked Sendable {
                         edges:         edges,
                         config:        scaledBrush,
                         color:         resolved.strokeColor,
-                        context:       context,
+                        context:       drawTarget,
                         elapsedFrames: elapsedFrames,
                         brushImages:   brushImages,
                         opacityMultiplier: effectiveOpacity
@@ -853,7 +863,7 @@ public struct SpriteScene: @unchecked Sendable {
                     StampEngine.draw(
                         polygon:       polygon,
                         config:        scaledStencil,
-                        context:       context,
+                        context:       drawTarget,
                         viewTransform: viewTransform,
                         stampImages:   stampImages,
                         opacityState:  opacityState,
@@ -878,7 +888,7 @@ public struct SpriteScene: @unchecked Sendable {
                             renderer:        drivenPolyResolved,
                             baseChanges:     renderer.changes,
                             state:           elementState,
-                            into:            context,
+                            into:            drawTarget,
                             transform:       viewTransform,
                             qualityMultiple: effectiveQuality,
                             opacityMultiplier: effectiveOpacity,
@@ -889,7 +899,7 @@ public struct SpriteScene: @unchecked Sendable {
                     } else {
                         RenderEngine.draw(polygon,
                                           renderer:        drivenPolyResolved,
-                                          into:            context,
+                                          into:            drawTarget,
                                           transform:       viewTransform,
                                           qualityMultiple: effectiveQuality,
                                           opacityMultiplier: effectiveOpacity)
@@ -901,6 +911,12 @@ public struct SpriteScene: @unchecked Sendable {
                         using:   &rng
                     )
                 }
+            }
+
+            // Composite blurred offscreen back onto the main context.
+            if let offscreen = offscreen {
+                applyRendererBlur(from: offscreen, blurRadius: scaledBlur,
+                                  into: context, canvasSize: viewTransform.canvasSize)
             }
         }
     }
@@ -1214,6 +1230,12 @@ public struct SpriteScene: @unchecked Sendable {
                                                                     targetFPS: targetFPS,
                                                                     spriteIndex: spriteIndex))
         }
+        if drivers.blur.enabled {
+            resolved.blurRadius = max(0, DriverEvaluator.evaluate(drivers.blur,
+                                                                   globalElapsed: elapsedFrames,
+                                                                   targetFPS: targetFPS,
+                                                                   spriteIndex: spriteIndex))
+        }
         return resolved
     }
 
@@ -1223,5 +1245,42 @@ public struct SpriteScene: @unchecked Sendable {
         guard let drivers = renderer.drivers, drivers.opacity.enabled else { return 1.0 }
         return max(0, min(1, DriverEvaluator.evaluate(drivers.opacity, globalElapsed: elapsedFrames,
                                                       targetFPS: targetFPS, spriteIndex: spriteIndex)))
+    }
+
+    // MARK: - Per-renderer Gaussian blur
+
+    private func applyRendererBlur(from offscreen: CGContext, blurRadius: Double,
+                                   into context: CGContext, canvasSize: CGSize) {
+        guard let img = offscreen.makeImage() else { return }
+        let ciImg = CIImage(cgImage: img)
+        guard let filter = CIFilter(name: "CIGaussianBlur",
+                                    parameters: [kCIInputImageKey: ciImg,
+                                                 kCIInputRadiusKey: blurRadius]),
+              let output = filter.outputImage
+        else { return }
+        let cropped = output.cropped(to: ciImg.extent)
+        guard let blurred = SpriteScene.ciContext.createCGImage(cropped, from: ciImg.extent)
+        else { return }
+        // Draw in CGContext native space (0,0 bottom-left), undoing the Y-flip in the main context.
+        context.saveGState()
+        context.concatenate(context.ctm.inverted())
+        context.draw(blurred, in: CGRect(x: 0, y: 0,
+                                         width: canvasSize.width, height: canvasSize.height))
+        context.restoreGState()
+    }
+
+    private func makeOffscreenContext(size: CGSize) -> CGContext? {
+        let w = Int(size.width); let h = Int(size.height)
+        guard w > 0, h > 0 else { return nil }
+        guard let ctx = CGContext(data: nil, width: w, height: h,
+                                  bitsPerComponent: 8, bytesPerRow: 0,
+                                  space: CGColorSpaceCreateDeviceRGB(),
+                                  bitmapInfo: CGImageAlphaInfo.premultipliedFirst.rawValue
+                                            | CGBitmapInfo.byteOrder32Little.rawValue)
+        else { return nil }
+        // Apply the same Y-flip used by LoomEngine so all draw code works identically.
+        ctx.translateBy(x: 0, y: CGFloat(h))
+        ctx.scaleBy(x: 1, y: -1)
+        return ctx
     }
 }

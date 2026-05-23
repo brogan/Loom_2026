@@ -469,6 +469,7 @@ struct TimelinePanel: View {
                             case .strokeColor: return d.strokeColor?.enabled ?? false
                             case .strokeWidth: return d.strokeWidth.enabled
                             case .opacity:     return d.opacity.enabled
+                            case .blur:        return d.blur.enabled
                             }
                         }()
                         driverHeaderRow(row.label, color: row.lane.color, isRenderer: true,
@@ -484,6 +485,7 @@ struct TimelinePanel: View {
                                                     case .strokeColor: d.strokeColor?.enabled.toggle()
                                                     case .strokeWidth: d.strokeWidth.enabled.toggle()
                                                     case .opacity:     d.opacity.enabled.toggle()
+                                                    case .blur:        d.blur.enabled.toggle()
                                                     }
                                                 }
                                             }
@@ -555,6 +557,7 @@ struct TimelinePanel: View {
                         case .strokeColor: return drivers.strokeColor?.enabled ?? false
                         case .strokeWidth: return drivers.strokeWidth.enabled
                         case .opacity:     return drivers.opacity.enabled
+                        case .blur:        return drivers.blur.enabled
                         }
                     }()
                     return !en && row.lane.keyframeFrames(from: drivers).isEmpty
@@ -602,6 +605,7 @@ struct TimelinePanel: View {
                             case .strokeColor: return drivers.strokeColor?.enabled ?? false
                             case .strokeWidth: return drivers.strokeWidth.enabled
                             case .opacity:     return drivers.opacity.enabled
+                            case .blur:        return drivers.blur.enabled
                             }
                         }()
                         if !en && row.lane.keyframeFrames(from: drivers).isEmpty {
@@ -1538,6 +1542,9 @@ struct TimelinePanel: View {
                 case .opacity:
                     guard let value = drivers.opacity.keyframes[safe: keyframeIdx] else { return nil }
                     return .rendererDouble(spriteListIdx: spriteListIdx, rendererSetIdx: rendererSetIdx, rendererItemIdx: rendererItemIdx, lane: lane, offset: frameOffset, value: value)
+                case .blur:
+                    guard let value = drivers.blur.keyframes[safe: keyframeIdx] else { return nil }
+                    return .rendererDouble(spriteListIdx: spriteListIdx, rendererSetIdx: rendererSetIdx, rendererItemIdx: rendererItemIdx, lane: lane, offset: frameOffset, value: value)
                 }
 
             case .camera(let lane, let keyframeIdx):
@@ -1653,6 +1660,11 @@ struct TimelinePanel: View {
                             drivers.opacity.keyframes.removeAll { $0.frame == targetFrame }
                             drivers.opacity.keyframes.append(value)
                             drivers.opacity.keyframes.sort { $0.frame < $1.frame }
+                        case .blur:
+                            drivers.blur.mode = .keyframe
+                            drivers.blur.keyframes.removeAll { $0.frame == targetFrame }
+                            drivers.blur.keyframes.append(value)
+                            drivers.blur.keyframes.sort { $0.frame < $1.frame }
                         case .fillColor, .strokeColor:
                             break
                         }
@@ -1761,6 +1773,8 @@ struct TimelinePanel: View {
                             if keyframeIdx < drivers.strokeWidth.keyframes.count { drivers.strokeWidth.keyframes.remove(at: keyframeIdx) }
                         case .opacity:
                             if keyframeIdx < drivers.opacity.keyframes.count { drivers.opacity.keyframes.remove(at: keyframeIdx) }
+                        case .blur:
+                            if keyframeIdx < drivers.blur.keyframes.count { drivers.blur.keyframes.remove(at: keyframeIdx) }
                         }
                     }
                 case .camera(let lane, let keyframeIdx):
@@ -1870,6 +1884,7 @@ struct TimelinePanel: View {
                         case .strokeColor: if ki < (d.strokeColor?.keyframes.count ?? 0) { d.strokeColor!.keyframes[ki].frame = newFrame }
                         case .strokeWidth: if ki < d.strokeWidth.keyframes.count          { d.strokeWidth.keyframes[ki].frame  = newFrame }
                         case .opacity:     if ki < d.opacity.keyframes.count              { d.opacity.keyframes[ki].frame      = newFrame }
+                        case .blur:        if ki < d.blur.keyframes.count                 { d.blur.keyframes[ki].frame         = newFrame }
                         }
                     }
                     sortRenderers.insert(rsi * 100_000 + rii)
@@ -2044,6 +2059,10 @@ struct TimelinePanel: View {
                     guard hit.keyframeIdx < drivers.opacity.keyframes.count else { return }
                     drivers.opacity.keyframes[hit.keyframeIdx].frame = newFrame
                     drivers.opacity.keyframes.sort { $0.frame < $1.frame }
+                case .blur:
+                    guard hit.keyframeIdx < drivers.blur.keyframes.count else { return }
+                    drivers.blur.keyframes[hit.keyframeIdx].frame = newFrame
+                    drivers.blur.keyframes.sort { $0.frame < $1.frame }
                 }
             }
         }
@@ -2091,6 +2110,12 @@ struct TimelinePanel: View {
                     drivers.opacity.enabled = true
                     drivers.opacity.keyframes.append(DoubleKeyframe(frame: frame, value: value, easing: .linear))
                     drivers.opacity.keyframes.sort { $0.frame < $1.frame }
+                case .blur:
+                    let value = interpolateDouble(drivers.blur.keyframes, at: frame, neutral: renderer.blurRadius)
+                    drivers.blur.mode = .keyframe
+                    drivers.blur.enabled = true
+                    drivers.blur.keyframes.append(DoubleKeyframe(frame: frame, value: value, easing: .linear))
+                    drivers.blur.keyframes.sort { $0.frame < $1.frame }
                 }
             }
         }
@@ -2119,6 +2144,9 @@ struct TimelinePanel: View {
                 case .opacity:
                     guard hit.keyframeIdx < drivers.opacity.keyframes.count else { return }
                     drivers.opacity.keyframes.remove(at: hit.keyframeIdx)
+                case .blur:
+                    guard hit.keyframeIdx < drivers.blur.keyframes.count else { return }
+                    drivers.blur.keyframes.remove(at: hit.keyframeIdx)
                 }
             }
         }

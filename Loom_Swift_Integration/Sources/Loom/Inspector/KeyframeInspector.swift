@@ -92,8 +92,8 @@ struct KeyframeInspector: View {
                     .labelsHidden()
                     .frame(width: 60)
             }
-        case .strokeWidth, .opacity:
-            InspectorField(sel.lane == .opacity ? "Alpha" : "Width") {
+        case .strokeWidth, .opacity, .blur:
+            InspectorField(sel.lane == .opacity ? "Alpha" : sel.lane == .blur ? "Radius" : "Width") {
                 FloatEntryField(value: rendererDoubleBinding(sel), width: 65, fractionDigits: 3, fontSize: 12)
             }
         }
@@ -362,6 +362,10 @@ struct KeyframeInspector: View {
                             guard sel.keyframeIdx < drivers.opacity.keyframes.count else { return }
                             drivers.opacity.keyframes[sel.keyframeIdx].frame = newFrame
                             drivers.opacity.keyframes.sort { $0.frame < $1.frame }
+                        case .blur:
+                            guard sel.keyframeIdx < drivers.blur.keyframes.count else { return }
+                            drivers.blur.keyframes[sel.keyframeIdx].frame = newFrame
+                            drivers.blur.keyframes.sort { $0.frame < $1.frame }
                         }
                     }
                 }
@@ -391,6 +395,8 @@ struct KeyframeInspector: View {
                     return drivers?.strokeWidth.keyframes[safe: sel.keyframeIdx]?.value ?? 1
                 case .opacity:
                     return drivers?.opacity.keyframes[safe: sel.keyframeIdx]?.value ?? 1
+                case .blur:
+                    return drivers?.blur.keyframes[safe: sel.keyframeIdx]?.value ?? 0
                 case .fillColor, .strokeColor:
                     return 1
                 }
@@ -405,6 +411,9 @@ struct KeyframeInspector: View {
                         case .opacity:
                             guard sel.keyframeIdx < drivers.opacity.keyframes.count else { return }
                             drivers.opacity.keyframes[sel.keyframeIdx].value = v
+                        case .blur:
+                            guard sel.keyframeIdx < drivers.blur.keyframes.count else { return }
+                            drivers.blur.keyframes[sel.keyframeIdx].value = v
                         case .fillColor, .strokeColor:
                             break
                         }
@@ -428,7 +437,7 @@ struct KeyframeInspector: View {
                 case .strokeColor:
                     c = renderer?.drivers?.strokeColor?.keyframes[safe: sel.keyframeIdx]?.value
                         ?? renderer?.strokeColor ?? .black
-                case .strokeWidth, .opacity:
+                case .strokeWidth, .opacity, .blur:
                     c = .black
                 }
                 return Color(red: c.rF, green: c.gF, blue: c.bF, opacity: c.aF)
@@ -452,7 +461,7 @@ struct KeyframeInspector: View {
                             if drivers.strokeColor == nil { drivers.strokeColor = ColorDriver.constant(renderer.strokeColor) }
                             guard sel.keyframeIdx < drivers.strokeColor!.keyframes.count else { return }
                             drivers.strokeColor!.keyframes[sel.keyframeIdx].value = value
-                        case .strokeWidth, .opacity:
+                        case .strokeWidth, .opacity, .blur:
                             break
                         }
                     }
@@ -472,6 +481,7 @@ struct KeyframeInspector: View {
                 case .strokeColor: return drivers?.strokeColor?.keyframes[safe: sel.keyframeIdx]?.easing ?? .linear
                 case .strokeWidth: return drivers?.strokeWidth.keyframes[safe: sel.keyframeIdx]?.easing ?? .linear
                 case .opacity:     return drivers?.opacity.keyframes[safe: sel.keyframeIdx]?.easing ?? .linear
+                case .blur:        return drivers?.blur.keyframes[safe: sel.keyframeIdx]?.easing ?? .linear
                 }
             },
             set: { e in
@@ -490,6 +500,9 @@ struct KeyframeInspector: View {
                         case .opacity:
                             guard sel.keyframeIdx < drivers.opacity.keyframes.count else { return }
                             drivers.opacity.keyframes[sel.keyframeIdx].easing = e
+                        case .blur:
+                            guard sel.keyframeIdx < drivers.blur.keyframes.count else { return }
+                            drivers.blur.keyframes[sel.keyframeIdx].easing = e
                         }
                     }
                 }

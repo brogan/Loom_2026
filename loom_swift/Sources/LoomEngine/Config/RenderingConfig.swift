@@ -142,21 +142,25 @@ public struct RendererDrivers: Equatable, Codable, Sendable {
     public var strokeWidth: DoubleDriver = .one
     /// Per-renderer alpha multiplier. 1 = fully opaque, 0 = invisible.
     public var opacity: DoubleDriver = .one
+    /// Per-renderer Gaussian blur radius in logical pixels. 0 = off.
+    public var blur: DoubleDriver = .zero
 
     public init(
         fillColor: ColorDriver? = nil,
         strokeColor: ColorDriver? = nil,
         strokeWidth: DoubleDriver = .one,
-        opacity: DoubleDriver = .one
+        opacity: DoubleDriver = .one,
+        blur: DoubleDriver = .zero
     ) {
         self.fillColor = fillColor
         self.strokeColor = strokeColor
         self.strokeWidth = strokeWidth
         self.opacity = opacity
+        self.blur = blur
     }
 
     private enum CodingKeys: String, CodingKey {
-        case fillColor, strokeColor, strokeWidth, opacity
+        case fillColor, strokeColor, strokeWidth, opacity, blur
     }
 
     public init(from decoder: Decoder) throws {
@@ -165,6 +169,7 @@ public struct RendererDrivers: Equatable, Codable, Sendable {
         strokeColor = try c.decodeIfPresent(ColorDriver.self, forKey: .strokeColor)
         strokeWidth = try c.decodeIfPresent(DoubleDriver.self, forKey: .strokeWidth) ?? .one
         opacity = try c.decodeIfPresent(DoubleDriver.self, forKey: .opacity) ?? .one
+        blur = try c.decodeIfPresent(DoubleDriver.self, forKey: .blur) ?? .zero
     }
 }
 
@@ -212,6 +217,8 @@ public struct Renderer: Equatable, Codable, Sendable {
     public var fillColor: LoomColor
     public var pointSize: Double
     public var holdLength: Int
+    /// Gaussian blur radius in logical pixels applied to this renderer's output. 0 = off.
+    public var blurRadius: Double
     /// Animated render-parameter changes. Empty when the renderer is static.
     public var changes: RendererChanges
     /// Continuous/keyframed render-parameter drivers. Nil for static legacy renderers.
@@ -230,6 +237,7 @@ public struct Renderer: Equatable, Codable, Sendable {
         fillColor: LoomColor      = .black,
         pointSize: Double         = 2.0,
         holdLength: Int           = 1,
+        blurRadius: Double        = 0.0,
         changes: RendererChanges  = RendererChanges(),
         drivers: RendererDrivers? = nil,
         brushConfig: BrushConfig?   = nil,
@@ -238,14 +246,14 @@ public struct Renderer: Equatable, Codable, Sendable {
         self.name = name; self.enabled = enabled; self.mode = mode
         self.strokeWidth = strokeWidth; self.strokeColor = strokeColor
         self.fillColor = fillColor; self.pointSize = pointSize
-        self.holdLength = holdLength; self.changes = changes
-        self.drivers = drivers
+        self.holdLength = holdLength; self.blurRadius = blurRadius
+        self.changes = changes; self.drivers = drivers
         self.brushConfig = brushConfig; self.stencilConfig = stencilConfig
     }
 
     private enum CodingKeys: String, CodingKey {
         case name, enabled, mode, strokeWidth, strokeColor, fillColor,
-             pointSize, holdLength, changes, drivers, brushConfig, stencilConfig
+             pointSize, holdLength, blurRadius, changes, drivers, brushConfig, stencilConfig
     }
 
     public init(from decoder: Decoder) throws {
@@ -258,6 +266,7 @@ public struct Renderer: Equatable, Codable, Sendable {
         fillColor     = try c.decodeIfPresent(LoomColor.self,       forKey: .fillColor)    ?? .black
         pointSize     = try c.decodeIfPresent(Double.self,          forKey: .pointSize)    ?? 2.0
         holdLength    = try c.decodeIfPresent(Int.self,             forKey: .holdLength)   ?? 1
+        blurRadius    = try c.decodeIfPresent(Double.self,          forKey: .blurRadius)   ?? 0.0
         changes       = try c.decodeIfPresent(RendererChanges.self, forKey: .changes)      ?? RendererChanges()
         drivers       = try c.decodeIfPresent(RendererDrivers.self, forKey: .drivers)
         brushConfig   = try c.decodeIfPresent(BrushConfig.self,     forKey: .brushConfig)

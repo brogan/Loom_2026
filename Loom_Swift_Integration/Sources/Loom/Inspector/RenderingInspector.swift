@@ -15,6 +15,7 @@ struct RenderingInspector: View {
     @State private var strokeColorDriverCollapsed = true
     @State private var strokeWidthDriverCollapsed = true
     @State private var opacityDriverCollapsed = true
+    @State private var blurDriverCollapsed   = true
     @State private var brushCollapsed        = false
     @State private var meanderCollapsed      = true
     @State private var stampCollapsed        = false
@@ -213,6 +214,11 @@ struct RenderingInspector: View {
                 Text("frames").font(.system(size: 10)).foregroundStyle(.secondary)
             }
             .loomHelp("Number of virtual frames this renderer is held before the set advances to the next renderer in Sequential playback mode.")
+            InspectorField("Blur radius") {
+                FloatEntryField(value: bindR(setIdx, itemIdx, \.blurRadius), width: 55, fractionDigits: 1)
+                Text("px").font(.system(size: 11)).foregroundStyle(.secondary)
+            }
+            .loomHelp("Gaussian blur radius applied to this renderer's output in logical pixels. Scaled by the quality multiplier. 0 = off. Animate with the Blur Driver below.")
         }
     }
 
@@ -246,6 +252,12 @@ struct RenderingInspector: View {
                 isCollapsed: $opacityDriverCollapsed,
                 isHighlighted: selectedRendererLane(setIdx: setIdx, itemIdx: itemIdx) == .opacity
             )
+            DoubleDriverEditor(
+                label: "Blur Driver",
+                driver: bindRendererBlurDriver(setIdx, itemIdx, fallback: renderer.blurRadius),
+                isCollapsed: $blurDriverCollapsed,
+                isHighlighted: selectedRendererLane(setIdx: setIdx, itemIdx: itemIdx) == .blur
+            )
         }
     }
 
@@ -256,13 +268,16 @@ struct RenderingInspector: View {
         let sColorUnused = !(d?.strokeColor?.enabled ?? false) && (d?.strokeColor?.keyframes.isEmpty ?? true)
         let sWidthUnused = !(d?.strokeWidth.enabled  ?? false) && (d?.strokeWidth.keyframes.isEmpty  ?? true)
         let opacUnused   = !(d?.opacity.enabled      ?? false) && (d?.opacity.keyframes.isEmpty      ?? true)
+        let blurUnused   = !(d?.blur.enabled         ?? false) && (d?.blur.keyframes.isEmpty         ?? true)
 
         let collapsed = [fillColorDriverCollapsed, strokeColorDriverCollapsed,
-                         strokeWidthDriverCollapsed, opacityDriverCollapsed].filter { $0 }.count
+                         strokeWidthDriverCollapsed, opacityDriverCollapsed,
+                         blurDriverCollapsed].filter { $0 }.count
         let unusedVisible = [fillUnused   && !fillColorDriverCollapsed,
                               sColorUnused && !strokeColorDriverCollapsed,
                               sWidthUnused && !strokeWidthDriverCollapsed,
-                              opacUnused   && !opacityDriverCollapsed].filter { $0 }.count
+                              opacUnused   && !opacityDriverCollapsed,
+                              blurUnused   && !blurDriverCollapsed].filter { $0 }.count
 
         if collapsed > 0 {
             HStack {
@@ -270,6 +285,7 @@ struct RenderingInspector: View {
                 Button {
                     fillColorDriverCollapsed = false; strokeColorDriverCollapsed = false
                     strokeWidthDriverCollapsed = false; opacityDriverCollapsed = false
+                    blurDriverCollapsed = false
                 } label: {
                     HStack(spacing: 3) {
                         Image(systemName: "eye.slash").font(.system(size: 10))
@@ -290,6 +306,7 @@ struct RenderingInspector: View {
                     if sColorUnused { strokeColorDriverCollapsed = true }
                     if sWidthUnused { strokeWidthDriverCollapsed = true }
                     if opacUnused   { opacityDriverCollapsed = true }
+                    if blurUnused   { blurDriverCollapsed = true }
                 } label: {
                     Image(systemName: "eye")
                         .font(.system(size: 10))
@@ -949,12 +966,42 @@ struct RenderingInspector: View {
         )
     }
 
+    private func bindRendererBlurDriver(_ setIdx: Int,
+                                        _ itemIdx: Int,
+                                        fallback: Double) -> Binding<DoubleDriver> {
+        let ctl = controller
+        return Binding(
+            get: {
+                ctl.projectConfig?.renderingConfig.library
+                    .rendererSets[safe: setIdx]?.renderers[safe: itemIdx]?
+                    .drivers?.blur ?? DoubleDriver.constant(fallback)
+            },
+            set: { v in
+                ctl.updateProjectConfig { cfg in
+                    guard setIdx < cfg.renderingConfig.library.rendererSets.count,
+                          itemIdx < cfg.renderingConfig.library.rendererSets[setIdx].renderers.count
+                    else { return }
+                    if cfg.renderingConfig.library.rendererSets[setIdx]
+                        .renderers[itemIdx].drivers == nil {
+                        cfg.renderingConfig.library.rendererSets[setIdx]
+                            .renderers[itemIdx].drivers = defaultRendererDrivers(
+                                for: cfg.renderingConfig.library.rendererSets[setIdx].renderers[itemIdx]
+                            )
+                    }
+                    cfg.renderingConfig.library.rendererSets[setIdx]
+                        .renderers[itemIdx].drivers!.blur = v
+                }
+            }
+        )
+    }
+
     private func defaultRendererDrivers(for renderer: Renderer) -> RendererDrivers {
         RendererDrivers(
             fillColor: ColorDriver.constant(renderer.fillColor),
             strokeColor: ColorDriver.constant(renderer.strokeColor),
             strokeWidth: DoubleDriver.constant(renderer.strokeWidth),
-            opacity: .one
+            opacity: .one,
+            blur: DoubleDriver.constant(renderer.blurRadius)
         )
     }
 
