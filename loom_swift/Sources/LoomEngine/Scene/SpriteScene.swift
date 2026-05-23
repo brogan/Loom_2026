@@ -63,16 +63,24 @@ public struct SpriteScene: @unchecked Sendable {
     /// Frame rate for driver evaluation (oscillator / noise modes).
     private let targetFPS: Double
 
+    /// All renderer sets keyed by name, for fast lookup by the rendererSet driver.
+    private let allRendererSets: [String: RendererSet]
+
+    /// All subdivision-params sets keyed by name, for fast lookup by the subdivisionSet driver.
+    private let allSubdivisionSets: [String: [SubdivisionParams]]
+
     // MARK: - Convenience (testing)
 
     /// Directly construct a scene from pre-built instances.
     ///
     /// Intended for unit tests that want to bypass file loading.
     internal init(instances: [SpriteInstance]) {
-        self.instances       = instances
-        self.qualityMultiple = 1
-        self.scaleImage      = true
-        self.targetFPS       = 30
+        self.instances         = instances
+        self.qualityMultiple   = 1
+        self.scaleImage        = true
+        self.targetFPS         = 30
+        self.allRendererSets   = [:]
+        self.allSubdivisionSets = [:]
     }
 
     // MARK: - Assembly
@@ -97,10 +105,18 @@ public struct SpriteScene: @unchecked Sendable {
                 result.append(instance)
             }
         }
-        self.instances       = result
-        self.qualityMultiple = max(1, config.globalConfig.qualityMultiple)
-        self.scaleImage      = config.globalConfig.scaleImage
-        self.targetFPS       = max(1, config.globalConfig.targetFPS)
+        self.instances        = result
+        self.qualityMultiple  = max(1, config.globalConfig.qualityMultiple)
+        self.scaleImage       = config.globalConfig.scaleImage
+        self.targetFPS        = max(1, config.globalConfig.targetFPS)
+        self.allRendererSets  = Dictionary(
+            config.renderingConfig.library.rendererSets.map { ($0.name, $0) },
+            uniquingKeysWith: { first, _ in first }
+        )
+        self.allSubdivisionSets = Dictionary(
+            config.subdivisionConfig.paramsSets.map { ($0.name, $0.params) },
+            uniquingKeysWith: { first, _ in first }
+        )
     }
 
     private static func makeInstance(
@@ -731,6 +747,15 @@ public struct SpriteScene: @unchecked Sendable {
             activeInstance.state.activeRendererIndex = min(activeInstance.state.activeRendererIndex, maxIdx)
         }
 
+        // Renderer-set driver overrides the shape-driver's set selection when active.
+        if let drv = activeInstance.def.animation.drivers?.rendererSet, drv.enabled,
+           let name = DriverEvaluator.evaluateName(drv, globalElapsed: elapsedFrames, spriteIndex: spriteIndex),
+           let overrideSet = allRendererSets[name] {
+            activeInstance.rendererSet = overrideSet
+            let maxIdx = max(0, activeInstance.rendererSet.renderers.count - 1)
+            activeInstance.state.activeRendererIndex = min(activeInstance.state.activeRendererIndex, maxIdx)
+        }
+
         // Select active polygon set (legacy shape-sequence overrides basePolygons when no shape driver).
         let activePolygons: [Polygon2D]
         if shapeIdx == 0, let seq = activeInstance.def.shapeSequence, !activeInstance.sequencePolygons.isEmpty {
@@ -760,6 +785,13 @@ public struct SpriteScene: @unchecked Sendable {
             targets:     activeInstance.morphTargetPolygons,
             morphAmount: morphAmount
         )
+
+        // Subdivision-set driver overrides the instance's baked params.
+        if let drv = activeInstance.def.animation.drivers?.subdivisionSet, drv.enabled,
+           let name = DriverEvaluator.evaluateName(drv, globalElapsed: elapsedFrames, spriteIndex: spriteIndex),
+           let overrideParams = allSubdivisionSets[name] {
+            activeInstance.subdivisionParams = overrideParams
+        }
 
         // 2. Subdivision
         let subdivided: [Polygon2D]

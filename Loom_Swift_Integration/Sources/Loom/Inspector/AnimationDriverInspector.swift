@@ -557,6 +557,173 @@ private struct DriverSection<Content: View>: View {
     }
 }
 
+// MARK: - NameDriverEditor
+
+/// Collapsible inspector section for a NameDriver (subdivision-set or renderer-set driver).
+struct NameDriverEditor: View {
+    @EnvironmentObject private var controller: AppController
+
+    let label: String
+    @Binding var driver: NameDriver
+    @Binding var isCollapsed: Bool
+    var isHighlighted: Bool = false
+    /// Available set names to display in pickers.
+    let options: [String]
+
+    var body: some View {
+        DriverSection(label, isCollapsed: $isCollapsed,
+                      hasKeyframes: !driver.keyframes.isEmpty,
+                      isEnabled: $driver.enabled,
+                      isHighlighted: isHighlighted) {
+            InspectorField("Mode") {
+                LoomPicker(selection: $driver.mode, maxWidth: 120)
+            }
+            .loomHelp("Animation mode — Constant (fixed set name), Keyframe (step between saved set names), Jitter (random set from pool each frame).")
+            modeFields
+        }
+        .onChange(of: driver.keyframes.count) { old, new in
+            if new > 0 && !driver.enabled { driver.enabled = true }
+        }
+    }
+
+    @ViewBuilder
+    private var modeFields: some View {
+        switch driver.mode {
+        case .constant:
+            InspectorField("Set") {
+                Picker("", selection: $driver.base) {
+                    Text("— none —").tag("")
+                    ForEach(options, id: \.self) { Text($0).tag($0) }
+                }
+                .labelsHidden()
+                .frame(maxWidth: 150)
+            }
+            .loomHelp("Fixed set name output every frame. When enabled, overrides the sprite's static assignment.")
+
+        case .keyframe:
+            InspectorField("Loop") {
+                LoomPicker(selection: $driver.loopMode, maxWidth: 100)
+            }
+            .loomHelp("What happens after the last keyframe — Loop (wrap to start), Ping-Pong (reverse), Once (hold at last value).")
+            NameKeyframeTable(
+                keyframes:  $driver.keyframes,
+                firstFrame: controller.currentTimelineFrame,
+                firstValue: driver.base,
+                options:    options
+            )
+
+        case .jitter:
+            InspectorField("Seed") {
+                TextField("", value: $driver.seed, format: .number)
+                    .textFieldStyle(.squareBorder)
+                    .font(.system(size: 11, design: .monospaced))
+                    .frame(width: 60)
+            }
+            .loomHelp("Random seed for reproducible jitter. Change to get a different flicker pattern.")
+            // Jitter pool editor (inline)
+            VStack(alignment: .leading, spacing: 1) {
+                Text("Pool")
+                    .font(.system(size: 9))
+                    .foregroundStyle(.tertiary)
+                    .padding(.horizontal, 12)
+                    .padding(.bottom, 1)
+                ForEach(driver.jitterPool.indices, id: \.self) { i in
+                    HStack(spacing: 4) {
+                        Picker("", selection: Binding(
+                            get: { driver.jitterPool[safe: i] ?? "" },
+                            set: { newVal in
+                                guard i < driver.jitterPool.count else { return }
+                                driver.jitterPool[i] = newVal
+                            }
+                        )) {
+                            ForEach(options, id: \.self) { Text($0).tag($0) }
+                        }
+                        .labelsHidden()
+                        .frame(maxWidth: .infinity)
+                        Button {
+                            driver.jitterPool.remove(at: i)
+                        } label: {
+                            Image(systemName: "minus.circle").font(.system(size: 11))
+                                .frame(width: 22, height: 22)
+                                .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                        .foregroundStyle(.secondary)
+                    }
+                    .padding(.horizontal, 12)
+                }
+                Button {
+                    let next = options.first(where: { !driver.jitterPool.contains($0) }) ?? options.first ?? ""
+                    if !next.isEmpty { driver.jitterPool.append(next) }
+                } label: {
+                    Label("Add to pool", systemImage: "plus").font(.system(size: 11))
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(.secondary)
+                .padding(.horizontal, 12)
+                .padding(.vertical, 3)
+            }
+            .loomHelp("Set names to randomly choose from each frame. The random choice is deterministic given the seed, sprite index, and frame number.")
+        }
+    }
+}
+
+// MARK: - NameKeyframeTable
+
+struct NameKeyframeTable: View {
+    @Binding var keyframes: [NameKeyframe]
+    var firstFrame: Int
+    var firstValue: String
+    var options: [String]
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 1) {
+            HStack(spacing: 0) {
+                Text("Frame").font(.system(size: 9)).foregroundStyle(.tertiary).frame(width: 46, alignment: .leading)
+                Text("Set").font(.system(size: 9)).foregroundStyle(.tertiary).frame(minWidth: 0, maxWidth: .infinity, alignment: .leading)
+            }
+            .padding(.horizontal, 12)
+            .padding(.bottom, 1)
+
+            ForEach(keyframes.indices, id: \.self) { i in
+                HStack(spacing: 4) {
+                    TextField("", value: $keyframes[i].frame, format: .number)
+                        .textFieldStyle(.squareBorder)
+                        .font(.system(size: 10, design: .monospaced))
+                        .frame(width: 40)
+                    Picker("", selection: $keyframes[i].value) {
+                        Text("— none —").tag("")
+                        ForEach(options, id: \.self) { Text($0).tag($0) }
+                    }
+                    .labelsHidden()
+                    .frame(minWidth: 0, maxWidth: .infinity)
+                    Button { keyframes.remove(at: i) } label: {
+                        Image(systemName: "minus.circle").font(.system(size: 11))
+                            .frame(width: 22, height: 22)
+                            .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(.secondary)
+                }
+                .padding(.horizontal, 12)
+            }
+
+            Button {
+                keyframes.append(NameKeyframe(
+                    frame: keyframes.isEmpty ? max(0, firstFrame) : (keyframes.last?.frame ?? 0) + 30,
+                    value: keyframes.last?.value ?? firstValue
+                ))
+            } label: {
+                Label("Add keyframe", systemImage: "plus").font(.system(size: 11))
+            }
+            .buttonStyle(.plain)
+            .foregroundStyle(.secondary)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 3)
+        }
+    }
+}
+
 // MARK: - Display name extensions (private to this file)
 
 private extension EasingType {

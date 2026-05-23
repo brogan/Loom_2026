@@ -63,16 +63,40 @@ struct KeyframeInspector: View {
                     .frame(width: 50)
                 Text("(0 = self)").font(.system(size: 10)).foregroundStyle(.tertiary)
             }
+        case .subdivisionSet:
+            InspectorField("Set") {
+                let v = controller.projectConfig?.spriteConfig.library
+                    .spriteSets[safe: sel.setIdx]?.sprites[safe: sel.spriteIdx]?
+                    .animation.drivers?.subdivisionSet.keyframes[safe: sel.keyframeIdx]?.value ?? ""
+                Text(v.isEmpty ? "—" : v)
+                    .font(.system(size: 11, design: .monospaced))
+                    .foregroundStyle(.secondary)
+            }
+        case .rendererSet:
+            InspectorField("Set") {
+                let v = controller.projectConfig?.spriteConfig.library
+                    .spriteSets[safe: sel.setIdx]?.sprites[safe: sel.spriteIdx]?
+                    .animation.drivers?.rendererSet.keyframes[safe: sel.keyframeIdx]?.value ?? ""
+                Text(v.isEmpty ? "—" : v)
+                    .font(.system(size: 11, design: .monospaced))
+                    .foregroundStyle(.secondary)
+            }
         }
 
-        InspectorField("Easing") {
-            Picker("", selection: easingBinding(sel)) {
-                ForEach(EasingType.allCases, id: \.self) { e in
-                    Text(e.kfLabel).tag(e)
+        // Easing is only relevant for interpolating drivers (not step/name drivers)
+        switch sel.lane {
+        case .subdivisionSet, .rendererSet:
+            EmptyView()
+        default:
+            InspectorField("Easing") {
+                Picker("", selection: easingBinding(sel)) {
+                    ForEach(EasingType.allCases, id: \.self) { e in
+                        Text(e.kfLabel).tag(e)
+                    }
                 }
+                .labelsHidden()
+                .frame(maxWidth: 130)
             }
-            .labelsHidden()
-            .frame(maxWidth: 130)
         }
     }
 
@@ -148,6 +172,14 @@ struct KeyframeInspector: View {
                             guard sel.keyframeIdx < drivers.shape.keyframes.count else { return }
                             drivers.shape.keyframes[sel.keyframeIdx].frame = newFrame
                             drivers.shape.keyframes.sort { $0.frame < $1.frame }
+                        case .subdivisionSet:
+                            guard sel.keyframeIdx < drivers.subdivisionSet.keyframes.count else { return }
+                            drivers.subdivisionSet.keyframes[sel.keyframeIdx].frame = newFrame
+                            drivers.subdivisionSet.keyframes.sort { $0.frame < $1.frame }
+                        case .rendererSet:
+                            guard sel.keyframeIdx < drivers.rendererSet.keyframes.count else { return }
+                            drivers.rendererSet.keyframes[sel.keyframeIdx].frame = newFrame
+                            drivers.rendererSet.keyframes.sort { $0.frame < $1.frame }
                         }
                     }
                 }
@@ -295,12 +327,14 @@ struct KeyframeInspector: View {
                     .spriteSets[safe: sel.setIdx]?.sprites[safe: sel.spriteIdx]?.animation.drivers
                 else { return .linear }
                 switch sel.lane {
-                case .position: return drivers.position.keyframes[safe: sel.keyframeIdx]?.easing ?? .linear
-                case .scale:    return drivers.scale.keyframes[safe: sel.keyframeIdx]?.easing ?? .linear
-                case .rotation: return drivers.rotation.keyframes[safe: sel.keyframeIdx]?.easing ?? .linear
-                case .morph:    return drivers.morph.keyframes[safe: sel.keyframeIdx]?.easing ?? .linear
-                case .opacity:  return drivers.opacity.keyframes[safe: sel.keyframeIdx]?.easing ?? .linear
-                case .shape:    return drivers.shape.keyframes[safe: sel.keyframeIdx]?.easing ?? .linear
+                case .position:       return drivers.position.keyframes[safe: sel.keyframeIdx]?.easing ?? .linear
+                case .scale:          return drivers.scale.keyframes[safe: sel.keyframeIdx]?.easing ?? .linear
+                case .rotation:       return drivers.rotation.keyframes[safe: sel.keyframeIdx]?.easing ?? .linear
+                case .morph:          return drivers.morph.keyframes[safe: sel.keyframeIdx]?.easing ?? .linear
+                case .opacity:        return drivers.opacity.keyframes[safe: sel.keyframeIdx]?.easing ?? .linear
+                case .shape:          return drivers.shape.keyframes[safe: sel.keyframeIdx]?.easing ?? .linear
+                case .subdivisionSet: return .linear  // step driver — no easing
+                case .rendererSet:    return .linear  // step driver — no easing
                 }
             },
             set: { e in
@@ -325,6 +359,8 @@ struct KeyframeInspector: View {
                         case .shape:
                             guard sel.keyframeIdx < drivers.shape.keyframes.count else { return }
                             drivers.shape.keyframes[sel.keyframeIdx].easing = e
+                        case .subdivisionSet, .rendererSet:
+                            break  // step drivers — no easing stored
                         }
                     }
                 }

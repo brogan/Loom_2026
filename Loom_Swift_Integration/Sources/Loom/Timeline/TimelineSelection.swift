@@ -5,37 +5,45 @@ import LoomEngine
 
 enum TimelineLane: Int, CaseIterable, Hashable {
     case position = 0, scale, rotation, morph, opacity, shape
+    case subdivisionSet = 6
+    case rendererSet    = 7
 
     var label: String {
         switch self {
-        case .position: return "Position"
-        case .scale:    return "Scale"
-        case .rotation: return "Rotation"
-        case .morph:    return "Morph"
-        case .opacity:  return "Opacity"
-        case .shape:    return "Shape"
+        case .position:      return "Position"
+        case .scale:         return "Scale"
+        case .rotation:      return "Rotation"
+        case .morph:         return "Morph"
+        case .opacity:       return "Opacity"
+        case .shape:         return "Shape"
+        case .subdivisionSet: return "Subdiv"
+        case .rendererSet:   return "Rend.Set"
         }
     }
 
     var color: Color {
         switch self {
-        case .position: return .blue
-        case .scale:    return .green
-        case .rotation: return .orange
-        case .morph:    return .purple
-        case .opacity:  return .pink
-        case .shape:    return .mint
+        case .position:      return .blue
+        case .scale:         return .green
+        case .rotation:      return .orange
+        case .morph:         return .purple
+        case .opacity:       return .pink
+        case .shape:         return .mint
+        case .subdivisionSet: return Color(hue: 0.56, saturation: 0.65, brightness: 0.80)
+        case .rendererSet:   return Color(hue: 0.08, saturation: 0.65, brightness: 0.85)
         }
     }
 
     func keyframeFrames(from drivers: TransformDrivers) -> [Int] {
         switch self {
-        case .position: return drivers.position.keyframes.map(\.frame)
-        case .scale:    return drivers.scale.keyframes.map(\.frame)
-        case .rotation: return drivers.rotation.keyframes.map(\.frame)
-        case .morph:    return drivers.morph.keyframes.map(\.frame)
-        case .opacity:  return drivers.opacity.keyframes.map(\.frame)
-        case .shape:    return drivers.shape.keyframes.map(\.frame)
+        case .position:      return drivers.position.keyframes.map(\.frame)
+        case .scale:         return drivers.scale.keyframes.map(\.frame)
+        case .rotation:      return drivers.rotation.keyframes.map(\.frame)
+        case .morph:         return drivers.morph.keyframes.map(\.frame)
+        case .opacity:       return drivers.opacity.keyframes.map(\.frame)
+        case .shape:         return drivers.shape.keyframes.map(\.frame)
+        case .subdivisionSet: return drivers.subdivisionSet.keyframes.map(\.frame)
+        case .rendererSet:   return drivers.rendererSet.keyframes.map(\.frame)
         }
     }
 }

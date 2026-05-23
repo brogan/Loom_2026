@@ -138,6 +138,25 @@ extension EasingType: LoomPickerOption {
     }
 }
 
+// MARK: - NameDriver mode
+
+extension NameDriver.Mode: LoomPickerOption {
+    var pickerLabel: String {
+        switch self {
+        case .constant: return "Constant"
+        case .keyframe: return "Keyframe"
+        case .jitter:   return "Jitter"
+        }
+    }
+    var pickerHelp: String {
+        switch self {
+        case .constant: return "Fixed set name — no animation"
+        case .keyframe: return "Steps between set names at keyframed frames"
+        case .jitter:   return "Randomly picks a set name from the pool each frame"
+        }
+    }
+}
+
 // MARK: - Wave shape
 
 extension WaveShape: LoomPickerOption {

@@ -26,22 +26,32 @@ public struct TransformDrivers: Codable, Equatable, Sendable {
     /// Sprite-replacement index.  Step-evaluated integer selects the active
     /// variant: 0 = self (base sprite), 1+ = spriteVariants[index−1].
     /// Defaults to loopMode .once so sequences don't wrap back to 0.
-    public var shape:    DoubleDriver = DoubleDriver(mode: .constant, base: 0, loopMode: .once)
+    public var shape:          DoubleDriver = DoubleDriver(mode: .constant, base: 0, loopMode: .once)
+    /// Overrides which subdivision-params set is applied to the sprite's geometry each frame.
+    /// Disabled (default) leaves the static shape-set assignment in effect.
+    public var subdivisionSet: NameDriver   = .disabled
+    /// Overrides which renderer set draws the sprite each frame.
+    /// Disabled (default) leaves the static renderer-set assignment in effect.
+    public var rendererSet:    NameDriver   = .disabled
 
     public init(
-        position: VectorDriver = VectorDriver(mode: .constant, base: .zero,                 loopMode: .once),
-        scale:    VectorDriver = VectorDriver(mode: .constant, base: Vector2D(x: 1, y: 1), loopMode: .once),
-        rotation: DoubleDriver = DoubleDriver(mode: .constant, base: 0,                    loopMode: .once),
-        morph:    DoubleDriver = .zero,
-        opacity:  DoubleDriver = DoubleDriver(mode: .constant, base: 1, loopMode: .once),
-        shape:    DoubleDriver = DoubleDriver(mode: .constant, base: 0, loopMode: .once)
+        position:      VectorDriver = VectorDriver(mode: .constant, base: .zero,                 loopMode: .once),
+        scale:         VectorDriver = VectorDriver(mode: .constant, base: Vector2D(x: 1, y: 1), loopMode: .once),
+        rotation:      DoubleDriver = DoubleDriver(mode: .constant, base: 0,                    loopMode: .once),
+        morph:         DoubleDriver = .zero,
+        opacity:       DoubleDriver = DoubleDriver(mode: .constant, base: 1, loopMode: .once),
+        shape:         DoubleDriver = DoubleDriver(mode: .constant, base: 0, loopMode: .once),
+        subdivisionSet: NameDriver  = .disabled,
+        rendererSet:    NameDriver  = .disabled
     ) {
-        self.position = position
-        self.scale    = scale
-        self.rotation = rotation
-        self.morph    = morph
-        self.opacity  = opacity
-        self.shape    = shape
+        self.position      = position
+        self.scale         = scale
+        self.rotation      = rotation
+        self.morph         = morph
+        self.opacity       = opacity
+        self.shape         = shape
+        self.subdivisionSet = subdivisionSet
+        self.rendererSet    = rendererSet
     }
 
     /// All drivers at constant identity — no animation.
@@ -50,13 +60,15 @@ public struct TransformDrivers: Codable, Equatable, Sendable {
     // Custom decoder: decodeIfPresent for all fields so projects saved before
     // any given field was added continue to load with safe defaults.
     public init(from decoder: Decoder) throws {
-        let c        = try decoder.container(keyedBy: CodingKeys.self)
-        position     = try c.decodeIfPresent(VectorDriver.self, forKey: .position) ?? VectorDriver(mode: .constant, base: .zero,                 loopMode: .once)
-        scale        = try c.decodeIfPresent(VectorDriver.self, forKey: .scale)    ?? VectorDriver(mode: .constant, base: Vector2D(x: 1, y: 1), loopMode: .once)
-        rotation     = try c.decodeIfPresent(DoubleDriver.self, forKey: .rotation) ?? DoubleDriver(mode: .constant, base: 0,                    loopMode: .once)
-        morph        = try c.decodeIfPresent(DoubleDriver.self, forKey: .morph)    ?? .zero
-        opacity      = try c.decodeIfPresent(DoubleDriver.self, forKey: .opacity)  ?? DoubleDriver(mode: .constant, base: 1, loopMode: .once)
-        shape        = try c.decodeIfPresent(DoubleDriver.self, forKey: .shape)    ?? DoubleDriver(mode: .constant, base: 0, loopMode: .once)
+        let c           = try decoder.container(keyedBy: CodingKeys.self)
+        position        = try c.decodeIfPresent(VectorDriver.self, forKey: .position)      ?? VectorDriver(mode: .constant, base: .zero,                 loopMode: .once)
+        scale           = try c.decodeIfPresent(VectorDriver.self, forKey: .scale)         ?? VectorDriver(mode: .constant, base: Vector2D(x: 1, y: 1), loopMode: .once)
+        rotation        = try c.decodeIfPresent(DoubleDriver.self, forKey: .rotation)      ?? DoubleDriver(mode: .constant, base: 0,                    loopMode: .once)
+        morph           = try c.decodeIfPresent(DoubleDriver.self, forKey: .morph)         ?? .zero
+        opacity         = try c.decodeIfPresent(DoubleDriver.self, forKey: .opacity)       ?? DoubleDriver(mode: .constant, base: 1, loopMode: .once)
+        shape           = try c.decodeIfPresent(DoubleDriver.self, forKey: .shape)         ?? DoubleDriver(mode: .constant, base: 0, loopMode: .once)
+        subdivisionSet  = try c.decodeIfPresent(NameDriver.self,   forKey: .subdivisionSet) ?? .disabled
+        rendererSet     = try c.decodeIfPresent(NameDriver.self,   forKey: .rendererSet)    ?? .disabled
     }
 }
 

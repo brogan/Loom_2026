@@ -46,6 +46,7 @@ private enum TimelineSelectionItem: Hashable {
 private enum CopiedTimelineKeyframe {
     case spriteVector(spriteListIdx: Int, lane: DriverLane, offset: Int, value: VectorKeyframe)
     case spriteDouble(spriteListIdx: Int, lane: DriverLane, offset: Int, value: DoubleKeyframe)
+    case spriteName(spriteListIdx: Int, lane: DriverLane, offset: Int, value: NameKeyframe)
     case rendererColor(spriteListIdx: Int, rendererSetIdx: Int, rendererItemIdx: Int, lane: RendererTimelineLane, offset: Int, value: ColorKeyframe)
     case rendererDouble(spriteListIdx: Int, rendererSetIdx: Int, rendererItemIdx: Int, lane: RendererTimelineLane, offset: Int, value: DoubleKeyframe)
     case cameraVector(lane: CameraLane, offset: Int, value: VectorKeyframe)
@@ -55,6 +56,7 @@ private enum CopiedTimelineKeyframe {
         switch self {
         case .spriteVector(_, _, let offset, _),
              .spriteDouble(_, _, let offset, _),
+             .spriteName(_, _, let offset, _),
              .rendererColor(_, _, _, _, let offset, _),
              .rendererDouble(_, _, _, _, let offset, _),
              .cameraVector(_, let offset, _),
@@ -429,12 +431,14 @@ struct TimelinePanel: View {
                         let isEnab: Bool = {
                             guard let d = drivers else { return false }
                             switch lane {
-                            case .position: return d.position.enabled
-                            case .scale:    return d.scale.enabled
-                            case .rotation: return d.rotation.enabled
-                            case .morph:    return d.morph.enabled
-                            case .opacity:  return d.opacity.enabled
-                            case .shape:    return d.shape.enabled
+                            case .position:       return d.position.enabled
+                            case .scale:          return d.scale.enabled
+                            case .rotation:       return d.rotation.enabled
+                            case .morph:          return d.morph.enabled
+                            case .opacity:        return d.opacity.enabled
+                            case .shape:          return d.shape.enabled
+                            case .subdivisionSet: return d.subdivisionSet.enabled
+                            case .rendererSet:    return d.rendererSet.enabled
                             }
                         }()
                         driverHeaderRow(lane.label, color: lane.color,
@@ -445,12 +449,14 @@ struct TimelinePanel: View {
                                             controller.updateProjectConfig { cfg in
                                                 withDrivers(in: &cfg, si: node.setIdx, pi: node.spriteIdx) { d in
                                                     switch lane {
-                                                    case .position: d.position.enabled.toggle()
-                                                    case .scale:    d.scale.enabled.toggle()
-                                                    case .rotation: d.rotation.enabled.toggle()
-                                                    case .morph:    d.morph.enabled.toggle()
-                                                    case .opacity:  d.opacity.enabled.toggle()
-                                                    case .shape:    d.shape.enabled.toggle()
+                                                    case .position:       d.position.enabled.toggle()
+                                                    case .scale:          d.scale.enabled.toggle()
+                                                    case .rotation:       d.rotation.enabled.toggle()
+                                                    case .morph:          d.morph.enabled.toggle()
+                                                    case .opacity:        d.opacity.enabled.toggle()
+                                                    case .shape:          d.shape.enabled.toggle()
+                                                    case .subdivisionSet: d.subdivisionSet.enabled.toggle()
+                                                    case .rendererSet:    d.rendererSet.enabled.toggle()
                                                     }
                                                 }
                                             }
@@ -537,12 +543,14 @@ struct TimelinePanel: View {
                     guard let d else { return false }
                     let en: Bool = {
                         switch lane {
-                        case .position: return d.position.enabled
-                        case .scale:    return d.scale.enabled
-                        case .rotation: return d.rotation.enabled
-                        case .morph:    return d.morph.enabled
-                        case .opacity:  return d.opacity.enabled
-                        case .shape:    return d.shape.enabled
+                        case .position:       return d.position.enabled
+                        case .scale:          return d.scale.enabled
+                        case .rotation:       return d.rotation.enabled
+                        case .morph:          return d.morph.enabled
+                        case .opacity:        return d.opacity.enabled
+                        case .shape:          return d.shape.enabled
+                        case .subdivisionSet: return d.subdivisionSet.enabled
+                        case .rendererSet:    return d.rendererSet.enabled
                         }
                     }()
                     return !en && lane.keyframeFrames(from: d).isEmpty
@@ -583,12 +591,14 @@ struct TimelinePanel: View {
                         DriverLane.allCases.forEach { lane in
                             let en: Bool = {
                                 switch lane {
-                                case .position: return d.position.enabled
-                                case .scale:    return d.scale.enabled
-                                case .rotation: return d.rotation.enabled
-                                case .morph:    return d.morph.enabled
-                                case .opacity:  return d.opacity.enabled
-                                case .shape:    return d.shape.enabled
+                                case .position:       return d.position.enabled
+                                case .scale:          return d.scale.enabled
+                                case .rotation:       return d.rotation.enabled
+                                case .morph:          return d.morph.enabled
+                                case .opacity:        return d.opacity.enabled
+                                case .shape:          return d.shape.enabled
+                                case .subdivisionSet: return d.subdivisionSet.enabled
+                                case .rendererSet:    return d.rendererSet.enabled
                                 }
                             }()
                             if !en && lane.keyframeFrames(from: d).isEmpty {
@@ -1525,6 +1535,12 @@ struct TimelinePanel: View {
                 case .shape:
                     guard let value = drivers.shape.keyframes[safe: keyframeIdx] else { return nil }
                     return .spriteDouble(spriteListIdx: spriteListIdx, lane: lane, offset: frameOffset, value: value)
+                case .subdivisionSet:
+                    guard let value = drivers.subdivisionSet.keyframes[safe: keyframeIdx] else { return nil }
+                    return .spriteName(spriteListIdx: spriteListIdx, lane: lane, offset: frameOffset, value: value)
+                case .rendererSet:
+                    guard let value = drivers.rendererSet.keyframes[safe: keyframeIdx] else { return nil }
+                    return .spriteName(spriteListIdx: spriteListIdx, lane: lane, offset: frameOffset, value: value)
                 }
 
             case .renderer(let spriteListIdx, let rendererSetIdx, let rendererItemIdx, let lane, let keyframeIdx):
@@ -1625,6 +1641,26 @@ struct TimelinePanel: View {
                         }
                     }
 
+                case .spriteName(let spriteListIdx, let lane, _, var value):
+                    guard let loc = spriteLocation(listIdx: spriteListIdx) else { continue }
+                    value.frame = targetFrame
+                    withDrivers(in: &cfg, si: loc.setIdx, pi: loc.spriteIdx) { drivers in
+                        switch lane {
+                        case .subdivisionSet:
+                            drivers.subdivisionSet.mode = .keyframe
+                            drivers.subdivisionSet.keyframes.removeAll { $0.frame == targetFrame }
+                            drivers.subdivisionSet.keyframes.append(value)
+                            drivers.subdivisionSet.keyframes.sort { $0.frame < $1.frame }
+                        case .rendererSet:
+                            drivers.rendererSet.mode = .keyframe
+                            drivers.rendererSet.keyframes.removeAll { $0.frame == targetFrame }
+                            drivers.rendererSet.keyframes.append(value)
+                            drivers.rendererSet.keyframes.sort { $0.frame < $1.frame }
+                        default:
+                            break
+                        }
+                    }
+
                 case .rendererColor(_, let rendererSetIdx, let rendererItemIdx, let lane, _, var value):
                     value.frame = targetFrame
                     withRendererDrivers(in: &cfg, setIdx: rendererSetIdx, itemIdx: rendererItemIdx) { drivers, renderer in
@@ -1714,7 +1750,8 @@ struct TimelinePanel: View {
             let targetFrame = max(0, insertFrame + copied.offset)
             switch copied {
             case .spriteVector(let spriteListIdx, let lane, _, _),
-                 .spriteDouble(let spriteListIdx, let lane, _, _):
+                 .spriteDouble(let spriteListIdx, let lane, _, _),
+                 .spriteName(let spriteListIdx, let lane, _, _):
                 if let drivers = timelineNodes[safe: spriteListIdx]?.sprite.animation.drivers,
                    let idx = lane.keyframeFrames(from: drivers).firstIndex(of: targetFrame) {
                     items.insert(.sprite(spriteListIdx: spriteListIdx, lane: lane, keyframeIdx: idx))
@@ -1760,6 +1797,10 @@ struct TimelinePanel: View {
                             if keyframeIdx < drivers.opacity.keyframes.count { drivers.opacity.keyframes.remove(at: keyframeIdx) }
                         case .shape:
                             if keyframeIdx < drivers.shape.keyframes.count { drivers.shape.keyframes.remove(at: keyframeIdx) }
+                        case .subdivisionSet:
+                            if keyframeIdx < drivers.subdivisionSet.keyframes.count { drivers.subdivisionSet.keyframes.remove(at: keyframeIdx) }
+                        case .rendererSet:
+                            if keyframeIdx < drivers.rendererSet.keyframes.count { drivers.rendererSet.keyframes.remove(at: keyframeIdx) }
                         }
                     }
                 case .renderer(_, let rendererSetIdx, let rendererItemIdx, let lane, let keyframeIdx):
@@ -1868,12 +1909,14 @@ struct TimelinePanel: View {
                     guard let loc = spriteLocations[si] else { continue }
                     withDrivers(in: &cfg, si: loc.setIdx, pi: loc.spriteIdx) { d in
                         switch lane {
-                        case .position: if ki < d.position.keyframes.count { d.position.keyframes[ki].frame = newFrame }
-                        case .scale:    if ki < d.scale.keyframes.count    { d.scale.keyframes[ki].frame    = newFrame }
-                        case .rotation: if ki < d.rotation.keyframes.count { d.rotation.keyframes[ki].frame = newFrame }
-                        case .morph:    if ki < d.morph.keyframes.count    { d.morph.keyframes[ki].frame    = newFrame }
-                        case .opacity:  if ki < d.opacity.keyframes.count  { d.opacity.keyframes[ki].frame  = newFrame }
-                        case .shape:    if ki < d.shape.keyframes.count    { d.shape.keyframes[ki].frame    = newFrame }
+                        case .position:       if ki < d.position.keyframes.count      { d.position.keyframes[ki].frame      = newFrame }
+                        case .scale:          if ki < d.scale.keyframes.count         { d.scale.keyframes[ki].frame         = newFrame }
+                        case .rotation:       if ki < d.rotation.keyframes.count      { d.rotation.keyframes[ki].frame      = newFrame }
+                        case .morph:          if ki < d.morph.keyframes.count         { d.morph.keyframes[ki].frame         = newFrame }
+                        case .opacity:        if ki < d.opacity.keyframes.count       { d.opacity.keyframes[ki].frame       = newFrame }
+                        case .shape:          if ki < d.shape.keyframes.count         { d.shape.keyframes[ki].frame         = newFrame }
+                        case .subdivisionSet: if ki < d.subdivisionSet.keyframes.count { d.subdivisionSet.keyframes[ki].frame = newFrame }
+                        case .rendererSet:    if ki < d.rendererSet.keyframes.count   { d.rendererSet.keyframes[ki].frame   = newFrame }
                         }
                     }
                     sortSprites.insert(loc.setIdx * 100_000 + loc.spriteIdx)
@@ -1903,12 +1946,14 @@ struct TimelinePanel: View {
             for key in sortSprites {
                 let si = key / 100_000; let pi = key % 100_000
                 withDrivers(in: &cfg, si: si, pi: pi) { d in
-                    d.position.keyframes.sort { $0.frame < $1.frame }
-                    d.scale.keyframes.sort    { $0.frame < $1.frame }
-                    d.rotation.keyframes.sort { $0.frame < $1.frame }
-                    d.morph.keyframes.sort    { $0.frame < $1.frame }
-                    d.opacity.keyframes.sort  { $0.frame < $1.frame }
-                    d.shape.keyframes.sort    { $0.frame < $1.frame }
+                    d.position.keyframes.sort       { $0.frame < $1.frame }
+                    d.scale.keyframes.sort          { $0.frame < $1.frame }
+                    d.rotation.keyframes.sort       { $0.frame < $1.frame }
+                    d.morph.keyframes.sort          { $0.frame < $1.frame }
+                    d.opacity.keyframes.sort        { $0.frame < $1.frame }
+                    d.shape.keyframes.sort          { $0.frame < $1.frame }
+                    d.subdivisionSet.keyframes.sort { $0.frame < $1.frame }
+                    d.rendererSet.keyframes.sort    { $0.frame < $1.frame }
                 }
             }
             for key in sortRenderers {
@@ -1964,6 +2009,14 @@ struct TimelinePanel: View {
                     guard kfIdx < drivers.shape.keyframes.count else { return }
                     drivers.shape.keyframes[kfIdx].frame = newFrame
                     drivers.shape.keyframes.sort { $0.frame < $1.frame }
+                case .subdivisionSet:
+                    guard kfIdx < drivers.subdivisionSet.keyframes.count else { return }
+                    drivers.subdivisionSet.keyframes[kfIdx].frame = newFrame
+                    drivers.subdivisionSet.keyframes.sort { $0.frame < $1.frame }
+                case .rendererSet:
+                    guard kfIdx < drivers.rendererSet.keyframes.count else { return }
+                    drivers.rendererSet.keyframes[kfIdx].frame = newFrame
+                    drivers.rendererSet.keyframes.sort { $0.frame < $1.frame }
                 }
             }
         }
@@ -2024,6 +2077,27 @@ struct TimelinePanel: View {
                     let v = interpolateDouble(drivers.shape.keyframes, at: frame, neutral: 0)
                     drivers.shape.keyframes.append(DoubleKeyframe(frame: frame, value: v, easing: .linear))
                     drivers.shape.keyframes.sort { $0.frame < $1.frame }
+                case .subdivisionSet:
+                    drivers.subdivisionSet.mode = .keyframe
+                    drivers.subdivisionSet.enabled = true
+                    // Step driver: use the current value at this frame (walk keyframes)
+                    let currentVal: String = {
+                        let sorted = drivers.subdivisionSet.keyframes.sorted { $0.frame < $1.frame }
+                        return sorted.last(where: { $0.frame <= frame })?.value ?? drivers.subdivisionSet.base
+                    }()
+                    drivers.subdivisionSet.keyframes.removeAll { $0.frame == frame }
+                    drivers.subdivisionSet.keyframes.append(NameKeyframe(frame: frame, value: currentVal))
+                    drivers.subdivisionSet.keyframes.sort { $0.frame < $1.frame }
+                case .rendererSet:
+                    drivers.rendererSet.mode = .keyframe
+                    drivers.rendererSet.enabled = true
+                    let currentVal: String = {
+                        let sorted = drivers.rendererSet.keyframes.sorted { $0.frame < $1.frame }
+                        return sorted.last(where: { $0.frame <= frame })?.value ?? drivers.rendererSet.base
+                    }()
+                    drivers.rendererSet.keyframes.removeAll { $0.frame == frame }
+                    drivers.rendererSet.keyframes.append(NameKeyframe(frame: frame, value: currentVal))
+                    drivers.rendererSet.keyframes.sort { $0.frame < $1.frame }
                 }
             }
         }
@@ -2178,6 +2252,12 @@ struct TimelinePanel: View {
                 case .shape:
                     guard kfIdx < drivers.shape.keyframes.count else { return }
                     drivers.shape.keyframes.remove(at: kfIdx)
+                case .subdivisionSet:
+                    guard kfIdx < drivers.subdivisionSet.keyframes.count else { return }
+                    drivers.subdivisionSet.keyframes.remove(at: kfIdx)
+                case .rendererSet:
+                    guard kfIdx < drivers.rendererSet.keyframes.count else { return }
+                    drivers.rendererSet.keyframes.remove(at: kfIdx)
                 }
             }
         }
@@ -2445,12 +2525,14 @@ struct TimelinePanel: View {
 
     private func allKeyframeFrames(drivers: TransformDrivers) -> [Int] {
         var frames = Set<Int>()
-        drivers.position.keyframes.forEach { frames.insert($0.frame) }
-        drivers.scale.keyframes.forEach    { frames.insert($0.frame) }
-        drivers.rotation.keyframes.forEach { frames.insert($0.frame) }
-        drivers.morph.keyframes.forEach    { frames.insert($0.frame) }
-        drivers.opacity.keyframes.forEach  { frames.insert($0.frame) }
-        drivers.shape.keyframes.forEach    { frames.insert($0.frame) }
+        drivers.position.keyframes.forEach      { frames.insert($0.frame) }
+        drivers.scale.keyframes.forEach         { frames.insert($0.frame) }
+        drivers.rotation.keyframes.forEach      { frames.insert($0.frame) }
+        drivers.morph.keyframes.forEach         { frames.insert($0.frame) }
+        drivers.opacity.keyframes.forEach       { frames.insert($0.frame) }
+        drivers.shape.keyframes.forEach         { frames.insert($0.frame) }
+        drivers.subdivisionSet.keyframes.forEach { frames.insert($0.frame) }
+        drivers.rendererSet.keyframes.forEach   { frames.insert($0.frame) }
         return frames.sorted()
     }
 

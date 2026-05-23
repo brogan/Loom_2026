@@ -548,12 +548,14 @@ private struct DriverSectionsView: View {
     let setIdx: Int
     let spriteIdx: Int
 
-    @State private var posCollapsed = true
-    @State private var sclCollapsed = true
-    @State private var rotCollapsed = true
-    @State private var mphCollapsed = true
+    @State private var posCollapsed  = true
+    @State private var sclCollapsed  = true
+    @State private var rotCollapsed  = true
+    @State private var mphCollapsed  = true
     @State private var opacCollapsed = true
-    @State private var shpCollapsed = true
+    @State private var shpCollapsed  = true
+    @State private var subdivSetDriverCollapsed = true
+    @State private var rendSetDriverCollapsed   = true
     @State private var mtCollapsed  = true
     @State private var svCollapsed  = true
 
@@ -573,6 +575,20 @@ private struct DriverSectionsView: View {
                                isHighlighted: selectedLane == .opacity)
             DoubleDriverEditor(label: "Shape",    driver: db.shape,    isCollapsed: $shpCollapsed,
                                isHighlighted: selectedLane == .shape)
+            NameDriverEditor(
+                label: "Subdivision Set Driver",
+                driver: db.subdivisionSet,
+                isCollapsed: $subdivSetDriverCollapsed,
+                isHighlighted: selectedLane == .subdivisionSet,
+                options: controller.projectConfig?.subdivisionConfig.paramsSets.map(\.name) ?? []
+            )
+            NameDriverEditor(
+                label: "Renderer Set Driver",
+                driver: db.rendererSet,
+                isCollapsed: $rendSetDriverCollapsed,
+                isHighlighted: selectedLane == .rendererSet,
+                options: controller.projectConfig?.renderingConfig.library.rendererSets.map(\.name) ?? []
+            )
             morphTargetsSection
             shapeVariantsSection
         }
@@ -695,12 +711,14 @@ private struct DriverSectionsView: View {
 
     private func syncCollapsed() {
         guard let d = currentDrivers else { return }
-        posCollapsed  = !d.position.enabled && d.position.keyframes.isEmpty
-        sclCollapsed  = !d.scale.enabled    && d.scale.keyframes.isEmpty
-        rotCollapsed  = !d.rotation.enabled && d.rotation.keyframes.isEmpty
-        mphCollapsed  = !d.morph.enabled    && d.morph.keyframes.isEmpty
-        opacCollapsed = !d.opacity.enabled  && d.opacity.keyframes.isEmpty
-        shpCollapsed  = !d.shape.enabled    && d.shape.keyframes.isEmpty
+        posCollapsed  = !d.position.enabled      && d.position.keyframes.isEmpty
+        sclCollapsed  = !d.scale.enabled         && d.scale.keyframes.isEmpty
+        rotCollapsed  = !d.rotation.enabled      && d.rotation.keyframes.isEmpty
+        mphCollapsed  = !d.morph.enabled         && d.morph.keyframes.isEmpty
+        opacCollapsed = !d.opacity.enabled       && d.opacity.keyframes.isEmpty
+        shpCollapsed  = !d.shape.enabled         && d.shape.keyframes.isEmpty
+        subdivSetDriverCollapsed = !d.subdivisionSet.enabled && d.subdivisionSet.keyframes.isEmpty
+        rendSetDriverCollapsed   = !d.rendererSet.enabled   && d.rendererSet.keyframes.isEmpty
         let sprite = controller.projectConfig?.spriteConfig.library
                          .spriteSets[safe: setIdx]?.sprites[safe: spriteIdx]
         mtCollapsed = sprite?.morphTargetNames.isEmpty != false
@@ -714,35 +732,41 @@ private struct DriverSectionsView: View {
     }
 
     private var driverCollapsedCount: Int {
-        [posCollapsed, sclCollapsed, rotCollapsed, mphCollapsed, opacCollapsed, shpCollapsed]
+        [posCollapsed, sclCollapsed, rotCollapsed, mphCollapsed, opacCollapsed, shpCollapsed,
+         subdivSetDriverCollapsed, rendSetDriverCollapsed]
             .filter { $0 }.count
     }
 
     private var unusedDriverCount: Int {
         guard let d = currentDrivers else { return 0 }
         return [
-            !d.position.enabled && d.position.keyframes.isEmpty && !posCollapsed,
-            !d.scale.enabled    && d.scale.keyframes.isEmpty    && !sclCollapsed,
-            !d.rotation.enabled && d.rotation.keyframes.isEmpty && !rotCollapsed,
-            !d.morph.enabled    && d.morph.keyframes.isEmpty    && !mphCollapsed,
-            !d.opacity.enabled  && d.opacity.keyframes.isEmpty  && !opacCollapsed,
-            !d.shape.enabled    && d.shape.keyframes.isEmpty    && !shpCollapsed,
+            !d.position.enabled      && d.position.keyframes.isEmpty      && !posCollapsed,
+            !d.scale.enabled         && d.scale.keyframes.isEmpty         && !sclCollapsed,
+            !d.rotation.enabled      && d.rotation.keyframes.isEmpty      && !rotCollapsed,
+            !d.morph.enabled         && d.morph.keyframes.isEmpty         && !mphCollapsed,
+            !d.opacity.enabled       && d.opacity.keyframes.isEmpty       && !opacCollapsed,
+            !d.shape.enabled         && d.shape.keyframes.isEmpty         && !shpCollapsed,
+            !d.subdivisionSet.enabled && d.subdivisionSet.keyframes.isEmpty && !subdivSetDriverCollapsed,
+            !d.rendererSet.enabled   && d.rendererSet.keyframes.isEmpty   && !rendSetDriverCollapsed,
         ].filter { $0 }.count
     }
 
     private func collapseUnusedDriverSections() {
         guard let d = currentDrivers else { return }
-        if !d.position.enabled && d.position.keyframes.isEmpty { posCollapsed = true }
-        if !d.scale.enabled    && d.scale.keyframes.isEmpty    { sclCollapsed = true }
-        if !d.rotation.enabled && d.rotation.keyframes.isEmpty { rotCollapsed = true }
-        if !d.morph.enabled    && d.morph.keyframes.isEmpty    { mphCollapsed = true }
-        if !d.opacity.enabled  && d.opacity.keyframes.isEmpty  { opacCollapsed = true }
-        if !d.shape.enabled    && d.shape.keyframes.isEmpty    { shpCollapsed = true }
+        if !d.position.enabled      && d.position.keyframes.isEmpty      { posCollapsed = true }
+        if !d.scale.enabled         && d.scale.keyframes.isEmpty         { sclCollapsed = true }
+        if !d.rotation.enabled      && d.rotation.keyframes.isEmpty      { rotCollapsed = true }
+        if !d.morph.enabled         && d.morph.keyframes.isEmpty         { mphCollapsed = true }
+        if !d.opacity.enabled       && d.opacity.keyframes.isEmpty       { opacCollapsed = true }
+        if !d.shape.enabled         && d.shape.keyframes.isEmpty         { shpCollapsed = true }
+        if !d.subdivisionSet.enabled && d.subdivisionSet.keyframes.isEmpty { subdivSetDriverCollapsed = true }
+        if !d.rendererSet.enabled   && d.rendererSet.keyframes.isEmpty   { rendSetDriverCollapsed = true }
     }
 
     private func expandAllDriverSections() {
         posCollapsed = false; sclCollapsed = false; rotCollapsed = false
         mphCollapsed = false; opacCollapsed = false; shpCollapsed = false
+        subdivSetDriverCollapsed = false; rendSetDriverCollapsed = false
     }
 
     @ViewBuilder

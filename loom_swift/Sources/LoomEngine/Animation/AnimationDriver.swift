@@ -302,6 +302,74 @@ public struct ColorDriver: Codable, Equatable, Sendable {
     }
 }
 
+// MARK: - NameKeyframe / NameDriver
+
+/// One keyframe on a name (String) track — used for subdivision-set and renderer-set drivers.
+public struct NameKeyframe: Codable, Equatable, Sendable {
+    public var frame: Int
+    public var value: String
+
+    public init(frame: Int = 0, value: String = "") {
+        self.frame = frame
+        self.value = value
+    }
+}
+
+/// Selects a named configuration set (renderer set or subdivision-params set) each frame.
+/// Nil return from `evaluateName` means "don't override; keep the sprite's static assignment".
+public struct NameDriver: Codable, Equatable, Sendable {
+
+    public enum Mode: String, Codable, CaseIterable, Equatable, Sendable {
+        case constant, keyframe, jitter
+    }
+
+    public var mode:       Mode           = .constant
+    /// Constant / fallback set name.
+    public var base:       String         = ""
+    /// Ordered set-name keyframes (step semantics — no interpolation).
+    public var keyframes:  [NameKeyframe] = []
+    /// Pool of set names for jitter mode.
+    public var jitterPool: [String]       = []
+    /// Deterministic random seed (jitter mode).
+    public var seed:       Int            = 0
+    /// How the keyframe sequence repeats.
+    public var loopMode:   LoopMode       = .loop
+    /// When false the driver is bypassed.
+    public var enabled:    Bool           = false
+
+    public init(
+        mode:       Mode           = .constant,
+        base:       String         = "",
+        keyframes:  [NameKeyframe] = [],
+        jitterPool: [String]       = [],
+        seed:       Int            = 0,
+        loopMode:   LoopMode       = .loop,
+        enabled:    Bool           = false
+    ) {
+        self.mode = mode; self.base = base; self.keyframes = keyframes
+        self.jitterPool = jitterPool; self.seed = seed
+        self.loopMode = loopMode; self.enabled = enabled
+    }
+
+    /// Disabled default — absent from JSON is equivalent to `.disabled`.
+    public static let disabled = NameDriver()
+
+    private enum CodingKeys: String, CodingKey {
+        case mode, base, keyframes, jitterPool, seed, loopMode, enabled
+    }
+
+    public init(from decoder: Decoder) throws {
+        let c      = try decoder.container(keyedBy: CodingKeys.self)
+        mode       = try c.decodeIfPresent(Mode.self,           forKey: .mode)       ?? .constant
+        base       = try c.decodeIfPresent(String.self,         forKey: .base)       ?? ""
+        keyframes  = try c.decodeIfPresent([NameKeyframe].self, forKey: .keyframes)  ?? []
+        jitterPool = try c.decodeIfPresent([String].self,       forKey: .jitterPool) ?? []
+        seed       = try c.decodeIfPresent(Int.self,            forKey: .seed)       ?? 0
+        loopMode   = try c.decodeIfPresent(LoopMode.self,       forKey: .loopMode)   ?? .loop
+        enabled    = try c.decodeIfPresent(Bool.self,           forKey: .enabled)    ?? false
+    }
+}
+
 // MARK: - DriverEvaluator
 
 /// Stateless evaluation of DoubleDriver and VectorDriver at a given global elapsed frame count.
@@ -519,6 +587,64 @@ public enum DriverEvaluator {
             return max(0, Int(result))
         default:
             return max(0, Int(driver.base))
+        }
+    }
+
+    // MARK: - NameDriver evaluation
+
+    /// Evaluates a `NameDriver` and returns the active set name, or `nil` to indicate
+    /// "no override — keep the sprite's static assignment".
+    ///
+    /// - `.constant`: returns `base`; nil if base is empty.
+    /// - `.keyframe`: step function — finds the last keyframe whose frame ≤ normalised
+    ///   elapsed and returns its value; nil if value is empty.
+    /// - `.jitter`:   deterministic pick from `jitterPool`; nil if pool is empty.
+    public static func evaluateName(
+        _ driver: NameDriver,
+        globalElapsed: Double,
+        spriteIndex: Int
+    ) -> String? {
+        switch driver.mode {
+
+        case .constant:
+            return driver.base.isEmpty ? nil : driver.base
+
+        case .keyframe:
+            guard !driver.keyframes.isEmpty else { return driver.base.isEmpty ? nil : driver.base }
+            let sorted = driver.keyframes.sorted { $0.frame < $1.frame }
+            guard globalElapsed >= Double(sorted.first!.frame) else {
+                return driver.base.isEmpty ? nil : driver.base
+            }
+            // Inline normalizeElapsed logic (private on DriverEvaluator)
+            let total = sorted.last!.frame
+            let normalized: Double = {
+                guard total > 0 else { return globalElapsed }
+                let t = Double(total)
+                switch driver.loopMode {
+                case .loop:
+                    return globalElapsed.truncatingRemainder(dividingBy: t)
+                case .once:
+                    return min(globalElapsed, t)
+                case .pingPong:
+                    let period = t * 2
+                    let n = globalElapsed.truncatingRemainder(dividingBy: period)
+                    return n <= t ? n : period - n
+                }
+            }()
+            var result = sorted.first!.value
+            for kf in sorted {
+                guard Double(kf.frame) <= normalized else { break }
+                result = kf.value
+            }
+            return result.isEmpty ? nil : result
+
+        case .jitter:
+            guard !driver.jitterPool.isEmpty else { return nil }
+            let h = hash(seed: driver.seed, spriteIndex: spriteIndex, frame: Int(globalElapsed))
+            let idx = Int(h * Double(driver.jitterPool.count))
+            let clamped = max(0, min(driver.jitterPool.count - 1, idx))
+            let name = driver.jitterPool[clamped]
+            return name.isEmpty ? nil : name
         }
     }
 
