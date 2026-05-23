@@ -169,7 +169,12 @@ struct GlobalInspector: View {
             InspectorField("Scale img") {
                 Toggle("", isOn: bind(\.scaleImage)).labelsHidden()
             }
-            .loomHelp("When on, the background image is scaled to fill the canvas. When off, it is drawn at its original pixel size.")
+            .loomHelp("When on, stroke widths, point sizes, and brush metrics are scaled by the quality multiplier so the output looks identical to the 1× render when scaled down. When off, those values stay at their logical-pixel sizes.")
+            InspectorField("Softness") {
+                FloatEntryField(value: bind(\.renderSoftness), width: 50, fractionDigits: 1)
+                Text("px").font(.system(size: 11)).foregroundStyle(.secondary)
+            }
+            .loomHelp("Gaussian blur radius applied to each rendered frame, in logical pixels. Scaled by the quality multiplier at render time. Use to match the softer anti-aliasing appearance of lower-quality renders. 0 = off.")
             InspectorField("BG image") {
                 let path = bind(\.backgroundImagePath).wrappedValue
                 if !path.isEmpty {

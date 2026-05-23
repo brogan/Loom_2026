@@ -24,6 +24,10 @@ public struct GlobalConfig: Equatable, Codable, Sendable {
     /// Default 30 matches the typical Scala Loom frame rate.
     public var targetFPS: Double          = 30.0
     public var note: String               = ""
+    /// Gaussian blur radius applied to each rendered frame, in logical pixels.
+    /// Scaled by qualityMultiple at render time so the visual effect is
+    /// consistent across quality settings. 0 = off.
+    public var renderSoftness: Double     = 0.0
     /// First frame included in playback and export. 0 = from the beginning.
     public var startFrame: Int            = 0
     /// Last frame included in playback and export. 0 = derive from sprite totalDraws (auto).
@@ -41,7 +45,7 @@ public struct GlobalConfig: Equatable, Codable, Sendable {
         case name, width, height, qualityMultiple, scaleImage, animating
         case drawBackgroundOnce, fullscreen, borderColor, borderWidth
         case backgroundColor, overlayColor, backgroundImagePath
-        case threeD, cameraViewAngle, subdividing, targetFPS, note, camera
+        case threeD, cameraViewAngle, subdividing, targetFPS, note, renderSoftness, camera
         case startFrame
         case endFrame = "duration"
     }
@@ -68,6 +72,7 @@ public struct GlobalConfig: Equatable, Codable, Sendable {
         subdividing        = try c.decodeIfPresent(Bool.self,          forKey: .subdividing)        ?? true
         targetFPS          = try c.decodeIfPresent(Double.self,        forKey: .targetFPS)          ?? 30.0
         note               = try c.decodeIfPresent(String.self,        forKey: .note)               ?? ""
+        renderSoftness     = try c.decodeIfPresent(Double.self,        forKey: .renderSoftness)     ?? 0.0
         startFrame         = try c.decodeIfPresent(Int.self,           forKey: .startFrame)         ?? 0
         endFrame           = try c.decodeIfPresent(Int.self,           forKey: .endFrame)           ?? 0
         camera             = try c.decodeIfPresent(CameraConfig.self,  forKey: .camera)             ?? .disabled

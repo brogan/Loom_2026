@@ -38,6 +38,10 @@ public struct LoomEngine: @unchecked Sendable {
 
     private var scene:          SpriteScene
     private let config:         ProjectConfig
+
+    // Shared CIContext — expensive to create, safe to reuse across frames.
+    // nonisolated(unsafe): CIContext is internally thread-safe for createCGImage.
+    private nonisolated(unsafe) static let ciContext = CIContext(options: [.useSoftwareRenderer: false])
     private let viewTransform:  ViewTransform
     private let backgroundImage: CGImage?   // nil when backgroundImagePath is empty or unreadable
     private let brushImages:    [String: CGImage]  // keyed by filename, from <project>/brushes/
@@ -229,11 +233,31 @@ public struct LoomEngine: @unchecked Sendable {
         let h = Int(viewTransform.canvasSize.height)
         guard w > 0, h > 0 else { return nil }
 
+        let raw: CGImage?
         if config.globalConfig.drawBackgroundOnce {
-            return makeAccumulatedFrame(width: w, height: h)
+            raw = makeAccumulatedFrame(width: w, height: h)
         } else {
-            return makeFreshFrame(width: w, height: h)
+            raw = makeFreshFrame(width: w, height: h)
         }
+        guard let raw else { return nil }
+        guard config.globalConfig.renderSoftness > 0 else { return raw }
+        return applyRenderSoftness(to: raw) ?? raw
+    }
+
+    /// Applies a Gaussian blur of radius `renderSoftness × qualityMultiple` pixels.
+    /// Returns nil if the blur cannot be applied (falls back to the original frame).
+    private func applyRenderSoftness(to image: CGImage) -> CGImage? {
+        let radius = config.globalConfig.renderSoftness
+                   * Double(max(1, config.globalConfig.qualityMultiple))
+        let input  = CIImage(cgImage: image)
+        guard let filter = CIFilter(name: "CIGaussianBlur",
+                                    parameters: [kCIInputImageKey:  input,
+                                                 kCIInputRadiusKey: radius]),
+              let output = filter.outputImage
+        else { return nil }
+        // CIGaussianBlur expands the extent; crop back to the original canvas bounds.
+        let cropped = output.cropped(to: input.extent)
+        return Self.ciContext.createCGImage(cropped, from: input.extent)
     }
 
     // MARK: - Private render implementation
@@ -291,6 +315,7 @@ public struct LoomEngine: @unchecked Sendable {
         }
 
         let borderWidth = max(0.0, config.globalConfig.borderWidth)
+                       * Double(max(1, config.globalConfig.qualityMultiple))
         guard borderWidth > 0 else { return }
 
         context.saveGState()
