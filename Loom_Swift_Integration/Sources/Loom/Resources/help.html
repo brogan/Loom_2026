@@ -189,6 +189,12 @@
   <a class="nav-link nav-sub" href="#overview-workflow">Core Workflow</a>
   <a class="nav-link nav-sub" href="#overview-project">Project Structure</a>
 
+  <div class="nav-section">Foundations</div>
+  <a class="nav-link" href="#foundations">Concepts &amp; Geometry</a>
+  <a class="nav-link nav-sub" href="#foundations-vectors">Vector Geometry</a>
+  <a class="nav-link nav-sub" href="#foundations-bezier">Bézier Curves</a>
+  <a class="nav-link nav-sub" href="#foundations-subdivision">Recursive Subdivision</a>
+
   <div class="nav-section">Getting Started</div>
   <a class="nav-link" href="#start">Quick Start</a>
   <a class="nav-link nav-sub" href="#start-new">New Project</a>
@@ -233,6 +239,7 @@
   <a class="nav-link nav-sub" href="#animation-camera">Camera</a>
   <a class="nav-link nav-sub" href="#animation-parallax">Depth &amp; Parallax</a>
   <a class="nav-link nav-sub" href="#animation-morph">Morph Targets</a>
+  <a class="nav-link nav-sub" href="#animation-set-swap">Set Swap Drivers</a>
   <a class="nav-link nav-sub" href="#animation-easing">Easing Algorithms</a>
 
   <div class="nav-section">Export</div>
@@ -253,7 +260,18 @@
 <!-- ────────────────────────────────────────────────── -->
 <section id="overview">
   <h2>What is Loom?</h2>
-  <p>Loom is a generative art environment for creating still images and animations driven by geometric subdivision, procedural rendering, and keyframe animation. It is designed for visual experimentation — each project is a composition of shapes, subdivision rules, and rendering styles that combine to produce imagery ranging from technical line drawings to richly textured organic forms.</p>
+
+  <p>Loom is a generative art environment built around the computational affordances that make software fundamentally different from physical drawing — not a simulation of analogue tools, but a space to explore what computation alone makes possible.</p>
+
+  <p>Three affordances are central to how Loom works:</p>
+
+  <ul>
+    <li><strong>Separation of concerns.</strong> Geometry, subdivision rules, and rendering style are defined independently and combined at render time. The same polygon can be subdivided twenty different ways and rendered twenty different ways — none of those choices are baked into the geometry itself. Changing a subdivision rule or renderer propagates instantly to every sprite that uses it.</li>
+    <li><strong>Recursive subdivision.</strong> A single polygon can be subdivided repeatedly, each pass splitting its children according to rules. Five levels of Quad subdivision on a square produces thousands of sub-polygons. The emergent complexity arises purely from the algorithm and the initial geometry — you draw one shape, the machine multiplies it.</li>
+    <li><strong>Parametric animation.</strong> Properties do not only move between keyframes. Noise, oscillators, jitter, and set-swap drivers produce behaviour over time without any keyframes at all. A single noise driver on a renderer colour produces an organic breathing effect across an entire frame range. Jitter drivers on subdivision or renderer set assignments create rapid structural variation frame by frame.</li>
+  </ul>
+
+  <div class="note"><strong>A note on approachability.</strong> Loom is less intuitive than ordinary drawing or animation software. Its pipeline — geometry → subdivision → rendering → animation — requires understanding each stage before they can be meaningfully combined. The reward for that investment is a depth of creative exploration that would be impossible to reach by hand: structural variation at scale, live set switching, recursive fractal-like complexity generated from simple inputs. The <a href="#foundations">Foundations</a> section below introduces the core geometric concepts if you are coming to Loom without a background in vector geometry or subdivision.</div>
 
   <div class="diagram">
     <svg width="560" height="110" viewBox="0 0 560 110" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -281,22 +299,26 @@
       <text x="445" y="50" text-anchor="middle" font-size="11" fill="#cccccc" font-family="-apple-system">Export</text>
       <text x="445" y="65" text-anchor="middle" font-size="10" fill="#888" font-family="-apple-system">PNG · SVG · MP4</text>
     </svg>
-    <figcaption>The four-stage pipeline from geometry through to output</figcaption>
+    <figcaption>The four-stage pipeline. Each stage is independent — the same geometry feeds any subdivision, which feeds any renderer.</figcaption>
   </div>
 
   <h3>Distinguishing features</h3>
   <div class="card-grid">
     <div class="card">
       <div class="card-title">Subdivision engine</div>
-      <div class="card-desc">20+ algorithms — Quad, Tri, Split, Echo, Star — each with ratio, inset, and per-wall colour controls.</div>
+      <div class="card-desc">20+ algorithms — Quad, Tri, Split, Echo, Star — each with ratio, inset, and per-wall colour controls. Apply recursively to any depth.</div>
     </div>
     <div class="card">
       <div class="card-title">Animated rendering</div>
-      <div class="card-desc">Custom brush and stamp PNG patterns, stencil masking, progressive drawing, and colour, width, and opacity animation on every renderer.</div>
+      <div class="card-desc">Custom brush and stamp PNG patterns, stencil masking, progressive drawing, and colour, width, opacity, and blur animation on every renderer.</div>
     </div>
     <div class="card">
       <div class="card-title">Procedural drivers</div>
-      <div class="card-desc">Noise, oscillator, jitter, and keyframe drivers animate sprite transforms, sprite opacity, camera motion, and renderer-level fill, stroke, width, and opacity.</div>
+      <div class="card-desc">Noise, oscillator, jitter, and keyframe drivers animate sprite transforms, camera motion, renderer-level colour, width, opacity — and now the active subdivision and renderer sets themselves.</div>
+    </div>
+    <div class="card">
+      <div class="card-title">Set swap drivers</div>
+      <div class="card-desc">Animate which subdivision parameter set or renderer set is active per sprite, per frame — via keyframe steps or jitter pools with rate control.</div>
     </div>
     <div class="card">
       <div class="card-title">Morph targets</div>
@@ -340,6 +362,154 @@
       <tr><td><code>renders/</code></td><td>PNG stills and exported video files</td></tr>
     </tbody>
   </table>
+</section>
+
+<!-- ────────────────────────────────────────────────── -->
+<section id="foundations">
+  <h2>Foundations: Geometry, Curves &amp; Subdivision</h2>
+  <p>This section is a gentle introduction to the geometric ideas that Loom is built on. If you already have a background in vector graphics or computational geometry, most of this will be familiar and you can skip ahead. If you are coming to Loom primarily as an artist, read through once — the concepts here explain why Loom behaves the way it does and will help you make better creative decisions with it.</p>
+
+  <h3 id="foundations-vectors">Vector geometry</h3>
+
+  <h4>Points and coordinates</h4>
+  <p>Everything in Loom starts with <strong>points</strong> — positions in 2D space described by two numbers, an <em>x</em> (horizontal) coordinate and a <em>y</em> (vertical) coordinate. A point at (0, 0) is the centre of the canvas. Positive x goes right; positive y goes up.</p>
+  <p>Unlike raster (pixel) images, which store a colour for every pixel in a fixed grid, vector geometry stores only the mathematical descriptions of shapes — the coordinates of corners and control points. This means a vector shape can be drawn at any size without losing quality, and it can be precisely manipulated, subdivided, and transformed by algorithms.</p>
+
+  <h4>Polygons</h4>
+  <p>A <strong>polygon</strong> is a closed shape defined by an ordered list of points (called <em>vertices</em>) connected by straight edges. A triangle has three vertices; a square has four; a complex silhouette might have hundreds. The edges are implied by the order of the vertices — each vertex connects to the next, and the last connects back to the first.</p>
+  <p>Loom works primarily with polygons. Every piece of geometry you draw or import is stored as one or more polygons. Subdivision takes those polygons and splits them into smaller polygons according to a rule — but every result is still just polygons, which is why the process can be repeated recursively without limit.</p>
+
+  <h4>Open curves and point clouds</h4>
+  <p>Loom also supports <strong>open curves</strong> (a sequence of vertices that does not close) and <strong>point clouds</strong> (isolated dots). Open curves are subdivided and rendered as strokes rather than filled shapes. Point clouds are rendered as individual dots or brush stamps placed at each point position.</p>
+
+  <div class="diagram">
+    <svg width="480" height="110" viewBox="0 0 480 110" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <!-- Polygon -->
+      <polygon points="55,20 95,20 110,55 75,90 35,90 20,55" fill="#252526" stroke="#7aafff" stroke-width="1.5"/>
+      <text x="65" y="105" text-anchor="middle" font-size="9" fill="#7aafff" font-family="-apple-system">Polygon (closed)</text>
+      <circle cx="55" cy="20" r="3" fill="#7aafff"/>
+      <circle cx="95" cy="20" r="3" fill="#7aafff"/>
+      <circle cx="110" cy="55" r="3" fill="#7aafff"/>
+      <circle cx="75" cy="90" r="3" fill="#7aafff"/>
+      <circle cx="35" cy="90" r="3" fill="#7aafff"/>
+      <circle cx="20" cy="55" r="3" fill="#7aafff"/>
+      <!-- Open curve -->
+      <polyline points="155,80 175,30 210,60 240,25 265,70" fill="none" stroke="#5ac85a" stroke-width="1.5"/>
+      <circle cx="155" cy="80" r="3" fill="#5ac85a"/>
+      <circle cx="175" cy="30" r="3" fill="#5ac85a"/>
+      <circle cx="210" cy="60" r="3" fill="#5ac85a"/>
+      <circle cx="240" cy="25" r="3" fill="#5ac85a"/>
+      <circle cx="265" cy="70" r="3" fill="#5ac85a"/>
+      <text x="210" y="105" text-anchor="middle" font-size="9" fill="#5ac85a" font-family="-apple-system">Open curve</text>
+      <!-- Point cloud -->
+      <circle cx="320" cy="35" r="3.5" fill="#e08840"/>
+      <circle cx="345" cy="55" r="3.5" fill="#e08840"/>
+      <circle cx="360" cy="25" r="3.5" fill="#e08840"/>
+      <circle cx="340" cy="75" r="3.5" fill="#e08840"/>
+      <circle cx="375" cy="65" r="3.5" fill="#e08840"/>
+      <circle cx="395" cy="40" r="3.5" fill="#e08840"/>
+      <circle cx="310" cy="65" r="3.5" fill="#e08840"/>
+      <circle cx="385" cy="80" r="3.5" fill="#e08840"/>
+      <text x="352" y="105" text-anchor="middle" font-size="9" fill="#e08840" font-family="-apple-system">Point cloud</text>
+    </svg>
+    <figcaption>The three geometry types in Loom — polygon (closed, blue), open curve (green), point cloud (orange)</figcaption>
+  </div>
+
+  <h4>Why keep geometry separate from style?</h4>
+  <p>In most drawing software, the stroke colour, fill, and line weight are properties of the shape itself. In Loom they are not — the polygon stores only the vertex positions. Colour, fill, brush, and rendering mode are all defined in the <em>renderer set</em>, which is assigned to a sprite at the project level. This separation means you can take one polygon and instantly compare it with twenty different rendering approaches, or share the same renderer across twenty different geometries. It is a deliberately computational model that enables systematic visual exploration.</p>
+
+  <h3 id="foundations-bezier">Bézier curves</h3>
+
+  <h4>What is a Bézier curve?</h4>
+  <p>A <strong>Bézier curve</strong> is a smooth curve defined by a small number of <em>control points</em>. The curve passes through the first and last control points (called <em>anchors</em>) and is <em>pulled toward</em> — but does not necessarily pass through — the intermediate control points (called <em>handles</em>). The mathematical formula blends between the control points using a parameter <em>t</em> that runs from 0 to 1, tracing the curve from start to end.</p>
+
+  <p>Loom uses <strong>cubic Bézier curves</strong> — four control points per segment: two anchors and two handles. Every edge of a polygon in Loom can optionally carry a curve weight and direction that bends it as if it were a Bézier segment. An edge with zero curvature is a straight line; as curvature increases the edge bows inward or outward.</p>
+
+  <div class="diagram">
+    <svg width="480" height="130" viewBox="0 0 480 130" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <!-- LEFT: straight edge -->
+      <circle cx="60" cy="70" r="5" fill="#7aafff"/>
+      <circle cx="160" cy="70" r="5" fill="#7aafff"/>
+      <line x1="60" y1="70" x2="160" y2="70" stroke="#7aafff" stroke-width="1.5"/>
+      <text x="110" y="100" text-anchor="middle" font-size="9" fill="#888" font-family="-apple-system">Straight edge</text>
+      <text x="110" y="112" text-anchor="middle" font-size="9" fill="#888" font-family="-apple-system">(curvature = 0)</text>
+      <!-- RIGHT: bezier -->
+      <circle cx="280" cy="90" r="5" fill="#7aafff"/>
+      <circle cx="400" cy="90" r="5" fill="#7aafff"/>
+      <circle cx="305" cy="25" r="4" fill="#e08840" stroke="#e08840" stroke-width="1"/>
+      <circle cx="375" cy="25" r="4" fill="#e08840" stroke="#e08840" stroke-width="1"/>
+      <line x1="280" y1="90" x2="305" y2="25" stroke="#e0884060" stroke-width="1" stroke-dasharray="3,2"/>
+      <line x1="400" y1="90" x2="375" y2="25" stroke="#e0884060" stroke-width="1" stroke-dasharray="3,2"/>
+      <path d="M280,90 C305,25 375,25 400,90" fill="none" stroke="#7aafff" stroke-width="1.8"/>
+      <text x="280" y="108" font-size="9" fill="#7aafff" font-family="-apple-system">anchor</text>
+      <text x="390" y="108" font-size="9" fill="#7aafff" font-family="-apple-system">anchor</text>
+      <text x="295" y="22" font-size="9" fill="#e08840" font-family="-apple-system">handle</text>
+      <text x="365" y="22" font-size="9" fill="#e08840" font-family="-apple-system">handle</text>
+      <text x="340" y="125" text-anchor="middle" font-size="9" fill="#888" font-family="-apple-system">Cubic Bézier (curved edge)</text>
+    </svg>
+    <figcaption>A straight edge (left) versus a cubic Bézier edge with handles (right). The anchors are the polygon's vertices; the handles pull the edge into a curve.</figcaption>
+  </div>
+
+  <h4>Bézier curves in Loom</h4>
+  <p>You can control edge curvature directly in the Geometry editor using the <strong>Edge Curvature</strong> tool. The curvature value and direction are stored per-edge in the geometry file. Subdivision algorithms are aware of curvature — the <strong>Bézier Midpoint</strong> setting in the Subdivision tab places subdivision points along the Bézier arc rather than on the straight line between vertices, so curved polygons subdivide smoothly rather than collapsing to angular shapes.</p>
+  <p>Curve data is also preserved when importing SVG paths — Loom converts SVG cubic Bézier segments into its internal edge-curvature format automatically.</p>
+
+  <h3 id="foundations-subdivision">Recursive subdivision</h3>
+
+  <h4>What is subdivision?</h4>
+  <p><strong>Subdivision</strong> is the process of splitting a polygon into smaller polygons according to a rule. The simplest rule is <em>Quad</em>: find the centre of the polygon and connect it to the midpoint of each edge, dividing the polygon into four children (for a quadrilateral). Apply the rule again to each child — now you have sixteen polygons. Apply it a third time — sixty-four. This exponential growth from a single starting shape is what makes subdivision such a powerful generative tool.</p>
+
+  <div class="diagram">
+    <svg width="520" height="120" viewBox="0 0 520 120" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <!-- Level 0: single square -->
+      <rect x="10" y="20" width="80" height="80" fill="#252526" stroke="#7aafff" stroke-width="1.5"/>
+      <text x="50" y="115" text-anchor="middle" font-size="9" fill="#888" font-family="-apple-system">Level 0 — 1 polygon</text>
+      <!-- Level 1: 4 squares -->
+      <rect x="120" y="20" width="40" height="40" fill="#252526" stroke="#7aafff" stroke-width="1.2"/>
+      <rect x="160" y="20" width="40" height="40" fill="#252526" stroke="#7aafff" stroke-width="1.2"/>
+      <rect x="120" y="60" width="40" height="40" fill="#252526" stroke="#7aafff" stroke-width="1.2"/>
+      <rect x="160" y="60" width="40" height="40" fill="#252526" stroke="#7aafff" stroke-width="1.2"/>
+      <text x="160" y="115" text-anchor="middle" font-size="9" fill="#888" font-family="-apple-system">Level 1 — 4 polygons</text>
+      <!-- Level 2: 16 squares -->
+      <g transform="translate(240,20)">
+        <rect x="0"  y="0"  width="20" height="20" fill="#252526" stroke="#7aafff" stroke-width="0.8"/>
+        <rect x="20" y="0"  width="20" height="20" fill="#252526" stroke="#7aafff" stroke-width="0.8"/>
+        <rect x="40" y="0"  width="20" height="20" fill="#252526" stroke="#7aafff" stroke-width="0.8"/>
+        <rect x="60" y="0"  width="20" height="20" fill="#252526" stroke="#7aafff" stroke-width="0.8"/>
+        <rect x="0"  y="20" width="20" height="20" fill="#252526" stroke="#7aafff" stroke-width="0.8"/>
+        <rect x="20" y="20" width="20" height="20" fill="#252526" stroke="#7aafff" stroke-width="0.8"/>
+        <rect x="40" y="20" width="20" height="20" fill="#252526" stroke="#7aafff" stroke-width="0.8"/>
+        <rect x="60" y="20" width="20" height="20" fill="#252526" stroke="#7aafff" stroke-width="0.8"/>
+        <rect x="0"  y="40" width="20" height="20" fill="#252526" stroke="#7aafff" stroke-width="0.8"/>
+        <rect x="20" y="40" width="20" height="20" fill="#252526" stroke="#7aafff" stroke-width="0.8"/>
+        <rect x="40" y="40" width="20" height="20" fill="#252526" stroke="#7aafff" stroke-width="0.8"/>
+        <rect x="60" y="40" width="20" height="20" fill="#252526" stroke="#7aafff" stroke-width="0.8"/>
+        <rect x="0"  y="60" width="20" height="20" fill="#252526" stroke="#7aafff" stroke-width="0.8"/>
+        <rect x="20" y="60" width="20" height="20" fill="#252526" stroke="#7aafff" stroke-width="0.8"/>
+        <rect x="40" y="60" width="20" height="20" fill="#252526" stroke="#7aafff" stroke-width="0.8"/>
+        <rect x="60" y="60" width="20" height="20" fill="#252526" stroke="#7aafff" stroke-width="0.8"/>
+      </g>
+      <text x="280" y="115" text-anchor="middle" font-size="9" fill="#888" font-family="-apple-system">Level 2 — 16 polygons</text>
+      <!-- arrows -->
+      <line x1="96" y1="60" x2="116" y2="60" stroke="#0e7fd4" stroke-width="1.2" marker-end="url(#arr)"/>
+      <line x1="206" y1="60" x2="234" y2="60" stroke="#0e7fd4" stroke-width="1.2" marker-end="url(#arr)"/>
+      <!-- Level 3 annotation -->
+      <text x="420" y="55" text-anchor="middle" font-size="11" fill="#5ac85a" font-family="-apple-system">Level 3 →</text>
+      <text x="420" y="70" text-anchor="middle" font-size="11" fill="#5ac85a" font-family="-apple-system">64 polygons</text>
+      <text x="420" y="85" text-anchor="middle" font-size="9" fill="#666" font-family="-apple-system">Level N → 4ᴺ polygons</text>
+    </svg>
+    <figcaption>Quad subdivision at three levels — one starting square becomes 4, then 16, then 64 polygons, each inheriting the same rule.</figcaption>
+  </div>
+
+  <h4>Why recursion matters</h4>
+  <p>The power of recursive subdivision is that <em>complexity emerges from simple rules</em>. You do not draw the 64 child polygons — you describe a rule and an initial shape and the machine generates the rest. More importantly, every child polygon is still available as a first-class object for further manipulation: each child carries its own position, can be assigned its own renderer, and can itself be further subdivided using a different rule at the next level.</p>
+
+  <p>In Loom, subdivision <strong>parameters sets</strong> define chains of rules. A set might say: apply Quad at level 3, then apply Split at level 1 to each child, then apply Echo at level 2 to each of those children. The result is a three-step recursive refinement of any polygon fed into it. Changing a single ratio parameter in the Quad step immediately regenerates every polygon downstream in real time.</p>
+
+  <h4>Subdivision and animation</h4>
+  <p>Because subdivision is recomputed every frame, its parameters can be animated like anything else. Animating the <strong>ratio</strong> or <strong>inset</strong> of a Quad step — the position of the subdivision cut — causes the child polygons to visibly slide and breathe within their parents. Animating the <strong>PTW</strong> or <strong>PTP</strong> transform (which shifts child polygons inward, outward, or rotated within their parent cell) creates more dramatic structural motion. No extra geometry is required — the animation is entirely in the parameters.</p>
+
+  <div class="tip"><strong>Start simple.</strong> A useful first exercise: draw a rectangle in the Geometry editor, create a sprite that uses it, add a Quad subdivision set at level 3, and try different ratios (0.3, 0.5, 0.7) and inset values. Then switch the algorithm to Tri or Star and observe how the child structure changes completely from the same starting polygon. This is the core loop of working in Loom.</div>
 </section>
 
 <!-- ────────────────────────────────────────────────── -->
@@ -1660,14 +1830,15 @@
   <p>Loom animates sprite, camera, and renderer properties via <em>drivers</em> — self-contained generators that produce a value for each frame. Sprite drivers affect the entire sprite; renderer drivers affect individual renderer layers inside a renderer set. Every driver has an <strong>enabled</strong> flag; drivers are off by default and must be explicitly enabled before they affect rendered output.</p>
 
   <h3 id="animation-drivers">Driver types</h3>
+  <p>Numeric drivers (used for position, scale, rotation, opacity, renderer colour, width, etc.) and name drivers (used for subdivision-set and renderer-set swapping) are listed below. Not every driver type is available on every property — the inspector only shows the modes that make sense for each lane.</p>
   <table>
     <thead><tr><th>Driver</th><th>Parameters</th><th>Behaviour</th></tr></thead>
     <tbody>
       <tr><td>Constant</td><td>Value</td><td>Returns the same value every frame. Effectively no animation.</td></tr>
-      <tr><td>Jitter</td><td>Amount, Seed</td><td>Random offset each frame from a seeded sequence. Amount controls the ± range.</td></tr>
-      <tr><td>Noise</td><td>Period, Amplitude, Seed</td><td>Smooth Perlin noise. Period is the frame-count wavelength; amplitude is the ± range.</td></tr>
-      <tr><td>Oscillator</td><td>Frequency, Phase, Waveform</td><td>Sine, triangle, or square wave. Frequency in cycles per second; phase in 0–1 turns.</td></tr>
-      <tr><td>Keyframe</td><td>Keyframe list, Loop mode</td><td>Interpolates between manually placed keyframes. Loop modes: None, Loop, Ping-Pong.</td></tr>
+      <tr><td>Jitter</td><td>Amount, Seed</td><td>Random offset each frame from a seeded hash sequence. Amount controls the ± range. On name drivers, a <strong>Period</strong> field controls how many frames each random pick is held before re-rolling (1 = every frame; 30 = ~1 switch/second at 30 fps).</td></tr>
+      <tr><td>Noise</td><td>Period, Amplitude, Seed</td><td>Smooth continuous random walk. Period is the frame-count wavelength between sample points (interpolated); amplitude is the ± range.</td></tr>
+      <tr><td>Oscillator</td><td>Frequency, Phase, Waveform</td><td>Periodic wave — sine, triangle, square, or sawtooth. Frequency in cycles per second; phase offset in 0–1 turns.</td></tr>
+      <tr><td>Keyframe</td><td>Keyframe list, Loop mode</td><td>Numeric: interpolated between manually placed keyframes. Name (set-swap): step function — no interpolation, switches instantly at each keyframe frame. Loop modes: Loop, Once, Ping-Pong.</td></tr>
     </tbody>
   </table>
 
@@ -1770,6 +1941,9 @@
       <tr><td>Undo / redo timeline edits</td><td>Use <kbd>⌘Z</kbd> and <kbd>⌘⇧Z</kbd> while the timeline is focused.</td></tr>
     </tbody>
   </table>
+
+  <h4>Sprite keyframe lanes</h4>
+  <p>Each sprite has up to eight driver lanes in the timeline: <strong>Position</strong>, <strong>Scale</strong>, <strong>Rotation</strong>, <strong>Morph</strong>, <strong>Opacity</strong>, <strong>Shape</strong>, <strong>Subdiv</strong> (subdivision-set swap), and <strong>Rend.Set</strong> (renderer-set swap). The Subdiv and Rend.Set lanes display set names rather than numeric values and use step semantics — the switch is instantaneous, not interpolated. See <a href="#animation-set-swap">Set Swap Drivers</a> for details.</p>
 
   <h4>Renderer keyframe lanes</h4>
   <p>Renderer lanes are shown beneath the sprite lanes for sprites that use renderer sets with animated renderer drivers. Current renderer lanes are <strong>Fill</strong>, <strong>Stroke</strong>, <strong>Width</strong>, <strong>Opacity</strong>, and <strong>Blur</strong>. The renderer opacity lane is a per-renderer alpha multiplier and is ideal for crossfading layers in Playback <strong>All</strong>. The blur lane animates the Gaussian blur radius applied to that renderer's output.</p>
@@ -1999,6 +2173,54 @@
   <p>See the full step-by-step guide at <a href="#geometry-morph-layers">Morph Layer Import</a> in the Geometry section.</p>
 
   <div class="tip"><strong>Tip:</strong> Morph Amount is not limited to 0–1. Values above 1 exaggerate the morph beyond the target; negative values push geometry in the opposite direction. Both produce valid (if extreme) results when used intentionally.</div>
+
+  <h3 id="animation-set-swap">Set swap drivers</h3>
+  <p>Two sprite drivers allow the <em>active subdivision parameter set</em> and the <em>active renderer set</em> to be animated — switching which named set is applied to a sprite on any given frame. These drivers operate on set names (strings) rather than numeric values, so they use step semantics: the transition is immediate, not interpolated.</p>
+
+  <h4>Subdivision Set driver</h4>
+  <p>When enabled, the <strong>Subdivision Set</strong> driver overrides the sprite's static subdivision set assignment each frame. The result is that the subdivision structure of the sprite changes discretely over time — morphing from one algorithmic family to another, or cycling through a set of structural variants.</p>
+  <p>Because Loom recomputes subdivision every frame, this has no additional performance cost: the engine is already calling the subdivision algorithm for every frame; this driver simply changes which parameter set is passed to it.</p>
+
+  <h4>Renderer Set driver</h4>
+  <p>When enabled, the <strong>Renderer Set</strong> driver overrides the sprite's static renderer set assignment each frame. The sprite's rendering style — colour, stroke mode, brush, stamp — changes discretely on the frames you specify. This is useful for creating structural visual variation, cycling through different aesthetic treatments, or producing flicker and strobing effects in combination with jitter mode.</p>
+
+  <h4>Driver modes</h4>
+  <p>Both drivers share the same three modes:</p>
+  <table>
+    <thead><tr><th>Mode</th><th>Behaviour</th></tr></thead>
+    <tbody>
+      <tr>
+        <td><strong>Constant</strong></td>
+        <td>Returns the same named set every frame. When enabled, this permanently overrides the sprite's static assignment. Useful as a project-level reassignment without editing the sprite directly.</td>
+      </tr>
+      <tr>
+        <td><strong>Keyframe</strong></td>
+        <td>A step-function track of named set values keyed to frames. The active set is the value of the most recent keyframe whose frame number is ≤ the current frame. No interpolation occurs — the switch is instantaneous. <strong>Loop</strong>, <strong>Once</strong>, and <strong>Ping-Pong</strong> loop modes are available. When the current frame is before the first keyframe, the driver's <strong>base</strong> set (or none, if blank) is used.</td>
+      </tr>
+      <tr>
+        <td><strong>Jitter</strong></td>
+        <td>Picks a set name at random from a configurable <strong>pool</strong> each evaluation interval. The choice is deterministic — the same <strong>Seed</strong>, sprite index, and frame always produce the same result, so the sequence is reproducible. <strong>Period (f)</strong> controls how many frames each randomly chosen set is held before re-rolling: 1 = every frame (maximum flicker); 15 = roughly 2 switches per second at 30 fps; 30 = roughly 1 switch per second.</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <h4>Jitter pool</h4>
+  <p>In jitter mode, the <strong>Pool</strong> list below the Seed and Period fields defines which set names can be chosen. Use the <strong>+</strong> button to add an entry; each entry is a dropdown picker that lists the available sets in the project. Use the <strong>−</strong> button to remove an entry. Any set in the pool is equally likely to be chosen at any evaluation — duplicating a name in the pool increases its relative probability.</p>
+
+  <div class="tip"><strong>Structural variation at scale:</strong> A powerful use of subdivision-set jitter is to create a pool of four or five closely related subdivision parameter sets — each with slightly different ratio or inset values — and apply a jitter driver with a period of 4–8 frames. Across a large population of sprites, each sprite independently cycles through its own randomly selected structural variants. The overall composition remains coherent (all sets come from the same algorithmic family) but no two sprites behave identically.</div>
+
+  <h4>Timeline lanes</h4>
+  <p>Both drivers have corresponding lanes in the timeline panel:</p>
+  <table>
+    <thead><tr><th>Lane</th><th>Label</th><th>Colour</th></tr></thead>
+    <tbody>
+      <tr><td>Subdivision Set</td><td>Subdiv</td><td>Blue-green</td></tr>
+      <tr><td>Renderer Set</td><td>Rend.Set</td><td>Warm orange</td></tr>
+    </tbody>
+  </table>
+  <p>Keyframes on these lanes display the set name rather than a numeric value. The standard timeline editing operations (add, delete, drag, copy/paste, select all) work identically to other lanes. Easing is not available for name lanes — the transition is always a step.</p>
+
+  <div class="note">If neither driver is enabled, the sprite uses its statically assigned subdivision set and renderer set as normal — these drivers only take effect when explicitly enabled. The lanes are visible in the timeline but can be hidden with the batch eye control like any other unused lane.</div>
 
   <h3 id="animation-easing">Easing algorithms</h3>
   <p>Easing controls the <em>velocity profile</em> of a keyframe segment — how fast the interpolated value moves through its range between two keyframes. Every keyframe has an individual easing setting that applies from that keyframe to the next. Easing affects all driver types equally: position, scale, rotation, morph, opacity, shape, and all renderer driver lanes.</p>
