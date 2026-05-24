@@ -332,6 +332,9 @@ public struct NameDriver: Codable, Equatable, Sendable {
     public var jitterPool: [String]       = []
     /// Deterministic random seed (jitter mode).
     public var seed:       Int            = 0
+    /// Jitter hold duration in frames — the chosen set is held for this many frames before
+    /// re-rolling. period=1 (default) re-rolls every frame; period=30 at 30 fps = ~1 switch/sec.
+    public var period:     Int            = 1
     /// How the keyframe sequence repeats.
     public var loopMode:   LoopMode       = .loop
     /// When false the driver is bypassed.
@@ -343,11 +346,12 @@ public struct NameDriver: Codable, Equatable, Sendable {
         keyframes:  [NameKeyframe] = [],
         jitterPool: [String]       = [],
         seed:       Int            = 0,
+        period:     Int            = 1,
         loopMode:   LoopMode       = .loop,
         enabled:    Bool           = false
     ) {
         self.mode = mode; self.base = base; self.keyframes = keyframes
-        self.jitterPool = jitterPool; self.seed = seed
+        self.jitterPool = jitterPool; self.seed = seed; self.period = period
         self.loopMode = loopMode; self.enabled = enabled
     }
 
@@ -355,7 +359,7 @@ public struct NameDriver: Codable, Equatable, Sendable {
     public static let disabled = NameDriver()
 
     private enum CodingKeys: String, CodingKey {
-        case mode, base, keyframes, jitterPool, seed, loopMode, enabled
+        case mode, base, keyframes, jitterPool, seed, period, loopMode, enabled
     }
 
     public init(from decoder: Decoder) throws {
@@ -365,6 +369,7 @@ public struct NameDriver: Codable, Equatable, Sendable {
         keyframes  = try c.decodeIfPresent([NameKeyframe].self, forKey: .keyframes)  ?? []
         jitterPool = try c.decodeIfPresent([String].self,       forKey: .jitterPool) ?? []
         seed       = try c.decodeIfPresent(Int.self,            forKey: .seed)       ?? 0
+        period     = try c.decodeIfPresent(Int.self,            forKey: .period)     ?? 1
         loopMode   = try c.decodeIfPresent(LoopMode.self,       forKey: .loopMode)   ?? .loop
         enabled    = try c.decodeIfPresent(Bool.self,           forKey: .enabled)    ?? false
     }
@@ -640,7 +645,8 @@ public enum DriverEvaluator {
 
         case .jitter:
             guard !driver.jitterPool.isEmpty else { return nil }
-            let h = hash(seed: driver.seed, spriteIndex: spriteIndex, frame: Int(globalElapsed))
+            let slowFrame = Int(globalElapsed) / max(1, driver.period)
+            let h = hash(seed: driver.seed, spriteIndex: spriteIndex, frame: slowFrame)
             let idx = Int(h * Double(driver.jitterPool.count))
             let clamped = max(0, min(driver.jitterPool.count - 1, idx))
             let name = driver.jitterPool[clamped]

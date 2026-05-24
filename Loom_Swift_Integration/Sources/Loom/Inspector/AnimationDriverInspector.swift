@@ -620,6 +620,14 @@ struct NameDriverEditor: View {
                     .frame(width: 60)
             }
             .loomHelp("Random seed for reproducible jitter. Change to get a different flicker pattern.")
+            InspectorField("Period (f)") {
+                TextField("", value: $driver.period, format: .number)
+                    .textFieldStyle(.squareBorder)
+                    .font(.system(size: 11, design: .monospaced))
+                    .frame(width: 60)
+                    .onChange(of: driver.period) { _, v in driver.period = max(1, v) }
+            }
+            .loomHelp("How many frames each randomly chosen set is held before re-rolling. 1 = every frame (maximum flicker); 30 = ~1 switch per second at 30 fps.")
             // Jitter pool editor (inline)
             VStack(alignment: .leading, spacing: 1) {
                 Text("Pool")
