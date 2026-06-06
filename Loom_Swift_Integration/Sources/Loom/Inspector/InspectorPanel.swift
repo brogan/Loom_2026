@@ -2132,6 +2132,7 @@ private struct QuickSetupSection: View {
 
     var body: some View {
         InspectorSection("Quick Setup") {
+            pipelinePhaseHeader(.geometry)
             if layerOptions.count > 1 {
                 InspectorField("Source") {
                     Picker("", selection: $qsLayerTargetID) {
@@ -2157,6 +2158,7 @@ private struct QuickSetupSection: View {
             }
             .loomHelp("Root name used to auto-generate names for the shape, sprite, and renderer. Seeded from the geometry filename or selected layer name.")
             Divider().padding(.vertical, 4)
+            pipelinePhaseHeader(.subdivision)
             InspectorField("Subdivision set") {
                 Picker("", selection: $qsSubdivSetName) {
                     ForEach(subdivisionSetOptions, id: \.self) { name in
@@ -2170,6 +2172,7 @@ private struct QuickSetupSection: View {
             }
             .loomHelp("Subdivision parameter set applied to the generated shape. Choose None for raw unsubdivided geometry.")
             Divider().padding(.vertical, 4)
+            pipelinePhaseHeader(.sprites)
             InspectorField("Sprite set") {
                 Picker("", selection: $qsSpriteSetName) {
                     ForEach(spriteSetOptions, id: \.self) { name in
@@ -2190,6 +2193,7 @@ private struct QuickSetupSection: View {
             }
             .loomHelp("Name of the sprite to create within the sprite set.")
             Divider().padding(.vertical, 4)
+            pipelinePhaseHeader(.rendering)
             InspectorField("Renderer set") {
                 Picker("", selection: $qsRendererSetName) {
                     ForEach(rendererSetOptions, id: \.self) { name in
@@ -2225,6 +2229,7 @@ private struct QuickSetupSection: View {
                     .frame(maxWidth: .infinity)
             }
             .loomHelp("Drawing mode for the new renderer — Stroked (outline), Filled (solid), Filled+Stroked (both), Points (dot cloud), Brushed (stamps along path), Stamped (images at points).")
+            Divider().padding(.vertical, 4)
             HStack(spacing: 6) {
                 Circle()
                     .fill(pipelineExists ? Color.green : Color.secondary.opacity(0.35))
@@ -2271,6 +2276,20 @@ private struct QuickSetupSection: View {
     }
 
     // MARK: - Layout helper
+
+    private func pipelinePhaseHeader(_ tab: AppTab) -> some View {
+        HStack(spacing: 5) {
+            Image(systemName: tab.systemImage)
+                .font(.system(size: 11))
+            Text(tab.label)
+                .font(.system(size: 11, weight: .medium))
+        }
+        .foregroundStyle(Color.secondary)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.horizontal, 12)
+        .padding(.top, 2)
+        .padding(.bottom, 1)
+    }
 
     private func actionButton(_ label: String, action: @escaping () -> Void) -> some View {
         Button(label, action: action)

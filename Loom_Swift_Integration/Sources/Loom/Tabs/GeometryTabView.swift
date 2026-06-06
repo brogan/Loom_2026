@@ -133,13 +133,11 @@ struct GeometryTabView: View {
     // MARK: - Action bar
 
     private var actionBar: some View {
-        VStack(spacing: 4) {
-            Button("Open Editor") {
-                controller.enterGeometryEditor()
-            }
-            .disabled(controller.selectedGeometryKey == nil)
-            .frame(maxWidth: .infinity)
-
+        VStack(alignment: .leading, spacing: 4) {
+            Text("Source")
+                .font(.system(size: 10, weight: .semibold))
+                .foregroundStyle(Color.secondary)
+                .padding(.bottom, 2)
             Button("Duplicate") {
                 if let key = controller.selectedGeometryKey {
                     controller.duplicateGeometry(key: key)
@@ -214,22 +212,14 @@ struct GeometryTabView: View {
         HStack(spacing: 6) {
             Text("Geometry Sources")
             Spacer()
-            geometryKindIcon(.polygons, isPresent: true)
-                .frame(width: 18, height: 16)
-                .help("Polygons")
-            geometryKindIcon(.curves, isPresent: true)
-                .frame(width: 18, height: 16)
-                .help("Curves")
-            geometryKindIcon(.points, isPresent: true)
-                .frame(width: 22, height: 16)
-                .help("Points")
             Button {
                 controller.createGeometry(folder: "polygonSets")
             } label: {
-                Text("New")
+                Label("New", systemImage: "plus")
                     .font(.system(size: 11))
             }
-            .buttonStyle(.plain)
+            .buttonStyle(.bordered)
+            .controlSize(.small)
             .help("New Geometry Source")
         }
     }

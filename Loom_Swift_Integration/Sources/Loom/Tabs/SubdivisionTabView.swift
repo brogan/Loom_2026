@@ -54,7 +54,17 @@ struct SubdivisionTabView: View {
 
     private var spriteSection: some View {
         VStack(spacing: 0) {
-            sectionLabel("Sprites (polygon sets)")
+            HStack {
+                Text("Sprite Set")
+                Spacer()
+                Text("Subdivision Set")
+            }
+            .font(.system(size: 10, weight: .semibold))
+            .foregroundStyle(.tertiary)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 4)
+            .frame(maxWidth: .infinity)
+            .background(Color(nsColor: .windowBackgroundColor))
             Divider()
             spriteTree
         }
