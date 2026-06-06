@@ -52,13 +52,13 @@ public struct LoomEngine: @unchecked Sendable {
     /// Used as the meander-phase clock so brush animation is frame-rate independent.
     private var elapsedFrames:  Double
 
-    /// Number of sprite-layer draw passes queued for the next `makeAccumulatedFrame` call.
+    /// Set to `true` by `advance` when at least one sprite crossed a virtual-frame boundary.
     ///
-    /// Each call to `advance()` that crosses one or more virtual-frame boundaries adds
-    /// that many passes here.  `makeAccumulatedFrame` consumes all pending passes in a
-    /// single loop before returning, so slow high-resolution canvases accumulate the same
-    /// number of sprite layers per virtual second as fast low-resolution ones.
-    private var pendingRenderPasses: Int = 0
+    /// `makeAccumulatedFrame` gates sprite rendering on this flag so that the 60 fps
+    /// display timer doesn't accumulate more sprite layers per second than the virtual
+    /// frame rate (typically 30 fps).  This ensures animated-still output is identical
+    /// for fast (small) and slow (large) canvases.
+    private var sceneAdvancedThisFrame: Bool = true
 
     /// Persistent canvas for accumulation-mode rendering (`drawBackgroundOnce = true`).
     ///
@@ -144,18 +144,14 @@ public struct LoomEngine: @unchecked Sendable {
         // Global animating flag is the master switch: when false, all sprite animation
         // is suppressed and the scene is held at its initial (frame-0) state.
         if config.globalConfig.animating {
-            let didAdvance = scene.advance(
+            sceneAdvancedThisFrame = scene.advance(
                 deltaTime:     dt,
                 targetFPS:     fps,
                 globalElapsed: nextElapsedFrames,
                 using:         &rng
             )
-            if didAdvance {
-                // Count virtual frames crossed so slow high-res canvases accumulate
-                // the same sprite-layer density as fast low-res ones.
-                let framesCrossed = Int(nextElapsedFrames) - Int(elapsedFrames)
-                pendingRenderPasses += max(1, framesCrossed)
-            }
+        } else {
+            sceneAdvancedThisFrame = false
         }
         elapsedFrames = nextElapsedFrames
         frameCount    += 1
@@ -176,7 +172,7 @@ public struct LoomEngine: @unchecked Sendable {
         elapsedFrames          = globalElapsed
         accumulationCanvas     = nil        // force fresh render at seek position
         brushProgressiveStates = [:]
-        pendingRenderPasses    = 0          // canvas reset triggers render via isFirstFrame
+        sceneAdvancedThisFrame = true
         var rng = SystemRandomNumberGenerator()
         for i in scene.instances.indices {
             let inst = scene.instances[i]
@@ -339,11 +335,10 @@ public struct LoomEngine: @unchecked Sendable {
 
     /// Renders onto a persistent canvas (accumulation / trail mode).
     ///
-    /// On the first call the background is painted and one sprite pass is drawn.
-    /// On subsequent calls, `pendingRenderPasses` sprite passes are drawn — one per
-    /// virtual frame that advanced since the last render.  This keeps sprite-layer
-    /// density constant regardless of how long each `makeFrame()` takes to complete,
-    /// so quality=8 canvases accumulate the same visual richness as quality=1 ones.
+    /// Sprite rendering is gated on `sceneAdvancedThisFrame` so that the 60 fps display
+    /// timer does not accumulate more sprite layers per second than the virtual frame rate.
+    /// Without this gate, a fast (small) canvas would show many more accumulated draw
+    /// cycles than a slow (large) canvas over the same wall-clock duration.
     private mutating func makeAccumulatedFrame(width w: Int, height h: Int) -> CGImage? {
         let isFirstFrame = accumulationCanvas == nil
         if isFirstFrame {
@@ -351,15 +346,28 @@ public struct LoomEngine: @unchecked Sendable {
             accumulationCanvas = canvas
         }
         guard let canvas = accumulationCanvas else { return nil }
-        if isFirstFrame {
-            renderImpl(into: canvas.ctx, drawBackground: true)
-        } else {
-            for _ in 0..<pendingRenderPasses {
-                renderImpl(into: canvas.ctx, drawBackground: false)
-            }
+        // Draw background on the first frame.  On subsequent frames, render sprites
+        // only when the scene has actually advanced a virtual frame this tick.
+        if isFirstFrame || sceneAdvancedThisFrame {
+            renderImpl(into: canvas.ctx, drawBackground: isFirstFrame)
+            sceneAdvancedThisFrame = false
         }
-        pendingRenderPasses = 0
         return canvas.ctx.makeImage()
+    }
+
+    /// Advance the scene one virtual-frame step and accumulate the result onto the
+    /// persistent canvas without applying softness blur.
+    ///
+    /// Use this for sub-stepping large delta-time intervals so that slow high-resolution
+    /// canvases receive the same number of distinct sprite-layer passes per virtual second
+    /// as fast low-resolution ones.  Call `makeFrame()` once after all sub-steps to obtain
+    /// the display image with blur applied.
+    public mutating func stepAndAccumulate(deltaTime: Double? = nil) {
+        advance(deltaTime: deltaTime)
+        let w = Int(viewTransform.canvasSize.width)
+        let h = Int(viewTransform.canvasSize.height)
+        guard w > 0, h > 0, config.globalConfig.drawBackgroundOnce else { return }
+        _ = makeAccumulatedFrame(width: w, height: h)
     }
 
     /// Creates and renders to a fresh canvas each call (independent-frame mode).

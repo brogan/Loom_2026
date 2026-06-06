@@ -120,6 +120,12 @@ public final class Engine: @unchecked Sendable {
         loomEngine.advance(deltaTime: deltaTime)
     }
 
+    /// Advance one virtual-frame step and accumulate the result onto the persistent
+    /// canvas without applying softness blur.  Use for sub-stepping large dt intervals.
+    public func stepAndAccumulate(deltaTime: Double? = nil) {
+        loomEngine.stepAndAccumulate(deltaTime: deltaTime)
+    }
+
     /// Draw the current frame into `context`.
     ///
     /// The context must have no pre-existing transform; the Y-flip required by
