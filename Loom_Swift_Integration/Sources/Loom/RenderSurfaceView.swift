@@ -273,16 +273,19 @@ final class RenderSurfaceNSView: NSView {
 
         renderQueue.async { [weak self] in
             guard let self else { return }
-            // Sub-step totalDt into virtual-frame-sized increments so that slow
-            // high-resolution canvases accumulate the same sprite-layer density per
-            // virtual second as fast low-resolution ones.  Each sub-step advances the
-            // scene and paints one sprite pass with its own RNG state onto the canvas.
-            let fps      = max(1.0, Double(self.engine.globalConfig.targetFPS))
-            let frameDt  = 1.0 / fps
-            let steps    = max(1, Int((totalDt / frameDt).rounded()))
-            let stepDt   = totalDt / Double(steps)
-            for _ in 0..<steps {
-                self.engine.stepAndAccumulate(deltaTime: stepDt)
+            // Accumulation mode: sub-step into qualityMultiple passes so a high-res
+            // canvas (quality > 1, slower render) gets the same sprite-layer density
+            // per virtual frame as a 1× canvas.  Step count is fixed at qualityMultiple
+            // to avoid a feedback loop (time-based counts spiral as renders slow down).
+            let gc      = self.engine.globalConfig
+            let quality = max(1, gc.qualityMultiple)
+            if gc.drawBackgroundOnce && quality > 1 {
+                let stepDt = totalDt / Double(quality)
+                for _ in 0..<quality {
+                    self.engine.stepAndAccumulate(deltaTime: stepDt)
+                }
+            } else {
+                self.engine.update(deltaTime: totalDt)
             }
             DispatchQueue.main.async { [weak self] in self?.updateRenderProgress(0.30, token: progressToken) }
             let frameNum = self.engine.currentFrame
