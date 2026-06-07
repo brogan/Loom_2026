@@ -1025,7 +1025,9 @@ private struct GeometryEditorMainShell: View {
                     controller.requestExitGeometryEditor()
                 }
                 .font(.system(size: 12))
+                .lineLimit(1)
             }
+            .fixedSize(horizontal: false, vertical: true)
             .padding(.horizontal, 14)
             .padding(.vertical, 8)
             .background(Color(nsColor: .windowBackgroundColor))
