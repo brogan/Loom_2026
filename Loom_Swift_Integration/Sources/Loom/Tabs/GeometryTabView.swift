@@ -942,7 +942,7 @@ private struct GeometryEditorMainShell: View {
 
                 // Cut / copy / paste — leading padding provides gap
                 toolbarIconButton(help: "Cut selected objects", disabled: !controller.canCutCopySelectedGeometry || morphLocked) {
-                    Image(systemName: "scissors").font(.system(size: 14))
+                    Image(systemName: "scissors").font(.system(size: 15))
                 } action: { controller.cutSelectedGeometry() }
                 .padding(.leading, 46)
                 toolbarIconButton(help: "Copy selected objects", disabled: !controller.canCutCopySelectedGeometry) {
@@ -954,7 +954,7 @@ private struct GeometryEditorMainShell: View {
 
                 // Centre — leading padding provides gap
                 toolbarIconButton(help: "Centre selected geometry, or the active layer if nothing is selected") {
-                    Image(systemName: "scope").font(.system(size: 14))
+                    Image(systemName: "scope").font(.system(size: 15))
                 } action: { controller.centreGeometryEditorViewOnSelectionOrLayer() }
                 .padding(.leading, 46)
 
@@ -970,15 +970,16 @@ private struct GeometryEditorMainShell: View {
                     SteeringWheelIcon()
                 } action: { controller.resetSelectedGeometryControls() }
 
-                Spacer(minLength: 0)
-
-                // Delete icons (towards right)
+                // Delete icons — same gap as other groups
                 toolbarIconButton(help: "Delete selected geometry", disabled: !controller.canDeleteSelectedGeometry || morphLocked) {
                     DeleteSelectedGeometryIcon()
                 } action: { controller.deleteSelectedGeometry() }
+                .padding(.leading, 46)
                 toolbarIconButton(help: "Delete all geometry in active layer", disabled: !controller.canDeleteAllLayerGeometry || morphLocked) {
                     DeleteAllLayerGeometryIcon()
                 } action: { controller.deleteAllLayerGeometry() }
+
+                Spacer(minLength: 0)
 
                 Divider().frame(height: 16)
 
@@ -1039,7 +1040,7 @@ private struct GeometryEditorMainShell: View {
     ) -> some View {
         Button(action: action) {
             label()
-                .frame(width: 16, height: 16)
+                .frame(width: 20, height: 20)
                 .foregroundStyle(
                     selected  ? Color.accentColor :
                     disabled  ? Color.secondary.opacity(0.35) :
