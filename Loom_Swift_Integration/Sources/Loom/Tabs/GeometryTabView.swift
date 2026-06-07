@@ -900,36 +900,38 @@ private struct GeometryEditorMainShell: View {
     var body: some View {
         VStack(spacing: 0) {
             HStack(spacing: 6) {
-                // Title + geometry info
-                Text("Geometry Editor")
-                    .font(.system(size: 13, weight: .semibold))
-                Text(currentGeometryName)
-                    .font(.system(size: 12))
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-                    .truncationMode(.middle)
-                Text(controller.geometryEditorTool.rawValue)
-                    .font(.system(size: 11))
-                    .foregroundStyle(.tertiary)
+                // Fixed-width title block: prevents edit controls shifting when name
+                // or tool-type text changes length ("Points" vs "Standalone Points").
+                // 350 pt covers "Geometry Editor" + a reasonable name + the longest
+                // tool-type string ("Standalone Points") with comfortable margins.
+                HStack(spacing: 6) {
+                    Text("Geometry Editor")
+                        .font(.system(size: 13, weight: .semibold))
+                        .fixedSize()
+                    Text(currentGeometryName)
+                        .font(.system(size: 12))
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                    Text(controller.geometryEditorTool.rawValue)
+                        .font(.system(size: 11))
+                        .foregroundStyle(.tertiary)
+                        .fixedSize()
+                }
+                .frame(width: 350, alignment: .leading)
 
                 let morphLocked = controller.isCurrentGeometryMorphTargetLocked
 
-                // Edit label — padding provides the "≈ Polygons" gap before it
+                // Edit label
                 Text("Edit:")
                     .font(.system(size: 11, weight: .semibold))
                     .foregroundStyle(.secondary)
-                    .padding(.leading, 46)
+                    .padding(.leading, 20)
 
-                // 5 edit-mode icons
+                // 4 mutually-exclusive edit-mode radio buttons
                 toolbarIconButton(help: "Edit points", selected: controller.geometryEditorTool == .points) {
                     EditPointsIcon()
                 } action: { controller.startGeometryEditMode(.points) }
-                toolbarIconButton(
-                    help: "Anchor-only edit: drag anchors without moving their control points",
-                    selected: controller.geometryEditorAnchorOnlyEdit
-                ) {
-                    CrosshairAnchorIcon()
-                } action: { controller.geometryEditorAnchorOnlyEdit.toggle() }
                 toolbarIconButton(help: "Edit edges", selected: controller.geometryEditorTool == .edges) {
                     EdgeGeometryIcon()
                 } action: { controller.startGeometryEditMode(.edges) }
@@ -939,6 +941,27 @@ private struct GeometryEditorMainShell: View {
                 toolbarIconButton(help: "Edit polygons", selected: controller.geometryEditorTool == .polygons) {
                     PolygonGeometryIcon()
                 } action: { controller.startGeometryEditMode(.polygons) }
+
+                // Anchor-only: a boolean modifier, not a mode — shown with a subtle
+                // tinted background so it is clearly a toggle, not part of the radio group.
+                Button {
+                    controller.geometryEditorAnchorOnlyEdit.toggle()
+                } label: {
+                    CrosshairAnchorIcon()
+                        .frame(width: 20, height: 20)
+                        .padding(4)
+                        .contentShape(Rectangle())
+                        .foregroundStyle(controller.geometryEditorAnchorOnlyEdit ? Color.accentColor : Color.primary)
+                        .background(
+                            controller.geometryEditorAnchorOnlyEdit
+                                ? Color.accentColor.opacity(0.15)
+                                : Color.clear,
+                            in: RoundedRectangle(cornerRadius: 4)
+                        )
+                }
+                .buttonStyle(.plain)
+                .help("Anchor-only edit: drag anchors without moving their control points")
+                .modifier(LoomHoverHelp("Anchor-only edit: drag anchors without moving their control points"))
 
                 // Cut / copy / paste — leading padding provides gap
                 toolbarIconButton(help: "Cut selected objects", disabled: !controller.canCutCopySelectedGeometry || morphLocked) {
