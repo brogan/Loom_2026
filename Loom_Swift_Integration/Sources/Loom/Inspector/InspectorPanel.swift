@@ -130,7 +130,7 @@ struct InspectorSection<Content: View>: View {
                                 .frame(width: 10)
                             Text(title)
                                 .font(.system(size: 11, weight: .semibold))
-                                .foregroundStyle(.secondary)
+                                .foregroundStyle(isHighlighted ? Color.accentColor : .secondary)
                             Spacer()
                         }
                         .padding(.horizontal, 12)
@@ -145,7 +145,7 @@ struct InspectorSection<Content: View>: View {
             } else {
                 Text(title)
                     .font(.system(size: 11, weight: .semibold))
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(isHighlighted ? Color.accentColor : .secondary)
                     .padding(.horizontal, 12)
                     .padding(.top, 12)
                     .padding(.bottom, 4)
@@ -532,7 +532,7 @@ private struct GeometryEditorShellInspector: View {
                 }
             }
 
-            InspectorSection("Create", isCollapsed: $createCollapsed) {
+            InspectorSection("Create", isCollapsed: $createCollapsed, isHighlighted: controller.geometryEditorTool.isCreateMode) {
                 iconRow {
                     iconButton(
                         help: "Create standalone points",

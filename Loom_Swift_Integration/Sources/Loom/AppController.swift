@@ -21,6 +21,25 @@ enum GeometryEditorTool: String {
     case panView = "Pan View"
     case displacementExtrude = "Extrude (Displacement)"
     case scaleExtrude = "Extrude (Scale)"
+
+    var isCreateMode: Bool {
+        switch self {
+        case .standalonePoints, .pointByPoint, .freehand, .meshExtend,
+             .knife, .displacementExtrude, .scaleExtrude, .pressureTrace:
+            return true
+        default:
+            return false
+        }
+    }
+
+    var isEditMode: Bool {
+        switch self {
+        case .points, .edges, .openCurves, .polygons:
+            return true
+        default:
+            return false
+        }
+    }
 }
 
 struct GeometryMeshExtendDraft: Equatable {

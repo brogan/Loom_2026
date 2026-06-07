@@ -925,7 +925,7 @@ private struct GeometryEditorMainShell: View {
                 // Edit mode group: label + 4 mutually-exclusive radio buttons + anchor-only toggle
                 Text("Edit:")
                     .font(.system(size: 11, weight: .semibold))
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(controller.geometryEditorTool.isEditMode ? Color.accentColor : .secondary)
                     .fixedSize()
 
                 toolbarIconButton(help: "Edit points", selected: controller.geometryEditorTool == .points) {
