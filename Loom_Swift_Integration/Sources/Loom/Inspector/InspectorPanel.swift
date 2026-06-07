@@ -155,7 +155,7 @@ struct InspectorSection<Content: View>: View {
             }
             Divider().padding(.top, collapsed ? 0 : 4)
         }
-        .background(isHighlighted ? Color.accentColor.opacity(0.08) : Color.clear)
+        .background(Color.clear)
     }
 }
 
