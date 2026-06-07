@@ -509,6 +509,7 @@ private struct GeometryEditorShellInspector: View {
     @State private var duplicateLayerName = ""
     @State private var scaleSliderValue = 0.0
     @State private var rotateSliderValue = 0.0
+    @State private var rotateAngleDegrees: Double = 0.0
     @State private var transformPivot = GeometryTransformPivot.commonCentre
 
     var body: some View {
@@ -873,6 +874,15 @@ private struct GeometryEditorShellInspector: View {
                     .help("Rotate")
                     .modifier(LoomHoverHelp("Rotate"))
                 }
+                InspectorField("Angle °") {
+                    FloatEntryField(
+                        value: $rotateAngleDegrees,
+                        width: 62,
+                        fractionDigits: 1,
+                        help: "Rotate selection by entered degrees using the Rotation Pivot; press Return to apply"
+                    )
+                    .disabled(!controller.canTransformSelectedGeometry)
+                }
             }
 
             InspectorSection("View", isCollapsed: $viewCollapsed) {
@@ -970,6 +980,11 @@ private struct GeometryEditorShellInspector: View {
         }
         .onChange(of: rotateSliderValue) { _, value in
             controller.updateRotateTransformGesture(sliderValue: value, pivot: transformPivot)
+        }
+        .onChange(of: rotateAngleDegrees) { _, degrees in
+            guard degrees != 0 else { return }
+            controller.rotateSelectedGeometry(degrees: degrees, pivot: transformPivot)
+            rotateAngleDegrees = 0
         }
         .onChange(of: scaleAxis) { _, _ in
             guard scaleSliderValue != 0 else { return }
