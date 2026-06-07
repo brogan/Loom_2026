@@ -879,7 +879,12 @@ private struct GeometryEditorShellInspector: View {
                         value: $rotateAngleDegrees,
                         width: 62,
                         fractionDigits: 1,
-                        help: "Rotate selection by entered degrees using the Rotation Pivot; press Return to apply"
+                        help: "Rotate selection by entered degrees using the Rotation Pivot; press Return to apply",
+                        onCommit: { degrees in
+                            guard degrees != 0 else { return }
+                            controller.rotateSelectedGeometry(degrees: degrees, pivot: transformPivot)
+                            rotateAngleDegrees = 0
+                        }
                     )
                     .disabled(!controller.canTransformSelectedGeometry)
                 }
@@ -980,11 +985,6 @@ private struct GeometryEditorShellInspector: View {
         }
         .onChange(of: rotateSliderValue) { _, value in
             controller.updateRotateTransformGesture(sliderValue: value, pivot: transformPivot)
-        }
-        .onChange(of: rotateAngleDegrees) { _, degrees in
-            guard degrees != 0 else { return }
-            controller.rotateSelectedGeometry(degrees: degrees, pivot: transformPivot)
-            rotateAngleDegrees = 0
         }
         .onChange(of: scaleAxis) { _, _ in
             guard scaleSliderValue != 0 else { return }

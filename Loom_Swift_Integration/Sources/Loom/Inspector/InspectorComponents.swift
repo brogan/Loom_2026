@@ -3,12 +3,17 @@ import SwiftUI
 // TextField(value:format:) reverts on every keystroke that doesn't fully parse, making it
 // impossible to type negative values (the leading "-" is rejected before you can finish).
 // FloatEntryField buffers edits in local state and commits to the model only on Return or focus loss.
+//
+// onCommit: optional callback fired with the committed value.  After onCommit returns, `text`
+// is synchronously reset to formatted(value) so that a subsequent focus-loss commit reads the
+// already-updated text rather than the stale pre-commit text — preventing double-application.
 struct FloatEntryField: View {
     @Binding var value: Double
     var width: CGFloat
     var fractionDigits: Int = 3
     var fontSize: CGFloat = 12
     var help: String = ""
+    var onCommit: ((Double) -> Void)? = nil
 
     @State private var text = ""
     @FocusState private var focused: Bool
@@ -34,7 +39,12 @@ struct FloatEntryField: View {
     }
 
     private func commit() {
-        if let d = Double(text) { value = d }
+        guard let d = Double(text) else { return }
+        value = d
+        onCommit?(d)
+        // Reset text immediately so a subsequent focus-loss commit sees the new value,
+        // not the stale text from the user's original entry.
+        text = formatted(value)
     }
 
     private func formatted(_ d: Double) -> String {
