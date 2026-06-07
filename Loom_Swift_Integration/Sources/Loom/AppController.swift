@@ -22,19 +22,21 @@ enum GeometryEditorTool: String {
     case displacementExtrude = "Extrude (Displacement)"
     case scaleExtrude = "Extrude (Scale)"
 
+    /// True only for tools that create geometry from nothing.
     var isCreateMode: Bool {
         switch self {
-        case .standalonePoints, .pointByPoint, .freehand, .meshExtend,
-             .knife, .displacementExtrude, .scaleExtrude, .pressureTrace:
+        case .standalonePoints, .pointByPoint, .freehand:
             return true
         default:
             return false
         }
     }
 
+    /// True for tools that select or modify existing geometry.
     var isEditMode: Bool {
         switch self {
-        case .points, .edges, .openCurves, .polygons:
+        case .points, .edges, .openCurves, .polygons,
+             .knife, .meshExtend, .displacementExtrude, .scaleExtrude, .pressureTrace:
             return true
         default:
             return false
