@@ -902,8 +902,6 @@ private struct GeometryEditorMainShell: View {
             HStack(spacing: 6) {
                 // Fixed-width title block: prevents edit controls shifting when name
                 // or tool-type text changes length ("Points" vs "Standalone Points").
-                // 350 pt covers "Geometry Editor" + a reasonable name + the longest
-                // tool-type string ("Standalone Points") with comfortable margins.
                 HStack(spacing: 6) {
                     Text("Geometry Editor")
                         .font(.system(size: 13, weight: .semibold))
@@ -918,17 +916,18 @@ private struct GeometryEditorMainShell: View {
                         .foregroundStyle(.tertiary)
                         .fixedSize()
                 }
-                .frame(width: 350, alignment: .leading)
+                .frame(width: 280, alignment: .leading)
 
                 let morphLocked = controller.isCurrentGeometryMorphTargetLocked
 
-                // Edit label
+                Divider().frame(height: 16)
+
+                // Edit mode group: label + 4 mutually-exclusive radio buttons + anchor-only toggle
                 Text("Edit:")
                     .font(.system(size: 11, weight: .semibold))
                     .foregroundStyle(.secondary)
-                    .padding(.leading, 20)
+                    .fixedSize()
 
-                // 4 mutually-exclusive edit-mode radio buttons
                 toolbarIconButton(help: "Edit points", selected: controller.geometryEditorTool == .points) {
                     EditPointsIcon()
                 } action: { controller.startGeometryEditMode(.points) }
@@ -942,8 +941,7 @@ private struct GeometryEditorMainShell: View {
                     PolygonGeometryIcon()
                 } action: { controller.startGeometryEditMode(.polygons) }
 
-                // Anchor-only: a boolean modifier, not a mode — shown with a subtle
-                // tinted background so it is clearly a toggle, not part of the radio group.
+                // Anchor-only: a boolean modifier, not a mode — distinct toggle visual (background tint).
                 Button {
                     controller.geometryEditorAnchorOnlyEdit.toggle()
                 } label: {
@@ -963,11 +961,12 @@ private struct GeometryEditorMainShell: View {
                 .help("Anchor-only edit: drag anchors without moving their control points")
                 .modifier(LoomHoverHelp("Anchor-only edit: drag anchors without moving their control points"))
 
-                // Cut / copy / paste — leading padding provides gap
+                Divider().frame(height: 16)
+
+                // Clipboard group
                 toolbarIconButton(help: "Cut selected objects", disabled: !controller.canCutCopySelectedGeometry || morphLocked) {
                     Image(systemName: "scissors").font(.system(size: 15))
                 } action: { controller.cutSelectedGeometry() }
-                .padding(.leading, 46)
                 toolbarIconButton(help: "Copy selected objects", disabled: !controller.canCutCopySelectedGeometry) {
                     CopyGeometryIcon()
                 } action: { controller.copySelectedGeometry() }
@@ -975,17 +974,15 @@ private struct GeometryEditorMainShell: View {
                     PasteGeometryIcon()
                 } action: { controller.pasteGeometry() }
 
-                // Centre — leading padding provides gap
+                Divider().frame(height: 16)
+
+                // View & snap group: centre + snap anchors + snap all + reset controls
                 toolbarIconButton(help: "Centre selected geometry, or the active layer if nothing is selected") {
                     Image(systemName: "scope").font(.system(size: 15))
                 } action: { controller.centreGeometryEditorViewOnSelectionOrLayer() }
-                .padding(.leading, 46)
-
-                // Snap icons — leading padding provides gap before first
                 toolbarIconButton(help: "Snap selected anchors to grid, leaving control points unchanged") {
                     AnchorSnapIcon()
                 } action: { controller.snapGeometryEditorSelectionToGrid(anchorOnly: true) }
-                .padding(.leading, 46)
                 toolbarIconButton(help: "Snap selected points to grid, or all active layer points if nothing is selected") {
                     SnapAllPointsIcon()
                 } action: { controller.snapGeometryEditorSelectionToGrid(anchorOnly: false) }
@@ -993,11 +990,12 @@ private struct GeometryEditorMainShell: View {
                     SteeringWheelIcon()
                 } action: { controller.resetSelectedGeometryControls() }
 
-                // Delete icons — same gap as other groups
+                Divider().frame(height: 16)
+
+                // Delete group
                 toolbarIconButton(help: "Delete selected geometry", disabled: !controller.canDeleteSelectedGeometry || morphLocked) {
                     DeleteSelectedGeometryIcon()
                 } action: { controller.deleteSelectedGeometry() }
-                .padding(.leading, 46)
                 toolbarIconButton(help: "Delete all geometry in active layer", disabled: !controller.canDeleteAllLayerGeometry || morphLocked) {
                     DeleteAllLayerGeometryIcon()
                 } action: { controller.deleteAllLayerGeometry() }
@@ -1015,6 +1013,7 @@ private struct GeometryEditorMainShell: View {
                             .font(.system(size: 12))
                         Text("Morph Target")
                             .font(.system(size: 11))
+                            .fixedSize()
                     }
                     .foregroundStyle(morphLocked ? Color.orange : Color.secondary)
                 }
