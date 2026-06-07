@@ -899,7 +899,8 @@ private struct GeometryEditorMainShell: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            HStack(spacing: 12) {
+            HStack(spacing: 6) {
+                // Title + geometry info
                 Text("Geometry Editor")
                     .font(.system(size: 13, weight: .semibold))
                 Text(currentGeometryName)
@@ -910,21 +911,100 @@ private struct GeometryEditorMainShell: View {
                 Text(controller.geometryEditorTool.rawValue)
                     .font(.system(size: 11))
                     .foregroundStyle(.tertiary)
-                Spacer()
-                let locked = controller.isCurrentGeometryMorphTargetLocked
+
+                let morphLocked = controller.isCurrentGeometryMorphTargetLocked
+
+                // Gap ≈ "Polygons"
+                Color.clear.frame(width: 52)
+
+                // Edit label
+                Text("Edit:")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(.secondary)
+
+                // 5 edit-mode icons
+                toolbarIconButton(help: "Edit points", selected: controller.geometryEditorTool == .points) {
+                    EditPointsIcon()
+                } action: { controller.startGeometryEditMode(.points) }
+                toolbarIconButton(
+                    help: "Anchor-only edit: drag anchors without moving their control points",
+                    selected: controller.geometryEditorAnchorOnlyEdit
+                ) {
+                    CrosshairAnchorIcon()
+                } action: { controller.geometryEditorAnchorOnlyEdit.toggle() }
+                toolbarIconButton(help: "Edit edges", selected: controller.geometryEditorTool == .edges) {
+                    EdgeGeometryIcon()
+                } action: { controller.startGeometryEditMode(.edges) }
+                toolbarIconButton(help: "Edit open curves", selected: controller.geometryEditorTool == .openCurves) {
+                    OpenCurveGeometryIcon()
+                } action: { controller.startGeometryEditMode(.openCurves) }
+                toolbarIconButton(help: "Edit polygons", selected: controller.geometryEditorTool == .polygons) {
+                    PolygonGeometryIcon()
+                } action: { controller.startGeometryEditMode(.polygons) }
+
+                // Gap
+                Color.clear.frame(width: 52)
+
+                // Cut / copy / paste
+                toolbarIconButton(help: "Cut selected objects", disabled: !controller.canCutCopySelectedGeometry || morphLocked) {
+                    Image(systemName: "scissors").font(.system(size: 14))
+                } action: { controller.cutSelectedGeometry() }
+                toolbarIconButton(help: "Copy selected objects", disabled: !controller.canCutCopySelectedGeometry) {
+                    CopyGeometryIcon()
+                } action: { controller.copySelectedGeometry() }
+                toolbarIconButton(help: "Paste at last click position", disabled: !controller.canPasteGeometry || morphLocked) {
+                    PasteGeometryIcon()
+                } action: { controller.pasteGeometry() }
+
+                // Gap
+                Color.clear.frame(width: 52)
+
+                // Centre
+                toolbarIconButton(help: "Centre selected geometry, or the active layer if nothing is selected") {
+                    Image(systemName: "scope").font(.system(size: 14))
+                } action: { controller.centreGeometryEditorViewOnSelectionOrLayer() }
+
+                // Gap
+                Color.clear.frame(width: 52)
+
+                // Snap icons
+                toolbarIconButton(help: "Snap selected anchors to grid, leaving control points unchanged") {
+                    AnchorSnapIcon()
+                } action: { controller.snapGeometryEditorSelectionToGrid(anchorOnly: true) }
+                toolbarIconButton(help: "Snap selected points to grid, or all active layer points if nothing is selected") {
+                    SnapAllPointsIcon()
+                } action: { controller.snapGeometryEditorSelectionToGrid(anchorOnly: false) }
+                toolbarIconButton(help: "Reset control points", disabled: !controller.canResetSelectedGeometryControls) {
+                    SteeringWheelIcon()
+                } action: { controller.resetSelectedGeometryControls() }
+
+                Spacer(minLength: 0)
+
+                // Delete icons (towards right)
+                toolbarIconButton(help: "Delete selected geometry", disabled: !controller.canDeleteSelectedGeometry || morphLocked) {
+                    DeleteSelectedGeometryIcon()
+                } action: { controller.deleteSelectedGeometry() }
+                toolbarIconButton(help: "Delete all geometry in active layer", disabled: !controller.canDeleteAllLayerGeometry || morphLocked) {
+                    DeleteAllLayerGeometryIcon()
+                } action: { controller.deleteAllLayerGeometry() }
+
+                Divider().frame(height: 16)
+
+                // Morph target lock
                 Button {
                     controller.toggleCurrentGeometryMorphTargetLock()
                 } label: {
                     HStack(spacing: 4) {
-                        Image(systemName: locked ? "lock.fill" : "lock.open")
+                        Image(systemName: morphLocked ? "lock.fill" : "lock.open")
                             .font(.system(size: 12))
-                        Text(locked ? "Morph Target" : "Morph Target")
+                        Text("Morph Target")
                             .font(.system(size: 11))
                     }
-                    .foregroundStyle(locked ? Color.orange : Color.secondary)
+                    .foregroundStyle(morphLocked ? Color.orange : Color.secondary)
                 }
-                .help(locked ? "Morph target locked: only vertex positions can be edited. Click to unlock." : "Click to designate as morph target (locks topology)")
+                .help(morphLocked ? "Morph target locked: only vertex positions can be edited. Click to unlock." : "Click to designate as morph target (locks topology)")
                 .buttonStyle(.plain)
+
                 Button("Default Geometry View") {
                     controller.requestExitGeometryEditor()
                 }
@@ -955,6 +1035,28 @@ private struct GeometryEditorMainShell: View {
     private var currentGeometryName: String {
         guard let key = controller.selectedGeometryKey else { return "New closed polygon shell" }
         return String(key.split(separator: "/", maxSplits: 1).last ?? "")
+    }
+
+    @ViewBuilder
+    private func toolbarIconButton<Content: View>(
+        help: String = "",
+        disabled: Bool = false,
+        selected: Bool = false,
+        @ViewBuilder label: () -> Content,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button(action: action) {
+            label()
+                .foregroundStyle(
+                    selected  ? Color.accentColor :
+                    disabled  ? Color.secondary.opacity(0.35) :
+                                Color.primary
+                )
+        }
+        .buttonStyle(.plain)
+        .disabled(disabled)
+        .help(help)
+        .modifier(LoomHoverHelp(help))
     }
 }
 

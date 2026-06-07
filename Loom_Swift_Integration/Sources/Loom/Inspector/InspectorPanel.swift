@@ -498,7 +498,6 @@ private struct GeometryEditorShellInspector: View {
     @EnvironmentObject private var controller: AppController
     @State private var geometryName = ""
     @State private var createCollapsed = false
-    @State private var editCollapsed = false
     @State private var weldCollapsed = false
     @State private var multiplyCollapsed = false
     @State private var transformCollapsed = false
@@ -628,85 +627,6 @@ private struct GeometryEditorShellInspector: View {
                         .help("Freehand detail")
                         .modifier(LoomHoverHelp("Freehand detail"))
                 }
-            }
-            .disabled(morphLocked)
-
-            InspectorSection("Edit", isCollapsed: $editCollapsed) {
-                iconRow {
-                    iconButton(help: "Edit points", selected: controller.geometryEditorTool == .points) {
-                        EditPointsIcon()
-                    } action: {
-                        controller.startGeometryEditMode(.points)
-                    }
-                    iconButton(
-                        help: "Anchor-only edit: drag anchors without moving their control points",
-                        selected: controller.geometryEditorAnchorOnlyEdit
-                    ) {
-                        CrosshairAnchorIcon()
-                    } action: {
-                        controller.geometryEditorAnchorOnlyEdit.toggle()
-                    }
-                    iconButton(help: "Edit edges", selected: controller.geometryEditorTool == .edges) {
-                        EdgeGeometryIcon()
-                    } action: {
-                        controller.startGeometryEditMode(.edges)
-                    }
-                    iconButton(help: "Edit open curves", selected: controller.geometryEditorTool == .openCurves) {
-                        OpenCurveGeometryIcon()
-                    } action: {
-                        controller.startGeometryEditMode(.openCurves)
-                    }
-                    iconButton(help: "Edit polygons", selected: controller.geometryEditorTool == .polygons) {
-                        PolygonGeometryIcon()
-                    } action: {
-                        controller.startGeometryEditMode(.polygons)
-                    }
-                    Spacer()
-                }
-                iconRow {
-                    iconButton(help: "Cut selected objects", disabled: !controller.canCutCopySelectedGeometry || morphLocked) {
-                        Image(systemName: "scissors").font(.system(size: 15))
-                    } action: {
-                        controller.cutSelectedGeometry()
-                    }
-                    iconButton(help: "Copy selected objects", disabled: !controller.canCutCopySelectedGeometry) {
-                        CopyGeometryIcon()
-                    } action: {
-                        controller.copySelectedGeometry()
-                    }
-                    iconButton(help: "Paste at last click position", disabled: !controller.canPasteGeometry || morphLocked) {
-                        PasteGeometryIcon()
-                    } action: {
-                        controller.pasteGeometry()
-                    }
-                    Spacer()
-                }
-                iconRow {
-                    iconButton(help: "Centre selected geometry, or the active layer if nothing is selected") {
-                        Image(systemName: "scope").font(.system(size: 15))
-                    } action: {
-                        controller.centreGeometryEditorViewOnSelectionOrLayer()
-                    }
-                    Divider()
-                        .frame(height: 18)
-                        .padding(.horizontal, 3)
-                    iconButton(help: "Snap selected anchors to grid, leaving control points unchanged") {
-                        AnchorSnapIcon()
-                    } action: {
-                        controller.snapGeometryEditorSelectionToGrid(anchorOnly: true)
-                    }
-                    iconButton(help: "Snap selected points to grid, or all active layer points if nothing is selected") {
-                        SnapAllPointsIcon()
-                    } action: {
-                        controller.snapGeometryEditorSelectionToGrid(anchorOnly: false)
-                    }
-                    iconButton(help: "Reset control points", disabled: !controller.canResetSelectedGeometryControls) {
-                        SteeringWheelIcon()
-                    } action: {
-                        controller.resetSelectedGeometryControls()
-                    }
-                    Spacer()
-                }
                 iconRow {
                     iconButton(
                         help: "Pressure Trace: trace over selected geometry to add pressure sensitivity",
@@ -728,6 +648,7 @@ private struct GeometryEditorShellInspector: View {
                     Spacer()
                 }
             }
+            .disabled(morphLocked)
 
             InspectorSection("Weld", isCollapsed: $weldCollapsed) {
                 iconRow {
@@ -1033,21 +954,6 @@ private struct GeometryEditorShellInspector: View {
                 }
 
                 Divider().frame(height: 20)
-
-                Spacer(minLength: 0)
-
-                HStack(spacing: 7) {
-                    iconButton(help: "Delete selected geometry", disabled: !controller.canDeleteSelectedGeometry || morphLocked) {
-                        DeleteSelectedGeometryIcon()
-                    } action: {
-                        controller.deleteSelectedGeometry()
-                    }
-                    iconButton(help: "Delete all geometry in active layer", disabled: !controller.canDeleteAllLayerGeometry || morphLocked) {
-                        DeleteAllLayerGeometryIcon()
-                    } action: {
-                        controller.deleteAllLayerGeometry()
-                    }
-                }
 
                 Spacer(minLength: 0)
 
@@ -1360,7 +1266,7 @@ private struct PointCircleIcon: View {
     }
 }
 
-private struct EditPointsIcon: View {
+struct EditPointsIcon: View {
     var body: some View {
         GeometryReader { proxy in
             let size = min(proxy.size.width, proxy.size.height)
@@ -1391,7 +1297,7 @@ private struct EditPointsIcon: View {
     }
 }
 
-private struct PressureTraceIcon: View {
+struct PressureTraceIcon: View {
     var body: some View {
         GeometryReader { proxy in
             let w = proxy.size.width
@@ -1418,7 +1324,7 @@ private struct PressureTraceIcon: View {
     }
 }
 
-private struct PolygonGeometryIcon: View {
+struct PolygonGeometryIcon: View {
     var body: some View {
         Rectangle()
             .stroke(lineWidth: 1.5)
@@ -1426,7 +1332,7 @@ private struct PolygonGeometryIcon: View {
     }
 }
 
-private struct OpenCurveGeometryIcon: View {
+struct OpenCurveGeometryIcon: View {
     var body: some View {
         GeometryReader { proxy in
             Path { path in
@@ -1443,7 +1349,7 @@ private struct OpenCurveGeometryIcon: View {
     }
 }
 
-private struct EdgeGeometryIcon: View {
+struct EdgeGeometryIcon: View {
     var body: some View {
         GeometryReader { proxy in
             Path { path in
@@ -1521,7 +1427,7 @@ private struct RazorBladeIcon: View {
     }
 }
 
-private struct SnapAllPointsIcon: View {
+struct SnapAllPointsIcon: View {
     var body: some View {
         ZStack {
             Image(systemName: "grid")
@@ -1561,7 +1467,7 @@ private struct SnapAnchorPointsIcon: View {
     }
 }
 
-private struct AnchorSnapIcon: View {
+struct AnchorSnapIcon: View {
     var body: some View {
         GeometryReader { proxy in
             let rect = proxy.frame(in: .local).insetBy(dx: 4, dy: 3)
@@ -1591,7 +1497,7 @@ private struct AnchorSnapIcon: View {
     }
 }
 
-private struct SteeringWheelIcon: View {
+struct SteeringWheelIcon: View {
     var body: some View {
         GeometryReader { proxy in
             let rect = proxy.frame(in: .local)
@@ -1767,7 +1673,7 @@ private struct ScaleExtrudeIcon: View {
     }
 }
 
-private struct CopyGeometryIcon: View {
+struct CopyGeometryIcon: View {
     var body: some View {
         GeometryReader { proxy in
             let r = proxy.frame(in: .local)
@@ -1803,7 +1709,7 @@ private struct CopyGeometryIcon: View {
     }
 }
 
-private struct PasteGeometryIcon: View {
+struct PasteGeometryIcon: View {
     var body: some View {
         GeometryReader { proxy in
             let r = proxy.frame(in: .local)
@@ -1848,7 +1754,7 @@ private struct PasteGeometryIcon: View {
     }
 }
 
-private struct DeleteSelectedGeometryIcon: View {
+struct DeleteSelectedGeometryIcon: View {
     var body: some View {
         GeometryReader { proxy in
             let r = proxy.frame(in: .local)
@@ -1875,7 +1781,7 @@ private struct DeleteSelectedGeometryIcon: View {
     }
 }
 
-private struct DeleteAllLayerGeometryIcon: View {
+struct DeleteAllLayerGeometryIcon: View {
     var body: some View {
         GeometryReader { proxy in
             let r = proxy.frame(in: .local)
@@ -2103,7 +2009,7 @@ private struct LoadDocumentIcon: View {
     }
 }
 
-private struct CrosshairAnchorIcon: View {
+struct CrosshairAnchorIcon: View {
     var body: some View {
         GeometryReader { proxy in
             let rect = proxy.frame(in: .local)
