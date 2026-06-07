@@ -823,14 +823,29 @@ private struct GeometryEditorShellInspector: View {
                     } action: {
                         controller.zoomGeometryEditorOut()
                     }
-                    iconButton(
-                        help: "Pan view: drag the canvas to move the editor view",
-                        selected: controller.geometryEditorTool == .panView
-                    ) {
-                        Image(systemName: "hand.raised.fill").font(.system(size: 15))
-                    } action: {
-                        controller.startGeometryEditMode(.panView)
+                    // Pan button: single-click toggles pan mode; double-click resets
+                    // the pan origin back to centre without changing the active mode.
+                    let isPanSelected = controller.geometryEditorTool == .panView
+                    ZStack {
+                        RoundedRectangle(cornerRadius: 4)
+                            .fill(isPanSelected ? Color.accentColor.opacity(0.18) : Color.clear)
+                        Image(systemName: "hand.raised.fill")
+                            .font(.system(size: 15))
+                            .frame(width: 22, height: 22)
+                            .contentShape(Rectangle())
+                            .foregroundStyle(Color.primary)
                     }
+                    .onTapGesture(count: 2) {
+                        controller.resetGeometryEditorViewPan()
+                    }
+                    .onTapGesture(count: 1) {
+                        if isPanSelected {
+                            controller.startGeometryEditMode(.points)
+                        } else {
+                            controller.startGeometryEditMode(.panView)
+                        }
+                    }
+                    .modifier(InstantGeometryTooltip("Pan view: drag canvas to scroll the editor view. Double-click to reset pan position."))
                     iconButton(
                         help: "Show or hide grid",
                         selected: controller.geometryEditorShowsGrid

@@ -3341,6 +3341,10 @@ final class AppController: ObservableObject, @unchecked Sendable {
         )
     }
 
+    func resetGeometryEditorViewPan() {
+        geometryEditorViewCentre = .zero
+    }
+
     func loadGeometryEditorReferenceImage() {
         let panel = NSOpenPanel()
         panel.title = "Choose Geometry Reference Image"
