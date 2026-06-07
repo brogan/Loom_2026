@@ -181,7 +181,8 @@ final class AppController: ObservableObject, @unchecked Sendable {
     @Published var geometryEditorShowsReferenceImage: Bool = true
     @Published var geometryEditorReferenceImageOpacity: Double = 0.34
     @Published var geometryEditorLayers:          [GeometryEditorLayer] = [GeometryEditorLayer(name: "Layer 1")] { didSet { refreshGeometryEditorSaveState() } }
-    @Published var geometryEditorAnchorOnlyEdit:  Bool = false
+    @Published var geometryEditorAnchorOnlyEdit:       Bool = false
+    @Published var geometryEditorControlPointOnlyEdit: Bool = false
     @Published var geometryEditorAutoWeld:        Bool = true
     @Published var geometryEditorWeldTolerance:   Double = 0.5
     @Published var geometryEditorAutoWeldSegmentIDs: Set<EditableGeometryID> = []
@@ -3335,6 +3336,28 @@ final class AppController: ObservableObject, @unchecked Sendable {
         }
     }
 
+    private func translateControlPointIDs(
+        _ seedIDs: Set<EditableGeometryID>,
+        by delta: Vector2D,
+        in document: inout EditableGeometryDocument
+    ) {
+        guard !seedIDs.isEmpty else { return }
+        for pointID in document.relationalPointIDs(startingWith: seedIDs) {
+            guard let point = document.point(id: pointID), point.kind == .control else { continue }
+            document.setPointPosition(id: pointID, to: point.position + delta)
+        }
+    }
+
+    func toggleAnchorOnlyEdit() {
+        geometryEditorAnchorOnlyEdit.toggle()
+        if geometryEditorAnchorOnlyEdit { geometryEditorControlPointOnlyEdit = false }
+    }
+
+    func toggleControlPointOnlyEdit() {
+        geometryEditorControlPointOnlyEdit.toggle()
+        if geometryEditorControlPointOnlyEdit { geometryEditorAnchorOnlyEdit = false }
+    }
+
     private func duplicateOffsetDistance(for points: [Vector2D]) -> Double {
         guard !points.isEmpty else { return 0.08 }
         let minX = points.map(\.x).min() ?? 0
@@ -3588,6 +3611,8 @@ final class AppController: ObservableObject, @unchecked Sendable {
             clearParametricSourceForSelectedPolygons(in: &document, selection: selection)
             if geometryEditorAnchorOnlyEdit {
                 translateAnchorPointIDs(seedIDs, by: delta, in: &document)
+            } else if geometryEditorControlPointOnlyEdit {
+                translateControlPointIDs(seedIDs, by: delta, in: &document)
             } else {
                 translateRelationalPointIDs(seedIDs, by: delta, in: &document)
             }
@@ -3656,7 +3681,12 @@ final class AppController: ObservableObject, @unchecked Sendable {
             transformCentre = .zero
         }
 
-        transformDocumentPointIDs(targetIDs, in: &document, around: transformCentre, transform: transform)
+        transformDocumentPointIDs(
+            targetIDs, in: &document, around: transformCentre,
+            anchorOnly: geometryEditorAnchorOnlyEdit,
+            controlOnly: geometryEditorControlPointOnlyEdit,
+            transform: transform
+        )
     }
 
     private func clearParametricSourceForSelectedPolygons(
@@ -3692,11 +3722,15 @@ final class AppController: ObservableObject, @unchecked Sendable {
         _ pointIDs: Set<EditableGeometryID>,
         in document: inout EditableGeometryDocument,
         around centre: Vector2D,
+        anchorOnly: Bool = false,
+        controlOnly: Bool = false,
         transform: (Vector2D, Vector2D) -> Vector2D
     ) {
         for pointID in pointIDs {
-            guard let position = document.point(id: pointID)?.position else { continue }
-            document.setPointPosition(id: pointID, to: transform(position, centre))
+            guard let point = document.point(id: pointID) else { continue }
+            if anchorOnly  && point.kind != .anchor  { continue }
+            if controlOnly && point.kind != .control { continue }
+            document.setPointPosition(id: pointID, to: transform(point.position, centre))
         }
     }
 
@@ -3756,10 +3790,15 @@ final class AppController: ObservableObject, @unchecked Sendable {
         clearParametricSourceForSelectedPolygons(in: &document, selection: geometryEditorSelection)
         let delta = position - currentPosition
         if geometryEditorAnchorOnlyEdit {
-            // Expand through relational links then filter to anchors only — control points stay fixed.
             let expanded = document.relationalPointIDs(startingWith: [pointID])
             for id in expanded {
                 guard let pt = document.point(id: id), pt.kind == .anchor else { continue }
+                document.setPointPosition(id: id, to: pt.position + delta)
+            }
+        } else if geometryEditorControlPointOnlyEdit {
+            let expanded = document.relationalPointIDs(startingWith: [pointID])
+            for id in expanded {
+                guard let pt = document.point(id: id), pt.kind == .control else { continue }
                 document.setPointPosition(id: id, to: pt.position + delta)
             }
         } else {
@@ -3781,6 +3820,8 @@ final class AppController: ObservableObject, @unchecked Sendable {
         clearParametricSourceForSelectedPolygons(in: &document, selection: geometryEditorSelection)
         if geometryEditorAnchorOnlyEdit {
             translateAnchorPointIDs(seedIDs, by: delta, in: &document)
+        } else if geometryEditorControlPointOnlyEdit {
+            translateControlPointIDs(seedIDs, by: delta, in: &document)
         } else {
             translateRelationalPointIDs(seedIDs, by: delta, in: &document)
         }
@@ -3850,6 +3891,8 @@ final class AppController: ObservableObject, @unchecked Sendable {
         clearParametricSourceForSelectedPolygons(in: &document, selection: geometryEditorSelection)
         if geometryEditorAnchorOnlyEdit {
             translateAnchorPointIDs(seedIDs, by: delta, in: &document)
+        } else if geometryEditorControlPointOnlyEdit {
+            translateControlPointIDs(seedIDs, by: delta, in: &document)
         } else {
             translateRelationalPointIDs(seedIDs, by: delta, in: &document)
         }

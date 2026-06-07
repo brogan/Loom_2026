@@ -2024,6 +2024,35 @@ private struct LoadDocumentIcon: View {
     }
 }
 
+// Bezier handle icon: small filled square (anchor) at lower-left with an arm
+// extending to an open circle (control handle) at upper-right.  Visually
+// pairs with CrosshairAnchorIcon — anchor is subordinate here, handle prominent.
+struct ControlHandleIcon: View {
+    var body: some View {
+        GeometryReader { proxy in
+            let rect = proxy.frame(in: .local)
+            let size  = min(rect.width, rect.height)
+            let p1    = CGPoint(x: rect.minX + size * 0.28, y: rect.maxY - size * 0.28)
+            let p2    = CGPoint(x: rect.maxX - size * 0.26, y: rect.minY + size * 0.26)
+            let sq    = size * 0.13
+            let cr    = size * 0.22
+            Path { path in
+                path.move(to: p1); path.addLine(to: p2)
+            }
+            .stroke(style: StrokeStyle(lineWidth: 1.5, lineCap: .round))
+            Path { path in
+                path.addRect(CGRect(x: p1.x - sq, y: p1.y - sq, width: sq * 2, height: sq * 2))
+            }
+            .fill()
+            Path { path in
+                path.addEllipse(in: CGRect(x: p2.x - cr, y: p2.y - cr, width: cr * 2, height: cr * 2))
+            }
+            .stroke(style: StrokeStyle(lineWidth: 1.5))
+        }
+        .padding(2)
+    }
+}
+
 struct CrosshairAnchorIcon: View {
     var body: some View {
         GeometryReader { proxy in

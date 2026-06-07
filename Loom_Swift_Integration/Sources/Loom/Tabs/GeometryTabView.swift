@@ -941,25 +941,22 @@ private struct GeometryEditorMainShell: View {
                     PolygonGeometryIcon()
                 } action: { controller.startGeometryEditMode(.polygons) }
 
-                // Anchor-only: a boolean modifier, not a mode — distinct toggle visual (background tint).
-                Button {
-                    controller.geometryEditorAnchorOnlyEdit.toggle()
-                } label: {
+                Divider().frame(height: 16)
+
+                // Point filter toggles — mutually exclusive; both off = all points affected.
+                toolbarIconButton(
+                    help: "Anchor-only: all transforms affect anchor points only, leaving control handles fixed",
+                    selected: controller.geometryEditorAnchorOnlyEdit
+                ) {
                     CrosshairAnchorIcon()
-                        .frame(width: 20, height: 20)
-                        .padding(4)
-                        .contentShape(Rectangle())
-                        .foregroundStyle(controller.geometryEditorAnchorOnlyEdit ? Color.accentColor : Color.primary)
-                        .background(
-                            controller.geometryEditorAnchorOnlyEdit
-                                ? Color.accentColor.opacity(0.15)
-                                : Color.clear,
-                            in: RoundedRectangle(cornerRadius: 4)
-                        )
-                }
-                .buttonStyle(.plain)
-                .help("Anchor-only edit: drag anchors without moving their control points")
-                .modifier(LoomHoverHelp("Anchor-only edit: drag anchors without moving their control points"))
+                } action: { controller.toggleAnchorOnlyEdit() }
+
+                toolbarIconButton(
+                    help: "Handle-only: all transforms affect control handles only, leaving anchor points fixed",
+                    selected: controller.geometryEditorControlPointOnlyEdit
+                ) {
+                    ControlHandleIcon()
+                } action: { controller.toggleControlPointOnlyEdit() }
 
                 Divider().frame(height: 16)
 
