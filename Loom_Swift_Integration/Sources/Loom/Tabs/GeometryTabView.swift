@@ -914,13 +914,11 @@ private struct GeometryEditorMainShell: View {
 
                 let morphLocked = controller.isCurrentGeometryMorphTargetLocked
 
-                // Gap ≈ "Polygons"
-                Color.clear.frame(width: 52)
-
-                // Edit label
+                // Edit label — padding provides the "≈ Polygons" gap before it
                 Text("Edit:")
                     .font(.system(size: 11, weight: .semibold))
                     .foregroundStyle(.secondary)
+                    .padding(.leading, 46)
 
                 // 5 edit-mode icons
                 toolbarIconButton(help: "Edit points", selected: controller.geometryEditorTool == .points) {
@@ -942,13 +940,11 @@ private struct GeometryEditorMainShell: View {
                     PolygonGeometryIcon()
                 } action: { controller.startGeometryEditMode(.polygons) }
 
-                // Gap
-                Color.clear.frame(width: 52)
-
-                // Cut / copy / paste
+                // Cut / copy / paste — leading padding provides gap
                 toolbarIconButton(help: "Cut selected objects", disabled: !controller.canCutCopySelectedGeometry || morphLocked) {
                     Image(systemName: "scissors").font(.system(size: 14))
                 } action: { controller.cutSelectedGeometry() }
+                .padding(.leading, 46)
                 toolbarIconButton(help: "Copy selected objects", disabled: !controller.canCutCopySelectedGeometry) {
                     CopyGeometryIcon()
                 } action: { controller.copySelectedGeometry() }
@@ -956,21 +952,17 @@ private struct GeometryEditorMainShell: View {
                     PasteGeometryIcon()
                 } action: { controller.pasteGeometry() }
 
-                // Gap
-                Color.clear.frame(width: 52)
-
-                // Centre
+                // Centre — leading padding provides gap
                 toolbarIconButton(help: "Centre selected geometry, or the active layer if nothing is selected") {
                     Image(systemName: "scope").font(.system(size: 14))
                 } action: { controller.centreGeometryEditorViewOnSelectionOrLayer() }
+                .padding(.leading, 46)
 
-                // Gap
-                Color.clear.frame(width: 52)
-
-                // Snap icons
+                // Snap icons — leading padding provides gap before first
                 toolbarIconButton(help: "Snap selected anchors to grid, leaving control points unchanged") {
                     AnchorSnapIcon()
                 } action: { controller.snapGeometryEditorSelectionToGrid(anchorOnly: true) }
+                .padding(.leading, 46)
                 toolbarIconButton(help: "Snap selected points to grid, or all active layer points if nothing is selected") {
                     SnapAllPointsIcon()
                 } action: { controller.snapGeometryEditorSelectionToGrid(anchorOnly: false) }
