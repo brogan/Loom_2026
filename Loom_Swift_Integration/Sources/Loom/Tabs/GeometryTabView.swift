@@ -1071,6 +1071,10 @@ private struct GeometryEditorMainShell: View {
                     disabled  ? Color.secondary.opacity(0.35) :
                                 Color.primary
                 )
+                .background(
+                    selected ? Color.accentColor.opacity(0.15) : Color.clear,
+                    in: RoundedRectangle(cornerRadius: 4)
+                )
         }
         .buttonStyle(.plain)
         .disabled(disabled)
