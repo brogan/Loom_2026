@@ -1047,6 +1047,7 @@ private struct GeometryEditorMainShell: View {
     ) -> some View {
         Button(action: action) {
             label()
+                .frame(width: 16, height: 16)
                 .foregroundStyle(
                     selected  ? Color.accentColor :
                     disabled  ? Color.secondary.opacity(0.35) :
