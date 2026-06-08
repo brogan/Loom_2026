@@ -569,12 +569,8 @@ private struct DriverSectionsView: View {
                                isHighlighted: selectedLane == .scale)
             DoubleDriverEditor(label: "Rotation", driver: db.rotation, isCollapsed: $rotCollapsed,
                                isHighlighted: selectedLane == .rotation)
-            DoubleDriverEditor(label: "Morph",    driver: db.morph,    isCollapsed: $mphCollapsed,
-                               isHighlighted: selectedLane == .morph)
             DoubleDriverEditor(label: "Opacity",  driver: db.opacity,  isCollapsed: $opacCollapsed,
                                isHighlighted: selectedLane == .opacity)
-            DoubleDriverEditor(label: "Shape",    driver: db.shape,    isCollapsed: $shpCollapsed,
-                               isHighlighted: selectedLane == .shape)
             NameDriverEditor(
                 label: "Subdivision Set Driver",
                 driver: db.subdivisionSet,
@@ -589,7 +585,11 @@ private struct DriverSectionsView: View {
                 isHighlighted: selectedLane == .rendererSet,
                 options: controller.projectConfig?.renderingConfig.library.rendererSets.map(\.name) ?? []
             )
+            DoubleDriverEditor(label: "Morph",    driver: db.morph,    isCollapsed: $mphCollapsed,
+                               isHighlighted: selectedLane == .morph)
             morphTargetsSection
+            DoubleDriverEditor(label: "Shape",    driver: db.shape,    isCollapsed: $shpCollapsed,
+                               isHighlighted: selectedLane == .shape)
             shapeVariantsSection
         }
         .onAppear { syncCollapsed() }
