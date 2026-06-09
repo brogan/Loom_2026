@@ -279,15 +279,12 @@ private struct GeometryInspector: View {
             let name   = parts.count == 2 ? String(parts[1]) : key
 
             InspectorSection("Geometry") {
-                HStack {
-                    Spacer()
-                    Button("Edit…") {
-                        controller.enterGeometryEditor()
-                    }
-                    .font(.system(size: 12))
-                    .padding(.horizontal, 12)
-                    .padding(.bottom, 2)
+                Button("Edit Geometry") {
+                    controller.enterGeometryEditor()
                 }
+                .font(.system(size: 12))
+                .frame(maxWidth: .infinity)
+                .padding(.bottom, 2)
                 InspectorRow(label: "Folder", value: folder)
                 InspectorRow(label: "Name",   value: name)
             }
