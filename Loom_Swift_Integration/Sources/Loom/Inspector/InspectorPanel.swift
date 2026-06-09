@@ -2119,6 +2119,56 @@ struct CrosshairAnchorIcon: View {
 
 // MARK: - Quick Setup section
 
+private struct PipelineIcon: View {
+    var body: some View {
+        Canvas { ctx, size in
+            let w = size.width
+            let h = size.height
+            let turnX: CGFloat = w * 0.72
+            let hY:    CGFloat = h * 0.30
+            let bendR: CGFloat = min(w * 0.18, h * 0.42)
+
+            // Centerline: horizontal → smooth elbow → vertical
+            var pipe = Path()
+            pipe.move(to: CGPoint(x: 0, y: hY))
+            pipe.addLine(to: CGPoint(x: turnX - bendR, y: hY))
+            pipe.addQuadCurve(
+                to:      CGPoint(x: turnX, y: hY + bendR),
+                control: CGPoint(x: turnX, y: hY)
+            )
+            pipe.addLine(to: CGPoint(x: turnX, y: h))
+
+            // Pipe outer wall (thick)
+            ctx.stroke(pipe, with: .color(Color.secondary.opacity(0.50)),
+                       style: StrokeStyle(lineWidth: 9, lineCap: .butt, lineJoin: .round))
+
+            // Pipe inner channel (hollow look)
+            ctx.stroke(pipe, with: .color(Color(NSColor.controlBackgroundColor).opacity(0.65)),
+                       style: StrokeStyle(lineWidth: 3.5, lineCap: .butt, lineJoin: .round))
+
+            // → chevron in horizontal leg
+            let cs: CGFloat = 3.5
+            let ax = (turnX - bendR) * 0.46
+            var chH = Path()
+            chH.move(to: CGPoint(x: ax - cs * 0.7, y: hY - cs))
+            chH.addLine(to: CGPoint(x: ax + cs * 0.3, y: hY))
+            chH.addLine(to: CGPoint(x: ax - cs * 0.7, y: hY + cs))
+            ctx.stroke(chH, with: .color(Color.primary.opacity(0.60)),
+                       style: StrokeStyle(lineWidth: 1.5, lineCap: .round, lineJoin: .round))
+
+            // ↓ chevron in vertical leg
+            let bx = turnX
+            let by = hY + bendR + (h - hY - bendR) * 0.52
+            var chV = Path()
+            chV.move(to: CGPoint(x: bx - cs, y: by - cs * 0.7))
+            chV.addLine(to: CGPoint(x: bx, y: by + cs * 0.3))
+            chV.addLine(to: CGPoint(x: bx + cs, y: by - cs * 0.7))
+            ctx.stroke(chV, with: .color(Color.primary.opacity(0.60)),
+                       style: StrokeStyle(lineWidth: 1.5, lineCap: .round, lineJoin: .round))
+        }
+    }
+}
+
 private struct QuickSetupLayerOption: Identifiable, Hashable {
     let id: String
     let name: String
@@ -2140,7 +2190,13 @@ private struct QuickSetupSection: View {
     @State private var qsRendererMode:    RendererMode = .filled
 
     var body: some View {
-        InspectorSection("Quick Setup") {
+        VStack(spacing: 0) {
+            PipelineIcon()
+                .frame(width: 48, height: 30)
+                .frame(maxWidth: .infinity)
+                .padding(.top, 10)
+                .padding(.bottom, 5)
+        InspectorSection("Quick Pipeline Setup") {
             pipelinePhaseHeader(.geometry)
             if layerOptions.count > 1 {
                 InspectorField("Source") {
@@ -2282,6 +2338,7 @@ private struct QuickSetupSection: View {
                 qsRendererName = recommendedRendererName
             }
         }
+        }  // VStack
     }
 
     // MARK: - Layout helper
