@@ -127,6 +127,7 @@ struct TimelinePanel: View {
     @State private var pendingMarkerName:     String        = ""
     @State private var lastMarkerTap:         (x: CGFloat, time: Date)? = nil
     @State private var rulerContextFrame:     Int           = 0
+    @State private var hoveredMarkerIndex:   Int?          = nil
 
     private let headerWidth:  CGFloat = 160
     private let rowHeight:    CGFloat = 22
@@ -734,23 +735,6 @@ struct TimelinePanel: View {
             .clipped()
             .background(TimelineKeyCaptureView { event in handleKeyEvent(event) })
 
-            // Right-click context menu hit areas over each named marker
-            let markers = controller.projectConfig?.globalConfig.timelineMarkers ?? []
-            ForEach(markers.indices, id: \.self) { i in
-                let mx = CGFloat(markers[i].frame) * CGFloat(zoom) - CGFloat(hOffset)
-                if mx >= -8 && mx <= size.width + 8 {
-                    Color.clear
-                        .frame(width: 16, height: markerStripHeight)
-                        .contentShape(Rectangle())
-                        .position(x: max(8, min(size.width - 8, mx)), y: markerStripHeight / 2)
-                        .contextMenu {
-                            Button("Delete Marker \"\(markers[i].name.isEmpty ? "Frame \(markers[i].frame)" : markers[i].name)\"") {
-                                deleteMarker(at: i)
-                            }
-                        }
-                }
-            }
-
             // Popover anchor for naming a newly created marker
             if let frame = pendingMarkerFrame {
                 let anchorX = CGFloat(frame) * CGFloat(zoom) - CGFloat(hOffset)
@@ -783,9 +767,29 @@ struct TimelinePanel: View {
         .onContinuousHover { phase in
             if case .active(let loc) = phase {
                 rulerContextFrame = max(0, Int((loc.x + CGFloat(hOffset)) / CGFloat(zoom)))
+                if loc.y < markerStripHeight {
+                    let ms = controller.projectConfig?.globalConfig.timelineMarkers ?? []
+                    hoveredMarkerIndex = ms.indices.first(where: { i in
+                        let mx = CGFloat(ms[i].frame) * CGFloat(zoom) - CGFloat(hOffset)
+                        return abs(loc.x - mx) < 8
+                    })
+                } else {
+                    hoveredMarkerIndex = nil
+                }
+            } else {
+                hoveredMarkerIndex = nil
             }
         }
         .contextMenu {
+            if let idx = hoveredMarkerIndex,
+               let ms = controller.projectConfig?.globalConfig.timelineMarkers,
+               idx < ms.count {
+                let m = ms[idx]
+                Button("Delete Marker \"\(m.name.isEmpty ? "Frame \(m.frame)" : m.name)\"") {
+                    deleteMarker(at: idx)
+                }
+                Divider()
+            }
             Button("Set Start to Frame \(rulerContextFrame)") {
                 controller.updateProjectConfig { $0.globalConfig.startFrame = rulerContextFrame }
             }
