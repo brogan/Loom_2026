@@ -84,7 +84,7 @@ private struct RendererKFDragState {
     var previewFrame: Int
 }
 
-private enum DragKind { case none, seek, pan, rubberBand, keyframe, rendererKeyframe, camera }
+private enum DragKind { case none, seek, pan, rubberBand, keyframe, rendererKeyframe, camera, startMarker, endMarker, markerStrip }
 
 // MARK: - TimelinePanel
 
@@ -122,10 +122,17 @@ struct TimelinePanel: View {
     @State private var kfScalePercent:        String        = "100"
     @State private var scrollMonitor:         Any?          = nil
     @State private var mouseOverTimeline:     Bool          = false
+    @State private var pendingMarkerFrame:    Int?          = nil
+    @State private var isNamingMarker:        Bool          = false
+    @State private var pendingMarkerName:     String        = ""
+    @State private var lastMarkerTap:         (x: CGFloat, time: Date)? = nil
+    @State private var rulerContextFrame:     Int           = 0
 
     private let headerWidth:  CGFloat = 160
     private let rowHeight:    CGFloat = 22
     private let rulerHeight:  CGFloat = 28
+    private let markerStripHeight: CGFloat = 18
+    private var totalRulerHeight: CGFloat { markerStripHeight + rulerHeight }
     private let hitTolerance: CGFloat = 8
     private let minPanelHeight:    CGFloat = 80
     private var maxPanelHeight:    CGFloat { windowHeight / 2 }
@@ -133,9 +140,9 @@ struct TimelinePanel: View {
     private let bottomPadding:     CGFloat = 16
 
     private var cameraRowCount: Int { cameraExpanded ? 1 + visibleCameraLanes().count : 1 }
-    private var spriteStartY: CGFloat { rulerHeight + CGFloat(cameraRowCount) * rowHeight }
+    private var spriteStartY: CGFloat { totalRulerHeight + CGFloat(cameraRowCount) * rowHeight }
     private var timelineContentHeight: CGFloat {
-        rulerHeight + CGFloat(cameraRowCount + spriteTimelineRowCount) * rowHeight
+        totalRulerHeight + CGFloat(cameraRowCount + spriteTimelineRowCount) * rowHeight
     }
 
     var body: some View {
@@ -281,6 +288,24 @@ struct TimelinePanel: View {
                     Image(systemName: "plus.magnifyingglass").font(.system(size: 16))
                         .frame(width: 24, height: 24).contentShape(Rectangle())
                 }.buttonStyle(.plain).foregroundStyle(.secondary)
+                let markers = controller.projectConfig?.globalConfig.timelineMarkers ?? []
+                if !markers.isEmpty {
+                    Menu {
+                        ForEach(markers.indices, id: \.self) { i in
+                            Button(markers[i].name.isEmpty ? "Frame \(markers[i].frame)" : markers[i].name) {
+                                jumpToMarker(markers[i])
+                            }
+                        }
+                    } label: {
+                        Image(systemName: "bookmark")
+                            .font(.system(size: 12))
+                            .frame(width: 20, height: 20)
+                            .contentShape(Rectangle())
+                    }
+                    .menuStyle(.borderlessButton)
+                    .frame(width: 20)
+                    .help("Jump to named marker")
+                }
                 Spacer()
                 if activeSelectionItems.count >= 2 {
                     HStack(spacing: 2) {
@@ -317,7 +342,7 @@ struct TimelinePanel: View {
                     .foregroundStyle(.red.opacity(0.8))
                 }
             }
-            .frame(height: rulerHeight)
+            .frame(height: totalRulerHeight)
             .padding(.horizontal, 6)
 
             // Camera block
@@ -690,21 +715,84 @@ struct TimelinePanel: View {
     // MARK: - Timeline canvas
 
     private func timelineCanvas(size: CGSize) -> some View {
-        Canvas { ctx, sz in
-            self.drawBackground(&ctx, size: sz)
-            self.drawGrid(&ctx, size: sz)
-            self.drawRuler(&ctx, size: sz)
-            self.drawKeyframes(&ctx, size: sz)
-            self.drawRubberBand(&ctx)
-            self.drawPlayhead(&ctx, size: sz)
+        ZStack(alignment: .topLeading) {
+            Canvas { ctx, sz in
+                self.drawMarkerStrip(&ctx, size: sz)
+                self.drawBackground(&ctx, size: sz)
+                self.drawGrid(&ctx, size: sz)
+                self.drawRuler(&ctx, size: sz)
+                self.drawStartEndRegion(&ctx, size: sz)
+                self.drawKeyframes(&ctx, size: sz)
+                self.drawRubberBand(&ctx)
+                self.drawPlayhead(&ctx, size: sz)
+            }
+            .gesture(
+                DragGesture(minimumDistance: 0)
+                    .onChanged { v in onDragChanged(v) }
+                    .onEnded   { v in onDragEnded(v)   }
+            )
+            .clipped()
+            .background(TimelineKeyCaptureView { event in handleKeyEvent(event) })
+
+            // Right-click context menu hit areas over each named marker
+            let markers = controller.projectConfig?.globalConfig.timelineMarkers ?? []
+            ForEach(markers.indices, id: \.self) { i in
+                let mx = CGFloat(markers[i].frame) * CGFloat(zoom) - CGFloat(hOffset)
+                if mx >= -8 && mx <= size.width + 8 {
+                    Color.clear
+                        .frame(width: 16, height: markerStripHeight)
+                        .contentShape(Rectangle())
+                        .position(x: max(8, min(size.width - 8, mx)), y: markerStripHeight / 2)
+                        .contextMenu {
+                            Button("Delete Marker \"\(markers[i].name.isEmpty ? "Frame \(markers[i].frame)" : markers[i].name)\"") {
+                                deleteMarker(at: i)
+                            }
+                        }
+                }
+            }
+
+            // Popover anchor for naming a newly created marker
+            if let frame = pendingMarkerFrame {
+                let anchorX = CGFloat(frame) * CGFloat(zoom) - CGFloat(hOffset)
+                Color.clear
+                    .frame(width: 1, height: 1)
+                    .position(x: max(4, min(size.width - 4, anchorX)), y: markerStripHeight / 2)
+                    .popover(isPresented: $isNamingMarker, arrowEdge: .top) {
+                        VStack(spacing: 8) {
+                            Text("Name this marker")
+                                .font(.system(size: 11, weight: .semibold))
+                            TextField("Marker name", text: $pendingMarkerName)
+                                .textFieldStyle(.squareBorder)
+                                .frame(width: 160)
+                                .onSubmit { confirmNewMarker() }
+                            HStack(spacing: 8) {
+                                Button("Cancel") {
+                                    isNamingMarker = false
+                                    pendingMarkerFrame = nil
+                                    pendingMarkerName = ""
+                                }
+                                Button("Add") { confirmNewMarker() }
+                                    .buttonStyle(.borderedProminent)
+                            }
+                            .font(.system(size: 11))
+                        }
+                        .padding(12)
+                    }
+            }
         }
-        .gesture(
-            DragGesture(minimumDistance: 0)
-                .onChanged { v in onDragChanged(v) }
-                .onEnded   { v in onDragEnded(v)   }
-        )
-        .clipped()
-        .background(TimelineKeyCaptureView { event in handleKeyEvent(event) })
+        .onContinuousHover { phase in
+            if case .active(let loc) = phase {
+                rulerContextFrame = max(0, Int((loc.x + CGFloat(hOffset)) / CGFloat(zoom)))
+            }
+        }
+        .contextMenu {
+            Button("Set Start to Frame \(rulerContextFrame)") {
+                controller.updateProjectConfig { $0.globalConfig.startFrame = rulerContextFrame }
+            }
+            Button("Set End to Frame \(rulerContextFrame)") {
+                controller.updateProjectConfig { $0.globalConfig.endFrame = rulerContextFrame }
+            }
+        }
     }
 
     // MARK: - Gesture
@@ -713,10 +801,28 @@ struct TimelinePanel: View {
         if !isDragInitialized {
             isDragInitialized   = true
             prevDragTranslation = 0
-            if v.startLocation.y < rulerHeight {
-                dragKind              = .seek
-                wasPlayingBeforeScrub = controller.playbackState == .playing
-                controller.pause()
+            if v.startLocation.y < markerStripHeight {
+                // Marker strip area — track for double-click
+                dragKind = .markerStrip
+            } else if v.startLocation.y < totalRulerHeight {
+                // Ruler area — check for start/end marker handles first
+                let pxPerFrame = CGFloat(zoom)
+                let cfg = controller.projectConfig?.globalConfig
+                let sf = cfg?.startFrame ?? 0
+                let rawEf = cfg?.endFrame ?? 0
+                let ef = rawEf == 0 ? (controller.engine?.maxAnimationFrames ?? 0) : rawEf
+                let startX = CGFloat(sf) * pxPerFrame - CGFloat(hOffset)
+                let endX   = CGFloat(ef) * pxPerFrame - CGFloat(hOffset)
+                let hitR: CGFloat = 10
+                if abs(v.startLocation.x - startX) < hitR {
+                    dragKind = .startMarker
+                } else if abs(v.startLocation.x - endX) < hitR {
+                    dragKind = .endMarker
+                } else {
+                    dragKind = .seek
+                    wasPlayingBeforeScrub = controller.playbackState == .playing
+                    controller.pause()
+                }
             } else if isCameraArea(v.startLocation) {
                 if let camHit = cameraHitTest(at: v.startLocation) {
                     dragKind                    = .camera
@@ -766,6 +872,14 @@ struct TimelinePanel: View {
         case .camera:
             let f = max(0, Int(((v.location.x + CGFloat(hOffset)) / CGFloat(zoom)).rounded()))
             if let s = cameraDragState { cameraDragState = (s.lane, s.kfIdx, f) }
+        case .startMarker:
+            let f = max(0, Int(((v.location.x + CGFloat(hOffset)) / CGFloat(zoom)).rounded()))
+            controller.updateProjectConfig { $0.globalConfig.startFrame = f }
+        case .endMarker:
+            let f = max(1, Int(((v.location.x + CGFloat(hOffset)) / CGFloat(zoom)).rounded()))
+            controller.updateProjectConfig { $0.globalConfig.endFrame = f }
+        case .markerStrip:
+            break  // handled in onDragEnded
         case .pan:
             let delta           = v.translation.width - prevDragTranslation
             hOffset             = max(0, hOffset - delta)
@@ -825,6 +939,29 @@ struct TimelinePanel: View {
             rubberBandStart = nil
             rubberBandEnd = nil
 
+        case .startMarker, .endMarker:
+            break  // value already committed during drag
+
+        case .markerStrip:
+            // Double-click detection
+            let isTap = abs(v.translation.width) < 5 && abs(v.translation.height) < 5
+            if isTap {
+                let tapX = v.startLocation.x
+                let now = Date()
+                if let last = lastMarkerTap,
+                   now.timeIntervalSince(last.time) < 0.40,
+                   abs(tapX - last.x) < 14 {
+                    // Double click — create marker
+                    let frame = max(0, Int((tapX + CGFloat(hOffset)) / CGFloat(zoom)))
+                    pendingMarkerFrame = frame
+                    pendingMarkerName = ""
+                    isNamingMarker = true
+                    lastMarkerTap = nil
+                } else {
+                    lastMarkerTap = (x: tapX, time: now)
+                }
+            }
+
         case .none: break
         }
 
@@ -871,10 +1008,10 @@ struct TimelinePanel: View {
 
     private func drawBackground(_ ctx: inout GraphicsContext, size: CGSize) {
         // Camera block
-        ctx.fill(Path(CGRect(x: 0, y: rulerHeight, width: size.width, height: rowHeight)),
+        ctx.fill(Path(CGRect(x: 0, y: totalRulerHeight, width: size.width, height: rowHeight)),
                  with: .color(Color(NSColor.windowBackgroundColor).opacity(0.55)))
         if cameraExpanded {
-            var camY = rulerHeight + rowHeight
+            var camY = totalRulerHeight + rowHeight
             for j in 0..<visibleCameraLanes().count {
                 ctx.fill(Path(CGRect(x: 0, y: camY, width: size.width, height: rowHeight)),
                          with: .color(j.isMultiple(of: 2)
@@ -956,7 +1093,7 @@ struct TimelinePanel: View {
         while f <= lastFrame {
             let x = CGFloat(f) * pxPerFrame - CGFloat(hOffset)
             if x >= 0 && x <= size.width {
-                vPath.move(to: CGPoint(x: x, y: rulerHeight))
+                vPath.move(to: CGPoint(x: x, y: totalRulerHeight))
                 vPath.addLine(to: CGPoint(x: x, y: size.height))
             }
             f += major
@@ -970,7 +1107,7 @@ struct TimelinePanel: View {
             hPath.addLine(to: CGPoint(x: size.width, y: y))
         }
 
-        var rowY = rulerHeight + rowHeight
+        var rowY = totalRulerHeight + rowHeight
         sep(rowY)
         if cameraExpanded {
             for _ in 0..<visibleCameraLanes().count { rowY += rowHeight; sep(rowY) }
@@ -986,7 +1123,7 @@ struct TimelinePanel: View {
     }
 
     private func drawRuler(_ ctx: inout GraphicsContext, size: CGSize) {
-        ctx.fill(Path(CGRect(x: 0, y: 0, width: size.width, height: rulerHeight)),
+        ctx.fill(Path(CGRect(x: 0, y: markerStripHeight, width: size.width, height: rulerHeight)),
                  with: .color(Color(NSColor.windowBackgroundColor)))
 
         let (major, minor) = tickIntervals()
@@ -1000,20 +1137,106 @@ struct TimelinePanel: View {
             guard x >= 0 && x <= size.width else { f += minor; continue }
             let isMajor = f % major == 0
             ctx.stroke(Path { p in
-                p.move(to: CGPoint(x: x, y: rulerHeight - (isMajor ? 10 : 5)))
-                p.addLine(to: CGPoint(x: x, y: rulerHeight))
+                p.move(to: CGPoint(x: x, y: totalRulerHeight - (isMajor ? 10 : 5)))
+                p.addLine(to: CGPoint(x: x, y: totalRulerHeight))
             }, with: .color(isMajor ? Color.secondary.opacity(0.6) : Color.secondary.opacity(0.25)),
                lineWidth: 1)
             if isMajor {
                 ctx.draw(Text("\(f)").font(.system(size: 8)).foregroundStyle(Color.secondary),
-                         at: CGPoint(x: x + 2, y: rulerHeight - 12), anchor: .bottomLeading)
+                         at: CGPoint(x: x + 2, y: totalRulerHeight - 12), anchor: .bottomLeading)
             }
             f += minor
         }
         ctx.stroke(Path { p in
-            p.move(to: CGPoint(x: 0, y: rulerHeight))
-            p.addLine(to: CGPoint(x: size.width, y: rulerHeight))
+            p.move(to: CGPoint(x: 0, y: totalRulerHeight))
+            p.addLine(to: CGPoint(x: size.width, y: totalRulerHeight))
         }, with: .color(Color.secondary.opacity(0.2)), lineWidth: 0.5)
+        // Separator between marker strip and ruler
+        ctx.stroke(Path { p in
+            p.move(to: CGPoint(x: 0, y: markerStripHeight))
+            p.addLine(to: CGPoint(x: size.width, y: markerStripHeight))
+        }, with: .color(Color.secondary.opacity(0.15)), lineWidth: 0.5)
+    }
+
+    private func drawMarkerStrip(_ ctx: inout GraphicsContext, size: CGSize) {
+        // Background
+        ctx.fill(Path(CGRect(x: 0, y: 0, width: size.width, height: markerStripHeight)),
+                 with: .color(Color(NSColor.windowBackgroundColor).opacity(0.7)))
+
+        let markers = controller.projectConfig?.globalConfig.timelineMarkers ?? []
+        let pxPerFrame = CGFloat(zoom)
+        let triH: CGFloat = 10
+        let triW: CGFloat = 7
+        let tipY = markerStripHeight       // tip points down, touching ruler top
+        let baseY = markerStripHeight - triH
+
+        for marker in markers {
+            let x = CGFloat(marker.frame) * pxPerFrame - CGFloat(hOffset)
+            guard x >= -triW && x <= size.width + triW else { continue }
+            // Blue downward triangle
+            let tri = Path { p in
+                p.move(to:    CGPoint(x: x - triW / 2, y: baseY))
+                p.addLine(to: CGPoint(x: x + triW / 2, y: baseY))
+                p.addLine(to: CGPoint(x: x,             y: tipY))
+                p.closeSubpath()
+            }
+            ctx.fill(tri, with: .color(Color.blue.opacity(0.85)))
+            // Label to the right
+            let label = marker.name.isEmpty ? "F\(marker.frame)" : marker.name
+            ctx.draw(
+                Text(label).font(.system(size: 9, weight: .medium)).foregroundStyle(Color.primary),
+                at: CGPoint(x: x + triW / 2 + 2, y: baseY + (triH / 2)),
+                anchor: .leading
+            )
+        }
+    }
+
+    private func drawStartEndRegion(_ ctx: inout GraphicsContext, size: CGSize) {
+        guard let cfg = controller.projectConfig?.globalConfig else { return }
+        let pxPerFrame = CGFloat(zoom)
+        let startFrame = cfg.startFrame
+        let rawEnd = cfg.endFrame
+        let endFrame = rawEnd == 0 ? (controller.engine?.maxAnimationFrames ?? 0) : rawEnd
+        guard endFrame > startFrame else { return }
+
+        let startX = CGFloat(startFrame) * pxPerFrame - CGFloat(hOffset)
+        let endX   = CGFloat(endFrame)   * pxPerFrame - CGFloat(hOffset)
+
+        let regionTop    = totalRulerHeight - 10   // same height as major tick
+        let regionBottom = totalRulerHeight
+
+        // Yellow fill between start and end
+        let fillLeft  = max(0, startX)
+        let fillRight = min(size.width, endX)
+        if fillRight > fillLeft {
+            ctx.fill(
+                Path(CGRect(x: fillLeft, y: regionTop, width: fillRight - fillLeft, height: 10)),
+                with: .color(Color.yellow.opacity(0.25))
+            )
+        }
+
+        let triH: CGFloat = 10
+        let triW: CGFloat = 7
+
+        // Green start marker (downward triangle: base at top, tip at bottom)
+        if startX >= -triW && startX <= size.width + triW {
+            ctx.fill(Path { p in
+                p.move(to:    CGPoint(x: startX - triW / 2, y: regionTop))
+                p.addLine(to: CGPoint(x: startX + triW / 2, y: regionTop))
+                p.addLine(to: CGPoint(x: startX,             y: regionBottom))
+                p.closeSubpath()
+            }, with: .color(Color.green.opacity(0.75)))
+        }
+
+        // Red end marker
+        if endX >= -triW && endX <= size.width + triW {
+            ctx.fill(Path { p in
+                p.move(to:    CGPoint(x: endX - triW / 2, y: regionTop))
+                p.addLine(to: CGPoint(x: endX + triW / 2, y: regionTop))
+                p.addLine(to: CGPoint(x: endX,             y: regionBottom))
+                p.closeSubpath()
+            }, with: .color(Color.red.opacity(0.60)))
+        }
     }
 
     private func drawKeyframes(_ ctx: inout GraphicsContext, size: CGSize) {
@@ -1439,7 +1662,7 @@ struct TimelinePanel: View {
         var result: [(TimelineSelectionItem, CGPoint)] = []
         if cameraExpanded {
             let cam = controller.projectConfig?.globalConfig.camera ?? .disabled
-            var rowY = rulerHeight + rowHeight
+            var rowY = totalRulerHeight + rowHeight
             for lane in visibleCameraLanes() {
                 let midY = rowY + rowHeight / 2
                 for (ki, frame) in lane.keyframeFrames(from: cam).enumerated() {
@@ -2341,12 +2564,12 @@ struct TimelinePanel: View {
     // MARK: - Camera helpers
 
     private func isCameraArea(_ point: CGPoint) -> Bool {
-        point.y >= rulerHeight && point.y < rulerHeight + CGFloat(cameraRowCount) * rowHeight
+        point.y >= totalRulerHeight && point.y < totalRulerHeight + CGFloat(cameraRowCount) * rowHeight
     }
 
     private func cameraLaneAt(_ point: CGPoint) -> CameraLane? {
         guard cameraExpanded else { return nil }
-        var rowY = rulerHeight + rowHeight
+        var rowY = totalRulerHeight + rowHeight
         for lane in visibleCameraLanes() {
             if point.y >= rowY && point.y < rowY + rowHeight { return lane }
             rowY += rowHeight
@@ -2451,6 +2674,31 @@ struct TimelinePanel: View {
         selectedCameraKFHit = nil
     }
 
+    private func jumpToMarker(_ marker: TimelineMarker) {
+        let frame = marker.frame
+        hOffset = max(0, CGFloat(frame) * CGFloat(zoom) - 40)
+        seekFrame = max(0, min(controller.maxScrubFrames, frame))
+    }
+
+    private func confirmNewMarker() {
+        guard let frame = pendingMarkerFrame else { return }
+        let marker = TimelineMarker(frame: frame, name: pendingMarkerName)
+        controller.updateProjectConfig { cfg in
+            cfg.globalConfig.timelineMarkers.append(marker)
+            cfg.globalConfig.timelineMarkers.sort { $0.frame < $1.frame }
+        }
+        isNamingMarker = false
+        pendingMarkerFrame = nil
+        pendingMarkerName = ""
+    }
+
+    private func deleteMarker(at index: Int) {
+        controller.updateProjectConfig { cfg in
+            guard index < cfg.globalConfig.timelineMarkers.count else { return }
+            cfg.globalConfig.timelineMarkers.remove(at: index)
+        }
+    }
+
     private func commitCameraDrag(_ state: (lane: CameraLane, kfIdx: Int, previewFrame: Int)) {
         let (lane, kfIdx, newFrame) = state
         recordTimelineUndoSnapshot()
@@ -2487,7 +2735,7 @@ struct TimelinePanel: View {
         let pxPerFrame = CGFloat(zoom)
 
         // Summary row: union of all lane frames
-        let summaryMidY = rulerHeight + rowHeight / 2
+        let summaryMidY = totalRulerHeight + rowHeight / 2
         let allFrames   = Array(Set(CameraLane.allCases.flatMap { $0.keyframeFrames(from: cam) })).sorted()
         for frame in allFrames {
             let x = CGFloat(frame) * pxPerFrame - CGFloat(hOffset)
@@ -2497,7 +2745,7 @@ struct TimelinePanel: View {
         }
 
         guard cameraExpanded else { return }
-        var rowY = rulerHeight + rowHeight
+        var rowY = totalRulerHeight + rowHeight
         for lane in visibleCameraLanes() {
             let midY = rowY + rowHeight / 2
             for (ki, frame) in lane.keyframeFrames(from: cam).enumerated() {

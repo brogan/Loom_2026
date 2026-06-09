@@ -21,6 +21,7 @@ enum GeometryEditorTool: String {
     case panView = "Pan View"
     case displacementExtrude = "Extrude (Displacement)"
     case scaleExtrude = "Extrude (Scale)"
+    case curvedKnife = "Curved Knife"
 
     /// True only for tools that create geometry from nothing.
     var isCreateMode: Bool {
@@ -36,7 +37,7 @@ enum GeometryEditorTool: String {
     var isEditMode: Bool {
         switch self {
         case .points, .edges, .openCurves, .polygons,
-             .knife, .meshExtend, .displacementExtrude, .scaleExtrude, .pressureTrace:
+             .knife, .curvedKnife, .meshExtend, .displacementExtrude, .scaleExtrude, .pressureTrace:
             return true
         default:
             return false
@@ -66,6 +67,19 @@ struct GeometryMeshExtendDraft: Equatable {
 struct GeometryKnifeLine: Equatable {
     var start: Vector2D
     var end: Vector2D
+}
+
+struct GeometryCurvedKnifeLine: Equatable {
+    enum Phase: Equatable { case dragging, adjusting }
+    enum DragTarget: Equatable { case controlOut, controlIn }
+    var start: Vector2D
+    var controlOut: Vector2D
+    var controlIn: Vector2D
+    var end: Vector2D
+    var phase: Phase = .dragging
+    var activeDragTarget: DragTarget? = nil
+
+    var bezierSegment: [Vector2D] { [start, controlOut, controlIn, end] }
 }
 
 struct GeometryExtrudeDraft: Equatable {
@@ -168,6 +182,8 @@ final class AppController: ObservableObject, @unchecked Sendable {
     @Published var geometryEditorMeshExtendDraft: GeometryMeshExtendDraft? = nil { didSet { refreshGeometryEditorSaveState() } }
     @Published var geometryEditorKnifeLine:       GeometryKnifeLine? = nil
     @Published var geometryEditorKnifeCutsAllVisibleLayers: Bool = false
+    @Published var geometryEditorCurvedKnifeLine: GeometryCurvedKnifeLine? = nil
+    @Published var geometryEditorCurvedKnifeCutsAllVisibleLayers: Bool = false
     @Published var geometryEditorExtrudeDraft:    GeometryExtrudeDraft? = nil { didSet { refreshGeometryEditorSaveState() } }
     @Published var geometryEditorClipboard:       GeometryClipboardEntry? = nil
     @Published var geometryEditorLastClickPosition: Vector2D = .zero
@@ -422,6 +438,35 @@ final class AppController: ObservableObject, @unchecked Sendable {
         }
     }
 
+    func saveAs() {
+        guard let currentURL = projectURL else { return }
+        saveNow()
+        let panel = NSSavePanel()
+        panel.title = "Save Project As"
+        panel.nameFieldLabel = "Project Name:"
+        panel.nameFieldStringValue = currentURL.lastPathComponent
+        panel.canCreateDirectories = true
+        panel.directoryURL = currentURL.deletingLastPathComponent()
+        guard panel.runModal() == .OK, let newURL = panel.url else { return }
+        guard !FileManager.default.fileExists(atPath: newURL.path) else {
+            postStatus("A project already exists at that path.")
+            return
+        }
+        do {
+            try FileManager.default.copyItem(at: currentURL, to: newURL)
+        } catch {
+            postStatus("Save As failed: \(error.localizedDescription)")
+            return
+        }
+        projectURL = newURL
+        let newName = newURL.lastPathComponent
+        updateProjectConfig { cfg in
+            cfg.globalConfig.name = newName
+        }
+        addToRecent(newURL)
+        postStatus("Saved as \"\(newName)\"")
+    }
+
     /// Debounced so rapid slider events coalesce into one save+reload cycle.
     private func scheduleConfigCommit(_ config: ProjectConfig) {
         configCommitItem?.cancel()
@@ -486,6 +531,7 @@ final class AppController: ObservableObject, @unchecked Sendable {
         clearGeometryFreehandStroke()
         cancelGeometryMeshExtendDraft()
         cancelGeometryKnifeLine()
+        cancelGeometryCurvedKnifeLine()
         cancelGeometryExtrudeDraft()
     }
 
@@ -824,6 +870,10 @@ final class AppController: ObservableObject, @unchecked Sendable {
             startKnifeGeometryCut()
             return
         }
+        if tool == .curvedKnife {
+            startCurvedKnifeGeometryCut()
+            return
+        }
         if tool == .panView {
             geometryEditorTool = .panView
             geometryEditorDraftPoints.removeAll()
@@ -831,6 +881,7 @@ final class AppController: ObservableObject, @unchecked Sendable {
             clearGeometryPressureTraceStroke()
             cancelGeometryMeshExtendDraft()
             cancelGeometryKnifeLine()
+            cancelGeometryCurvedKnifeLine()
             return
         }
         geometryEditorTool = tool
@@ -839,6 +890,7 @@ final class AppController: ObservableObject, @unchecked Sendable {
         clearGeometryPressureTraceStroke()
         cancelGeometryMeshExtendDraft()
         cancelGeometryKnifeLine()
+        cancelGeometryCurvedKnifeLine()
         geometryEditorSelection = .empty
     }
 
@@ -848,6 +900,7 @@ final class AppController: ObservableObject, @unchecked Sendable {
         clearGeometryFreehandStroke()
         cancelGeometryMeshExtendDraft()
         cancelGeometryKnifeLine()
+        cancelGeometryCurvedKnifeLine()
         if geometryEditorDocument == nil {
             var document = EditableGeometryDocument(name: "Untitled Geometry")
             document.ensureActiveLayer()
@@ -893,6 +946,7 @@ final class AppController: ObservableObject, @unchecked Sendable {
         geometryEditorDraftPoints.removeAll()
         cancelGeometryMeshExtendDraft()
         cancelGeometryKnifeLine()
+        cancelGeometryCurvedKnifeLine()
     }
 
     func createOvalGeometry() {
@@ -927,6 +981,7 @@ final class AppController: ObservableObject, @unchecked Sendable {
         clearGeometryFreehandStroke()
         cancelGeometryMeshExtendDraft()
         cancelGeometryKnifeLine()
+        cancelGeometryCurvedKnifeLine()
         if geometryEditorDocument == nil {
             var document = EditableGeometryDocument(name: "Untitled Polygon")
             document.ensureActiveLayer()
@@ -941,6 +996,101 @@ final class AppController: ObservableObject, @unchecked Sendable {
         clearGeometryFreehandStroke()
         cancelGeometryMeshExtendDraft()
         cancelGeometryKnifeLine()
+        cancelGeometryCurvedKnifeLine()
+    }
+
+    func startCurvedKnifeGeometryCut() {
+        geometryEditorTool = .curvedKnife
+        geometryEditorCurvedKnifeCutsAllVisibleLayers = false
+        geometryEditorDraftPoints.removeAll()
+        clearGeometryFreehandStroke()
+        cancelGeometryMeshExtendDraft()
+        cancelGeometryKnifeLine()
+        cancelGeometryCurvedKnifeLine()
+    }
+
+    func beginGeometryCurvedKnifeLine(at point: Vector2D) {
+        guard geometryEditorTool == .curvedKnife else { return }
+        geometryEditorCurvedKnifeLine = GeometryCurvedKnifeLine(
+            start: point, controlOut: point, controlIn: point, end: point, phase: .dragging
+        )
+    }
+
+    func updateGeometryCurvedKnifeLine(to point: Vector2D) {
+        guard geometryEditorTool == .curvedKnife,
+              var line = geometryEditorCurvedKnifeLine,
+              line.phase == .dragging
+        else { return }
+        line.end = point
+        line.controlOut = line.start + (point - line.start) * (1.0 / 3.0)
+        line.controlIn  = line.start + (point - line.start) * (2.0 / 3.0)
+        geometryEditorCurvedKnifeLine = line
+    }
+
+    func endGeometryCurvedKnifeLineDrag() {
+        guard geometryEditorTool == .curvedKnife,
+              var line = geometryEditorCurvedKnifeLine,
+              line.phase == .dragging
+        else { return }
+        guard line.start.distance(to: line.end) >= 0.005 else {
+            cancelGeometryCurvedKnifeLine()
+            return
+        }
+        line.phase = .adjusting
+        geometryEditorCurvedKnifeLine = line
+    }
+
+    /// Hit-tests world-space point against the two control handles. Returns the matching
+    /// target and sets `activeDragTarget` if within the hit radius.
+    @discardableResult
+    func beginCurvedKnifeHandleDrag(near worldPoint: Vector2D) -> Bool {
+        guard geometryEditorTool == .curvedKnife,
+              var line = geometryEditorCurvedKnifeLine,
+              line.phase == .adjusting
+        else { return false }
+        let hitRadius = 0.03
+        if line.controlOut.distance(to: worldPoint) < hitRadius {
+            line.activeDragTarget = .controlOut
+            geometryEditorCurvedKnifeLine = line
+            return true
+        }
+        if line.controlIn.distance(to: worldPoint) < hitRadius {
+            line.activeDragTarget = .controlIn
+            geometryEditorCurvedKnifeLine = line
+            return true
+        }
+        return false
+    }
+
+    func updateCurvedKnifeHandleDrag(to point: Vector2D) {
+        guard geometryEditorTool == .curvedKnife,
+              var line = geometryEditorCurvedKnifeLine,
+              let target = line.activeDragTarget
+        else { return }
+        switch target {
+        case .controlOut: line.controlOut = point
+        case .controlIn:  line.controlIn  = point
+        }
+        geometryEditorCurvedKnifeLine = line
+    }
+
+    func endCurvedKnifeHandleDrag() {
+        guard var line = geometryEditorCurvedKnifeLine else { return }
+        line.activeDragTarget = nil
+        geometryEditorCurvedKnifeLine = line
+    }
+
+    func finishGeometryCurvedKnifeCut() {
+        guard geometryEditorTool == .curvedKnife,
+              let line = geometryEditorCurvedKnifeLine,
+              line.phase == .adjusting
+        else { return }
+        defer { cancelGeometryCurvedKnifeLine() }
+        performGeometryCurvedKnifeCut(knifeSeg: line.bezierSegment)
+    }
+
+    func cancelGeometryCurvedKnifeLine() {
+        geometryEditorCurvedKnifeLine = nil
     }
 
     func beginGeometryKnifeLine(at point: Vector2D) {
@@ -977,6 +1127,7 @@ final class AppController: ObservableObject, @unchecked Sendable {
         clearGeometryFreehandStroke()
         cancelGeometryMeshExtendDraft()
         cancelGeometryKnifeLine()
+        cancelGeometryCurvedKnifeLine()
         cancelGeometryExtrudeDraft()
     }
 
@@ -986,6 +1137,7 @@ final class AppController: ObservableObject, @unchecked Sendable {
         clearGeometryFreehandStroke()
         cancelGeometryMeshExtendDraft()
         cancelGeometryKnifeLine()
+        cancelGeometryCurvedKnifeLine()
         cancelGeometryExtrudeDraft()
     }
 
@@ -1336,6 +1488,7 @@ final class AppController: ObservableObject, @unchecked Sendable {
         clearGeometryPressureTraceStroke()
         cancelGeometryMeshExtendDraft()
         cancelGeometryKnifeLine()
+        cancelGeometryCurvedKnifeLine()
     }
 
     func beginGeometryPressureTrace(at point: Vector2D, pressure: Double = 1.0) {
@@ -4163,6 +4316,223 @@ final class AppController: ObservableObject, @unchecked Sendable {
             openCurveIDs: selectedCurveIDs
         )
         postStatus("Knife cut \(cutCount) item(s)")
+    }
+
+    private func performGeometryCurvedKnifeCut(knifeSeg: [Vector2D]) {
+        guard var document = geometryEditorDocument else { return }
+        var cutCount = 0
+        var selectedPolygonIDs = Set<EditableGeometryID>()
+        var selectedCurveIDs = Set<EditableGeometryID>()
+        let weldSnapshot = snapshotWeldPoints(in: document)
+
+        let targetLayerID = geometryEditorCurvedKnifeCutsAllVisibleLayers ? nil : selectedGeometryEditorLayerID
+        guard geometryEditorCurvedKnifeCutsAllVisibleLayers || targetLayerID != nil else {
+            postStatus("Knife: no selected layer")
+            return
+        }
+
+        for layerIndex in document.layers.indices {
+            guard geometryCurvedKnifeCanCutLayer(document.layers[layerIndex], targetLayerID: targetLayerID) else { continue }
+
+            var replacementPolygons: [EditableClosedPolygon] = []
+            var polygonIDsToRemove = Set<EditableGeometryID>()
+            for polygon in document.layers[layerIndex].polygons {
+                guard polygon.isVisible,
+                      let pieces = curvedKnifePieces(for: polygon, knifeSeg: knifeSeg)
+                else { continue }
+                polygonIDsToRemove.insert(polygon.id)
+                replacementPolygons.append(contentsOf: pieces)
+                selectedPolygonIDs.formUnion(pieces.map(\.id))
+                cutCount += 1
+            }
+            if !polygonIDsToRemove.isEmpty {
+                document.layers[layerIndex].polygons.removeAll { polygonIDsToRemove.contains($0.id) }
+                document.layers[layerIndex].polygons.append(contentsOf: replacementPolygons)
+            }
+
+            var replacementCurves: [EditableOpenCurve] = []
+            var curveIDsToRemove = Set<EditableGeometryID>()
+            for curve in document.layers[layerIndex].openCurves {
+                guard curve.isVisible,
+                      let pieces = curvedKnifePieces(for: curve, knifeSeg: knifeSeg)
+                else { continue }
+                curveIDsToRemove.insert(curve.id)
+                replacementCurves.append(contentsOf: pieces)
+                selectedCurveIDs.formUnion(pieces.map(\.id))
+                cutCount += 1
+            }
+            if !curveIDsToRemove.isEmpty {
+                document.layers[layerIndex].openCurves.removeAll { curveIDsToRemove.contains($0.id) }
+                document.layers[layerIndex].openCurves.append(contentsOf: replacementCurves)
+            }
+        }
+
+        guard cutCount > 0 else {
+            postStatus("Curved knife: no geometry crossed")
+            return
+        }
+        recordGeometryEditorUndoSnapshot()
+        restoreWelds(from: weldSnapshot, in: &document)
+        setGeometryEditorDocument(document)
+        geometryEditorSelection = EditableGeometrySelection(
+            layerID: selectedGeometryEditorLayerID,
+            polygonIDs: selectedPolygonIDs,
+            openCurveIDs: selectedCurveIDs
+        )
+        postStatus("Curved knife cut \(cutCount) item(s)")
+    }
+
+    private func geometryCurvedKnifeCanCutLayer(
+        _ layer: EditableGeometryLayer,
+        targetLayerID: EditableGeometryID?
+    ) -> Bool {
+        let panelLayer = geometryEditorLayers.first { $0.id == layer.id }
+        let isVisible = layer.isVisible && (panelLayer?.isVisible ?? true)
+        guard isVisible else { return false }
+        if geometryEditorCurvedKnifeCutsAllVisibleLayers { return true }
+        guard layer.id == targetLayerID else { return false }
+        return layer.isEditable && (panelLayer?.isEditable ?? true)
+    }
+
+    private func curvedKnifePieces(
+        for polygon: EditableClosedPolygon,
+        knifeSeg: [Vector2D]
+    ) -> [EditableClosedPolygon]? {
+        let segments = orderedEditorSegments(for: polygon)
+        let intersections = curvedKnifeIntersections(segments: segments, knifeB: knifeSeg)
+        guard intersections.count >= 2, intersections.count.isMultiple(of: 2) else { return nil }
+
+        var pieces: [EditableClosedPolygon] = []
+        for index in intersections.indices {
+            let next = intersections.index(after: index) == intersections.endIndex
+                ? intersections.startIndex
+                : intersections.index(after: index)
+            let pieceSegments = buildClosedKnifePiece(
+                segments: segments,
+                from: intersections[index],
+                to: intersections[next]
+            )
+            guard pieceSegments.count >= 2,
+                  let piece = editableClosedPolygon(
+                    name: "\(polygon.name) Cut \(pieces.count + 1)",
+                    segments: pieceSegments,
+                    isVisible: polygon.isVisible
+                  )
+            else { continue }
+            pieces.append(piece)
+        }
+        return pieces.count >= 2 ? pieces : nil
+    }
+
+    private func curvedKnifePieces(
+        for curve: EditableOpenCurve,
+        knifeSeg: [Vector2D]
+    ) -> [EditableOpenCurve]? {
+        let segments = orderedEditorSegments(for: curve)
+        let intersections = curvedKnifeIntersections(segments: segments, knifeB: knifeSeg)
+        guard !intersections.isEmpty else { return nil }
+
+        var boundaries: [GeometryKnifeIntersection] = [
+            GeometryKnifeIntersection(segmentIndex: 0, t: 0, point: segments[0][0])
+        ]
+        boundaries.append(contentsOf: intersections)
+        boundaries.append(
+            GeometryKnifeIntersection(
+                segmentIndex: segments.count - 1,
+                t: 1,
+                point: segments[segments.count - 1][3]
+            )
+        )
+
+        var pieces: [EditableOpenCurve] = []
+        for index in 0..<(boundaries.count - 1) {
+            let pieceSegments = buildOpenKnifePiece(
+                segments: segments,
+                from: boundaries[index],
+                to: boundaries[index + 1]
+            )
+            guard !pieceSegments.isEmpty,
+                  let piece = editableOpenCurve(
+                    name: "\(curve.name) Cut \(pieces.count + 1)",
+                    segments: pieceSegments,
+                    isVisible: curve.isVisible
+                  )
+            else { continue }
+            pieces.append(piece)
+        }
+        return pieces.count >= 2 ? pieces : nil
+    }
+
+    private func curvedKnifeIntersections(
+        segments: [[Vector2D]],
+        knifeB: [Vector2D]
+    ) -> [GeometryKnifeIntersection] {
+        guard !segments.isEmpty else { return [] }
+        var raw: [GeometryKnifeIntersection] = []
+        for (index, segA) in segments.enumerated() {
+            var tValues: [Double] = []
+            bezierBezierIntersect(
+                segA: segA, segB: knifeB,
+                tAMin: 0, tAMax: 1,
+                tBMin: 0, tBMax: 1,
+                depth: 0,
+                output: &tValues
+            )
+            for t in tValues {
+                raw.append(GeometryKnifeIntersection(
+                    segmentIndex: index,
+                    t: t,
+                    point: BezierMath.point(seg: segA, t: t)
+                ))
+            }
+        }
+
+        let sorted = raw.sorted { $0.globalT < $1.globalT }
+        var deduped: [GeometryKnifeIntersection] = []
+        for intersection in sorted {
+            guard !deduped.contains(where: { abs($0.globalT - intersection.globalT) < 0.015 }) else { continue }
+            deduped.append(intersection)
+        }
+        return deduped
+    }
+
+    private func bezierBezierIntersect(
+        segA: [Vector2D], segB: [Vector2D],
+        tAMin: Double, tAMax: Double,
+        tBMin: Double, tBMax: Double,
+        depth: Int,
+        output: inout [Double]
+    ) {
+        guard bezierControlHullOverlap(segA, segB) else { return }
+        if tAMax - tAMin < 1e-6 {
+            output.append((tAMin + tAMax) / 2)
+            return
+        }
+        if depth > 48 { return }
+        let tAMid = (tAMin + tAMax) / 2
+        let (leftA, rightA) = BezierMath.split(seg: segA, t: 0.5)
+        if tBMax - tBMin > 1e-4 {
+            let tBMid = (tBMin + tBMax) / 2
+            let (leftB, rightB) = BezierMath.split(seg: segB, t: 0.5)
+            bezierBezierIntersect(segA: leftA, segB: leftB,  tAMin: tAMin, tAMax: tAMid, tBMin: tBMin, tBMax: tBMid, depth: depth + 1, output: &output)
+            bezierBezierIntersect(segA: leftA, segB: rightB, tAMin: tAMin, tAMax: tAMid, tBMin: tBMid, tBMax: tBMax, depth: depth + 1, output: &output)
+            bezierBezierIntersect(segA: rightA, segB: leftB,  tAMin: tAMid, tAMax: tAMax, tBMin: tBMin, tBMax: tBMid, depth: depth + 1, output: &output)
+            bezierBezierIntersect(segA: rightA, segB: rightB, tAMin: tAMid, tAMax: tAMax, tBMin: tBMid, tBMax: tBMax, depth: depth + 1, output: &output)
+        } else {
+            bezierBezierIntersect(segA: leftA,  segB: segB, tAMin: tAMin, tAMax: tAMid, tBMin: tBMin, tBMax: tBMax, depth: depth + 1, output: &output)
+            bezierBezierIntersect(segA: rightA, segB: segB, tAMin: tAMid, tAMax: tAMax, tBMin: tBMin, tBMax: tBMax, depth: depth + 1, output: &output)
+        }
+    }
+
+    private func bezierControlHullOverlap(_ a: [Vector2D], _ b: [Vector2D]) -> Bool {
+        let aXs = a.map(\.x); let aYs = a.map(\.y)
+        let bXs = b.map(\.x); let bYs = b.map(\.y)
+        guard let aMinX = aXs.min(), let aMaxX = aXs.max(),
+              let aMinY = aYs.min(), let aMaxY = aYs.max(),
+              let bMinX = bXs.min(), let bMaxX = bXs.max(),
+              let bMinY = bYs.min(), let bMaxY = bYs.max()
+        else { return false }
+        return aMinX <= bMaxX && aMaxX >= bMinX && aMinY <= bMaxY && aMaxY >= bMinY
     }
 
     private func snapshotWeldPoints(in document: EditableGeometryDocument) -> [[GeometryWeldPointSnapshot]] {

@@ -34,6 +34,9 @@ struct LoomCommands: Commands {
             Button("Save") { controller?.saveNow() }
                 .keyboardShortcut("s", modifiers: .command)
                 .disabled(controller?.projectURL == nil)
+            Button("Save As…") { controller?.saveAs() }
+                .keyboardShortcut("s", modifiers: [.command, .shift])
+                .disabled(controller?.projectURL == nil)
         }
         CommandMenu("Playback") {
             Button(controller?.playbackState == .paused ? "Resume" : "Pause") {

@@ -530,6 +530,9 @@
     <li>Use <kbd>⌘R</kbd> or the reload button to re-read the config after making external edits.</li>
   </ol>
 
+  <h3 id="start-save-as">Save As</h3>
+  <p>Choose <strong>File → Save As…</strong> (<kbd>⌘⇧S</kbd>) to duplicate the current project under a new name and location. Loom flushes any pending saves, copies the entire project folder to the chosen path, updates the project name in the config, and switches to the new copy. The original project remains untouched on disk. Use Save As to create a branch of a project (e.g. "MyFilm_v2") without losing the original.</p>
+
   <h3 id="start-playback">Playback controls</h3>
   <p>The toolbar at the top of the window contains the playback controls and the most frequently changed animation settings:</p>
   <table>
@@ -539,8 +542,8 @@
       <tr><td>■ Stop</td><td>Stop and return to frame 0</td></tr>
       <tr><td>⟳ Loop</td><td>Toggle loop-forever / play-once</td></tr>
       <tr><td>Frame counter</td><td>Displays the current frame number</td></tr>
-      <tr><td>Start</td><td>First frame of the playback range. 0 = play from the beginning.</td></tr>
-      <tr><td>End</td><td>Last frame of the playback range. Derived automatically from the longest keyframe lane when not set. For purely parametric animations with no keyframes, the field shows <strong>∞</strong> — playback continues until you press Stop. Click <strong>∞</strong> to enter a concrete end frame.</td></tr>
+      <tr><td>Start</td><td>First frame of the playback range. 0 = play from the beginning. Can also be set by dragging the <strong>green triangle</strong> marker in the timeline ruler — see <a href="#animation-markers">Timeline markers</a>.</td></tr>
+      <tr><td>End</td><td>Last frame of the playback range. Derived automatically from the longest keyframe lane when not set. For purely parametric animations with no keyframes, the field shows <strong>∞</strong> — click to enter a concrete end frame. Can also be set by dragging the <strong>red triangle</strong> marker in the timeline ruler.</td></tr>
       <tr><td>Animating</td><td>Master animation on/off toggle. When off, Play is disabled and the scene remains at the current static frame.</td></tr>
       <tr><td>BG once</td><td>Draw the background once and composite animated layers on top when possible.</td></tr>
       <tr><td>Scrub bar</td><td>Drag to seek (enabled in Global settings)</td></tr>
@@ -758,13 +761,25 @@
     <thead><tr><th>Icon / Control</th><th>Description</th></tr></thead>
     <tbody>
       <tr><td><span class="icon-key">⧉</span>Duplicate</td><td>Duplicate selected polygons, open curves, or points and keep the copy selected.</td></tr>
-      <tr><td><span class="icon-key">▰</span>Knife</td><td>Drag a cut line through polygons or open curves. The default cuts only the active editable layer.</td></tr>
-      <tr><td><span class="icon-key">▱▰▱</span>All visible layers</td><td>Adjunct to the Knife tool. When enabled, the knife cuts through all visible layers instead of only the active layer.</td></tr>
+      <tr><td><span class="icon-key">▰</span>Knife</td><td>Drag a straight cut line through polygons or open curves. The default cuts only the active editable layer.</td></tr>
+      <tr><td><span class="icon-key">▱▰▱</span>All visible layers</td><td>Adjunct to Knife or Curved Knife. When enabled, the knife cuts through all visible layers instead of only the active layer.</td></tr>
+      <tr><td><span class="icon-key">∿</span>Curved Knife</td><td>Cut with a cubic bezier curve. Drag to set the chord, then drag the two orange control-point handles to bend the curve, then press <strong>K</strong> to make the cut. Press <strong>Escape</strong> or drag elsewhere to cancel.</td></tr>
+      <tr><td><span class="icon-key">▱▰▱</span>All visible layers (Curved)</td><td>Same scope toggle as the straight knife, applied to the Curved Knife tool.</td></tr>
       <tr><td><span class="icon-key">↗</span>Displacement extrude</td><td>Extrude selected edges, polygons, or open curves by dragging a displaced copy and stitching quads back to the original.</td></tr>
       <tr><td><span class="icon-key">⇱</span>Scale extrude</td><td>Extrude selected geometry as an outer or inner ring by dragging right/up or left/down.</td></tr>
     </tbody>
   </table>
   <p>Knife operations preserve weld links where matching cut points remain. Selecting the two matching internal edges created by a polygon cut and pressing Delete heals the cut by merging the adjacent polygons.</p>
+
+  <h4>Using the Curved Knife</h4>
+  <ol>
+    <li>Select the Curved Knife tool from the right panel (the dashed-curve icon beside the straight knife).</li>
+    <li><strong>Drag</strong> across the geometry to define the cut chord. An orange dashed bezier curve is drawn; initially it is straight (control points sit at ⅓ and ⅔ of the chord).</li>
+    <li>Release the mouse. The tool enters <strong>adjust mode</strong> — two open-circle handles appear on the arms extending from each endpoint.</li>
+    <li><strong>Drag either handle</strong> to bend the curve. The orange dashed line updates live. Each handle moves independently.</li>
+    <li>Press <strong>K</strong> to commit the cut. Geometry that the curve crosses is split at the intersection points, exactly as with the straight knife.</li>
+    <li>Press <strong>Escape</strong>, or start a new drag, to cancel and discard the current curve.</li>
+  </ol>
 
   <h4>Transform controls</h4>
   <table class="control-table">
@@ -1891,6 +1906,27 @@
     <li>The matching driver row in the inspector highlights subtly when a keyframe from that lane is selected.</li>
     <li>Set the <strong>Easing</strong> per keyframe (Linear, Ease In, Ease Out, Ease In-Out, or a custom curve).</li>
     <li>Adjust the <strong>Loop Mode</strong> (None / Loop / Ping-Pong) on the driver to control what happens after the last keyframe.</li>
+  </ul>
+
+  <h4 id="animation-markers">Timeline markers</h4>
+  <p>The timeline includes two kinds of markers, both visible in the ruler area and both saved with the project.</p>
+
+  <h5>Start and End markers</h5>
+  <p>A <strong>green triangle</strong> (Start) and a <strong>red triangle</strong> (End) sit in the lower portion of the ruler, their tips pointing down to the baseline. A semi-transparent yellow band connects them to show the active playback region at a glance. These are a second way to set the same <strong>Start</strong> and <strong>End</strong> frame values shown in the toolbar — changing one updates the other.</p>
+  <ul>
+    <li><strong>Drag</strong> either triangle along the ruler to reposition it. The corresponding toolbar field updates in real time.</li>
+    <li>Alternatively, type directly into the <strong>Start</strong> or <strong>End</strong> fields in the toolbar; the triangle moves to match.</li>
+    <li><strong>Right-click anywhere</strong> in the timeline to get a context menu with <strong>Set Start to Frame N</strong> and <strong>Set End to Frame N</strong> options, where N is the frame under the cursor. This is especially useful when the triangles have been dragged far from the current view.</li>
+    <li>The Start/End range is used for both playback looping and video export.</li>
+  </ul>
+
+  <h5>Named markers</h5>
+  <p>Named markers are small <strong>blue downward-pointing triangles</strong> in the thin strip immediately above the ruler. Each carries a persistent text label to its right, making major sections or cues easy to identify at a glance.</p>
+  <ul>
+    <li><strong>Create:</strong> Double-click anywhere in the marker strip above the ruler. A popover appears — type a name and press <kbd>Return</kbd> (or click <strong>Add</strong>) to confirm. Press <kbd>Escape</kbd> or click <strong>Cancel</strong> to dismiss without creating.</li>
+    <li><strong>Navigate:</strong> Click the <strong>bookmark</strong> icon in the timeline header (visible when at least one named marker exists) to open a dropdown list of all markers. Selecting one moves the playhead to that frame and scrolls the timeline so the marker is visible at the left edge of the view.</li>
+    <li><strong>Delete:</strong> Right-click a marker triangle to bring up a context menu with a <strong>Delete Marker</strong> option.</li>
+    <li>Named markers are sorted by frame and saved as part of <code>project_config.json</code>.</li>
   </ul>
 
   <h3 id="animation-lane-controls">Driver enabled state and lane visibility</h3>

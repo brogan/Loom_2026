@@ -1,3 +1,9 @@
+public struct TimelineMarker: Equatable, Codable, Sendable {
+    public var frame: Int
+    public var name: String
+    public init(frame: Int, name: String) { self.frame = frame; self.name = name }
+}
+
 /// Top-level project settings loaded from `configuration/global_config.xml`.
 ///
 /// All fields have safe defaults matching the Scala `GlobalConfig` case class.
@@ -34,6 +40,8 @@ public struct GlobalConfig: Equatable, Codable, Sendable {
     public var endFrame: Int              = 0
     /// Animated camera.  `camera.enabled` must be true for pan/zoom/rotation to apply.
     public var camera: CameraConfig       = .disabled
+    /// Named markers on the timeline for quick navigation.
+    public var timelineMarkers: [TimelineMarker] = []
 
     public init() {}
 
@@ -48,6 +56,7 @@ public struct GlobalConfig: Equatable, Codable, Sendable {
         case threeD, cameraViewAngle, subdividing, targetFPS, note, renderSoftness, camera
         case startFrame
         case endFrame = "duration"
+        case timelineMarkers
     }
 
     // Custom decoder: every field uses decodeIfPresent so that old project JSON files
@@ -76,5 +85,6 @@ public struct GlobalConfig: Equatable, Codable, Sendable {
         startFrame         = try c.decodeIfPresent(Int.self,           forKey: .startFrame)         ?? 0
         endFrame           = try c.decodeIfPresent(Int.self,           forKey: .endFrame)           ?? 0
         camera             = try c.decodeIfPresent(CameraConfig.self,  forKey: .camera)             ?? .disabled
+        timelineMarkers    = try c.decodeIfPresent([TimelineMarker].self, forKey: .timelineMarkers) ?? []
     }
 }

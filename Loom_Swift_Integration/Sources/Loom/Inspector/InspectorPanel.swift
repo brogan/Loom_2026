@@ -728,6 +728,24 @@ private struct GeometryEditorShellInspector: View {
                     } action: {
                         controller.geometryEditorKnifeCutsAllVisibleLayers.toggle()
                     }
+                    iconButton(
+                        help: "Curved knife: drag a cut curve, adjust control handles, then press K to cut.",
+                        disabled: !controller.selectedGeometryEditorLayerCanEditForUI,
+                        selected: controller.geometryEditorTool == .curvedKnife
+                    ) {
+                        CurvedRazorBladeIcon()
+                    } action: {
+                        controller.startCurvedKnifeGeometryCut()
+                    }
+                    iconButton(
+                        help: "Curved knife scope: cut through all visible layers",
+                        disabled: controller.geometryEditorTool != .curvedKnife,
+                        selected: controller.geometryEditorTool == .curvedKnife && controller.geometryEditorCurvedKnifeCutsAllVisibleLayers
+                    ) {
+                        KnifeLayerStackIcon()
+                    } action: {
+                        controller.geometryEditorCurvedKnifeCutsAllVisibleLayers.toggle()
+                    }
                     Spacer()
                 }
             }
@@ -1439,6 +1457,35 @@ private struct RazorBladeIcon: View {
             .fill()
         }
         .padding(1)
+    }
+}
+
+private struct CurvedRazorBladeIcon: View {
+    var body: some View {
+        GeometryReader { proxy in
+            let w = proxy.size.width
+            let h = proxy.size.height
+            let p0 = CGPoint(x: w * 0.08, y: h * 0.78)
+            let c1 = CGPoint(x: w * 0.22, y: h * 0.18)
+            let c2 = CGPoint(x: w * 0.72, y: h * 0.85)
+            let p3 = CGPoint(x: w * 0.92, y: h * 0.25)
+            Path { path in
+                path.move(to: p0)
+                path.addCurve(to: p3, control1: c1, control2: c2)
+            }
+            .stroke(style: StrokeStyle(lineWidth: 1.8, lineCap: .round, dash: [4, 2]))
+            Path { path in
+                path.addEllipse(in: CGRect(x: c1.x - 2.5, y: c1.y - 2.5, width: 5, height: 5))
+                path.addEllipse(in: CGRect(x: c2.x - 2.5, y: c2.y - 2.5, width: 5, height: 5))
+            }
+            .stroke(style: StrokeStyle(lineWidth: 1.2))
+            Path { path in
+                path.move(to: p0); path.addLine(to: c1)
+                path.move(to: p3); path.addLine(to: c2)
+            }
+            .stroke(style: StrokeStyle(lineWidth: 0.8, lineCap: .round, dash: [2, 2]))
+        }
+        .padding(2)
     }
 }
 

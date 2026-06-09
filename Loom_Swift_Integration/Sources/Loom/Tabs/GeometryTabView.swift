@@ -1367,6 +1367,28 @@ private struct EditableGeometryCanvas: View {
                             }
                             controller.updateGeometryKnifeLine(to: point)
 
+                        case .curvedKnife:
+                            let point = unproject(value.location, canvasSize: canvasSize)
+                            if let line = controller.geometryEditorCurvedKnifeLine {
+                                if line.phase == .dragging {
+                                    controller.updateGeometryCurvedKnifeLine(to: point)
+                                } else if line.activeDragTarget != nil {
+                                    controller.updateCurvedKnifeHandleDrag(to: point)
+                                } else {
+                                    let startWorld = unproject(value.startLocation, canvasSize: canvasSize)
+                                    if !controller.beginCurvedKnifeHandleDrag(near: startWorld) {
+                                        controller.cancelGeometryCurvedKnifeLine()
+                                        controller.beginGeometryCurvedKnifeLine(at: startWorld)
+                                        controller.updateGeometryCurvedKnifeLine(to: point)
+                                    } else {
+                                        controller.updateCurvedKnifeHandleDrag(to: point)
+                                    }
+                                }
+                            } else {
+                                controller.beginGeometryCurvedKnifeLine(at: unproject(value.startLocation, canvasSize: canvasSize))
+                                controller.updateGeometryCurvedKnifeLine(to: point)
+                            }
+
                         case .displacementExtrude, .scaleExtrude:
                             let point = unproject(value.location, canvasSize: canvasSize)
                             if controller.geometryEditorExtrudeDraft == nil {
@@ -1518,6 +1540,18 @@ private struct EditableGeometryCanvas: View {
                             controller.updateGeometryKnifeLine(to: unproject(value.location, canvasSize: canvasSize))
                             controller.finishGeometryKnifeCut()
 
+                        case .curvedKnife:
+                            let point = unproject(value.location, canvasSize: canvasSize)
+                            if let line = controller.geometryEditorCurvedKnifeLine {
+                                if line.phase == .dragging {
+                                    controller.updateGeometryCurvedKnifeLine(to: point)
+                                    controller.endGeometryCurvedKnifeLineDrag()
+                                } else if line.activeDragTarget != nil {
+                                    controller.updateCurvedKnifeHandleDrag(to: point)
+                                    controller.endCurvedKnifeHandleDrag()
+                                }
+                            }
+
                         case .displacementExtrude, .scaleExtrude:
                             controller.updateGeometryExtrudeDrag(to: unproject(value.location, canvasSize: canvasSize))
                             controller.finishGeometryExtrude()
@@ -1559,9 +1593,15 @@ private struct EditableGeometryCanvas: View {
                         controller.finaliseGeometryDraftPolygon()
                         return true
                     }
-                    // Escape — cancel mesh extend draft
+                    // k — commit curved knife cut
+                    if key == "k" && controller.geometryEditorTool == .curvedKnife {
+                        controller.finishGeometryCurvedKnifeCut()
+                        return true
+                    }
+                    // Escape — cancel mesh extend draft / curved knife
                     if key == "\u{1B}" {
                         controller.cancelGeometryMeshExtendDraft()
+                        controller.cancelGeometryCurvedKnifeLine()
                         return true
                     }
                     return false
@@ -1614,6 +1654,7 @@ private struct EditableGeometryCanvas: View {
             drawPressureTracePreview(ctx: ctx, project: projectPoint)
         }
         drawKnifeLine(ctx: ctx, project: projectPoint)
+        drawCurvedKnifeLine(ctx: ctx, project: projectPoint)
         drawExtrudePreview(ctx: ctx, project: projectPoint)
         drawRubberBand(ctx: ctx)
     }
@@ -2327,6 +2368,49 @@ private struct EditableGeometryCanvas: View {
             ctx.fill(
                 Path(ellipseIn: CGRect(x: point.x - 4, y: point.y - 4, width: 8, height: 8)),
                 with: .color(Color.red.opacity(0.9))
+            )
+        }
+    }
+
+    private func drawCurvedKnifeLine(ctx: GraphicsContext, project: (Vector2D) -> CGPoint) {
+        guard let line = controller.geometryEditorCurvedKnifeLine,
+              line.start.distance(to: line.end) > 0.000_1
+        else { return }
+        let p0 = project(line.start)
+        let p1 = project(line.controlOut)
+        let p2 = project(line.controlIn)
+        let p3 = project(line.end)
+
+        var bezierPath = Path()
+        bezierPath.move(to: p0)
+        bezierPath.addCurve(to: p3, control1: p1, control2: p2)
+        ctx.stroke(bezierPath, with: .color(Color.orange.opacity(0.85)),
+                   style: StrokeStyle(lineWidth: 1.5, lineCap: .round, dash: [6, 4]))
+
+        for point in [p0, p3] {
+            ctx.fill(
+                Path(ellipseIn: CGRect(x: point.x - 4, y: point.y - 4, width: 8, height: 8)),
+                with: .color(Color.orange.opacity(0.9))
+            )
+        }
+
+        guard line.phase == .adjusting else { return }
+
+        var arm1 = Path()
+        arm1.move(to: p0); arm1.addLine(to: p1)
+        ctx.stroke(arm1, with: .color(Color.orange.opacity(0.5)),
+                   style: StrokeStyle(lineWidth: 1.0, lineCap: .round, dash: [3, 3]))
+
+        var arm2 = Path()
+        arm2.move(to: p3); arm2.addLine(to: p2)
+        ctx.stroke(arm2, with: .color(Color.orange.opacity(0.5)),
+                   style: StrokeStyle(lineWidth: 1.0, lineCap: .round, dash: [3, 3]))
+
+        for handle in [p1, p2] {
+            ctx.stroke(
+                Path(ellipseIn: CGRect(x: handle.x - 5, y: handle.y - 5, width: 10, height: 10)),
+                with: .color(Color.orange.opacity(0.9)),
+                style: StrokeStyle(lineWidth: 1.5)
             )
         }
     }
