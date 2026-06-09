@@ -84,7 +84,7 @@ private struct RendererKFDragState {
     var previewFrame: Int
 }
 
-private enum DragKind { case none, seek, pan, rubberBand, keyframe, rendererKeyframe, camera, startMarker, endMarker, markerStrip }
+private enum DragKind { case none, seek, pan, rubberBand, keyframe, rendererKeyframe, camera, startMarker, endMarker, markerStrip, namedMarker(Int) }
 
 // MARK: - TimelinePanel
 
@@ -802,8 +802,17 @@ struct TimelinePanel: View {
             isDragInitialized   = true
             prevDragTranslation = 0
             if v.startLocation.y < markerStripHeight {
-                // Marker strip area — track for double-click
-                dragKind = .markerStrip
+                // Check if drag started on an existing named marker
+                let markers = controller.projectConfig?.globalConfig.timelineMarkers ?? []
+                let hitIdx = markers.indices.first(where: { i in
+                    let mx = CGFloat(markers[i].frame) * CGFloat(zoom) - CGFloat(hOffset)
+                    return abs(v.startLocation.x - mx) < 8
+                })
+                if let idx = hitIdx {
+                    dragKind = .namedMarker(idx)
+                } else {
+                    dragKind = .markerStrip
+                }
             } else if v.startLocation.y < totalRulerHeight {
                 // Ruler area — check for start/end marker handles first
                 let pxPerFrame = CGFloat(zoom)
@@ -878,6 +887,12 @@ struct TimelinePanel: View {
         case .endMarker:
             let f = max(1, Int(((v.location.x + CGFloat(hOffset)) / CGFloat(zoom)).rounded()))
             controller.updateProjectConfig { $0.globalConfig.endFrame = f }
+        case .namedMarker(let i):
+            let f = max(0, Int(((v.location.x + CGFloat(hOffset)) / CGFloat(zoom)).rounded()))
+            controller.updateProjectConfig { cfg in
+                guard i < cfg.globalConfig.timelineMarkers.count else { return }
+                cfg.globalConfig.timelineMarkers[i].frame = f
+            }
         case .markerStrip:
             break  // handled in onDragEnded
         case .pan:
@@ -939,7 +954,7 @@ struct TimelinePanel: View {
             rubberBandStart = nil
             rubberBandEnd = nil
 
-        case .startMarker, .endMarker:
+        case .startMarker, .endMarker, .namedMarker:
             break  // value already committed during drag
 
         case .markerStrip:
