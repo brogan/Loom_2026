@@ -279,6 +279,20 @@ private struct GeometryInspector: View {
             let name   = parts.count == 2 ? String(parts[1]) : key
 
             InspectorSection("Geometry") {
+                let pipelines = controller.projectConfig.map { gatherPipelines(geoName: name, cfg: $0) } ?? []
+                HStack(spacing: 5) {
+                    Spacer()
+                    Circle()
+                        .frame(width: 8, height: 8)
+                        .foregroundStyle(pipelines.isEmpty ? Color.orange : Color.green)
+                    Text(pipelines.isEmpty ? "No Pipelines"
+                         : pipelines.count == 1 ? "1 Pipeline" : "\(pipelines.count) Pipelines")
+                        .font(.system(size: 10))
+                        .foregroundStyle(.secondary)
+                }
+                .padding(.horizontal, 12)
+                .padding(.top, 4)
+                .padding(.bottom, 2)
                 Button("Edit Geometry") {
                     controller.enterGeometryEditor()
                 }
@@ -303,6 +317,8 @@ private struct GeometryInspector: View {
                 EmptyView()
             }
             QuickSetupSection(folder: folder, geoName: name)
+                .environmentObject(controller)
+            PipelinesSection(geoName: name)
                 .environmentObject(controller)
         }
     }
@@ -2739,6 +2755,155 @@ private struct QuickSetupSection: View {
             seen.insert(name)
         }
         return options
+    }
+}
+
+// MARK: - Pipeline summary & browser
+
+private struct PipelineSummary: Identifiable {
+    struct RendererEntry: Identifiable {
+        let id: Int
+        let name: String
+        let mode: RendererMode
+    }
+    let id: Int
+    let sourceName: String
+    let subdivSetName: String
+    let shapeSetName: String
+    let shapeName: String
+    let spriteSetName: String
+    let spriteName: String
+    let rendererSetName: String
+    let renderers: [RendererEntry]
+}
+
+private func gatherPipelines(geoName: String, cfg: ProjectConfig) -> [PipelineSummary] {
+    let masterFilename = cfg.polygonConfig.library.polygonSets
+        .first(where: { $0.name == geoName })?.filename ?? ""
+
+    let relatedPolySets = cfg.polygonConfig.library.polygonSets.filter {
+        $0.name == geoName ||
+        (!masterFilename.isEmpty && $0.filename == masterFilename && $0.editableLayerID != nil)
+    }
+
+    var results: [PipelineSummary] = []
+    for polySet in relatedPolySets {
+        let sourceName = polySet.name == geoName
+            ? "All visible layers"
+            : (polySet.editableLayerName.flatMap { $0.isEmpty ? nil : $0 } ?? polySet.name)
+        for shapeSet in cfg.shapeConfig.library.shapeSets {
+            for shape in shapeSet.shapes where shape.polygonSetName == polySet.name {
+                for spriteSet in cfg.spriteConfig.library.spriteSets {
+                    for sprite in spriteSet.sprites
+                    where sprite.shapeSetName == shapeSet.name && sprite.shapeName == shape.name {
+                        let entries = (cfg.renderingConfig.library.rendererSets
+                            .first(where: { $0.name == sprite.rendererSetName })?
+                            .renderers ?? [])
+                            .enumerated().map { i, r in
+                                PipelineSummary.RendererEntry(id: i, name: r.name, mode: r.mode)
+                            }
+                        results.append(PipelineSummary(
+                            id: results.count + 1,
+                            sourceName: sourceName,
+                            subdivSetName: shape.subdivisionParamsSetName,
+                            shapeSetName: shapeSet.name,
+                            shapeName: shape.name,
+                            spriteSetName: spriteSet.name,
+                            spriteName: sprite.name,
+                            rendererSetName: sprite.rendererSetName,
+                            renderers: entries
+                        ))
+                    }
+                }
+            }
+        }
+    }
+    return results
+}
+
+private struct PipelinesSection: View {
+    @EnvironmentObject private var controller: AppController
+    let geoName: String
+    @State private var isCollapsed = true
+
+    var body: some View {
+        let pipelines = controller.projectConfig.map { gatherPipelines(geoName: geoName, cfg: $0) } ?? []
+        InspectorSection("Pipelines", isCollapsed: $isCollapsed) {
+            if pipelines.isEmpty {
+                Text("No pipelines yet.")
+                    .font(.system(size: 11))
+                    .foregroundStyle(.secondary)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 8)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            } else {
+                ScrollView(.horizontal, showsIndicators: false) {
+                    VStack(alignment: .leading, spacing: 10) {
+                        ForEach(pipelines) { p in
+                            pipelineBlock(p)
+                            if p.id < pipelines.count {
+                                Divider()
+                            }
+                        }
+                    }
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 6)
+                }
+            }
+        }
+    }
+
+    private func pipelineBlock(_ p: PipelineSummary) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text("Pipeline \(p.id)")
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundStyle(Color.primary)
+                .padding(.bottom, 2)
+
+            phaseHeader(.geometry)
+            infoRow("Source",      p.sourceName)
+            infoRow("Base name",   p.spriteName)
+
+            phaseHeader(.subdivision)
+            infoRow("Set", p.subdivSetName.isEmpty ? "None" : p.subdivSetName)
+
+            phaseHeader(.sprites)
+            infoRow("Sprite set",  p.spriteSetName)
+            infoRow("Sprite",      p.spriteName)
+
+            phaseHeader(.rendering)
+            infoRow("Renderer set", p.rendererSetName)
+            ForEach(p.renderers) { r in
+                infoRow("Renderer", "\(r.name)  ·  \(r.mode.displayName)")
+            }
+        }
+    }
+
+    private func phaseHeader(_ tab: AppTab) -> some View {
+        HStack(spacing: 5) {
+            Image(systemName: tab.systemImage)
+                .font(.system(size: 10))
+                .frame(width: 12)
+            Text(tab.label)
+                .font(.system(size: 10, weight: .medium))
+        }
+        .foregroundStyle(Color.secondary)
+        .padding(.leading, 10)
+        .padding(.top, 3)
+    }
+
+    private func infoRow(_ label: String, _ value: String) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: 4) {
+            Text(label + ":")
+                .font(.system(size: 10))
+                .foregroundStyle(Color.secondary)
+                .frame(width: 76, alignment: .trailing)
+            Text(value)
+                .font(.system(size: 10))
+                .foregroundStyle(Color.primary)
+                .fixedSize(horizontal: true, vertical: false)
+        }
+        .padding(.leading, 22)
     }
 }
 
