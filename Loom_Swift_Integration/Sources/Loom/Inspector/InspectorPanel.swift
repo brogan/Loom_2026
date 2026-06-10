@@ -279,20 +279,6 @@ private struct GeometryInspector: View {
             let name   = parts.count == 2 ? String(parts[1]) : key
 
             InspectorSection("Geometry") {
-                let pipelines = controller.projectConfig.map { gatherPipelines(geoName: name, cfg: $0) } ?? []
-                HStack(spacing: 5) {
-                    Spacer()
-                    Circle()
-                        .frame(width: 8, height: 8)
-                        .foregroundStyle(pipelines.isEmpty ? Color.orange : Color.green)
-                    Text(pipelines.isEmpty ? "No Pipelines"
-                         : pipelines.count == 1 ? "1 Pipeline" : "\(pipelines.count) Pipelines")
-                        .font(.system(size: 10))
-                        .foregroundStyle(.secondary)
-                }
-                .padding(.horizontal, 12)
-                .padding(.top, 4)
-                .padding(.bottom, 2)
                 Button("Edit Geometry") {
                     controller.enterGeometryEditor()
                 }
@@ -2312,12 +2298,13 @@ private struct QuickSetupSection: View {
             .loomHelp("Drawing mode for the new renderer — Stroked (outline), Filled (solid), Filled+Stroked (both), Points (dot cloud), Brushed (stamps along path), Stamped (images at points).")
             Divider().padding(.vertical, 4)
             HStack(spacing: 6) {
+                let n = controller.projectConfig.map { gatherPipelines(geoName: geoName, cfg: $0).count } ?? 0
                 Circle()
-                    .fill(pipelineExists ? Color.green : Color.secondary.opacity(0.35))
+                    .fill(n == 0 ? Color.orange : Color.green)
                     .frame(width: 7, height: 7)
-                Text(pipelineExists ? "Pipeline ready" : "Pipeline not built")
+                Text(n == 0 ? "No Pipelines" : n == 1 ? "1 Pipeline" : "\(n) Pipelines")
                     .font(.system(size: 11))
-                    .foregroundStyle(pipelineExists ? Color.primary : Color.secondary)
+                    .foregroundStyle(n == 0 ? Color.secondary : Color.primary)
                 Spacer()
             }
             .padding(.horizontal, 12)
@@ -2768,6 +2755,7 @@ private struct PipelineSummary: Identifiable {
     }
     let id: Int
     let sourceName: String
+    let polySetName: String
     let subdivSetName: String
     let shapeSetName: String
     let shapeName: String
@@ -2805,6 +2793,7 @@ private func gatherPipelines(geoName: String, cfg: ProjectConfig) -> [PipelineSu
                         results.append(PipelineSummary(
                             id: results.count + 1,
                             sourceName: sourceName,
+                            polySetName: polySet.name,
                             subdivSetName: shape.subdivisionParamsSetName,
                             shapeSetName: shapeSet.name,
                             shapeName: shape.name,
@@ -2828,7 +2817,15 @@ private struct PipelinesSection: View {
 
     var body: some View {
         let pipelines = controller.projectConfig.map { gatherPipelines(geoName: geoName, cfg: $0) } ?? []
-        InspectorSection("Pipelines", isCollapsed: $isCollapsed) {
+        InspectorSection("Pipelines", isCollapsed: $isCollapsed, trailing: {
+            Button { deleteAllPipelines(pipelines) } label: {
+                Image(systemName: "trash")
+                    .font(.system(size: 13))
+                    .foregroundStyle(pipelines.isEmpty ? Color.secondary.opacity(0.25) : Color.secondary)
+            }
+            .buttonStyle(.plain)
+            .disabled(pipelines.isEmpty)
+        }, content: {
             if pipelines.isEmpty {
                 Text("No pipelines yet.")
                     .font(.system(size: 11))
@@ -2837,39 +2834,51 @@ private struct PipelinesSection: View {
                     .padding(.vertical, 8)
                     .frame(maxWidth: .infinity, alignment: .leading)
             } else {
-                ScrollView(.horizontal, showsIndicators: false) {
-                    VStack(alignment: .leading, spacing: 10) {
-                        ForEach(pipelines) { p in
-                            pipelineBlock(p)
-                            if p.id < pipelines.count {
-                                Divider()
+                VStack(alignment: .leading, spacing: 0) {
+                    ForEach(pipelines) { p in
+                        // Header row: full inspector width, trash right-justified
+                        HStack {
+                            Text("Pipeline \(p.id)")
+                                .font(.system(size: 11, weight: .semibold))
+                                .foregroundStyle(Color.primary)
+                            Spacer()
+                            Button { deletePipeline(p) } label: {
+                                Image(systemName: "trash")
+                                    .font(.system(size: 11))
+                                    .foregroundStyle(Color.secondary)
                             }
+                            .buttonStyle(.plain)
                         }
+                        .padding(.horizontal, 12)
+                        .padding(.top, 8)
+                        .padding(.bottom, 3)
+
+                        // Detail rows: horizontally scrollable
+                        ScrollView(.horizontal, showsIndicators: false) {
+                            pipelineDetail(p)
+                                .padding(.horizontal, 12)
+                                .padding(.bottom, 8)
+                        }
+
+                        if p.id < pipelines.count { Divider() }
                     }
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 6)
                 }
             }
-        }
+        })
     }
 
-    private func pipelineBlock(_ p: PipelineSummary) -> some View {
+    private func pipelineDetail(_ p: PipelineSummary) -> some View {
         VStack(alignment: .leading, spacing: 2) {
-            Text("Pipeline \(p.id)")
-                .font(.system(size: 11, weight: .semibold))
-                .foregroundStyle(Color.primary)
-                .padding(.bottom, 2)
-
             phaseHeader(.geometry)
-            infoRow("Source",      p.sourceName)
-            infoRow("Base name",   p.spriteName)
+            infoRow("Source",    p.sourceName)
+            infoRow("Base name", p.spriteName)
 
             phaseHeader(.subdivision)
             infoRow("Set", p.subdivSetName.isEmpty ? "None" : p.subdivSetName)
 
             phaseHeader(.sprites)
-            infoRow("Sprite set",  p.spriteSetName)
-            infoRow("Sprite",      p.spriteName)
+            infoRow("Sprite set", p.spriteSetName)
+            infoRow("Sprite",     p.spriteName)
 
             phaseHeader(.rendering)
             infoRow("Renderer set", p.rendererSetName)
@@ -2904,6 +2913,35 @@ private struct PipelinesSection: View {
                 .fixedSize(horizontal: true, vertical: false)
         }
         .padding(.leading, 22)
+    }
+
+    private func deletePipeline(_ p: PipelineSummary) {
+        controller.updateProjectConfig { cfg in
+            // Remove sprite (and sprite set if now empty)
+            if let si = cfg.spriteConfig.library.spriteSets.firstIndex(where: { $0.name == p.spriteSetName }) {
+                cfg.spriteConfig.library.spriteSets[si].sprites.removeAll {
+                    $0.name == p.spriteName && $0.shapeSetName == p.shapeSetName
+                }
+                if cfg.spriteConfig.library.spriteSets[si].sprites.isEmpty {
+                    cfg.spriteConfig.library.spriteSets.remove(at: si)
+                }
+            }
+            // Remove shape (and shape set if now empty)
+            if let si = cfg.shapeConfig.library.shapeSets.firstIndex(where: { $0.name == p.shapeSetName }) {
+                cfg.shapeConfig.library.shapeSets[si].shapes.removeAll { $0.name == p.shapeName }
+                if cfg.shapeConfig.library.shapeSets[si].shapes.isEmpty {
+                    cfg.shapeConfig.library.shapeSets.remove(at: si)
+                }
+            }
+            // Remove derived polygon set; leave the master geoName def untouched
+            if p.polySetName != geoName {
+                cfg.polygonConfig.library.polygonSets.removeAll { $0.name == p.polySetName }
+            }
+        }
+    }
+
+    private func deleteAllPipelines(_ pipelines: [PipelineSummary]) {
+        pipelines.forEach { deletePipeline($0) }
     }
 }
 
