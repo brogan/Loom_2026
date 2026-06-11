@@ -2926,11 +2926,29 @@ private struct PipelinesSection: View {
                     cfg.spriteConfig.library.spriteSets.remove(at: si)
                 }
             }
+            // Remove renderer set if no remaining sprites reference it
+            if !p.rendererSetName.isEmpty {
+                let stillUsed = cfg.spriteConfig.library.spriteSets
+                    .flatMap { $0.sprites }
+                    .contains { $0.rendererSetName == p.rendererSetName }
+                if !stillUsed {
+                    cfg.renderingConfig.library.rendererSets.removeAll { $0.name == p.rendererSetName }
+                }
+            }
             // Remove shape (and shape set if now empty)
             if let si = cfg.shapeConfig.library.shapeSets.firstIndex(where: { $0.name == p.shapeSetName }) {
                 cfg.shapeConfig.library.shapeSets[si].shapes.removeAll { $0.name == p.shapeName }
                 if cfg.shapeConfig.library.shapeSets[si].shapes.isEmpty {
                     cfg.shapeConfig.library.shapeSets.remove(at: si)
+                }
+            }
+            // Remove subdivision params set if no remaining shapes reference it
+            if !p.subdivSetName.isEmpty {
+                let stillUsed = cfg.shapeConfig.library.shapeSets
+                    .flatMap { $0.shapes }
+                    .contains { $0.subdivisionParamsSetName == p.subdivSetName }
+                if !stillUsed {
+                    cfg.subdivisionConfig.paramsSets.removeAll { $0.name == p.subdivSetName }
                 }
             }
             // Remove derived polygon set; leave the master geoName def untouched
