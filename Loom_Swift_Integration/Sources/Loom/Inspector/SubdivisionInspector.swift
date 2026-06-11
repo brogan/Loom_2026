@@ -9,8 +9,8 @@ struct SubdivisionInspector: View {
     @State private var generalCollapsed  = false
     @State private var insetCollapsed    = false
     @State private var pressureCollapsed = false
-    @State private var ptwCollapsed      = true
-    @State private var ptpCollapsed      = true
+    @AppStorage("SubdivInspector.ptwCollapsed") private var ptwCollapsed = true
+    @AppStorage("SubdivInspector.ptpCollapsed") private var ptpCollapsed = true
 
     var body: some View {
         let setIdx = controller.selectedSubdivisionIndex ?? 0
