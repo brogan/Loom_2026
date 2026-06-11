@@ -32,10 +32,19 @@ func subdivideQuad(
 
     for i in 0..<sidesTotal {
         let t = params.splitRatio(forSideIndex: i)
-        let (l, r) = BezierMath.scalaSplit(seg: sides[i], t: t)
+        let (l, r): ([Vector2D], [Vector2D])
+        if params.curveAwareSplit {
+            // De Casteljau: split point lies on the Bézier curve at parameter t.
+            // Preserves outer curvature but may drift on higher subdivision levels.
+            (l, r) = BezierMath.split(seg: sides[i], t: t)
+        } else {
+            // Scala-compatible: split point is the linear lerp of the two anchors.
+            // Avoids cumulative drift; straight edges stay straight.
+            (l, r) = BezierMath.scalaSplit(seg: sides[i], t: t)
+        }
         lefts[i]  = l
         rights[i] = r
-        splits[i] = l[3]  // geometric edge midpoint (lerp of anchors at t)
+        splits[i] = l[3]
     }
 
     // Internal edges from each split point to the centre

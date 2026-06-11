@@ -41,6 +41,11 @@ public struct SubdivisionParams: Equatable, Codable, Sendable {
     /// When `lineRatios.x ≠ lineRatios.y`, enforces shared split points on
     /// adjacent edges so the mesh is seamless. Has no effect when ratios are equal.
     public var continuous: Bool
+    /// When true, outer-edge split points are placed on the Bézier curve (de Casteljau).
+    /// When false (default), split points land at the linear interpolation of the two
+    /// anchor positions, matching the original Scala behaviour and avoiding cumulative
+    /// drift at higher subdivision levels. Applies to Quad-family algorithms only.
+    public var curveAwareSplit: Bool
     /// Applied to scale/rotate all points to create inset polygons (ECHO, BORD variants).
     public var insetTransform: InsetTransform
 
@@ -119,6 +124,7 @@ public struct SubdivisionParams: Equatable, Codable, Sendable {
         cpNormalOffsets: Vector2D             = .zero,
         cpNormalizeTowardsCentre: Bool        = false,
         continuous: Bool                      = true,
+        curveAwareSplit: Bool                 = false,
         insetTransform: InsetTransform        = .default,
         ranMiddle: Bool                       = false,
         ranDiv: Double                        = 100,
@@ -150,6 +156,7 @@ public struct SubdivisionParams: Equatable, Codable, Sendable {
         self.cpNormalOffsets            = cpNormalOffsets
         self.cpNormalizeTowardsCentre   = cpNormalizeTowardsCentre
         self.continuous                 = continuous
+        self.curveAwareSplit            = curveAwareSplit
         self.insetTransform             = insetTransform
         self.ranMiddle                  = ranMiddle
         self.ranDiv                     = ranDiv
@@ -175,7 +182,7 @@ public struct SubdivisionParams: Equatable, Codable, Sendable {
 
     private enum CodingKeys: String, CodingKey {
         case name, enabled, subdivisionType, customAlgorithm
-        case lineRatios, controlPointRatios, cpNormalOffsets, cpNormalizeTowardsCentre, continuous, insetTransform
+        case lineRatios, controlPointRatios, cpNormalOffsets, cpNormalizeTowardsCentre, continuous, curveAwareSplit, insetTransform
         case ranMiddle, ranDiv, visibilityRule
         case pressureSubdivisionMode, pressureRandomGroups
         case polysTransform, polysTranformWhole, pTW_probability, pTW_commonCentre
@@ -197,6 +204,7 @@ public struct SubdivisionParams: Equatable, Codable, Sendable {
             cpNormalOffsets: try c.decodeIfPresent(Vector2D.self, forKey: .cpNormalOffsets) ?? defaults.cpNormalOffsets,
             cpNormalizeTowardsCentre: try c.decodeIfPresent(Bool.self, forKey: .cpNormalizeTowardsCentre) ?? defaults.cpNormalizeTowardsCentre,
             continuous: try c.decodeIfPresent(Bool.self, forKey: .continuous) ?? defaults.continuous,
+            curveAwareSplit: try c.decodeIfPresent(Bool.self, forKey: .curveAwareSplit) ?? defaults.curveAwareSplit,
             insetTransform: try c.decodeIfPresent(InsetTransform.self, forKey: .insetTransform) ?? defaults.insetTransform,
             ranMiddle: try c.decodeIfPresent(Bool.self, forKey: .ranMiddle) ?? defaults.ranMiddle,
             ranDiv: try c.decodeIfPresent(Double.self, forKey: .ranDiv) ?? defaults.ranDiv,
@@ -232,6 +240,7 @@ public struct SubdivisionParams: Equatable, Codable, Sendable {
         try c.encode(cpNormalOffsets, forKey: .cpNormalOffsets)
         try c.encode(cpNormalizeTowardsCentre, forKey: .cpNormalizeTowardsCentre)
         try c.encode(continuous, forKey: .continuous)
+        try c.encode(curveAwareSplit, forKey: .curveAwareSplit)
         try c.encode(insetTransform, forKey: .insetTransform)
         try c.encode(ranMiddle, forKey: .ranMiddle)
         try c.encode(ranDiv, forKey: .ranDiv)

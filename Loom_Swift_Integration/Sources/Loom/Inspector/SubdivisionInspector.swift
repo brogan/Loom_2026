@@ -146,6 +146,10 @@ struct SubdivisionInspector: View {
                 Toggle("", isOn: bindP(setIdx, paramIdx, \.continuous)).labelsHidden()
             }
             .loomHelp("When on, all child polygons from this step use this same parameter rather than advancing to the next one in the set.")
+            InspectorField("Curve split") {
+                Toggle("", isOn: bindP(setIdx, paramIdx, \.curveAwareSplit)).labelsHidden()
+            }
+            .loomHelp("Quad only. When off (default), new split-point anchors land at the straight-line midpoint between the two existing anchors — matching the original Scala behaviour and avoiding drift at higher subdivision levels. When on, split points land on the actual Bézier curve (de Casteljau), so curved outer edges like circles or ovals are respected. The two modes produce visibly different results: off keeps straight edges straight; on keeps curved edges curved.")
             InspectorField("Visibility") {
                 Picker("", selection: bindP(setIdx, paramIdx, \.visibilityRule)) {
                     ForEach(VisibilityRule.allCases, id: \.self) { r in
