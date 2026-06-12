@@ -122,24 +122,21 @@ struct InspectorSection<Content: View>: View {
         VStack(alignment: .leading, spacing: 0) {
             if let binding = collapseState {
                 HStack(spacing: 0) {
-                    Button { binding.wrappedValue.toggle() } label: {
-                        HStack(spacing: 5) {
-                            Image(systemName: binding.wrappedValue ? "chevron.right" : "chevron.down")
-                                .font(.system(size: 9, weight: .semibold))
-                                .foregroundStyle(.secondary)
-                                .frame(width: 10)
-                            Text(title)
-                                .font(.system(size: 11, weight: .semibold))
-                                .foregroundStyle(isHighlighted ? Color.accentColor : .secondary)
-                            Spacer()
-                        }
-                        .padding(.horizontal, 12)
-                        .padding(.top, 10)
-                        .padding(.bottom, 4)
+                    HStack(spacing: 5) {
+                        Image(systemName: binding.wrappedValue ? "chevron.right" : "chevron.down")
+                            .font(.system(size: 9, weight: .semibold))
+                            .foregroundStyle(.secondary)
+                            .frame(width: 10)
+                        Text(title)
+                            .font(.system(size: 11, weight: .semibold))
+                            .foregroundStyle(isHighlighted ? Color.accentColor : .secondary)
+                        Spacer()
                     }
-                    .buttonStyle(.plain)
+                    .padding(.horizontal, 12)
+                    .padding(.top, 10)
+                    .padding(.bottom, 4)
                     .contentShape(Rectangle())
-                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .onTapGesture { binding.wrappedValue.toggle() }
                     if let tb = trailingButton {
                         tb.padding(.trailing, 10).padding(.top, 6)
                     }

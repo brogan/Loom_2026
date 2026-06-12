@@ -523,21 +523,18 @@ private struct DriverSection<Content: View>: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             HStack(spacing: 5) {
-                Button { isCollapsed = !isCollapsed } label: {
-                    HStack(spacing: 5) {
-                        Image(systemName: isCollapsed ? "chevron.right" : "chevron.down")
-                            .font(.system(size: 9, weight: .semibold))
-                            .foregroundStyle(.secondary)
-                            .frame(width: 10)
-                        Text(label)
-                            .font(.system(size: 11, weight: .semibold))
-                            .foregroundStyle(.secondary)
-                        Spacer()
-                    }
+                HStack(spacing: 5) {
+                    Image(systemName: isCollapsed ? "chevron.right" : "chevron.down")
+                        .font(.system(size: 9, weight: .semibold))
+                        .foregroundStyle(.secondary)
+                        .frame(width: 10)
+                    Text(label)
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundStyle(.secondary)
+                    Spacer()
                 }
-                .buttonStyle(.plain)
                 .contentShape(Rectangle())
-                .frame(maxWidth: .infinity, alignment: .leading)
+                .onTapGesture { isCollapsed = !isCollapsed }
                 Image(systemName: hasKeyframes ? "circle.fill" : "circle")
                     .font(.system(size: 8))
                     .foregroundStyle(hasKeyframes ? Color.green : Color.secondary.opacity(0.4))
