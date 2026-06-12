@@ -136,6 +136,7 @@ struct InspectorSection<Content: View>: View {
                         .padding(.horizontal, 12)
                         .padding(.top, 10)
                         .padding(.bottom, 4)
+                        .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
                     if let tb = trailingButton {
