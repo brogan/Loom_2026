@@ -532,10 +532,12 @@ private struct DriverSection<Content: View>: View {
                         Text(label)
                             .font(.system(size: 11, weight: .semibold))
                             .foregroundStyle(.secondary)
+                        Spacer()
                     }
                 }
                 .buttonStyle(.plain)
-                Spacer()
+                .contentShape(Rectangle())
+                .frame(maxWidth: .infinity, alignment: .leading)
                 Image(systemName: hasKeyframes ? "circle.fill" : "circle")
                     .font(.system(size: 8))
                     .foregroundStyle(hasKeyframes ? Color.green : Color.secondary.opacity(0.4))
