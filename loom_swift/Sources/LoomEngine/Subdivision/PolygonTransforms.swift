@@ -141,7 +141,7 @@ enum PolygonTransforms {
 
             // Full-array transform.
             if ts.innerControlPoints.enabled {
-                result = applyInnerControlPointsToArray(result, config: ts.innerControlPoints)
+                result = applyInnerControlPointsToArray(result, config: ts.innerControlPoints, rng: &rng)
             }
 
             return result
@@ -621,37 +621,33 @@ enum PolygonTransforms {
 
     // MARK: - InnerControlPoints (full-array)
 
-    /// Curves inner control points on the internal subdivision lines.
-    ///
-    /// Mirrors Scala `InnerControlPoints.curveQuad` (`referToOuter=false` path).
-    /// Operates on the full polygon array because each internal line is shared between
-    /// two adjacent polygons; the pairing mirrors Scala's `getInnerControlPoints`.
-    /// Only QUAD (16-pt) is currently supported.
+    /// Curves the control points on internal subdivision lines (M→centre and C→M edges).
     ///
     /// Buffer layout per polygon (QUAD, centreIndex=8):
-    ///   buf[i*4+0] = pts[ci-3] = pts[5]   (outer inner cp A)
-    ///   buf[i*4+1] = pts[ci-2] = pts[6]   (outer inner cp B)
-    ///   buf[i*4+2] = pts[ci+1] = pts[9]   (inner inner cp A)
-    ///   buf[i*4+3] = pts[ci+2] = pts[10]  (inner inner cp B)
+    ///   buf[i*4+0] = pts[5]  = pts[ci-3]  — first CP  of Side 1 (M_i → C)
+    ///   buf[i*4+1] = pts[6]  = pts[ci-2]  — second CP of Side 1 (M_i → C)
+    ///   buf[i*4+2] = pts[9]  = pts[ci+1]  — first CP  of Side 2 (C → M_{i-1})
+    ///   buf[i*4+3] = pts[10] = pts[ci+2]  — second CP of Side 2 (C → M_{i-1})
     ///
-    /// For internal line i the Scala pairs are:
-    ///   controls[i*2][0]   = buf[i*4]                         (poly[i].pts[5])
-    ///   controls[i*2][1]   = buf[circularIndex(i*4+7, tot)]   (poly[i+1].pts[10])
-    ///   controls[i*2+1][0] = buf[i*4+1]                       (poly[i].pts[6])
-    ///   controls[i*2+1][1] = buf[circularIndex(i*4+6, tot)]   (poly[i+1].pts[9])
-    private static func applyInnerControlPointsToArray(
+    /// Internal line i is shared by poly[i] (as its Side 1) and poly[i+1] (as its Side 2).
+    /// The four buffer slots that concern line i are:
+    ///   idxA0 = i*4+0        → poly[i].pts[5]     M-end CP-1 of line i
+    ///   idxB0 = i*4+1        → poly[i].pts[6]     M-end CP-2 of line i
+    ///   idxB1 = (i*4+6)%tot  → poly[i+1].pts[9]   C-end CP-1 of line i
+    ///   idxA1 = (i*4+7)%tot  → poly[i+1].pts[10]  C-end CP-2 of line i
+    private static func applyInnerControlPointsToArray<G: RandomNumberGenerator>(
         _ polygons: [Polygon2D],
-        config: InnerControlPointsTransform
+        config: InnerControlPointsTransform,
+        rng: inout G
     ) -> [Polygon2D] {
         guard !polygons.isEmpty else { return polygons }
         let n = polygons[0].points.count
         guard n == 16 else { return polygons }
-        let ci = n / 2  // = 8
-
+        let ci         = n / 2   // = 8
         let sidesTotal = polygons.count
         let tot        = sidesTotal * 4
 
-        // Build flat buffer of inner control points from all polygons.
+        // Build flat buffer: [pts[5], pts[6], pts[9], pts[10]] per polygon.
         var buffer = [Vector2D]()
         buffer.reserveCapacity(tot)
         for poly in polygons {
@@ -663,45 +659,147 @@ enum PolygonTransforms {
             buffer.append(pts[ci + 2])  // pts[10]
         }
 
-        // Notional midpoints: lerp(pts[ci-3], pts[ci], 0.5) per polygon.
-        let mids: [Vector2D] = polygons.map { poly in
-            Vector2D.lerp(poly.points[ci - 3], poly.points[ci], t: 0.5)
+        let isReferPath = config.referToOuter != "NONE"
+
+        // Precompute per-polygon outer-edge CP deviations for referToOuter paths.
+        // dev0[i] = (dev of pts[1] from lerp(pts[0],pts[3],⅓),
+        //            dev of pts[2] from lerp(pts[0],pts[3],⅔))   — Side 0 of poly[i]
+        // dev3[i] = same for Side 3 (pts[12..15])                 — Side 3 of poly[i]
+        var dev0a = [Vector2D](repeating: .zero, count: sidesTotal)
+        var dev0b = [Vector2D](repeating: .zero, count: sidesTotal)
+        var dev3a = [Vector2D](repeating: .zero, count: sidesTotal)
+        var dev3b = [Vector2D](repeating: .zero, count: sidesTotal)
+        if isReferPath {
+            for (i, poly) in polygons.enumerated() {
+                let pts = poly.points
+                dev0a[i] = pts[1]  - Vector2D.lerp(pts[0],  pts[3],  t: 1.0/3.0)
+                dev0b[i] = pts[2]  - Vector2D.lerp(pts[0],  pts[3],  t: 2.0/3.0)
+                dev3a[i] = pts[13] - Vector2D.lerp(pts[12], pts[15], t: 1.0/3.0)
+                dev3b[i] = pts[14] - Vector2D.lerp(pts[12], pts[15], t: 2.0/3.0)
+            }
         }
 
-        // For the `referToOuter=false` path Scala uses hardcoded Range(-2, 2).
-        let multMin = -2.0
-        let multMax =  2.0
-
-        // Process each internal line using cross-polygon pairing.
+        // Process each internal line.
         for i in 0..<sidesTotal {
+            // Per-line probability check.
+            guard Double.random(in: 0..<100, using: &rng) < config.probability else { continue }
+
+            let next    = (i + 1) % sidesTotal
             let bufBase = i * 4
-            let idxA0 = bufBase                              // poly[i].pts[5]
-            let idxA1 = circularIndex(bufBase + 7, total: tot)  // poly[i+1].pts[10]
-            let idxB0 = bufBase + 1                          // poly[i].pts[6]
-            let idxB1 = circularIndex(bufBase + 6, total: tot)  // poly[i+1].pts[9]
+            let idxA0   = bufBase                                   // poly[i].pts[5]
+            let idxB0   = bufBase + 1                               // poly[i].pts[6]
+            let idxB1   = circularIndex(bufBase + 6, total: tot)    // poly[next].pts[9]
+            let idxA1   = circularIndex(bufBase + 7, total: tot)    // poly[next].pts[10]
 
-            let mid = mids[i]
-            // diffVect = differenceBetweenTwoVectors(control, mid) = mid - control
-            let diffA = mid - buffer[idxA0]
-            let diffB = mid - buffer[idxA1]
-            let diffC = mid - buffer[idxB0]
-            let diffD = mid - buffer[idxB1]
-            // inverseVector = swap x,y (Scala Formulas.inverseVector)
-            let invA = Vector2D(x: diffA.y, y: diffA.x)
-            let invB = Vector2D(x: diffB.y, y: diffB.x)
-            let invC = Vector2D(x: diffC.y, y: diffC.x)
-            let invD = Vector2D(x: diffD.y, y: diffD.x)
+            if !isReferPath {
+                // ── NONE path: perpendicular-swap displacement ───────────────────
+                // Midpoint of poly[i]'s internal line (used as displacement reference).
+                let midI    = Vector2D.lerp(polygons[i].points[ci - 3],
+                                            polygons[i].points[ci], t: 0.5)
+                let midNext = Vector2D.lerp(polygons[next].points[ci - 3],
+                                            polygons[next].points[ci], t: 0.5)
 
-            buffer[idxA0] = buffer[idxA0] + invA * multMin
-            buffer[idxA1] = buffer[idxA1] + invB * multMax
-            buffer[idxB0] = buffer[idxB0] + invC * multMin
-            buffer[idxB1] = buffer[idxB1] + invD * multMax
+                // commonLine determines which mid to use for each half of the line.
+                let (midForI, midForNext): (Vector2D, Vector2D)
+                switch config.commonLine {
+                case "ODD":
+                    midForI = midNext;  midForNext = midNext
+                case "RANDOM":
+                    let m = Bool.random(using: &rng) ? midI : midNext
+                    midForI = m;        midForNext = m
+                case "NONE":
+                    midForI = midI;     midForNext = midNext   // each side independent
+                default: // EVEN
+                    midForI = midI;     midForNext = midI
+                }
+
+                // User-controlled multipliers (or random range).
+                let innerMult: Double
+                let outerMult: Double
+                if config.randomRatio {
+                    innerMult = randomDouble(in: config.randomInnerRatio, using: &rng)
+                    outerMult = randomDouble(in: config.randomOuterRatio, using: &rng)
+                } else {
+                    innerMult = config.innerRatio
+                    outerMult = config.outerRatio
+                }
+
+                func displaced(_ cp: Vector2D, mid: Vector2D, mult: Double) -> Vector2D {
+                    let diff = mid - cp
+                    let inv  = Vector2D(x: diff.y, y: diff.x)   // swap x,y
+                    return cp + inv * mult
+                }
+
+                buffer[idxA0] = displaced(buffer[idxA0], mid: midForI,    mult: innerMult)
+                buffer[idxB0] = displaced(buffer[idxB0], mid: midForI,    mult: innerMult)
+                buffer[idxA1] = displaced(buffer[idxA1], mid: midForNext, mult: outerMult)
+                buffer[idxB1] = displaced(buffer[idxB1], mid: midForNext, mult: outerMult)
+
+            } else {
+                // ── referToOuter paths: FOLLOW / COUNTER / EXAGGERATE ───────────
+                // Sign and scale factors.
+                let signMult: Double
+                switch config.referToOuter {
+                case "COUNTER":    signMult = -1.0
+                case "EXAGGERATE": signMult =  2.0
+                default:           signMult =  1.0  // FOLLOW
+                }
+
+                // commonLine: which polygon's outer-edge curvature to reference.
+                // ref0 drives the M-end CPs (idxA0, idxB0) on poly[i].
+                // ref1 drives the C-end CPs (idxA1, idxB1) on poly[next].
+                let (ref0, ref1): (Int, Int)
+                switch config.commonLine {
+                case "ODD":
+                    ref0 = next;  ref1 = next
+                case "RANDOM":
+                    let pick = Bool.random(using: &rng) ? i : next
+                    ref0 = pick;  ref1 = pick
+                case "NONE":
+                    ref0 = i;     ref1 = next   // each side uses its own outer edge
+                default: // EVEN
+                    ref0 = i;     ref1 = i
+                }
+
+                // ── M-end CPs (poly[i].pts[5,6]): derive from outer Side 0 of ref0. ──
+                // Inner edge M_i→C anchors for poly[i]: pts[4]=M_i, pts[7]=C.
+                do {
+                    let polyPts = polygons[i].points
+                    let edgeA   = polyPts[ci - 4]   // pts[4] = M_i anchor start
+                    let edgeB   = polyPts[ci - 1]   // pts[7] = centre anchor end
+
+                    let (dA, dB) = (dev0a[ref0], dev0b[ref0])
+                    let pos1 = Vector2D.lerp(edgeA, edgeB, t: config.innerRatio)
+                    let pos2 = Vector2D.lerp(edgeA, edgeB, t: config.outerRatio)
+
+                    buffer[idxA0] = Vector2D(
+                        x: pos1.x + dA.x * config.outerMultiplierX * signMult,
+                        y: pos1.y + dA.y * config.outerMultiplierY * signMult)
+                    buffer[idxB0] = Vector2D(
+                        x: pos2.x + dB.x * config.outerMultiplierX * signMult,
+                        y: pos2.y + dB.y * config.outerMultiplierY * signMult)
+                }
+
+                // ── C-end CPs (poly[next].pts[9,10]): derive from outer Side 3 of ref1. ──
+                // Inner edge C→M_i anchors for poly[next]: pts[8]=C, pts[11]=M_i.
+                do {
+                    let nextPts = polygons[next].points
+                    let edgeA   = nextPts[ci]       // pts[8] = centre anchor start
+                    let edgeB   = nextPts[ci + 3]   // pts[11] = M_i anchor end
+
+                    let (dA, dB) = (dev3a[ref1], dev3b[ref1])
+                    let pos1 = Vector2D.lerp(edgeA, edgeB, t: config.innerRatio)
+                    let pos2 = Vector2D.lerp(edgeA, edgeB, t: config.outerRatio)
+
+                    buffer[idxB1] = Vector2D(
+                        x: pos1.x + dA.x * config.innerMultiplierX * signMult,
+                        y: pos1.y + dA.y * config.innerMultiplierY * signMult)
+                    buffer[idxA1] = Vector2D(
+                        x: pos2.x + dB.x * config.innerMultiplierX * signMult,
+                        y: pos2.y + dB.y * config.innerMultiplierY * signMult)
+                }
+            }
         }
-
-        // The cross-polygon writes above already implement the EVEN commonLine behaviour:
-        // mids[i] (from polygon i) is used for both polygon i's pts[5,6] and
-        // polygon[i+1]'s pts[9,10].  No additional commonLine post-processing needed
-        // for the non-referToOuter path.
 
         // Write buffer back to polygon copies.
         return polygons.enumerated().map { (idx, poly) in
@@ -711,10 +809,10 @@ enum PolygonTransforms {
                 return poly
             }
             var pts = poly.points
-            pts[ci - 3] = buffer[base]      // pts[5]
-            pts[ci - 2] = buffer[base + 1]  // pts[6]
-            pts[ci + 1] = buffer[base + 2]  // pts[9]
-            pts[ci + 2] = buffer[base + 3]  // pts[10]
+            pts[ci - 3] = buffer[base]
+            pts[ci - 2] = buffer[base + 1]
+            pts[ci + 1] = buffer[base + 2]
+            pts[ci + 2] = buffer[base + 3]
             return Polygon2D(points: pts, type: poly.type,
                              pressures: poly.pressures,
                              pressureProfiles: poly.pressureProfiles,

@@ -47,9 +47,41 @@ func subdivideQuad(
         splits[i] = l[3]
     }
 
-    // Internal edges from each split point to the centre
-    let internalSides: [[Vector2D]] = splits.map { m in
+    // Internal edges from each split point to the centre.
+    // When mirrorOuterCurvature is on, the control points on each internal edge
+    // are offset to echo the curvature of the adjacent outer edge at that split point.
+    var internalSides: [[Vector2D]] = splits.map { m in
         params.connector(from: m, to: centre, centre: centre)
+    }
+
+    if params.mirrorOuterCurvature {
+        let sign: Double = params.invertCurvature ? -1.0 : 1.0
+        for i in 0..<sidesTotal {
+            // Apply curvatureSync gating.
+            let applySign: Double
+            switch params.curvatureSync {
+            case "EVEN":      applySign = (i % 2 == 0) ? sign : 0.0
+            case "ODD":       applySign = (i % 2 == 1) ? sign : 0.0
+            case "ALTERNATE": applySign = (i % 2 == 0) ? sign : -sign
+            default:          applySign = sign   // "ALL"
+            }
+            guard applySign != 0.0 else { continue }
+
+            // Outer bow: deviation of the last CP before M_i from the A_i→M_i straight line.
+            // lefts[i] = [A_i, cp1, cp2, M_i]; the bow is at cp2 (near M_i end).
+            let a = lefts[i][0]; let m = lefts[i][3]
+            let straightCP2 = Vector2D.lerp(a, m, t: 2.0 / 3.0)
+            let bow = (lefts[i][2] - straightCP2) * applySign
+
+            // Scale bow proportionally to internal edge length vs outer half-edge length.
+            let outerLen = ((m.x-a.x)*(m.x-a.x) + (m.y-a.y)*(m.y-a.y)).squareRoot()
+            let innerLen = ((centre.x-m.x)*(centre.x-m.x) + (centre.y-m.y)*(centre.y-m.y)).squareRoot()
+            let scaledBow = outerLen > 1e-12 ? bow * (innerLen / outerLen) : bow
+
+            // Apply to both control points of the internal edge [M, cp1, cp2, C].
+            internalSides[i][1] = internalSides[i][1] + scaledBow
+            internalSides[i][2] = internalSides[i][2] + scaledBow
+        }
     }
 
     // Assemble N quads

@@ -46,6 +46,19 @@ public struct SubdivisionParams: Equatable, Codable, Sendable {
     /// anchor positions, matching the original Scala behaviour and avoiding cumulative
     /// drift at higher subdivision levels. Applies to Quad-family algorithms only.
     public var curveAwareSplit: Bool
+    /// When true, the initial control points on internal edges (split-point → centre)
+    /// are set to mirror the curvature of the adjacent outer edge, rather than lying
+    /// on the straight line. Applies to Quad-family algorithms only.
+    public var mirrorOuterCurvature: Bool
+    /// Inverts the mirrored curvature direction on internal edges.
+    /// Only meaningful when `mirrorOuterCurvature` is true.
+    public var invertCurvature: Bool
+    /// Controls how adjacent internal curves relate when mirroring outer curvature.
+    /// "ALL" — every internal edge mirrors its own adjacent outer edge.
+    /// "EVEN" — even-indexed edges mirror; odd-indexed stay straight.
+    /// "ODD"  — odd-indexed edges mirror; even-indexed stay straight.
+    /// "ALTERNATE" — even edges mirror forward, odd edges mirror inverted (pinwheel).
+    public var curvatureSync: String
     /// Applied to scale/rotate all points to create inset polygons (ECHO, BORD variants).
     public var insetTransform: InsetTransform
 
@@ -125,6 +138,9 @@ public struct SubdivisionParams: Equatable, Codable, Sendable {
         cpNormalizeTowardsCentre: Bool        = false,
         continuous: Bool                      = true,
         curveAwareSplit: Bool                 = false,
+        mirrorOuterCurvature: Bool            = false,
+        invertCurvature: Bool                 = false,
+        curvatureSync: String                 = "ALL",
         insetTransform: InsetTransform        = .default,
         ranMiddle: Bool                       = false,
         ranDiv: Double                        = 100,
@@ -157,6 +173,9 @@ public struct SubdivisionParams: Equatable, Codable, Sendable {
         self.cpNormalizeTowardsCentre   = cpNormalizeTowardsCentre
         self.continuous                 = continuous
         self.curveAwareSplit            = curveAwareSplit
+        self.mirrorOuterCurvature       = mirrorOuterCurvature
+        self.invertCurvature            = invertCurvature
+        self.curvatureSync              = curvatureSync
         self.insetTransform             = insetTransform
         self.ranMiddle                  = ranMiddle
         self.ranDiv                     = ranDiv
@@ -182,7 +201,9 @@ public struct SubdivisionParams: Equatable, Codable, Sendable {
 
     private enum CodingKeys: String, CodingKey {
         case name, enabled, subdivisionType, customAlgorithm
-        case lineRatios, controlPointRatios, cpNormalOffsets, cpNormalizeTowardsCentre, continuous, curveAwareSplit, insetTransform
+        case lineRatios, controlPointRatios, cpNormalOffsets, cpNormalizeTowardsCentre, continuous, curveAwareSplit
+        case mirrorOuterCurvature, invertCurvature, curvatureSync
+        case insetTransform
         case ranMiddle, ranDiv, visibilityRule
         case pressureSubdivisionMode, pressureRandomGroups
         case polysTransform, polysTranformWhole, pTW_probability, pTW_commonCentre
@@ -205,6 +226,9 @@ public struct SubdivisionParams: Equatable, Codable, Sendable {
             cpNormalizeTowardsCentre: try c.decodeIfPresent(Bool.self, forKey: .cpNormalizeTowardsCentre) ?? defaults.cpNormalizeTowardsCentre,
             continuous: try c.decodeIfPresent(Bool.self, forKey: .continuous) ?? defaults.continuous,
             curveAwareSplit: try c.decodeIfPresent(Bool.self, forKey: .curveAwareSplit) ?? defaults.curveAwareSplit,
+            mirrorOuterCurvature: try c.decodeIfPresent(Bool.self, forKey: .mirrorOuterCurvature) ?? defaults.mirrorOuterCurvature,
+            invertCurvature: try c.decodeIfPresent(Bool.self, forKey: .invertCurvature) ?? defaults.invertCurvature,
+            curvatureSync: try c.decodeIfPresent(String.self, forKey: .curvatureSync) ?? defaults.curvatureSync,
             insetTransform: try c.decodeIfPresent(InsetTransform.self, forKey: .insetTransform) ?? defaults.insetTransform,
             ranMiddle: try c.decodeIfPresent(Bool.self, forKey: .ranMiddle) ?? defaults.ranMiddle,
             ranDiv: try c.decodeIfPresent(Double.self, forKey: .ranDiv) ?? defaults.ranDiv,
@@ -241,6 +265,9 @@ public struct SubdivisionParams: Equatable, Codable, Sendable {
         try c.encode(cpNormalizeTowardsCentre, forKey: .cpNormalizeTowardsCentre)
         try c.encode(continuous, forKey: .continuous)
         try c.encode(curveAwareSplit, forKey: .curveAwareSplit)
+        try c.encode(mirrorOuterCurvature, forKey: .mirrorOuterCurvature)
+        try c.encode(invertCurvature, forKey: .invertCurvature)
+        try c.encode(curvatureSync, forKey: .curvatureSync)
         try c.encode(insetTransform, forKey: .insetTransform)
         try c.encode(ranMiddle, forKey: .ranMiddle)
         try c.encode(ranDiv, forKey: .ranDiv)

@@ -148,6 +148,24 @@ struct SubdivisionInspector: View {
                 Toggle("", isOn: bindP(setIdx, paramIdx, \.curveAwareSplit)).labelsHidden()
             }
             .loomHelp("Quad only. When off (default), new split-point anchors land at the straight-line midpoint between the two existing anchors — matching the original Scala behaviour and avoiding drift at higher subdivision levels. When on, split points land on the actual Bézier curve (de Casteljau), so curved outer edges like circles or ovals are respected. The two modes produce visibly different results: off keeps straight edges straight; on keeps curved edges curved.")
+            InspectorField("Mirror curve") {
+                Toggle("", isOn: bindP(setIdx, paramIdx, \.mirrorOuterCurvature)).labelsHidden()
+            }
+            .loomHelp("Quad only. When on, the internal edges (split-point → centre) are given an initial bow that mirrors the curvature of their adjacent outer edge, rather than being drawn straight. The bow is scaled proportionally to the internal edge length.")
+            InspectorField("Invert curve") {
+                Toggle("", isOn: bindP(setIdx, paramIdx, \.invertCurvature)).labelsHidden()
+            }
+            .loomHelp("Reverses the direction of the mirrored curvature on internal edges. Only active when Mirror curve is on.")
+            InspectorField("Curve sync") {
+                Picker("", selection: bindP(setIdx, paramIdx, \.curvatureSync)) {
+                    Text("All").tag("ALL")
+                    Text("Even").tag("EVEN")
+                    Text("Odd").tag("ODD")
+                    Text("Alternate").tag("ALTERNATE")
+                }
+                .labelsHidden().frame(maxWidth: 110)
+            }
+            .loomHelp("Controls which internal edges receive the mirrored bow. All: every edge. Even/Odd: every other edge, straight on the remaining ones. Alternate: even edges bow forward, odd edges bow in reverse — produces a pinwheel or turbine pattern.")
             InspectorField("Visibility") {
                 Picker("", selection: bindP(setIdx, paramIdx, \.visibilityRule)) {
                     ForEach(VisibilityRule.allCases, id: \.self) { r in
