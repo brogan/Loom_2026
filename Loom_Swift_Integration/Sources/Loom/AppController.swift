@@ -159,6 +159,10 @@ final class AppController: ObservableObject, @unchecked Sendable {
     @Published var selectedTab: AppTab = .global
     @Published var showingGeometryEditorLeaveWarning: Bool = false
 
+    // Subdivision inspector collapse state — persists within a session, resets on project open
+    @Published var subdivPtwCollapsed: Bool = true
+    @Published var subdivPtpCollapsed: Bool = true
+
     // MARK: - Published: per-tab selection
 
     @Published var selectedGeometryKey:           String? = nil
@@ -5843,6 +5847,8 @@ final class AppController: ObservableObject, @unchecked Sendable {
         projectURL         = projectDirectory
         loadError          = nil
         animationCompleted = false
+        subdivPtwCollapsed = true
+        subdivPtpCollapsed = true
         loadEngine(from: projectDirectory)
         tryAutoRelinkAllMissing()
         playbackState = .stopped

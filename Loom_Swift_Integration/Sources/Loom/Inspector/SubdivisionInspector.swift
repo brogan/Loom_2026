@@ -9,8 +9,6 @@ struct SubdivisionInspector: View {
     @State private var generalCollapsed  = false
     @State private var insetCollapsed    = false
     @State private var pressureCollapsed = false
-    @AppStorage("SubdivInspector.ptwCollapsed") private var ptwCollapsed = true
-    @AppStorage("SubdivInspector.ptpCollapsed") private var ptpCollapsed = true
 
     var body: some View {
         let setIdx = controller.selectedSubdivisionIndex ?? 0
@@ -236,7 +234,7 @@ struct SubdivisionInspector: View {
     // MARK: - Transform Whole Polygons
 
     private func ptwSection(setIdx: Int, paramIdx: Int) -> some View {
-        InspectorSection("Transform Whole Polygons", isCollapsed: $ptwCollapsed) {
+        InspectorSection("Transform Whole Polygons", isCollapsed: $controller.subdivPtwCollapsed) {
             InspectorField("Enabled") {
                 Toggle("", isOn: bindP(setIdx, paramIdx, \.polysTranformWhole)).labelsHidden()
             }
@@ -295,7 +293,7 @@ struct SubdivisionInspector: View {
     private func ptpSection(setIdx: Int, paramIdx: Int) -> some View {
         let isEnabled = controller.projectConfig?.subdivisionConfig
             .paramsSets[safe: setIdx]?.params[safe: paramIdx]?.polysTransformPoints ?? false
-        return InspectorSection("Transform Polygon Points", isCollapsed: $ptpCollapsed) {
+        return InspectorSection("Transform Polygon Points", isCollapsed: $controller.subdivPtpCollapsed) {
             InspectorField("Enabled") {
                 Toggle("", isOn: bindP(setIdx, paramIdx, \.polysTransformPoints)).labelsHidden()
             }
