@@ -20,14 +20,22 @@ func subdivideTriStar(
 
     // N star triangles
     for i in 0..<sidesTotal {
-        let prev       = (i + sidesTotal - 1) % sidesTotal
-        let outerAnch  = outerSides[i][0]
-        let prevMid    = mids[prev]
-        let currMid    = mids[i]
+        let prev      = (i + sidesTotal - 1) % sidesTotal
+        let outerAnch = outerSides[i][0]
+        let prevMid   = mids[prev]
+        let currMid   = mids[i]
 
-        let s0 = params.connector(from: outerAnch, to: prevMid,    centre: centre)
-        let s1 = params.connector(from: prevMid,   to: currMid,    centre: centre)
-        let s2 = params.connector(from: currMid,   to: outerAnch,  centre: centre)
+        var s0 = params.connector(from: outerAnch, to: prevMid,   centre: centre)
+        var s1 = params.connector(from: prevMid,   to: currMid,   centre: centre)
+        var s2 = params.connector(from: currMid,   to: outerAnch, centre: centre)
+
+        let sign = params.curvatureSign(forIndex: i)
+        if sign != 0.0 {
+            s0 = BezierMath.applyOuterBow(to: s0, sourceEdge: outerSides[prev], sign: sign)
+            s1 = BezierMath.applyOuterBow(to: s1, sourceEdge: outerSides[i],    sign: sign)
+            s2 = BezierMath.applyOuterBow(to: s2, sourceEdge: outerSides[i],    sign: sign)
+        }
+
         polys.append(Polygon2D(points: s0 + s1 + s2, type: .spline))
     }
 
@@ -62,17 +70,24 @@ func subdivideTriStarFill(
         let currMid   = mids[i]
         let prevMid   = mids[prev]
 
-        // Star triangle: outerAnch → currMid → prevMid
-        let st0 = params.connector(from: outerAnch, to: currMid,    centre: centre)
-        let st1 = params.connector(from: currMid,   to: prevMid,    centre: centre)
-        let st2 = params.connector(from: prevMid,   to: outerAnch,  centre: centre)
-        polys.append(Polygon2D(points: st0 + st1 + st2, type: .spline))
+        var st0 = params.connector(from: outerAnch, to: currMid,   centre: centre)
+        var st1 = params.connector(from: currMid,   to: prevMid,   centre: centre)
+        var st2 = params.connector(from: prevMid,   to: outerAnch, centre: centre)
 
-        // Fill triangle: outer side i → outer[i].end→currMid → currMid→outerAnch
-        let ft0 = outerSides[i]
-        let ft1 = params.connector(from: outerSides[i][3], to: currMid,   centre: centre)
-        let ft2 = params.connector(from: currMid,          to: outerAnch, centre: centre)
-        polys.append(Polygon2D(points: ft0 + ft1 + ft2, type: .spline))
+        var ft1 = params.connector(from: outerSides[i][3], to: currMid,   centre: centre)
+        var ft2 = params.connector(from: currMid,          to: outerAnch, centre: centre)
+
+        let sign = params.curvatureSign(forIndex: i)
+        if sign != 0.0 {
+            st0 = BezierMath.applyOuterBow(to: st0, sourceEdge: outerSides[i],    sign: sign)
+            st1 = BezierMath.applyOuterBow(to: st1, sourceEdge: outerSides[i],    sign: sign)
+            st2 = BezierMath.applyOuterBow(to: st2, sourceEdge: outerSides[prev], sign: sign)
+            ft1 = BezierMath.applyOuterBow(to: ft1, sourceEdge: outerSides[i],    sign: sign)
+            ft2 = BezierMath.applyOuterBow(to: ft2, sourceEdge: outerSides[i],    sign: sign)
+        }
+
+        polys.append(Polygon2D(points: st0 + st1 + st2, type: .spline))
+        polys.append(Polygon2D(points: outerSides[i] + ft1 + ft2, type: .spline))
     }
 
     polys.append(innerRingPoly(mids: mids, sidesTotal: sidesTotal, params: params))

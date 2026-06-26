@@ -18,18 +18,18 @@ func subdivideTri(
     polys.reserveCapacity(sidesTotal)
 
     for i in 0..<sidesTotal {
-        let a0 = sides[i][0]  // first anchor of side i
-        let a1 = sides[i][3]  // last anchor of side i
+        let a0 = sides[i][0]
+        let a1 = sides[i][3]
 
-        // Internal edge a1 → centre
-        let int0 = params.connector(from: a1, to: centre, centre: centre)
-        // Internal edge centre → a0 (reversed direction of a0 → centre)
-        let int1 = params.connector(from: centre, to: a0, centre: centre)
+        var int0 = params.connector(from: a1, to: centre, centre: centre)
+        var int1 = params.connector(from: centre, to: a0, centre: centre)
 
-        // Triangle:
-        //   Side 0: outer edge i  (a0 → a1, full bezier)
-        //   Side 1: int0          (a1 → centre)
-        //   Side 2: int1          (centre → a0)
+        let sign = params.curvatureSign(forIndex: i)
+        if sign != 0.0 {
+            int0 = BezierMath.applyOuterBow(to: int0, sourceEdge: sides[i], sign: sign)
+            int1 = BezierMath.applyOuterBow(to: int1, sourceEdge: sides[i], sign: sign)
+        }
+
         let pts = sides[i] + int0 + int1
         polys.append(Polygon2D(points: pts, type: .spline))
     }

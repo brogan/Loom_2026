@@ -14,6 +14,7 @@ struct SpritesInspector: View {
 
         return AnyView(VStack(alignment: .leading, spacing: 0) {
             generalSection(sprite: sprite, setIdx: setIdx, spriteIdx: spriteIdx)
+            cycleSection(sprite: sprite, setIdx: setIdx, spriteIdx: spriteIdx)
             transformSection(setIdx: setIdx, spriteIdx: spriteIdx)
             animationSection(sprite: sprite, setIdx: setIdx, spriteIdx: spriteIdx)
             if sprite.animation.drivers != nil {
@@ -80,6 +81,60 @@ struct SpritesInspector: View {
                 .loomHelp("SVG file from the project's svgs/sprites/ folder to render as this sprite instead of a generated shape.")
             }
         }
+    }
+
+    // MARK: - Cycle
+
+    private func cycleSection(sprite: SpriteDef, setIdx: Int, spriteIdx: Int) -> some View {
+        let cycles = controller.projectConfig?.cycles ?? []
+        let assigned = sprite.cycleName
+        return InspectorSection("Cycle") {
+            InspectorField("Cycle") {
+                Picker("", selection: cycleBinding(setIdx: setIdx, spriteIdx: spriteIdx)) {
+                    Text("None").tag(String?.none)
+                    ForEach(cycles, id: \.name) { cycle in
+                        Text(cycle.name).tag(String?.some(cycle.name))
+                    }
+                }
+                .labelsHidden()
+                .font(.system(size: 12))
+                .frame(maxWidth: 130)
+                if let name = assigned {
+                    Button("Edit") {
+                        if let idx = controller.projectConfig?.cycles.firstIndex(where: { $0.name == name }) {
+                            controller.selectedCycleIndex = idx
+                            controller.showingCycleEditor = true
+                        }
+                    }
+                    .font(.system(size: 11))
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
+                }
+            }
+            .loomHelp("Assign a SpriteCycle to drive this sprite's shape/renderer sequence (walk cycles, image replacement).")
+        }
+        .sheet(isPresented: $controller.showingCycleEditor) {
+            SpriteCycleEditorView()
+                .environmentObject(controller)
+        }
+    }
+
+    private func cycleBinding(setIdx: Int, spriteIdx: Int) -> Binding<String?> {
+        let ctl = controller
+        return Binding(
+            get: {
+                ctl.projectConfig?.spriteConfig.library
+                    .spriteSets[safe: setIdx]?.sprites[safe: spriteIdx]?.cycleName
+            },
+            set: { newValue in
+                ctl.updateProjectConfig { cfg in
+                    guard setIdx < cfg.spriteConfig.library.spriteSets.count,
+                          spriteIdx < cfg.spriteConfig.library.spriteSets[setIdx].sprites.count
+                    else { return }
+                    cfg.spriteConfig.library.spriteSets[setIdx].sprites[spriteIdx].cycleName = newValue
+                }
+            }
+        )
     }
 
     /// Binding that maps `svgFilename: String?` to a `String` for Picker selection.

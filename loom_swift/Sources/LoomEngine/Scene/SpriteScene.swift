@@ -72,6 +72,9 @@ public struct SpriteScene: @unchecked Sendable {
     /// Compositing layers from project config.  Empty = legacy flat depth-sort path.
     var layers: [LoomLayer] = []
 
+    /// Named sprite cycles keyed by name for O(1) lookup during render.
+    private let allCycles: [String: SpriteCycle]
+
     // MARK: - Convenience (testing)
 
     /// Directly construct a scene from pre-built instances.
@@ -84,6 +87,7 @@ public struct SpriteScene: @unchecked Sendable {
         self.targetFPS         = 30
         self.allRendererSets   = [:]
         self.allSubdivisionSets = [:]
+        self.allCycles         = [:]
     }
 
     // MARK: - Assembly
@@ -119,6 +123,10 @@ public struct SpriteScene: @unchecked Sendable {
         )
         self.allSubdivisionSets = Dictionary(
             config.subdivisionConfig.paramsSets.map { ($0.name, $0.params) },
+            uniquingKeysWith: { first, _ in first }
+        )
+        self.allCycles = Dictionary(
+            config.cycles.map { ($0.name, $0) },
             uniquingKeysWith: { first, _ in first }
         )
         self.layers = config.layers
@@ -261,16 +269,38 @@ public struct SpriteScene: @unchecked Sendable {
             variantRendererSets.append(vRendererSet)
         }
 
+        // ── 8. Load SpriteCycle state polygons ──────────────────────────────
+        var cycleStatePolygons:     [[Polygon2D]]  = []
+        var cycleStateRendererSets: [RendererSet?] = []
+        if let cycleName = sprite.cycleName,
+           let cycle = config.cycles.first(where: { $0.name == cycleName }) {
+            for state in cycle.states {
+                let stateShapeDef = config.shapeConfig.library.shapeSets
+                    .first(where: { $0.name == state.shapeSetName })?
+                    .shapes.first(where: { $0.name == state.shapeName })
+                let polys = stateShapeDef.flatMap {
+                    try? loadBasePolygons(shapeDef: $0, config: config, projectDirectory: projectDirectory)
+                } ?? []
+                cycleStatePolygons.append(polys)
+                let overrideSet = state.rendererSetName.flatMap {
+                    config.renderingConfig.library.rendererSet(named: $0)
+                }
+                cycleStateRendererSets.append(overrideSet)
+            }
+        }
+
         return SpriteInstance(
-            def:                  sprite,
-            basePolygons:         basePolygons,
-            morphTargetPolygons:  morphTargetPolygons,
-            rendererSet:          rendererSet,
-            subdivisionParams:    subdivParams,
-            sequencePolygons:     sequencePolygons,
-            variantPolygons:      variantPolygons,
-            variantRendererSets:  variantRendererSets,
-            state:                SpriteState.initial(for: rendererSet)
+            def:                    sprite,
+            basePolygons:           basePolygons,
+            morphTargetPolygons:    morphTargetPolygons,
+            rendererSet:            rendererSet,
+            subdivisionParams:      subdivParams,
+            sequencePolygons:       sequencePolygons,
+            variantPolygons:        variantPolygons,
+            variantRendererSets:    variantRendererSets,
+            cycleStatePolygons:     cycleStatePolygons,
+            cycleStateRendererSets: cycleStateRendererSets,
+            state:                  SpriteState.initial(for: rendererSet)
         )
     }
 
@@ -880,6 +910,20 @@ public struct SpriteScene: @unchecked Sendable {
         }
 #endif
 
+        // ── SpriteCycle: override shape/renderer per cycle state ─────────────
+        if let cycleName = instance.def.cycleName,
+           let cycle = allCycles[cycleName],
+           !instance.cycleStatePolygons.isEmpty {
+            renderCycleInstance(instance, spriteIndex: spriteIndex, parentWorld: parentWorld,
+                                cycle: cycle, into: context, viewTransform: viewTransform,
+                                brushImages: brushImages, stampImages: stampImages,
+                                elapsedFrames: elapsedFrames,
+                                progressiveBrushStates: &progressiveBrushStates,
+                                progressiveBrushEnabled: progressiveBrushEnabled,
+                                using: &rng)
+            return
+        }
+
         // ── Shape driver: select active geometry and renderer set ────────────
         // Step-evaluated: snaps to last keyframe at or before elapsed — no interpolation.
         let shapeIdx = instance.def.animation.drivers.map {
@@ -1099,6 +1143,77 @@ public struct SpriteScene: @unchecked Sendable {
             if let offscreen = offscreen {
                 applyRendererBlur(from: offscreen, blurRadius: scaledBlur,
                                   into: context, canvasSize: viewTransform.canvasSize)
+            }
+        }
+    }
+
+    // MARK: - Cycle rendering
+
+    private func renderCycleInstance<RNG: RandomNumberGenerator>(
+        _ instance: SpriteInstance,
+        spriteIndex: Int,
+        parentWorld: ParentWorld?,
+        cycle: SpriteCycle,
+        into context: CGContext,
+        viewTransform: ViewTransform,
+        brushImages: [String: CGImage],
+        stampImages: [String: CGImage],
+        elapsedFrames: Double,
+        progressiveBrushStates: inout [String: BrushProgressiveState],
+        progressiveBrushEnabled: Bool,
+        using rng: inout RNG
+    ) {
+        let cycleLayers = cycle.renderLayers(atFrame: Int(elapsedFrames))
+        guard !cycleLayers.isEmpty else { return }
+
+        let spriteOpacity = max(0, min(1, instance.state.transform.opacity))
+        guard spriteOpacity > 0 else { return }
+
+        let needsOffscreen = cycleLayers.count > 1
+
+        for layer in cycleLayers {
+            guard instance.cycleStatePolygons.indices.contains(layer.stateIndex) else { continue }
+            let layerPolys = instance.cycleStatePolygons[layer.stateIndex]
+            guard !layerPolys.isEmpty else { continue }
+
+            // Build a modified instance for this layer: override polygons, renderer, cycleName, opacity.
+            var layerInstance = instance
+            layerInstance.def.cycleName = nil      // prevent recursion
+            layerInstance.basePolygons  = layerPolys
+            if layer.stateIndex < instance.cycleStateRendererSets.count,
+               let overrideSet = instance.cycleStateRendererSets[layer.stateIndex] {
+                layerInstance.rendererSet = overrideSet
+            }
+
+            if needsOffscreen {
+                // Render layer at full opacity into offscreen, then composite at layer.alpha * spriteOpacity.
+                guard let offscreen = makeOffscreenContext(size: viewTransform.canvasSize) else { continue }
+                layerInstance.state.transform.opacity = 1.0
+                renderInstance(layerInstance, spriteIndex: spriteIndex, parentWorld: parentWorld,
+                               into: offscreen, viewTransform: viewTransform,
+                               brushImages: brushImages, stampImages: stampImages,
+                               elapsedFrames: elapsedFrames,
+                               progressiveBrushStates: &progressiveBrushStates,
+                               progressiveBrushEnabled: progressiveBrushEnabled,
+                               using: &rng)
+                guard let img = offscreen.makeImage() else { continue }
+                let compositeAlpha = CGFloat(layer.alpha * spriteOpacity)
+                context.saveGState()
+                context.concatenate(context.ctm.inverted())
+                context.setAlpha(compositeAlpha)
+                let sz = viewTransform.canvasSize
+                context.draw(img, in: CGRect(x: 0, y: 0, width: sz.width, height: sz.height))
+                context.restoreGState()
+            } else {
+                // Hard cut: opacity already correct from the instance.
+                layerInstance.state.transform.opacity = spriteOpacity
+                renderInstance(layerInstance, spriteIndex: spriteIndex, parentWorld: parentWorld,
+                               into: context, viewTransform: viewTransform,
+                               brushImages: brushImages, stampImages: stampImages,
+                               elapsedFrames: elapsedFrames,
+                               progressiveBrushStates: &progressiveBrushStates,
+                               progressiveBrushEnabled: progressiveBrushEnabled,
+                               using: &rng)
             }
         }
     }

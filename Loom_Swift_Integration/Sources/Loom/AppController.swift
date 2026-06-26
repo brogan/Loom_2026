@@ -228,6 +228,8 @@ final class AppController: ObservableObject, @unchecked Sendable {
     }
     @Published var showScrubBar:                  Bool                 = false
     @Published var selectedLayerIndex:            Int?    = nil
+    @Published var selectedCycleIndex:            Int?    = nil
+    @Published var showingCycleEditor:            Bool    = false
     @Published var selectedRendererIndex:         Int?    = nil
     @Published var selectedRendererItemIndex:     Int?    = nil   // within selected set
     @Published var subdivSelectedSpriteID:        String? = nil   // sprite selected in subdivision tab
@@ -6462,6 +6464,65 @@ final class AppController: ObservableObject, @unchecked Sendable {
         }
     }
 
+    // MARK: - Cycle CRUD
+
+    func addCycle() {
+        let existingNames = Set(projectConfig?.cycles.map { $0.name } ?? [])
+        var name = "Cycle"
+        var idx = 2
+        while existingNames.contains(name) { name = "Cycle \(idx)"; idx += 1 }
+        let cycle = SpriteCycle(name: name)
+        updateProjectConfig { cfg in cfg.cycles.append(cycle) }
+        selectedCycleIndex = (projectConfig?.cycles.count ?? 1) - 1
+        showingCycleEditor = true
+    }
+
+    func removeCycle(at index: Int) {
+        guard let cfg = projectConfig, cfg.cycles.indices.contains(index) else { return }
+        let name = cfg.cycles[index].name
+        updateProjectConfig { cfg in
+            cfg.cycles.remove(at: index)
+            // Unassign the cycle from any sprites that had it.
+            for si in cfg.spriteConfig.library.spriteSets.indices {
+                for sj in cfg.spriteConfig.library.spriteSets[si].sprites.indices {
+                    if cfg.spriteConfig.library.spriteSets[si].sprites[sj].cycleName == name {
+                        cfg.spriteConfig.library.spriteSets[si].sprites[sj].cycleName = nil
+                    }
+                }
+            }
+        }
+        let count = projectConfig?.cycles.count ?? 0
+        selectedCycleIndex = count == 0 ? nil : min(index, count - 1)
+    }
+
+    func moveCycle(from source: IndexSet, to destination: Int) {
+        updateProjectConfig { cfg in cfg.cycles.move(fromOffsets: source, toOffset: destination) }
+    }
+
+    func assignCycle(named cycleName: String, toSprite spriteName: String, inSet setName: String) {
+        updateProjectConfig { cfg in
+            for si in cfg.spriteConfig.library.spriteSets.indices
+                where cfg.spriteConfig.library.spriteSets[si].name == setName {
+                for sj in cfg.spriteConfig.library.spriteSets[si].sprites.indices
+                    where cfg.spriteConfig.library.spriteSets[si].sprites[sj].name == spriteName {
+                    cfg.spriteConfig.library.spriteSets[si].sprites[sj].cycleName = cycleName
+                }
+            }
+        }
+    }
+
+    func unassignCycle(fromSprite spriteName: String, inSet setName: String) {
+        updateProjectConfig { cfg in
+            for si in cfg.spriteConfig.library.spriteSets.indices
+                where cfg.spriteConfig.library.spriteSets[si].name == setName {
+                for sj in cfg.spriteConfig.library.spriteSets[si].sprites.indices
+                    where cfg.spriteConfig.library.spriteSets[si].sprites[sj].name == spriteName {
+                    cfg.spriteConfig.library.spriteSets[si].sprites[sj].cycleName = nil
+                }
+            }
+        }
+    }
+
     // MARK: - Private: loading
 
     private func loadEngine(from url: URL) {
@@ -6642,6 +6703,8 @@ final class AppController: ObservableObject, @unchecked Sendable {
         renderingSelectedSpriteID     = nil
         renderingPreviewSetName       = nil
         selectedLayerIndex            = nil
+        selectedCycleIndex            = nil
+        showingCycleEditor            = false
         selectedRendererIndex         = nil
         selectedRendererItemIndex     = nil
     }

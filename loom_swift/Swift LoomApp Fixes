@@ -1,11 +1,18 @@
 Swift LoomApp Fixes
 
-- Brushes tab blur setting is not enabling a graduated response - switches abruptly between two states between the values of 2 and 3
-- Quality Multiple and scale image in run tab are not working - not scaling properly like Scala version (I notice particularly for brushes)
+- Brushes tab blur setting is not enabling a properly scaled response.  Blur should change gradually between values.  Currently it switches abruptly between two states.  Any value of 0-2 shows the same default brush stroke.  Values of 3 and higher show a different overly strong stroke.  What should be a graduated blur between values, for instance, of 0-10 is instead binary.  See Test_060 renders/stills for 3 renders at different blur values (described in file titles) if you cannot identify the issue immediately at the code level.
+- Quality Multiple and scale image in run tab are not working.  They are not scaling properly like the Scala version.  Please check scaling is working for all render types.
 - animation is going infinitely even though set to 5 for a single sprite
 - Subdivision tab - visibility rule, every fifth (maybe? indistinguishable from every fourth) and all random options not working
 - Subdivision tab: the various Polygons Transform Whole do not seem to be working in Swift version.
 - Subdivision tab: the various Polygons Transform Points do not seem to be working in Swift version.
+- Loom Editor: sprite is getting default set rather than quickset specified set (in geometry tab)
+
+- Swift cannot render regular polygons
+- Neither can subdivide ovals
+- Swift is not performing subdividion point level transformations on a triangle
+
+- Bezier - geometry on separate layers should be saved separately
 
 
 Improvements
@@ -27,3 +34,138 @@ What was proved this session: testQuad3LevelRectCollinearity passed — every B�
   3. Test_055 runtime params vs hardcoded test params — verify the app's actual loaded subdivision params match what the test assumes.
 
   I'm not convinced by this account.  I don't believe convexity is an issue here.  For a start tere are no curved lines.  It seems more like some miscalculation of anchor vertices.  But what remain unclear is why it only becomes apparent after two stages of subdivision.  The quad parameters for each stage are identical.  Why should conditions suddenly change in the 3rd stage?  I really don';t believe it is about the accumulation of tiny numerical irregularities.  There is something more decisive an dobvious happening.
+
+
+  ????????????
+
+  ⏺ Let me save the investigation findings to memory now.                                                                                                                                                                                
+                                                                                                                                                                                                                                       
+  Read 1 file, recalled 1 memory, wrote 2 memories (ctrl+o to expand)                                                                                                                                                                  
+                                                                                                                                                                                                                                       
+⏺ Here's where things stand:                                                                                                                                                                                                           
+                                                                                                                                                                                                                                       
+  ---                                                                                                                                                                                                                                  
+  1. Random visibility rules — confirmed bug, 5-minute fix                                                                                                                                                                             
+                                                                                                                                                                                                                                       
+  The XML files contain RANDOM_1_2, RANDOM_1_3, etc. (from the Python enum names). Swift's parser in VisibilityRule+XML.swift expects RANDOM_1_IN_2, RANDOM_1_IN_3, etc. Mismatch → all random rules silently fall back to ALL (show   
+  everything). Fix is adding the Scala/Python names as additional case entries in init?(xmlName:).                                                                                                                                     
+                                                            
+  2. Every fifth vs every fourth — not a bug                                                                                                                                                                                           
+                                                            
+  With a 4-sided QUAD polygon, both rules produce identical results at 1–2 subdivision levels (both show 25%). They only diverge at 3 levels (64 children: every-fourth shows 16, every-fifth shows 13). The user just needs deeper    
+  subdivision to see the difference.                        
+                                                                                                                                                                                                                                       
+  3. PTW (PolysTransformWhole) — logically present, semantics differ from Scala                                                                                                                                                        
+   
+  The Swift implementation exists and is structurally correct. The main semantic difference from Scala: Scala overwrites pTW_transform values in-place with random values then applies one combined transform; Swift applies the       
+  deterministic transform first and then applies random components as additional steps. Both should produce visible output when non-identity values are used. If the user sees no effect at all, most likely the base transform is
+  still identity (scale=1, translation=0) with no random flags enabled — that's expected behaviour, not a bug. Needs testing with a real configured project.                                                                           
+                                                            
+  4. PTP (PolysTransformPoints) — major missing feature, not implemented                                                                                                                                                               
+   
+  Swift's applyPoints only does random per-point translation. Scala's PTP runs the full TransformSet: five distinct algorithms — ExteriorAnchors, CentralAnchors, AnchorsLinkedToCentre, OuterControlPoints, InnerControlPoints. None  
+  of these exist in Swift. This is the largest item: each is a non-trivial algorithm that needs porting from loom_engine/src/main/scala/org/loom/transform/.
+
+
+  _________
+
+    When drawCycle reaches totalDraws, the if block is skipped. instance.state.transform retains its last computed value — the sprite freezes in place. This matches Scala: once spriteDrawCount >= spriteTotalDraws, animator.update()  
+  is never called, so the sprite holds its last geometric state.
+                                                                                                                                                                                                                                       
+  Why drawCycle and not elapsed time: totalDraws in the XML is in virtual draw-cycle units (integer), and drawCycle is incremented exactly once per virtual frame boundary. Time-based comparison would drift at non-target frame      
+  rates. This gives the precise "exactly 10 draw cycles" behavior the user described.
+                                                                                                                                                                                                                                       
+  Global animating master switch: Added a guard in LoomEngine.advance — when globalConfig.animating == false, scene.advance is not called at all. Sprites stay frozen at their initial positions. Previously this flag only controlled 
+  the EngineController's initial playback state, not the engine itself. Now it's a proper engine-level gate.
+                                                                                                                                                                                                                                       
+  Draw cycles vs temporal duration: Both are already expressible. totalDraws is the cycle count (integer, exact). For time-based limits you'd set totalDraws = desiredSeconds * targetFPS. The cycle-count approach is what the XML    
+  stores and what Test_060 uses (10 cycles).
+
+
+-----------------
+
+⏺ Everything looks correct. Here's a summary of what was done across all four files:
+                                                                                                                                                                                                                                       
+  EngineController.swift                                                                                                                                                                                                               
+  - play() and pause() now clear pausedBySentinel — user-initiated playback state changes are never overridden by the sentinel timer                                                                                                   
+  - checkSentinelFiles() fixed: the sentinel only resumes a pause that it caused (pausedBySentinel guard); user-initiated pauses survive indefinitely                                                                                  
+  - .capture_still sentinel: deletes the file and calls saveSentinelStill() which auto-writes a timestamped PNG to renders/stills/                                                                                                     
+  - .capture_video sentinel: deletes the file and sets requestingExportSheet = true so ContentView presents the ExportSheet                                                                                                            
+  - Added saveSentinelStill() private method                                                                                                                                                                                           
+                                                                                                                                                                                                                                       
+  ContentView.swift                                                                                                                                                                                                                    
+  - exportStill() now uses beginSheetModal(for: window) (falls back to panel.begin {}) instead of panel.runModal() — fixes the filename field losing focus                                                                             
+  - Added .onChange(of: controller.requestingExportSheet) to show the ExportSheet when triggered by the sentinel                                                                                                                       
+                                                            
+  ExportSheet.swift                                                                                                                                                                                                                    
+  - startExport() restructured to use savePanel.begin { } instead of savePanel.runModal() — same focus fix
+                                                                                                                                                                                                                                       
+  run_tab.py                                                
+  - Added QShortcut/QKeySequence import                                                                                                                                                                                                
+  - F9 triggers Save Still, F10 triggers Save Animation                                                                                                                                                                                
+  - Button labels updated to show [F9] / [F10]    
+
+  ]]]]]]]]]]]
+
+                                                                                                                                                                                                                                       
+⏺ All three bugs are now fixed. Here's a summary of what changed:                                                                                                                                                                      
+                                                                                          
+  Bug 1: Regular polygon absent — Two-part fix:                                                                                                                                                                                        
+  1. ShapeDef + XMLConfigLoader: parse sides attribute from <Source type="REGULAR_POLYGON" sides="7"/>                                                                                                                                 
+  2. SpriteScene.loadBasePolygons case .regularPolygon:: was incorrectly looking up the star polygon set from polygons.xml. Corrected to directly generate a simple N-sided convex polygon matching Scala's                            
+  PolygonCreator.makePolygon2D — N vertices at radius 0.5, evenly spaced from the top.                                                                                                                                                 
+                                                                                                                                                                                                                                       
+  Bug 2: PolysTransformPoints not applied — Implemented full PTPTransformSet / ExteriorAnchors / CentralAnchors data structures, XML parsing, and the anchor transform algorithms in PolygonTransforms.swift.
+                                                                                                                                                                                                                                       
+  Bug 3: Heptagon subdivision distorted (from previous session's incomplete fix) — SubdivisionEngine.subdivide was computing sidesTotal = pts.count / 4 for .line polygons, giving 3 instead of 14 sides. Fixed by detecting .line     
+  type, using sidesTotal = pts.count, and converting to spline format via BezierMath.lineToSplinePoints before passing to the spline algorithms. This mirrors Scala's sidesTotal = points.length for LINE_POLYGON.                     
+                                                                                                                                                                                                                       
+  -------------
+
+  ⏺ Done. Here's what changed and why each part matters:                                                                                                                                                                                 
+                                                                                                                                                                                                                                       
+  Root cause: _save_open_curve_set() always wrote a single flat file regardless of layer count. _save_polygon_set() already had the correct len(lm.layers) > 1 branch — open curves just never got the same treatment.                 
+                                                                                                                                                                                                                                       
+  open_curve_set_xml.py:                                                                                                                                                                                                               
+  - Extracted _write_open_curve_set_xml(path, name, managers) — same logic as before but takes an explicit manager list instead of a full PolygonManager (needed to write per-layer subsets)                                           
+  - write_open_curve_set now delegates to it (no behaviour change for single-layer saves)                                                                                                                                              
+  - New write_open_curve_layer_set() mirrors layer_set_xml.write_layer_set() exactly, but writes <openCurveSet> format per-layer files instead of <polygonSet>                                                                       
+                                                                                                                                                                                                                                       
+  bezier_app.py:                                                                                                                                                                                                                       
+  - _save_open_curve_set() now has the same len(lm.layers) > 1 branch as _save_polygon_set(): multi-layer → per-layer files + .layers.xml manifest; single layer → plain .xml as before                                                
+                                                                                                                                                                                                                                       
+  The load side (_load_layer_set) already works because read_polygon_set accepts both <polygonSet> and <openCurveSet> root tags.    
+
+  ----------
+
+  dialogue sasys my drawing contain closed opoen curves so have been moved to polygonSet folder
+
+  --------
+
+  Here's a summary of what changed:                                                                                                 
+                                                            
+  Per-geometry Quick Setup state — each of the 5 geometry tabs now calls _refresh_convenience_for_geometry() whenever a geometry is  
+  selected (or deselected). This method:                    
+  - Searches the sprite library for any sprite that references the current geometry by name/type                                     
+  - Pre-selects the correct sprite set and renderer set combos if a match is found                                                   
+  - Blanks both combos if no sprite has been set up for this geometry yet         
+  - Still populates the combo options from all available sets, so you can pick any existing set for a new geometry                   
+  - Calls _update_convenience_borders() to update the green highlighting                                                             
+                                                                                                                                     
+  "DefaultSet" bug fixed — all 5 _on_conv_make_sprite methods now use renderer_set_name = self.conv_renderer_set_combo.currentText() 
+  with no fallback, so sprites created via Quick Setup will have the actual selected renderer set name (or blank) rather than the    
+  phantom "DefaultSet" string. The sprite tab will now show the correct value.
+                                                                                                                                     
+  Cross-geometry availability preserved — the combos always show all available sprite sets and renderer sets; only the selection is  
+  geometry-specific.
+
+
+  {{{{{{{{{{{}}}}}}}}}}}   
+
+  Currently Loom Editor process controls are located in Run tab.  I want to move them to the top portion of the window in line with  
+  and at the same vertical height) as the 6 tabs that are at the left).  They should no longer be text buttons but media style play,      
+  pause and stop controls.  Just to the right of these controls should be a field that shows the current frame count and the total frame count - very much in the way that Swift Loom engine shows these.  THe play button should duplicate the function of the current Run Loom App button,  Pause and stop should         
+  duplicate the functions of relevant current named buttons.  Reload functionality should happen by clicking on play control. So play control   
+  wraps up the functionality of Run Loom App and Reload.  It behaves depending upon whether an existing drawing window is open         
+  (reload) or needs to be opened from scratch (Run Loom App). Just to the right of the frame field should be the text display from Process Controls that show the running state of the engine.  THe controls, frame display field and runnign state field should be positioned towards the right side of the window (opposite to the left side posiitoning of the tabs).  In making this change some elements of the current Process Controls section will need to be moved.  Move Renders button to Capture Controls (left of Save Animation) and move shift Auto-save before run/load checkbox to the line beneath Render Desitnation label and field.  Not sure that we need the 'running'.  Please advise if these UI features cannot be placed on same line as tabs.  THey could be placed one line above if necessary.                                                                                       
+                                                                                                                                                                                                                                                                                               

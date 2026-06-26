@@ -16,14 +16,22 @@ func subdivideTriBordA(
     polys.reserveCapacity(sidesTotal)
 
     for i in 0..<sidesTotal {
-        let prev   = (i + sidesTotal - 1) % sidesTotal
-        let corner = sides[i][0]
-        let midI   = mids[i]
+        let prev    = (i + sidesTotal - 1) % sidesTotal
+        let corner  = sides[i][0]
+        let midI    = mids[i]
         let midPrev = mids[prev]
 
-        let s0 = BezierMath.connector(from: corner, to: midI,    cpRatios: cp)
-        let s1 = BezierMath.connector(from: midI,   to: midPrev, cpRatios: cp)
-        let s2 = BezierMath.connector(from: midPrev, to: corner,  cpRatios: cp)
+        var s0 = BezierMath.connector(from: corner,  to: midI,    cpRatios: cp)
+        var s1 = BezierMath.connector(from: midI,    to: midPrev, cpRatios: cp)
+        var s2 = BezierMath.connector(from: midPrev, to: corner,  cpRatios: cp)
+
+        let sign = params.curvatureSign(forIndex: i)
+        if sign != 0.0 {
+            s0 = BezierMath.applyOuterBow(to: s0, sourceEdge: sides[i],    sign: sign)
+            s1 = BezierMath.applyOuterBow(to: s1, sourceEdge: sides[i],    sign: sign)
+            s2 = BezierMath.applyOuterBow(to: s2, sourceEdge: sides[prev], sign: sign)
+        }
+
         polys.append(Polygon2D(points: s0 + s1 + s2, type: .spline))
     }
     return polys
@@ -62,13 +70,16 @@ func subdivideTriBordB(
         let o    = outerSides[i]
         let iMid = insetMids[i]
 
-        // Side 0: outer bezier side
-        let s0 = o
-        // Side 1: outer[i].end → insetMid[i]
-        let s1 = BezierMath.connector(from: o[3], to: iMid, cpRatios: cp)
-        // Side 2: insetMid[i] → outer[i].start
-        let s2 = BezierMath.connector(from: iMid, to: o[0], cpRatios: cp)
-        polys.append(Polygon2D(points: s0 + s1 + s2, type: .spline))
+        var s1 = BezierMath.connector(from: o[3], to: iMid, cpRatios: cp)
+        var s2 = BezierMath.connector(from: iMid, to: o[0], cpRatios: cp)
+
+        let sign = params.curvatureSign(forIndex: i)
+        if sign != 0.0 {
+            s1 = BezierMath.applyOuterBow(to: s1, sourceEdge: o, sign: sign)
+            s2 = BezierMath.applyOuterBow(to: s2, sourceEdge: o, sign: sign)
+        }
+
+        polys.append(Polygon2D(points: o + s1 + s2, type: .spline))
     }
     return polys
 }
@@ -111,23 +122,28 @@ func subdivideTriBordC(
         let scaledStart = innerSides[i][0]
         let scaledEnd   = innerSides[i][3]
 
-        // Tri 1: left outer → midpoint → inner start → outer start
-        let t1s0 = outerL
-        let t1s1 = BezierMath.connector(from: midpoint,    to: scaledStart,          cpRatios: cp)
-        let t1s2 = BezierMath.connector(from: scaledStart, to: outerSides[i][0],     cpRatios: cp)
-        polys.append(Polygon2D(points: t1s0 + t1s1 + t1s2, type: .spline))
+        let sign = params.curvatureSign(forIndex: i)
+        let src  = outerSides[i]
 
-        // Tri 2: midpoint → inner end (reversed inset side) → inner start → midpoint
-        let t2s0 = BezierMath.connector(from: midpoint,    to: scaledEnd,   cpRatios: cp)
-        let t2s1 = BezierMath.reverseSegment(innerSides[i])
-        let t2s2 = BezierMath.connector(from: scaledStart, to: midpoint,    cpRatios: cp)
-        polys.append(Polygon2D(points: t2s0 + t2s1 + t2s2, type: .spline))
+        var t1s1 = BezierMath.connector(from: midpoint,          to: scaledStart,      cpRatios: cp)
+        var t1s2 = BezierMath.connector(from: scaledStart,       to: outerSides[i][0], cpRatios: cp)
+        var t2s0 = BezierMath.connector(from: midpoint,          to: scaledEnd,        cpRatios: cp)
+        var t2s2 = BezierMath.connector(from: scaledStart,       to: midpoint,         cpRatios: cp)
+        var t3s1 = BezierMath.connector(from: outerSides[i][3],  to: scaledEnd,        cpRatios: cp)
+        var t3s2 = BezierMath.connector(from: scaledEnd,         to: midpoint,         cpRatios: cp)
 
-        // Tri 3: right outer → outer end → inner end → midpoint
-        let t3s0 = outerR
-        let t3s1 = BezierMath.connector(from: outerSides[i][3], to: scaledEnd, cpRatios: cp)
-        let t3s2 = BezierMath.connector(from: scaledEnd,        to: midpoint,  cpRatios: cp)
-        polys.append(Polygon2D(points: t3s0 + t3s1 + t3s2, type: .spline))
+        if sign != 0.0 {
+            t1s1 = BezierMath.applyOuterBow(to: t1s1, sourceEdge: src, sign: sign)
+            t1s2 = BezierMath.applyOuterBow(to: t1s2, sourceEdge: src, sign: sign)
+            t2s0 = BezierMath.applyOuterBow(to: t2s0, sourceEdge: src, sign: sign)
+            t2s2 = BezierMath.applyOuterBow(to: t2s2, sourceEdge: src, sign: sign)
+            t3s1 = BezierMath.applyOuterBow(to: t3s1, sourceEdge: src, sign: sign)
+            t3s2 = BezierMath.applyOuterBow(to: t3s2, sourceEdge: src, sign: sign)
+        }
+
+        polys.append(Polygon2D(points: outerL + t1s1 + t1s2, type: .spline))
+        polys.append(Polygon2D(points: t2s0 + BezierMath.reverseSegment(innerSides[i]) + t2s2, type: .spline))
+        polys.append(Polygon2D(points: outerR + t3s1 + t3s2, type: .spline))
     }
     return polys
 }

@@ -14,6 +14,8 @@ public struct ProjectConfig: Codable, Sendable {
     public var spriteConfig:      SpriteConfig
     /// Compositing layers (bottom to top).  Empty = legacy flat depth-sort render.
     public var layers:            [LoomLayer]
+    /// Named sprite cycles (walk cycles, image sequences, etc.).  Empty = no cycles defined.
+    public var cycles:            [SpriteCycle]
 
     public init(
         globalConfig: GlobalConfig           = .default,
@@ -25,7 +27,8 @@ public struct ProjectConfig: Codable, Sendable {
         subdivisionConfig: SubdivisionConfig = SubdivisionConfig(),
         renderingConfig: RenderingConfig     = RenderingConfig(),
         spriteConfig: SpriteConfig           = SpriteConfig(),
-        layers: [LoomLayer]                  = []
+        layers: [LoomLayer]                  = [],
+        cycles: [SpriteCycle]                = []
     ) {
         self.globalConfig      = globalConfig
         self.shapeConfig       = shapeConfig
@@ -37,13 +40,14 @@ public struct ProjectConfig: Codable, Sendable {
         self.renderingConfig   = renderingConfig
         self.spriteConfig      = spriteConfig
         self.layers            = layers
+        self.cycles            = cycles
     }
 
-    // MARK: - Codable (safe default for missing layers field)
+    // MARK: - Codable
 
     private enum CodingKeys: String, CodingKey {
         case globalConfig, shapeConfig, polygonConfig, curveConfig, ovalConfig
-        case pointConfig, subdivisionConfig, renderingConfig, spriteConfig, layers
+        case pointConfig, subdivisionConfig, renderingConfig, spriteConfig, layers, cycles
     }
 
     public init(from decoder: Decoder) throws {
@@ -57,6 +61,7 @@ public struct ProjectConfig: Codable, Sendable {
         subdivisionConfig = try c.decode(SubdivisionConfig.self, forKey: .subdivisionConfig)
         renderingConfig   = try c.decode(RenderingConfig.self,   forKey: .renderingConfig)
         spriteConfig      = try c.decode(SpriteConfig.self,      forKey: .spriteConfig)
-        layers            = try c.decodeIfPresent([LoomLayer].self, forKey: .layers) ?? []
+        layers            = try c.decodeIfPresent([LoomLayer].self,    forKey: .layers)  ?? []
+        cycles            = try c.decodeIfPresent([SpriteCycle].self,  forKey: .cycles)  ?? []
     }
 }

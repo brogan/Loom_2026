@@ -46,18 +46,18 @@ public struct SubdivisionParams: Equatable, Codable, Sendable {
     /// anchor positions, matching the original Scala behaviour and avoiding cumulative
     /// drift at higher subdivision levels. Applies to Quad-family algorithms only.
     public var curveAwareSplit: Bool
-    /// When true, the initial control points on internal edges (split-point → centre)
-    /// are set to mirror the curvature of the adjacent outer edge, rather than lying
-    /// on the straight line. Applies to Quad-family algorithms only.
+    /// When true, the control points on internal connector edges are shifted to
+    /// mirror the curvature of the adjacent outer edge.  Applies to all
+    /// subdivision algorithms (Quad, Tri, Split, Bord variants, Custom).
     public var mirrorOuterCurvature: Bool
     /// Inverts the mirrored curvature direction on internal edges.
     /// Only meaningful when `mirrorOuterCurvature` is true.
     public var invertCurvature: Bool
-    /// Controls how adjacent internal curves relate when mirroring outer curvature.
-    /// "ALL" — every internal edge mirrors its own adjacent outer edge.
-    /// "EVEN" — even-indexed edges mirror; odd-indexed stay straight.
-    /// "ODD"  — odd-indexed edges mirror; even-indexed stay straight.
-    /// "ALTERNATE" — even edges mirror forward, odd edges mirror inverted (pinwheel).
+    /// Controls which internal edges receive curvature mirroring.
+    /// "ALL"       — every internal edge mirrors its adjacent outer edge.
+    /// "EVEN"      — even-indexed edges mirror; odd-indexed stay straight.
+    /// "ODD"       — odd-indexed edges mirror; even-indexed stay straight.
+    /// "ALTERNATE" — even edges mirror, odd edges mirror inverted (pinwheel).
     public var curvatureSync: String
     /// Applied to scale/rotate all points to create inset polygons (ECHO, BORD variants).
     public var insetTransform: InsetTransform
@@ -306,6 +306,19 @@ public struct SubdivisionParams: Equatable, Codable, Sendable {
     public func splitRatio(forSideIndex index: Int) -> Double {
         if continuous && index % 2 != 0 { return lineRatios.y }
         return lineRatios.x
+    }
+
+    /// The curvature mirror sign for an internal edge at index `i`.
+    /// Returns 0 if `mirrorOuterCurvature` is off or this edge is gated by `curvatureSync`.
+    public func curvatureSign(forIndex i: Int) -> Double {
+        guard mirrorOuterCurvature else { return 0.0 }
+        let base: Double = invertCurvature ? -1.0 : 1.0
+        switch curvatureSync {
+        case "EVEN":      return i % 2 == 0 ? base : 0.0
+        case "ODD":       return i % 2 == 1 ? base : 0.0
+        case "ALTERNATE": return i % 2 == 0 ? base : -base
+        default:          return base
+        }
     }
 
     public static func normalizedPressureRandomGroups(_ groups: [Bool]) -> [Bool] {

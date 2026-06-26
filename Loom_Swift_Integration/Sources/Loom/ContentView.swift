@@ -209,6 +209,9 @@ struct ContentView: View {
             SubdivisionTabView()
         case .sprites:
             SpritesTabView()
+        case .cycles:
+            CyclesTabView()
+                .environmentObject(controller)
         case .layers:
             LayersTabView()
                 .environmentObject(controller)

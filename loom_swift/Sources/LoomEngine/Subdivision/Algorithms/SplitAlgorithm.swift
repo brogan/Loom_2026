@@ -115,17 +115,25 @@ private func splitEven(
     let mid0 = left0[3]
     let midH = leftH[3]
 
+    let sign0 = params.curvatureSign(forIndex: 0)
+    let signH = params.curvatureSign(forIndex: half)
+
+    var conn1 = params.connector(from: midH, to: mid0, centre: centre)
+    var conn2 = params.connector(from: mid0, to: midH, centre: centre)
+    if sign0 != 0.0 { conn1 = BezierMath.applyOuterBow(to: conn1, sourceEdge: sides[0],    sign: sign0) }
+    if signH != 0.0 { conn2 = BezierMath.applyOuterBow(to: conn2, sourceEdge: sides[half], sign: signH) }
+
     // Poly 1: right0, sides[1..<half], leftH, connector(midH→mid0)
     var pts1 = right0
     for s in 1..<half { pts1 += sides[s] }
     pts1 += leftH
-    pts1 += params.connector(from: midH, to: mid0, centre: centre)
+    pts1 += conn1
 
     // Poly 2: rightH, sides[half+1..<n], left0, connector(mid0→midH)
     var pts2 = rightH
     for s in (half + 1)..<n { pts2 += sides[s] }
     pts2 += left0
-    pts2 += params.connector(from: mid0, to: midH, centre: centre)
+    pts2 += conn2
 
     return [
         Polygon2D(points: pts1, type: .spline),
@@ -147,16 +155,24 @@ private func splitOdd(
     let (leftH, rightH) = BezierMath.split(seg: sides[half], t: t)
     let midH = leftH[3]
 
+    let sign0 = params.curvatureSign(forIndex: 0)
+    var conn1 = params.connector(from: midH,    to: anchor0, centre: centre)
+    var conn2 = params.connector(from: anchor0, to: midH,    centre: centre)
+    if sign0 != 0.0 {
+        conn1 = BezierMath.applyOuterBow(to: conn1, sourceEdge: sides[half], sign: sign0)
+        conn2 = BezierMath.applyOuterBow(to: conn2, sourceEdge: sides[half], sign: sign0)
+    }
+
     // Poly 1: sides[0..<half], leftH, connector(midH→anchor0)
     var pts1 = [Vector2D]()
     for s in 0..<half { pts1 += sides[s] }
     pts1 += leftH
-    pts1 += params.connector(from: midH, to: anchor0, centre: centre)
+    pts1 += conn1
 
     // Poly 2: rightH, sides[half+1..<n], connector(anchor0→midH)
     var pts2 = rightH
     for s in (half + 1)..<n { pts2 += sides[s] }
-    pts2 += params.connector(from: anchor0, to: midH, centre: centre)
+    pts2 += conn2
 
     return [
         Polygon2D(points: pts1, type: .spline),

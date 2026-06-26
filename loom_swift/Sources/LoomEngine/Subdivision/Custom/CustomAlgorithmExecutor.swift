@@ -9,7 +9,8 @@ public enum CustomAlgorithmExecutor {
         points: [Vector2D],
         sidesTotal n: Int,
         algorithm: CustomSubdivisionAlgorithm,
-        params: SubdivisionParams
+        params: SubdivisionParams,
+        outerSides: [[Vector2D]] = []
     ) -> [Polygon2D] {
         guard n >= 3 else { return [] }
 
@@ -39,7 +40,8 @@ public enum CustomAlgorithmExecutor {
                     resolve(ref, current: cur, prev: prev, next: next)
                 }
                 guard anchors.count >= 3 else { continue }
-                result.append(buildPolygon(anchors: anchors, params: params))
+                result.append(buildPolygon(anchors: anchors, params: params,
+                                           outerSides: outerSides, edgeIndex: i))
             }
         }
 
@@ -49,7 +51,8 @@ public enum CustomAlgorithmExecutor {
                 map[gName]
             }
             if globalAnchors.count >= 3 {
-                result.append(buildPolygon(anchors: globalAnchors, params: params))
+                result.append(buildPolygon(anchors: globalAnchors, params: params,
+                                           outerSides: outerSides, edgeIndex: 0))
             }
         }
 
@@ -143,15 +146,33 @@ public enum CustomAlgorithmExecutor {
 
     // MARK: - Polygon construction
 
-    private static func buildPolygon(anchors: [Vector2D], params: SubdivisionParams) -> Polygon2D {
-        let n = anchors.count
+    private static func buildPolygon(
+        anchors: [Vector2D],
+        params: SubdivisionParams,
+        outerSides: [[Vector2D]],
+        edgeIndex: Int
+    ) -> Polygon2D {
+        let n      = anchors.count
+        let outerN = outerSides.count
         let centre = BezierMath.centreLine(anchors)
         var pts: [Vector2D] = []
         pts.reserveCapacity(n * 4)
         for i in 0..<n {
             let from = anchors[i]
             let to   = anchors[(i + 1) % n]
-            pts.append(contentsOf: params.connector(from: from, to: to, centre: centre))
+            var seg  = params.connector(from: from, to: to, centre: centre)
+            if outerN > 0 {
+                // Each child edge cycles through outer sides starting at the
+                // outer edge that generated this child polygon (edgeIndex).
+                let srcIdx = (edgeIndex + i) % outerN
+                let sign   = params.curvatureSign(forIndex: i)
+                if sign != 0.0 {
+                    seg = BezierMath.applyOuterBow(to: seg,
+                                                   sourceEdge: outerSides[srcIdx],
+                                                   sign: sign)
+                }
+            }
+            pts.append(contentsOf: seg)
         }
         return Polygon2D(points: pts, type: .spline)
     }

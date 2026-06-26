@@ -16,6 +16,7 @@ struct FloatEntryField: View {
     var onCommit: ((Double) -> Void)? = nil
 
     @State private var text = ""
+    @State private var isEditing = false  // true only while keystrokes are in-flight; cleared on commit
     @FocusState private var focused: Bool
 
     var body: some View {
@@ -25,16 +26,25 @@ struct FloatEntryField: View {
             .frame(width: width)
             .focused($focused)
             .onAppear { text = formatted(value) }
+            .onChange(of: text) { _, _ in
+                if focused { isEditing = true }
+            }
             .onChange(of: value) { _, newVal in
-                if !focused { text = formatted(newVal) }
+                // Only block external updates (slider, layer switch) while keystrokes
+                // are actually in-flight. After Return, isEditing is false so the
+                // slider and selection changes can update the display normally.
+                if !isEditing { text = formatted(newVal) }
             }
             .onChange(of: focused) { _, isFocused in
                 if !isFocused {
                     commit()
-                    text = formatted(value)
+                    isEditing = false
                 }
             }
-            .onSubmit { commit() }
+            .onSubmit {
+                commit()
+                isEditing = false
+            }
             .loomHelp(help)
     }
 
@@ -42,8 +52,6 @@ struct FloatEntryField: View {
         guard let d = Double(text) else { return }
         value = d
         onCommit?(d)
-        // Reset text immediately so a subsequent focus-loss commit sees the new value,
-        // not the stale text from the user's original entry.
         text = formatted(value)
     }
 

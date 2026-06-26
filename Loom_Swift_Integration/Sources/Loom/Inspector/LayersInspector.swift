@@ -57,7 +57,7 @@ struct LayersInspector: View {
 
                 // Parallax factor
                 InspectorField("Parallax") {
-                    Slider(value: bindDouble(idx, \.parallaxFactor), in: 0...2)
+                    Slider(value: bindDouble(idx, \.parallaxFactor), in: -2...3)
                     FloatEntryField(
                         value: bindDouble(idx, \.parallaxFactor),
                         width: 44, fractionDigits: 2

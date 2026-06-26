@@ -41,6 +41,16 @@ public struct SpriteInstance: Sendable {
     /// Parallel to `def.spriteVariants`; index 0 = first named variant.
     public var variantRendererSets: [RendererSet]
 
+    // MARK: SpriteCycle runtime data
+
+    /// Polygon sets for each `SpriteCycleState` in the assigned cycle.
+    /// Parallel to `cycle.states`. Empty when no cycle is assigned.
+    public var cycleStatePolygons: [[Polygon2D]]
+
+    /// Resolved renderer sets for each cycle state. `nil` = inherit sprite's renderer.
+    /// Parallel to `cycleStatePolygons`.
+    public var cycleStateRendererSets: [RendererSet?]
+
     /// Mutable per-frame state (updated by `SpriteScene.advance`).
     public var state: SpriteState
 
@@ -53,16 +63,20 @@ public struct SpriteInstance: Sendable {
         sequencePolygons: [[Polygon2D]] = [],
         variantPolygons: [[Polygon2D]] = [],
         variantRendererSets: [RendererSet] = [],
+        cycleStatePolygons: [[Polygon2D]] = [],
+        cycleStateRendererSets: [RendererSet?] = [],
         state: SpriteState
     ) {
-        self.def                  = def
-        self.basePolygons         = basePolygons
-        self.morphTargetPolygons  = morphTargetPolygons
-        self.rendererSet          = rendererSet
-        self.subdivisionParams    = subdivisionParams
-        self.sequencePolygons     = sequencePolygons
-        self.variantPolygons      = variantPolygons
-        self.variantRendererSets  = variantRendererSets
-        self.state                = state
+        self.def                    = def
+        self.basePolygons           = basePolygons
+        self.morphTargetPolygons    = morphTargetPolygons
+        self.rendererSet            = rendererSet
+        self.subdivisionParams      = subdivisionParams
+        self.sequencePolygons       = sequencePolygons
+        self.variantPolygons        = variantPolygons
+        self.variantRendererSets    = variantRendererSets
+        self.cycleStatePolygons     = cycleStatePolygons
+        self.cycleStateRendererSets = cycleStateRendererSets
+        self.state                  = state
     }
 }

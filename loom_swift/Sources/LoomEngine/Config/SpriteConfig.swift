@@ -67,6 +67,12 @@ public struct SpriteDef: Codable, Sendable {
     /// The shape/renderer pipeline is bypassed.
     public var svgFilename: String?
 
+    // MARK: SpriteCycle
+
+    /// Name of a `SpriteCycle` in `ProjectConfig.cycles`.
+    /// When set, the cycle drives shape/renderer selection and overrides shapeSequence.
+    public var cycleName: String?
+
     public init(
         name: String               = "",
         enabled: Bool              = true,
@@ -85,7 +91,8 @@ public struct SpriteDef: Codable, Sendable {
         gateEnd: Int               = 0,
         morphTargetNames: [String] = [],
         depth: Double              = 0,
-        svgFilename: String?       = nil
+        svgFilename: String?       = nil,
+        cycleName: String?         = nil
     ) {
         self.name = name; self.enabled = enabled
         self.shapeSetName = shapeSetName
@@ -101,6 +108,7 @@ public struct SpriteDef: Codable, Sendable {
         self.morphTargetNames = morphTargetNames
         self.depth            = depth
         self.svgFilename      = svgFilename
+        self.cycleName        = cycleName
     }
 
     // Custom decoder: decodeIfPresent for all fields so existing projects
@@ -125,6 +133,7 @@ public struct SpriteDef: Codable, Sendable {
         morphTargetNames  = try c.decodeIfPresent([String].self,         forKey: .morphTargetNames)  ?? []
         depth             = try c.decodeIfPresent(Double.self,            forKey: .depth)             ?? 0
         svgFilename       = try c.decodeIfPresent(String.self,           forKey: .svgFilename)
+        cycleName         = try c.decodeIfPresent(String.self,           forKey: .cycleName)
     }
 }
 

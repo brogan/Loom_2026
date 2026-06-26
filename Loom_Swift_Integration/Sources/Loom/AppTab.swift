@@ -5,6 +5,7 @@ enum AppTab: String, CaseIterable, Hashable {
     case geometry    = "Geometry"
     case subdivision = "Subdivision"
     case sprites     = "Sprites"
+    case cycles      = "Cycles"
     case layers      = "Layers"
     case rendering   = "Rendering"
 
@@ -16,6 +17,7 @@ enum AppTab: String, CaseIterable, Hashable {
         case .geometry:    return "pentagon"
         case .subdivision: return "square.grid.3x3.fill"
         case .sprites:     return "square.stack.3d.up"   // unused — icon() handles sprites
+        case .cycles:      return "arrow.2.circlepath"
         case .layers:      return "square.3.layers.3d"
         case .rendering:   return "paintbrush"
         }

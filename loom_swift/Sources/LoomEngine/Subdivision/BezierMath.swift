@@ -151,6 +151,36 @@ public enum BezierMath {
         ]
     }
 
+    // MARK: - Outer-curvature bow
+
+    /// Apply outer-edge curvature to an internal connector segment by shifting
+    /// both its control points by a bow vector derived from `sourceEdge`.
+    ///
+    /// The bow is the average perpendicular deviation of the source edge's two
+    /// control points from the straight chord between its anchors, scaled
+    /// proportionally to the ratio of the connector's chord length to the source
+    /// chord length.  Pass `sign = +1` to mirror, `-1` to invert, `0` for none.
+    public static func applyOuterBow(
+        to segment: [Vector2D],
+        sourceEdge: [Vector2D],
+        sign: Double
+    ) -> [Vector2D] {
+        guard sign != 0.0 else { return segment }
+        let outerA = sourceEdge[0]; let outerB = sourceEdge[3]
+        let dev1 = sourceEdge[1] - Vector2D.lerp(outerA, outerB, t: 1.0 / 3.0)
+        let dev2 = sourceEdge[2] - Vector2D.lerp(outerA, outerB, t: 2.0 / 3.0)
+        let avgDev = Vector2D(x: (dev1.x + dev2.x) * 0.5,
+                              y: (dev1.y + dev2.y) * 0.5)
+        let outerChordLen = ((outerB.x-outerA.x)*(outerB.x-outerA.x) +
+                             (outerB.y-outerA.y)*(outerB.y-outerA.y)).squareRoot()
+        guard outerChordLen > 1e-12 else { return segment }
+        let innerA = segment[0]; let innerB = segment[3]
+        let innerLen = ((innerB.x-innerA.x)*(innerB.x-innerA.x) +
+                        (innerB.y-innerA.y)*(innerB.y-innerA.y)).squareRoot()
+        let bow = avgDev * (innerLen / outerChordLen) * sign
+        return [segment[0], segment[1] + bow, segment[2] + bow, segment[3]]
+    }
+
     // MARK: - Scala-compatible edge split
 
     /// Split a cubic Bézier segment using the same proportional approach as

@@ -214,6 +214,14 @@
   <a class="nav-link nav-sub" href="#sprites-hierarchy">Hierarchy</a>
   <a class="nav-link nav-sub" href="#sprites-depth">Depth &amp; Parallax</a>
   <a class="nav-link nav-sub" href="#sprites-svg">SVG Sprites</a>
+  <a class="nav-link" href="#cycles">Cycles</a>
+  <a class="nav-link nav-sub" href="#cycles-states">States &amp; Transitions</a>
+  <a class="nav-link nav-sub" href="#cycles-loop">Loop Modes</a>
+  <a class="nav-link nav-sub" href="#cycles-assign">Assigning Cycles</a>
+  <a class="nav-link" href="#layers">Layers</a>
+  <a class="nav-link nav-sub" href="#layers-parallax">Parallax</a>
+  <a class="nav-link nav-sub" href="#layers-blur">Blur &amp; DOF</a>
+  <a class="nav-link nav-sub" href="#layers-blend">Blend Modes</a>
   <a class="nav-link" href="#subdivision">Subdivision</a>
   <a class="nav-link nav-sub" href="#subdivision-algorithms">Algorithms</a>
   <a class="nav-link nav-sub" href="#subdivision-edge-curvature">Edge Curvature</a>
@@ -1279,6 +1287,149 @@
   <p>macOS caches a rasterised bitmap of each NSImage after the first draw at a given size. For a sprite whose scale does not change frame-to-frame — a static background logo, for example — the rendering cost after the first frame is negligible. For sprites with animated scale, macOS re-rasterises when the drawn size changes significantly, which adds a small per-frame cost proportional to the SVG complexity. Simple Inkscape exports (a few dozen paths) have no measurable impact. Very complex SVGs with thousands of paths (detailed illustrations, large type specimens) may add a few milliseconds per frame.</p>
 
   <div class="note">SVG sprites bypass Loom's polygon rendering pipeline entirely. They cannot be subdivided, and Loom's renderer sets (stroke colour, brush, stamp modes) do not apply. If you want Loom's rendering on SVG-derived geometry, use <a href="#geometry-svg-import">Import SVG…</a> in the Geometry tab instead — this converts the path data to a polygon set that goes through the full subdivision and rendering pipeline.</div>
+
+</section>
+
+<!-- ────────────────────────────────────────────────── -->
+<section id="cycles">
+  <h2>Cycles Tab</h2>
+  <p>A <strong>SpriteCycle</strong> is a named, reusable sequence of geometry states that drives a sprite's shape and renderer selection frame by frame. Cycles are the tool for walk-cycle animation, image replacement, and cross-fade blends — situations where a sprite needs to step through a discrete series of shapes with optional transitions between them.</p>
+
+  <p>Cycles are project-level assets. They live in the <strong>Cycles tab</strong>, are edited in a dedicated pop-up editor, and are assigned to individual sprites in the Sprites inspector. Multiple sprites can share the same cycle.</p>
+
+  <div class="tip"><strong>Cycles vs shape sequences.</strong> The legacy <em>Shape Sequence</em> field on a sprite steps through polygon sets at a fixed frame rate. SpriteCycles offer more: independent hold and transition durations per state, cross-fade opacity blending, renderer-set overrides per state, four loop modes, and a dedicated visual editor. When a cycle is assigned to a sprite, it takes priority over any shape sequence on that sprite.</div>
+
+  <h3 id="cycles-states">States &amp; Transitions</h3>
+  <p>Each cycle contains an ordered list of <strong>states</strong>. A state defines:</p>
+  <table>
+    <thead><tr><th>Field</th><th>Description</th></tr></thead>
+    <tbody>
+      <tr><td>Shape Set</td><td>The polygon set to use while this state is active. Must be registered in the project's Geometry tab.</td></tr>
+      <tr><td>Shape</td><td>The specific shape (layer) within that polygon set.</td></tr>
+      <tr><td>Renderer</td><td>Optional renderer-set override. When set to <strong>Inherit</strong>, the sprite's own renderer set is used.</td></tr>
+      <tr><td>Hold frames</td><td>How many frames this state is fully shown before any transition begins. Minimum 1.</td></tr>
+      <tr><td>Trans frames</td><td>How many frames to cross-fade into the next state. 0 = hard cut (the default). During a transition Loom renders both states simultaneously — the outgoing state fading out, the incoming state fading in — on separate offscreen contexts composited at complementary alphas.</td></tr>
+      <tr><td>Easing</td><td>The easing curve applied to the cross-fade progress. Visible only when Trans frames &gt; 0.</td></tr>
+      <tr><td>Style tween</td><td>When on during a transition, Loom interpolates fill/stroke colours between the outgoing and incoming renderer sets instead of drawing each at its own colour. Visible only when Trans frames &gt; 0.</td></tr>
+    </tbody>
+  </table>
+
+  <p>The total cycle length shown in the Cycles tab is the sum of all states' hold + transition frames, adjusted for the active loop mode.</p>
+
+  <div class="note"><strong>Hard cuts and offscreen compositing.</strong> Hard-cut states (Trans frames = 0) are rendered directly into the main context with zero additional cost. Cross-fade transitions use an offscreen CGContext per layer and alpha-composite the result, so they carry a per-frame memory and GPU cost proportional to canvas size. Use transitions deliberately rather than by default.</div>
+
+  <h3 id="cycles-loop">Loop Modes</h3>
+  <table>
+    <thead><tr><th>Mode</th><th>Behaviour</th></tr></thead>
+    <tbody>
+      <tr><td><strong>Loop</strong></td><td>Repeats indefinitely. When the last state's hold + transition ends, the cycle wraps back to state 1. The default.</td></tr>
+      <tr><td><strong>Ping-Pong</strong></td><td>Plays forward through all states, then plays backward through the intermediate states (excluding the last), then forward again. Transitions apply on the forward pass only; the backward pass uses hold frames only. Useful for pendulum-like motions.</td></tr>
+      <tr><td><strong>Once</strong></td><td>Plays through all states once, then stops on the last frame. The sprite goes invisible once the cycle ends (no hold).</td></tr>
+      <tr><td><strong>Hold Last</strong></td><td>Plays through all states once, then holds the last state indefinitely. Good for one-shot reveal animations.</td></tr>
+    </tbody>
+  </table>
+
+  <h3 id="cycles-assign">Creating and assigning cycles</h3>
+  <ol class="steps">
+    <li>Open the <strong>Cycles tab</strong>. Press <strong>+</strong> in the toolbar to create a new cycle. A default single-state cycle is created and the editor sheet opens automatically.</li>
+    <li>In the editor, set a name and loop mode. Press <strong>+</strong> under States to add states. Expand each state row with the chevron to edit its shape set, shape, renderer, hold frames, and transition settings.</li>
+    <li>Press <strong>Done</strong> to close the editor. The cycle appears in the list with its state count and total frame length.</li>
+    <li>Select a sprite in the <strong>Sprites tab</strong>. In the inspector's <strong>Cycle</strong> section, choose the cycle from the picker. The sprite will now use the cycle to select its geometry and renderer every frame.</li>
+    <li>To edit an assigned cycle later, click the <strong>Edit</strong> button next to the picker in the Sprites inspector, or select the cycle in the Cycles tab and click its pencil icon.</li>
+  </ol>
+
+  <div class="tip"><strong>Timing relative to the global clock.</strong> Cycle playback is driven by the global elapsed frame counter, not a per-sprite counter. All sprites sharing the same cycle are therefore synchronised — they step through states together. If you need offset timing between sprites on the same cycle, apply a gate start or a position keyframe offset to shift when the sprite becomes active relative to frame 0.</div>
+
+</section>
+
+<!-- ────────────────────────────────────────────────── -->
+<section id="layers">
+  <h2>Layers Tab</h2>
+  <p>The <strong>Layers</strong> system lets you stack groups of sprite sets into independent rendering planes, each with its own parallax factor, blur radius, opacity, and blend mode. Layers are the primary tool for parallax scrolling, depth-of-field effects, and compositing-level colour treatments.</p>
+
+  <p>When no layers are defined (the default), all sprites render into a single shared context in depth order — the legacy behaviour. As soon as at least one layer exists, sprites assigned to a layer are rendered in that layer's offscreen context and composited onto the main canvas in layer order (bottom to top).</p>
+
+  <div class="tip"><strong>Unassigned sprites.</strong> Sprites not assigned to any layer are rendered first into the main context using the legacy flat depth-sort. They appear beneath all layers. This preserves backward compatibility: existing projects with no layers load and render identically to before.</div>
+
+  <h3>Layer list</h3>
+  <p>The Layers tab shows a bottom-to-top stack. Layers are rendered in list order — the first layer in the list is drawn first (furthest back). Use the <strong>+</strong> and <strong>−</strong> toolbar buttons to add and remove layers; drag to reorder. The eye icon toggles layer visibility. Each row shows the layer name, assigned sprite set names, a parallax badge (when not 1×), and a blend mode badge (when not Normal).</p>
+
+  <h3>Layer inspector</h3>
+  <p>Select a layer to edit its properties in the inspector.</p>
+  <table>
+    <thead><tr><th>Field</th><th>Description</th></tr></thead>
+    <tbody>
+      <tr><td>Name</td><td>Display name for this layer.</td></tr>
+      <tr><td>Visible</td><td>Toggle layer visibility. Hidden layers are not rendered and cost nothing.</td></tr>
+      <tr><td>Blend Mode</td><td>How this layer is composited onto layers beneath it. See <a href="#layers-blend">Blend Modes</a> below.</td></tr>
+      <tr><td>Parallax</td><td>Scales how much of the camera pan is applied to this layer. <strong>0</strong> = fixed to the canvas (does not move when the camera pans — true distant background). <strong>0.5</strong> = half camera speed (midground). <strong>1</strong> = full camera movement (same as unassigned sprites — standard). Values above 1 move faster than the camera (close foreground). Negative values produce counter-motion — the layer moves opposite to the camera direction, a dramatic non-naturalistic effect. Slider range −2 to 3; the float field accepts any value. See <a href="#layers-parallax">Parallax</a> below.</td></tr>
+      <tr><td>Opacity</td><td>Overall layer opacity (0–1). Applied on top of any per-sprite or per-renderer opacity. An opacity driver lets you animate the entire layer fading in or out.</td></tr>
+      <tr><td>Blur</td><td>Gaussian blur radius in logical pixels applied to the entire composited layer before it is drawn to the canvas. Use to simulate depth-of-field. See <a href="#layers-blur">Blur &amp; DOF</a> below.</td></tr>
+      <tr><td>Sprite Sets</td><td>Which sprite sets belong to this layer. Check boxes. A sprite set can belong to at most one layer at a time — assigning it here removes it from any other layer. Sprites in unchecked sets fall back to the legacy unassigned path.</td></tr>
+    </tbody>
+  </table>
+
+  <h3 id="layers-parallax">Parallax</h3>
+  <p>The parallax factor multiplies the camera's pan offset before applying it to a layer. It affects only camera <em>translation</em> (pan) — zoom and rotation are not scaled.</p>
+
+  <p>The calculation is straightforward: <code>layerOffset = cameraOffset × parallaxFactor</code>. Because the camera offset is added directly to the screen position of every sprite in the layer, the factor controls how far sprites in the layer shift when the camera pans:</p>
+
+  <table>
+    <thead><tr><th>Factor</th><th>Behaviour</th><th>Use for</th></tr></thead>
+    <tbody>
+      <tr><td><strong>0</strong></td><td>Layer does not move — completely fixed to the canvas regardless of camera pan</td><td>Distant sky, static backdrop</td></tr>
+      <tr><td><strong>0.1–0.4</strong></td><td>Very slow drift — layer appears far away</td><td>Far background elements</td></tr>
+      <tr><td><strong>0.5–0.8</strong></td><td>Moderate drift — layer feels at mid distance</td><td>Midground scenery</td></tr>
+      <tr><td><strong>1.0</strong></td><td>Moves exactly with the camera — same as unassigned sprites</td><td>Standard foreground / subject layer</td></tr>
+      <tr><td><strong>&gt; 1.0</strong></td><td>Moves faster than the camera — layer appears very close</td><td>Hyper-foreground overlay elements</td></tr>
+      <tr><td><strong>&lt; 0</strong></td><td>Counter-motion — layer moves <em>opposite</em> to the camera pan direction</td><td>Abstract or stylised effects; not naturalistic</td></tr>
+    </tbody>
+  </table>
+
+  <div class="note"><strong>Classic parallax lives in 0–1, not 0–2.</strong> A common mistake is assigning a background layer a high factor (e.g. 2) and a foreground layer a low one (e.g. 0). This inverts the visual depth order — the "background" races past faster than the foreground, which looks wrong. For natural depth parallax, set the background to a low value near 0, and let the foreground sit at 1. Reserve values above 1 for elements that are intentionally closer than the main subject.</div>
+
+  <p>To build a parallax scene:</p>
+  <ol class="steps">
+    <li>Create three or more layers — Background, Midground, Foreground.</li>
+    <li>Assign sprite sets to each layer.</li>
+    <li>Set Parallax to <strong>0–0.2</strong> for Background, <strong>0.5</strong> for Midground, <strong>1.0</strong> for Foreground. This gives the strongest classic parallax contrast.</li>
+    <li>In the Global tab, enable the Camera and add Pan X/Y keyframes. All layers will pan at their respective speeds.</li>
+  </ol>
+
+  <h3 id="layers-blur">Blur &amp; Depth of Field</h3>
+  <p>Setting a non-zero <strong>Blur</strong> radius on a layer applies a Gaussian blur to the entire composited layer after all its sprites have been rendered, but before the layer is composited onto the canvas. This makes it possible to simulate depth-of-field: sharp subjects on one layer, blurred foreground and background on adjacent layers.</p>
+
+  <p>A common DOF setup:</p>
+  <ul>
+    <li><strong>Background layer</strong> — Blur 12–20 px, parallax 0–0.2. Distant, soft, barely moving.</li>
+    <li><strong>Subject layer</strong> — Blur 0 (sharp), parallax 1.0. This is the in-focus plane.</li>
+    <li><strong>Foreground layer</strong> — Blur 8–15 px, parallax 1.2–1.5. Close, soft, faster-moving.</li>
+  </ul>
+
+  <p>The blur driver lets you animate the blur radius — useful for rack-focus effects or for transitioning between focus planes over time.</p>
+
+  <div class="note"><strong>Performance.</strong> A non-zero blur radius triggers an offscreen CGContext render for the layer, followed by a CIGaussianBlur Core Image pass, followed by a compositing draw. The cost scales with canvas size and blur radius. Keep blur radii as small as they need to be, and avoid blurring layers that contain many brush or stamp sprites (high polygon counts compound the offscreen cost).</div>
+
+  <h3 id="layers-blend">Blend Modes</h3>
+  <p>The blend mode controls how a layer is merged with the layers and canvas beneath it. Loom supports 13 blend modes via Core Graphics:</p>
+  <table>
+    <thead><tr><th>Mode</th><th>Effect</th></tr></thead>
+    <tbody>
+      <tr><td>Normal</td><td>Standard alpha compositing. The default.</td></tr>
+      <tr><td>Multiply</td><td>Darkens — multiplies layer colours with those beneath. Useful for shadow overlays.</td></tr>
+      <tr><td>Screen</td><td>Lightens — inverts, multiplies, inverts again. Good for light flares and glow.</td></tr>
+      <tr><td>Overlay</td><td>Contrast-boosting combination of Multiply and Screen.</td></tr>
+      <tr><td>Darken</td><td>Keeps the darker of the two pixels at each point.</td></tr>
+      <tr><td>Lighten</td><td>Keeps the lighter of the two pixels at each point.</td></tr>
+      <tr><td>Color Dodge</td><td>Brightens the layer below by dividing by the inverse of the source. Strong brightening.</td></tr>
+      <tr><td>Color Burn</td><td>Darkens the layer below by dividing by the source and inverting. Strong darkening.</td></tr>
+      <tr><td>Soft Light</td><td>Gentle Overlay variant — brightens or darkens depending on whether source pixels are above or below 50% grey.</td></tr>
+      <tr><td>Hard Light</td><td>Same as Overlay but the roles of source and destination are swapped — typically stronger.</td></tr>
+      <tr><td>Difference</td><td>Subtracts the darker pixel from the lighter — produces an inverted-looking result at 100% opacity. Useful for motion-trail effects.</td></tr>
+      <tr><td>Exclusion</td><td>Similar to Difference but lower contrast.</td></tr>
+      <tr><td>Add</td><td>Adds pixel values (clamped to white). Creates strong brightening — good for light beams and particle effects.</td></tr>
+    </tbody>
+  </table>
 
 </section>
 

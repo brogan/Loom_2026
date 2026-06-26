@@ -33,20 +33,20 @@ private func buildBordQuads(
     polys.reserveCapacity(sidesTotal)
 
     for i in 0..<sidesTotal {
-        let o = outer[i]
-        let inn = inner[i]
+        let o      = outer[i]
+        let inn    = inner[i]
         let revInn = BezierMath.reverseSegment(inn)
 
-        // Side 0: outer side as-is
-        let s0 = o
-        // Side 1: right connector outer[i].end → inner[i].end
-        let s1 = BezierMath.connector(from: o[3], to: inn[3], cpRatios: cp)
-        // Side 2: reversed inner side i
-        let s2 = revInn
-        // Side 3: left connector inner[i].start → outer[i].start
-        let s3 = BezierMath.connector(from: inn[0], to: o[0], cpRatios: cp)
+        var s1 = BezierMath.connector(from: o[3],   to: inn[3], cpRatios: cp)
+        var s3 = BezierMath.connector(from: inn[0],  to: o[0],  cpRatios: cp)
 
-        polys.append(Polygon2D(points: s0 + s1 + s2 + s3, type: .spline))
+        let sign = params.curvatureSign(forIndex: i)
+        if sign != 0.0 {
+            s1 = BezierMath.applyOuterBow(to: s1, sourceEdge: o, sign: sign)
+            s3 = BezierMath.applyOuterBow(to: s3, sourceEdge: o, sign: sign)
+        }
+
+        polys.append(Polygon2D(points: o + s1 + revInn + s3, type: .spline))
     }
     return polys
 }
@@ -91,27 +91,23 @@ func subdivideQuadBordDouble(
         let outerMid = outerL[3]
         let innerMid = innerL[3]
 
-        // Quad 1 (left half):
-        //   Side 0: left outer half
-        //   Side 1: outerMid → innerMid connector
-        //   Side 2: reversed left inner half (innerMid → inner[i].start)
-        //   Side 3: inner[i].start → outer[i].start connector
-        let q1s0 = outerL
-        let q1s1 = BezierMath.connector(from: outerMid, to: innerMid, cpRatios: cp)
-        let q1s2 = BezierMath.reverseSegment(innerL)
-        let q1s3 = BezierMath.connector(from: innerSides[i][0], to: outerSides[i][0], cpRatios: cp)
-        polys.append(Polygon2D(points: q1s0 + q1s1 + q1s2 + q1s3, type: .spline))
+        let sign = params.curvatureSign(forIndex: i)
+        let src  = outerSides[i]
 
-        // Quad 2 (right half):
-        //   Side 0: right outer half
-        //   Side 1: outer[i].end → inner[i].end connector
-        //   Side 2: reversed right inner half (inner[i].end → innerMid)
-        //   Side 3: innerMid → outerMid connector
-        let q2s0 = outerR
-        let q2s1 = BezierMath.connector(from: outerSides[i][3], to: innerSides[i][3], cpRatios: cp)
-        let q2s2 = BezierMath.reverseSegment(innerR)
-        let q2s3 = BezierMath.connector(from: innerMid, to: outerMid, cpRatios: cp)
-        polys.append(Polygon2D(points: q2s0 + q2s1 + q2s2 + q2s3, type: .spline))
+        var q1s1 = BezierMath.connector(from: outerMid,          to: innerMid,          cpRatios: cp)
+        var q1s3 = BezierMath.connector(from: innerSides[i][0],  to: outerSides[i][0],  cpRatios: cp)
+        var q2s1 = BezierMath.connector(from: outerSides[i][3],  to: innerSides[i][3],  cpRatios: cp)
+        var q2s3 = BezierMath.connector(from: innerMid,           to: outerMid,          cpRatios: cp)
+
+        if sign != 0.0 {
+            q1s1 = BezierMath.applyOuterBow(to: q1s1, sourceEdge: src, sign: sign)
+            q1s3 = BezierMath.applyOuterBow(to: q1s3, sourceEdge: src, sign: sign)
+            q2s1 = BezierMath.applyOuterBow(to: q2s1, sourceEdge: src, sign: sign)
+            q2s3 = BezierMath.applyOuterBow(to: q2s3, sourceEdge: src, sign: sign)
+        }
+
+        polys.append(Polygon2D(points: outerL + q1s1 + BezierMath.reverseSegment(innerL) + q1s3, type: .spline))
+        polys.append(Polygon2D(points: outerR + q2s1 + BezierMath.reverseSegment(innerR) + q2s3, type: .spline))
     }
     return polys
 }
