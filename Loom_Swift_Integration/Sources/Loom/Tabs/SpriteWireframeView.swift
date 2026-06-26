@@ -385,14 +385,11 @@ struct SpriteWireframeView: View {
         let sprites     = cfg.spriteConfig.library.allSprites
         let instanceMap = makeInstanceMap()
         let liveOffsets = computeLiveChildOffsets(sprites: sprites)
+        let wireWorlds  = buildWireWorlds(sprites: sprites, liveOffsets: liveOffsets)
 
         for sprite in sprites {
             let isSelected = controller.selectedSpriteID == sprite.name
-            var eff        = resolvedDef(sprite)
-            if let off = liveOffsets[sprite.name] {
-                eff.position.x += off.x
-                eff.position.y += off.y
-            }
+            guard let world = wireWorlds[sprite.name] else { continue }
 
             let strokeColor: Color = isSelected
                 ? Color(red: 0.31, green: 0.78, blue: 0.47)
@@ -401,19 +398,22 @@ struct SpriteWireframeView: View {
 
             if let instance = instanceMap[sprite.name] {
                 for polygon in instance.basePolygons where polygon.visible {
-                    let pts = polygon.points.map { transformPoint($0, def: eff, rect: rect) }
+                    let pts = polygon.points.map {
+                        transformPointWithWorld($0, world: world, depth: sprite.depth, rect: rect)
+                    }
                     ctx.stroke(buildPath(pts, type: polygon.type), with: .color(strokeColor), lineWidth: lineWidth)
                 }
                 if isSelected {
                     let allPts = instance.basePolygons.flatMap { $0.points }
-                        .map { transformPoint($0, def: eff, rect: rect) }
+                        .map { transformPointWithWorld($0, world: world, depth: sprite.depth, rect: rect) }
                     if !allPts.isEmpty {
                         drawBBoxAndHandles(ctx: ctx, screenPoints: allPts)
                     }
                 }
             } else {
                 // Placeholder cross for sprites with no engine instance
-                let centre = parallaxAdjustedScreen(eff.position, depth: eff.depth, rect: rect)
+                let centre = parallaxAdjustedScreen(Vector2D(x: world.posX, y: world.posY),
+                                                    depth: sprite.depth, rect: rect)
                 drawPlaceholder(ctx: ctx, centre: centre, color: strokeColor)
                 if isSelected {
                     let pad: CGFloat = 12
@@ -584,6 +584,110 @@ struct SpriteWireframeView: View {
         )
     }
 
+    // MARK: - Wireframe parent-world hierarchy
+
+    /// Resolved world transform for one sprite in wireframe space (percent units).
+    /// Mirrors the engine's ParentWorld / computeParentWorld, but operates in
+    /// percent-unit position space rather than pixel space.
+    private struct WireWorld {
+        var posX, posY:         Double  // animated world position (percent units)
+        var basePosX, basePosY: Double  // base world position (no animation)
+        var rotDeg:             Double  // animated world rotation (degrees)
+        var baseRotDeg:         Double
+        var scaleX, scaleY:     Double  // combined world scale (without ×2)
+    }
+
+    /// Build WireWorld for every sprite in declaration order so children can
+    /// look up their parent's already-resolved world.
+    private func buildWireWorlds(sprites: [SpriteDef],
+                                 liveOffsets: [String: Vector2D]) -> [String: WireWorld] {
+        var worlds: [String: WireWorld] = [:]
+        for sprite in sprites {
+            var eff = resolvedDef(sprite)
+            if let off = liveOffsets[sprite.name] {
+                eff.position.x += off.x
+                eff.position.y += off.y
+            }
+            let parent = sprite.parentName.flatMap { worlds[$0] }
+            worlds[sprite.name] = computeWireWorld(raw: sprite, eff: eff, parent: parent)
+        }
+        return worlds
+    }
+
+    private func computeWireWorld(raw: SpriteDef, eff: SpriteDef,
+                                  parent: WireWorld?) -> WireWorld {
+        var posX     = eff.position.x
+        var posY     = eff.position.y
+        var basePosX = raw.position.x
+        var basePosY = raw.position.y
+        var rotDeg   = eff.rotation
+        var baseRotDeg = raw.rotation
+        var scaleX   = eff.scale.x
+        var scaleY   = eff.scale.y
+
+        if let p = parent {
+            let mask = raw.inheritMask
+            if mask.scale {
+                scaleX *= p.scaleX
+                scaleY *= p.scaleY
+            }
+            if mask.rotation {
+                rotDeg    += p.rotDeg
+                baseRotDeg += p.baseRotDeg
+            }
+            if mask.position {
+                let rad  = p.rotDeg * .pi / 180.0
+                let cosR = cos(rad), sinR = sin(rad)
+                var relX = posX - p.basePosX
+                var relY = posY - p.basePosY
+                if mask.scale {
+                    relX *= p.scaleX
+                    relY *= p.scaleY
+                }
+                posX = p.posX + relX * cosR - relY * sinR
+                posY = p.posY + relX * sinR + relY * cosR
+
+                let baseRad = p.baseRotDeg * .pi / 180.0
+                let cosB = cos(baseRad), sinB = sin(baseRad)
+                var relBaseX = basePosX - p.basePosX
+                var relBaseY = basePosY - p.basePosY
+                if mask.scale {
+                    relBaseX *= p.scaleX
+                    relBaseY *= p.scaleY
+                }
+                basePosX = p.basePosX + relBaseX * cosB - relBaseY * sinB
+                basePosY = p.basePosY + relBaseX * sinB + relBaseY * cosB
+            }
+        }
+
+        return WireWorld(posX: posX, posY: posY,
+                         basePosX: basePosX, basePosY: basePosY,
+                         rotDeg: rotDeg, baseRotDeg: baseRotDeg,
+                         scaleX: scaleX, scaleY: scaleY)
+    }
+
+    private func transformPointWithWorld(_ pt: Vector2D, world: WireWorld,
+                                         depth: Double, rect: CGRect) -> CGPoint {
+        let scaleBoost = parallaxMode ? parallaxZoom * parallaxDepthFactor(for: depth) : 1.0
+        let sx = world.scaleX * 2.0 * scaleBoost
+        let sy = world.scaleY * 2.0 * scaleBoost
+        let rotRad = world.rotDeg * .pi / 180.0
+        let cosR = cos(rotRad), sinR = sin(rotRad)
+        var wx = pt.x * sx, wy = pt.y * sy
+        if rotRad != 0 {
+            let rx = wx * cosR - wy * sinR
+            let ry = wx * sinR + wy * cosR
+            wx = rx; wy = ry
+        }
+        let centre = parallaxAdjustedScreen(Vector2D(x: world.posX, y: world.posY),
+                                            depth: depth, rect: rect)
+        let basis = geometryBasis(rect)
+        return CGPoint(
+            x: centre.x + CGFloat(wx) * basis,
+            y: centre.y - CGFloat(wy) * basis
+        )
+    }
+
     // MARK: - Active timeline KF (driver-based)
 
     /// Non-nil when the timeline has a position/scale/rotation KF selected for the current sprite.
@@ -697,12 +801,15 @@ struct SpriteWireframeView: View {
         guard let cfg = controller.projectConfig else { return }
         let rect        = canvasRect(viewSize: viewSize)
         let instanceMap = makeInstanceMap()
+        let sprites     = cfg.spriteConfig.library.allSprites
+        let wireWorlds  = buildWireWorlds(sprites: sprites, liveOffsets: [:])
 
         // Try engine-instance sprites first (precise bbox hit)
-        for sprite in cfg.spriteConfig.library.allSprites.reversed() {
-            guard let instance = instanceMap[sprite.name] else { continue }
+        for sprite in sprites.reversed() {
+            guard let instance = instanceMap[sprite.name],
+                  let world = wireWorlds[sprite.name] else { continue }
             let pts = instance.basePolygons.flatMap { $0.points }
-                .map { transformPoint($0, def: sprite, rect: rect) }
+                .map { transformPointWithWorld($0, world: world, depth: sprite.depth, rect: rect) }
             guard !pts.isEmpty, let bb = bbox(pts) else { continue }
             let hitRect = CGRect(x: bb.minX - 5, y: bb.minY - 5,
                                  width: bb.maxX - bb.minX + 10, height: bb.maxY - bb.minY + 10)
@@ -734,15 +841,18 @@ struct SpriteWireframeView: View {
               let sprite = cfg.spriteConfig.library.allSprites.first(where: { $0.name == spriteID })
         else { return }
 
-        let rect        = canvasRect(viewSize: viewSize)
-        let instanceMap = makeInstanceMap()
-        let resolvedSprite = resolvedDef(sprite)  // apply KF offset before computing handles
+        let rect           = canvasRect(viewSize: viewSize)
+        let instanceMap    = makeInstanceMap()
+        let resolvedSprite = resolvedDef(sprite)
+        let sprites        = cfg.spriteConfig.library.allSprites
+        let wireWorlds     = buildWireWorlds(sprites: sprites, liveOffsets: [:])
+        let world          = wireWorlds[spriteID]
 
         // Compute screen bbox from engine geometry or placeholder
         var screenPoints: [CGPoint]
-        if let instance = instanceMap[spriteID] {
+        if let instance = instanceMap[spriteID], let world = world {
             screenPoints = instance.basePolygons.flatMap { $0.points }
-                .map { transformPoint($0, def: resolvedSprite, rect: rect) }
+                .map { transformPointWithWorld($0, world: world, depth: sprite.depth, rect: rect) }
         } else {
             let centre = positionToScreen(resolvedSprite.position, rect: rect)
             let pad: CGFloat = 12
