@@ -122,8 +122,7 @@ struct ContentView: View {
                     controller.requestTabSelection(tab)
                 } label: {
                     HStack(spacing: 5) {
-                        Image(systemName: tab.systemImage)
-                            .font(.system(size: 11))
+                        tab.icon()
                         Text(tab.label)
                             .font(.system(size: 12))
                     }
