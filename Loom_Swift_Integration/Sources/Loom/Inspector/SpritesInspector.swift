@@ -143,7 +143,10 @@ struct SpritesInspector: View {
     // MARK: - Transform
 
     private func transformSection(setIdx: Int, spriteIdx: Int) -> some View {
-        InspectorSection("Transform") {
+        let ctl = controller
+        let si  = setIdx
+        let pi  = spriteIdx
+        return InspectorSection("Transform") {
             vec2Field("Position",
                       xBind: positionBinding(setIdx, spriteIdx, isX: true),
                       yBind: positionBinding(setIdx, spriteIdx, isX: false))
@@ -162,6 +165,21 @@ struct SpritesInspector: View {
                 Text("0=focal").font(.system(size: 10)).foregroundStyle(.tertiary)
             }
             .loomHelp("Depth relative to the focal plane for perspective projection. 0 = focal plane; positive recedes, negative comes forward.")
+            InspectorField("") {
+                Button("Reset Transform") {
+                    ctl.updateProjectConfig { cfg in
+                        guard si < cfg.spriteConfig.library.spriteSets.count,
+                              pi < cfg.spriteConfig.library.spriteSets[si].sprites.count
+                        else { return }
+                        cfg.spriteConfig.library.spriteSets[si].sprites[pi].position = .zero
+                        cfg.spriteConfig.library.spriteSets[si].sprites[pi].scale    = Vector2D(x: 1, y: 1)
+                        cfg.spriteConfig.library.spriteSets[si].sprites[pi].rotation = 0
+                    }
+                }
+                .font(.system(size: 11))
+                .buttonStyle(.bordered)
+            }
+            .loomHelp("Reset position to (0,0), scale to (1,1), and rotation to 0°.")
         }
     }
 
