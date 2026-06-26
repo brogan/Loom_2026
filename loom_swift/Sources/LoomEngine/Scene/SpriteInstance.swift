@@ -5,6 +5,9 @@
 /// read from disk.
 public struct SpriteInstance: Sendable {
 
+    /// Name of the sprite set this instance belongs to.  Set by `SpriteScene.init`.
+    public var spriteSetName: String = ""
+
     /// The original sprite definition from `sprites.xml`.
     public var def: SpriteDef
 

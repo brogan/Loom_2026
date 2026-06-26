@@ -69,6 +69,9 @@ public struct SpriteScene: @unchecked Sendable {
     /// All subdivision-params sets keyed by name, for fast lookup by the subdivisionSet driver.
     private let allSubdivisionSets: [String: [SubdivisionParams]]
 
+    /// Compositing layers from project config.  Empty = legacy flat depth-sort path.
+    var layers: [LoomLayer] = []
+
     // MARK: - Convenience (testing)
 
     /// Directly construct a scene from pre-built instances.
@@ -96,12 +99,13 @@ public struct SpriteScene: @unchecked Sendable {
         var result: [SpriteInstance] = []
         for spriteSet in config.spriteConfig.library.spriteSets {
             for sprite in spriteSet.sprites where sprite.enabled {
-                let instance = try SpriteScene.makeInstance(
+                var instance = try SpriteScene.makeInstance(
                     sprite:          sprite,
                     sameSetSprites:  spriteSet.sprites,
                     config:          config,
                     projectDirectory: projectDirectory
                 )
+                instance.spriteSetName = spriteSet.name
                 result.append(instance)
             }
         }
@@ -117,6 +121,7 @@ public struct SpriteScene: @unchecked Sendable {
             config.subdivisionConfig.paramsSets.map { ($0.name, $0.params) },
             uniquingKeysWith: { first, _ in first }
         )
+        self.layers = config.layers
     }
 
     private static func makeInstance(
@@ -546,9 +551,22 @@ public struct SpriteScene: @unchecked Sendable {
         progressiveBrushEnabled: Bool = false,
         using rng: inout RNG
     ) {
-        // Pre-compute world transforms (position, rotation, scale) for every sprite
-        // so children can look up their parent's world transform by name.
-        // Declaration order is assumed: parents appear before children.
+        if !layers.isEmpty {
+            renderLayered(
+                into: context,
+                viewTransform: viewTransform,
+                brushImages: brushImages,
+                stampImages: stampImages,
+                elapsedFrames: elapsedFrames,
+                perspectiveStrength: perspectiveStrength,
+                progressiveBrushStates: &progressiveBrushStates,
+                progressiveBrushEnabled: progressiveBrushEnabled,
+                using: &rng
+            )
+            return
+        }
+
+        // Legacy flat depth-sort path (no layers defined).
         var parentWorlds: [String: ParentWorld] = [:]
         for instance in instances {
             parentWorlds[instance.def.name] = computeParentWorld(
@@ -556,7 +574,6 @@ public struct SpriteScene: @unchecked Sendable {
             )
         }
 
-        // Draw furthest-away sprites first. Stable sort preserves declaration order for equal depths.
         let drawOrder = instances.indices.sorted { instances[$0].def.depth > instances[$1].def.depth }
 
         for i in drawOrder {
@@ -573,6 +590,129 @@ public struct SpriteScene: @unchecked Sendable {
                            progressiveBrushEnabled: progressiveBrushEnabled,
                            using: &rng)
         }
+    }
+
+    // MARK: - Layered rendering
+
+    private func renderLayered<RNG: RandomNumberGenerator>(
+        into context: CGContext,
+        viewTransform: ViewTransform,
+        brushImages: [String: CGImage],
+        stampImages: [String: CGImage],
+        elapsedFrames: Double,
+        perspectiveStrength: Double,
+        progressiveBrushStates: inout [String: BrushProgressiveState],
+        progressiveBrushEnabled: Bool,
+        using rng: inout RNG
+    ) {
+        // Pre-compute parent worlds once for ALL instances across all layers.
+        var parentWorlds: [String: ParentWorld] = [:]
+        for instance in instances {
+            parentWorlds[instance.def.name] = computeParentWorld(
+                instance, parentWorlds: parentWorlds, canvasSize: viewTransform.canvasSize
+            )
+        }
+
+        // Collect set names claimed by any layer.
+        let allLayeredNames = Set(layers.flatMap { $0.spriteSetNames })
+
+        // Sprites not in any layer render directly to main context (legacy fallback).
+        let unassigned = instances.indices.filter { !allLayeredNames.contains(instances[$0].spriteSetName) }
+        let unassignedOrder = unassigned.sorted { instances[$0].def.depth > instances[$1].def.depth }
+        for i in unassignedOrder {
+            let instance = instances[i]
+            let parentWorld = instance.def.parentName.flatMap { parentWorlds[$0] }
+            let spriteTransform = depthAdjustedTransform(viewTransform,
+                                                         depth: instance.def.depth,
+                                                         perspectiveStrength: perspectiveStrength)
+            renderInstance(instance, spriteIndex: i, parentWorld: parentWorld,
+                           into: context, viewTransform: spriteTransform,
+                           brushImages: brushImages, stampImages: stampImages,
+                           elapsedFrames: elapsedFrames,
+                           progressiveBrushStates: &progressiveBrushStates,
+                           progressiveBrushEnabled: progressiveBrushEnabled,
+                           using: &rng)
+        }
+
+        // Render each layer bottom-to-top.
+        for (layerIndex, layer) in layers.enumerated() {
+            guard layer.isVisible else { continue }
+            guard let offscreen = makeOffscreenContext(size: viewTransform.canvasSize) else { continue }
+
+            let lt = layerViewTransform(viewTransform, parallaxFactor: layer.parallaxFactor)
+            let layerIndices = instances.indices.filter { layer.spriteSetNames.contains(instances[$0].spriteSetName) }
+            let drawOrder    = layerIndices.sorted { instances[$0].def.depth > instances[$1].def.depth }
+
+            for i in drawOrder {
+                let instance = instances[i]
+                let parentWorld = instance.def.parentName.flatMap { parentWorlds[$0] }
+                let spriteTransform = depthAdjustedTransform(lt,
+                                                             depth: instance.def.depth,
+                                                             perspectiveStrength: perspectiveStrength)
+                renderInstance(instance, spriteIndex: i, parentWorld: parentWorld,
+                               into: offscreen, viewTransform: spriteTransform,
+                               brushImages: brushImages, stampImages: stampImages,
+                               elapsedFrames: elapsedFrames,
+                               progressiveBrushStates: &progressiveBrushStates,
+                               progressiveBrushEnabled: progressiveBrushEnabled,
+                               using: &rng)
+            }
+
+            let opacity = max(0, min(1, DriverEvaluator.evaluate(
+                layer.opacityDriver, globalElapsed: elapsedFrames,
+                targetFPS: targetFPS, spriteIndex: layerIndex
+            )))
+            let blurRadius = max(0, DriverEvaluator.evaluate(
+                layer.blurDriver, globalElapsed: elapsedFrames,
+                targetFPS: targetFPS, spriteIndex: layerIndex
+            )) * Double(qualityMultiple)
+
+            applyLayerComposite(from: offscreen, blurRadius: blurRadius, opacity: opacity,
+                                blendMode: layer.blendMode, into: context,
+                                canvasSize: viewTransform.canvasSize)
+        }
+    }
+
+    /// Returns a ViewTransform with the camera offset scaled by `parallaxFactor`.
+    /// parallaxFactor=1 → moves fully with camera; parallaxFactor=0 → fully fixed.
+    private func layerViewTransform(_ base: ViewTransform, parallaxFactor: Double) -> ViewTransform {
+        guard parallaxFactor != 1.0 else { return base }
+        return ViewTransform(
+            canvasSize: base.canvasSize,
+            offset:     Vector2D(x: base.offset.x * parallaxFactor,
+                                 y: base.offset.y * parallaxFactor),
+            zoom:       base.zoom,
+            rotation:   base.rotation
+        )
+    }
+
+    private func applyLayerComposite(from offscreen: CGContext, blurRadius: Double,
+                                     opacity: Double, blendMode: LayerBlendMode,
+                                     into context: CGContext, canvasSize: CGSize) {
+        guard let img = offscreen.makeImage() else { return }
+        let compositeImg: CGImage
+        if blurRadius > 0.5 {
+            let ciImg = CIImage(cgImage: img)
+            if let filter = CIFilter(name: "CIGaussianBlur",
+                                     parameters: [kCIInputImageKey: ciImg,
+                                                  kCIInputRadiusKey: blurRadius]),
+               let output = filter.outputImage,
+               let blurred = SpriteScene.ciContext.createCGImage(
+                   output.cropped(to: ciImg.extent), from: ciImg.extent) {
+                compositeImg = blurred
+            } else {
+                compositeImg = img
+            }
+        } else {
+            compositeImg = img
+        }
+        context.saveGState()
+        context.concatenate(context.ctm.inverted())
+        context.setAlpha(CGFloat(opacity))
+        context.setBlendMode(blendMode.cgBlendMode)
+        context.draw(compositeImg, in: CGRect(x: 0, y: 0,
+                                              width: canvasSize.width, height: canvasSize.height))
+        context.restoreGState()
     }
 
     /// Returns a ViewTransform scaled by the parallax factor for a sprite at the given depth.
