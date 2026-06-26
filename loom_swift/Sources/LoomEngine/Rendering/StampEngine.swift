@@ -77,10 +77,10 @@ enum StampEngine {
 
             // Point stamps: tangentAngle = 0, followTangent = false (matches Scala stampAtPoint).
             // Jitter is applied independently in X and Y (no path tangent to define a normal).
-            let jitterX = Double.random(in: config.perpendicularJitterMin...config.perpendicularJitterMax,
-                                        using: &rng)
-            let jitterY = Double.random(in: config.perpendicularJitterMin...config.perpendicularJitterMax,
-                                        using: &rng)
+            let jitterLo = min(config.perpendicularJitterMin, config.perpendicularJitterMax)
+            let jitterHi = max(config.perpendicularJitterMin, config.perpendicularJitterMax)
+            let jitterX = Double.random(in: jitterLo...jitterHi, using: &rng)
+            let jitterY = Double.random(in: jitterLo...jitterHi, using: &rng)
 
             let img  = images[idx % images.count]
             let rect = stampRect(img, scale: randScale)
@@ -136,7 +136,7 @@ enum StampEngine {
                                           opacityState: opacityState, using: &rng)
 
                 // Perpendicular jitter: offset along the path normal (tangent + π/2).
-                let jitter     = Double.random(in: config.perpendicularJitterMin...config.perpendicularJitterMax,
+                let jitter     = Double.random(in: min(config.perpendicularJitterMin, config.perpendicularJitterMax)...max(config.perpendicularJitterMin, config.perpendicularJitterMax),
                                                using: &rng)
                 let perpAngle  = angle + .pi / 2.0
                 let stampX     = pos.x + jitter * cos(perpAngle)
