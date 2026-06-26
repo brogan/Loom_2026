@@ -318,15 +318,7 @@ final class RenderSurfaceNSView: NSView {
     nonisolated private func checkAnimationDone() -> Bool {
         let maxFrames = engine.maxAnimationFrames
         guard maxFrames > 0 else { return false }
-        // Global duration takes priority: stop when frameCount reaches it.
-        if engine.globalConfig.endFrame > 0 {
-            return engine.currentFrame >= maxFrames
-        }
-        // Legacy: stop when all sprite draw cycles have completed.
-        return engine.spriteInstances.allSatisfy { inst in
-            let td = inst.def.animation.totalDraws
-            return td == 0 || inst.state.drawCycle >= td
-        }
+        return engine.currentFrame >= maxFrames
     }
 
     // MARK: - Display helpers (main thread)
