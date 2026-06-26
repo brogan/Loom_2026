@@ -172,7 +172,9 @@ enum BrushStampEngine {
         if config.meander.scaleAlongPath {
             baseScale = pathScale
         } else {
-            baseScale = rng.nextDouble() * (config.scaleMax - config.scaleMin) + config.scaleMin
+            let lo = min(config.scaleMin, config.scaleMax)
+            let hi = max(config.scaleMin, config.scaleMax)
+            baseScale = rng.nextDouble() * (hi - lo) + lo
         }
         let pressureScale = 1.0 - config.pressureSizeInfluence
             + pressure * config.pressureSizeInfluence

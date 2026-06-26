@@ -71,7 +71,7 @@ enum StampEngine {
 
         for (idx, worldPt) in polygon.points.enumerated() {
             let screen    = viewTransform.worldToScreen(worldPt)
-            let randScale = Double.random(in: config.scaleMin...config.scaleMax, using: &rng)
+            let randScale = Double.random(in: min(config.scaleMin, config.scaleMax)...max(config.scaleMin, config.scaleMax), using: &rng)
             let opacity   = pickOpacity(config: config, usesPalette: useOpacityPalette,
                                         opacityState: opacityState, using: &rng)
 
@@ -131,7 +131,7 @@ enum StampEngine {
 
                 let (pos, angle) = PathPerturbation.sampleEdge(edge, t: tClamped)
 
-                let scale   = Double.random(in: config.scaleMin...config.scaleMax, using: &rng)
+                let scale   = Double.random(in: min(config.scaleMin, config.scaleMax)...max(config.scaleMin, config.scaleMax), using: &rng)
                 let opacity = pickOpacity(config: config, usesPalette: useOpacityPalette,
                                           opacityState: opacityState, using: &rng)
 
