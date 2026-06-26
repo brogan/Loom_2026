@@ -672,16 +672,26 @@ public struct SpriteScene: @unchecked Sendable {
                 // when the parent moves or rotates.
                 let rad  = parent.rotationDeg * .pi / 180.0
                 let cosR = cos(rad), sinR = sin(rad)
-                let relTx = localTx - parent.basePositionPx.x
-                let relTy = localTy - parent.basePositionPx.y
+                var relTx = localTx - parent.basePositionPx.x
+                var relTy = localTy - parent.basePositionPx.y
+                // When scale is inherited the child offset is in parent-local space,
+                // so it must be scaled along with the parent's geometry.
+                if mask.scale {
+                    relTx *= parent.scale.x
+                    relTy *= parent.scale.y
+                }
                 txPx = parent.positionPx.x + relTx * cosR - relTy * sinR
                 tyPx = parent.positionPx.y + relTx * sinR + relTy * cosR
 
                 // Base world position uses parent's base rotation.
                 let baseRad  = parent.baseRotationDeg * .pi / 180.0
                 let cosB = cos(baseRad), sinB = sin(baseRad)
-                let relBaseTx = baseTx - parent.basePositionPx.x
-                let relBaseTy = baseTy - parent.basePositionPx.y
+                var relBaseTx = baseTx - parent.basePositionPx.x
+                var relBaseTy = baseTy - parent.basePositionPx.y
+                if mask.scale {
+                    relBaseTx *= parent.scale.x
+                    relBaseTy *= parent.scale.y
+                }
                 baseTxPx = parent.basePositionPx.x + relBaseTx * cosB - relBaseTy * sinB
                 baseTyPx = parent.basePositionPx.y + relBaseTx * sinB + relBaseTy * cosB
             }
@@ -995,8 +1005,12 @@ public struct SpriteScene: @unchecked Sendable {
             if mask.position {
                 let rad  = parent.rotationDeg * .pi / 180.0
                 let cosP = cos(rad), sinP = sin(rad)
-                let relTx = localTx - parent.basePositionPx.x
-                let relTy = localTy - parent.basePositionPx.y
+                var relTx = localTx - parent.basePositionPx.x
+                var relTy = localTy - parent.basePositionPx.y
+                if mask.scale {
+                    relTx *= parent.scale.x
+                    relTy *= parent.scale.y
+                }
                 txPx = parent.positionPx.x + relTx * cosP - relTy * sinP
                 tyPx = parent.positionPx.y + relTx * sinP + relTy * cosP
             }
@@ -1161,8 +1175,14 @@ public struct SpriteScene: @unchecked Sendable {
             if mask.position {
                 let rad  = parent.rotationDeg * .pi / 180.0
                 let cosP = cos(rad), sinP = sin(rad)
-                let relTx = localTx - parent.basePositionPx.x
-                let relTy = localTy - parent.basePositionPx.y
+                var relTx = localTx - parent.basePositionPx.x
+                var relTy = localTy - parent.basePositionPx.y
+                // When scale is inherited the child offset is in parent-local space,
+                // so it must be scaled along with the parent's geometry.
+                if mask.scale {
+                    relTx *= parent.scale.x
+                    relTy *= parent.scale.y
+                }
                 txPx = parent.positionPx.x + relTx * cosP - relTy * sinP
                 tyPx = parent.positionPx.y + relTx * sinP + relTy * cosP
             }
