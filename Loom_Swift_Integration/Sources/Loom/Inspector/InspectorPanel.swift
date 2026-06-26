@@ -60,6 +60,13 @@ struct InspectorPanel: View {
             } else {
                 placeholderText("Select a sprite.")
             }
+        case .layers:
+            if controller.selectedLayerIndex != nil {
+                LayersInspector()
+                    .environmentObject(controller)
+            } else {
+                placeholderText("Select a layer.")
+            }
         case .rendering:
             if controller.selectedRendererIndex != nil {
                 RenderingInspector()

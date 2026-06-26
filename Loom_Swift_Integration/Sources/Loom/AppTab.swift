@@ -5,6 +5,7 @@ enum AppTab: String, CaseIterable, Hashable {
     case geometry    = "Geometry"
     case subdivision = "Subdivision"
     case sprites     = "Sprites"
+    case layers      = "Layers"
     case rendering   = "Rendering"
 
     var label: String { rawValue }
@@ -15,6 +16,7 @@ enum AppTab: String, CaseIterable, Hashable {
         case .geometry:    return "pentagon"
         case .subdivision: return "square.grid.3x3.fill"
         case .sprites:     return "square.stack.3d.up"
+        case .layers:      return "square.3.layers.3d"
         case .rendering:   return "paintbrush"
         }
     }

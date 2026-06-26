@@ -227,6 +227,7 @@ final class AppController: ObservableObject, @unchecked Sendable {
         }
     }
     @Published var showScrubBar:                  Bool                 = false
+    @Published var selectedLayerIndex:            Int?    = nil
     @Published var selectedRendererIndex:         Int?    = nil
     @Published var selectedRendererItemIndex:     Int?    = nil   // within selected set
     @Published var subdivSelectedSpriteID:        String? = nil   // sprite selected in subdivision tab
@@ -6408,6 +6409,59 @@ final class AppController: ObservableObject, @unchecked Sendable {
         selectedGeometryKey = "\(folder)/\(newName)"
     }
 
+    // MARK: - Layer CRUD
+
+    func addLayer() {
+        let existingNames = Set(projectConfig?.layers.map { $0.name } ?? [])
+        var name = "Layer"
+        var idx = 2
+        while existingNames.contains(name) { name = "Layer \(idx)"; idx += 1 }
+        let layer = LoomLayer(name: name)
+        updateProjectConfig { cfg in
+            cfg.layers.append(layer)
+        }
+        selectedLayerIndex = (projectConfig?.layers.count ?? 1) - 1
+    }
+
+    func removeLayer(at index: Int) {
+        guard let cfg = projectConfig, cfg.layers.indices.contains(index) else { return }
+        updateProjectConfig { cfg in
+            cfg.layers.remove(at: index)
+        }
+        let count = projectConfig?.layers.count ?? 0
+        if count == 0 {
+            selectedLayerIndex = nil
+        } else {
+            selectedLayerIndex = min(index, count - 1)
+        }
+    }
+
+    func moveLayer(from source: IndexSet, to destination: Int) {
+        updateProjectConfig { cfg in
+            cfg.layers.move(fromOffsets: source, toOffset: destination)
+        }
+    }
+
+    func assignSpriteSet(named setName: String, toLayerAt index: Int) {
+        guard let cfg = projectConfig, cfg.layers.indices.contains(index) else { return }
+        updateProjectConfig { cfg in
+            // Remove from any other layer first.
+            for i in cfg.layers.indices where i != index {
+                cfg.layers[i].spriteSetNames.removeAll { $0 == setName }
+            }
+            if !cfg.layers[index].spriteSetNames.contains(setName) {
+                cfg.layers[index].spriteSetNames.append(setName)
+            }
+        }
+    }
+
+    func unassignSpriteSet(named setName: String, fromLayerAt index: Int) {
+        guard let cfg = projectConfig, cfg.layers.indices.contains(index) else { return }
+        updateProjectConfig { cfg in
+            cfg.layers[index].spriteSetNames.removeAll { $0 == setName }
+        }
+    }
+
     // MARK: - Private: loading
 
     private func loadEngine(from url: URL) {
@@ -6587,6 +6641,7 @@ final class AppController: ObservableObject, @unchecked Sendable {
         subdivPreviewSetName          = nil
         renderingSelectedSpriteID     = nil
         renderingPreviewSetName       = nil
+        selectedLayerIndex            = nil
         selectedRendererIndex         = nil
         selectedRendererItemIndex     = nil
     }
