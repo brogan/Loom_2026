@@ -11,17 +11,24 @@ struct CyclePreviewPanel: View {
     @State private var allSVGImages: [Int: NSImage] = [:]
     @State private var isPlaying = false
     @State private var playFrame = 0
+    @State private var bgBrightness: Double = 0.08
 
     private let previewFPS = 12.0
 
     var body: some View {
         VStack(spacing: 0) {
             // Header row
-            HStack {
+            HStack(spacing: 8) {
                 Text("PREVIEW")
                     .font(.system(size: 9, weight: .semibold))
                     .foregroundStyle(.secondary)
                     .tracking(1)
+                Image(systemName: "sun.min")
+                    .font(.system(size: 9))
+                    .foregroundStyle(.secondary)
+                Slider(value: $bgBrightness, in: 0...1)
+                    .frame(width: 64)
+                    .controlSize(.mini)
                 Spacer()
                 legend
             }
@@ -32,12 +39,12 @@ struct CyclePreviewPanel: View {
             // Canvas
             Canvas { ctx, size in
                 drawBackground(ctx: ctx, size: size)
-                if !allPolygons.isEmpty {
+                if !allPolygons.isEmpty || !allSVGImages.isEmpty {
                     drawShapes(ctx: ctx, size: size)
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .background(Color(red: 0.07, green: 0.075, blue: 0.10))
+            .background(Color(white: bgBrightness))
             .overlay(
                 Group {
                     if cycle.states.isEmpty {
@@ -154,7 +161,7 @@ struct CyclePreviewPanel: View {
 
     private func drawBackground(ctx: GraphicsContext, size: CGSize) {
         ctx.fill(Path(CGRect(origin: .zero, size: size)),
-                 with: .color(Color(red: 0.07, green: 0.075, blue: 0.10)))
+                 with: .color(Color(white: bgBrightness)))
         let cx = size.width / 2, cy = size.height / 2
         var cross = Path()
         cross.move(to: CGPoint(x: cx - 10, y: cy)); cross.addLine(to: CGPoint(x: cx + 10, y: cy))
