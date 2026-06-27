@@ -1,4 +1,6 @@
+import AppKit
 import SwiftUI
+import UniformTypeIdentifiers
 import LoomEngine
 
 // MARK: - Main editor sheet
@@ -169,13 +171,22 @@ struct SpriteCycleEditorView: View {
                     .frame(width: 18)
 
                 VStack(alignment: .leading, spacing: 1) {
-                    Text(state.shapeName.isEmpty ? "—" : state.shapeName)
-                        .font(.system(size: 12))
-                        .lineLimit(1)
-                    Text(state.shapeSetName.isEmpty ? "no set" : state.shapeSetName)
-                        .font(.system(size: 10))
-                        .foregroundStyle(.tertiary)
-                        .lineLimit(1)
+                    if let svg = state.svgFilename {
+                        Text(svg.isEmpty ? "No SVG file" : svg)
+                            .font(.system(size: 12))
+                            .lineLimit(1)
+                        Text("SVG sprite")
+                            .font(.system(size: 10))
+                            .foregroundStyle(.tertiary)
+                    } else {
+                        Text(state.shapeName.isEmpty ? "—" : state.shapeName)
+                            .font(.system(size: 12))
+                            .lineLimit(1)
+                        Text(state.shapeSetName.isEmpty ? "no set" : state.shapeSetName)
+                            .font(.system(size: 10))
+                            .foregroundStyle(.tertiary)
+                            .lineLimit(1)
+                    }
                 }
 
                 Spacer()
@@ -220,53 +231,95 @@ struct SpriteCycleEditorView: View {
     // MARK: State detail
 
     private func stateDetail(cycleIdx: Int, stateIdx: Int) -> some View {
+        let isSVG        = controller.projectConfig?.cycles[safe: cycleIdx]?.states[safe: stateIdx]?.svgFilename != nil
+        let svgFilename  = controller.projectConfig?.cycles[safe: cycleIdx]?.states[safe: stateIdx]?.svgFilename ?? ""
         let allShapeSets = controller.projectConfig?.shapeConfig.library.shapeSets ?? []
         let shapeSetName = controller.projectConfig?.cycles[safe: cycleIdx]?.states[safe: stateIdx]?.shapeSetName ?? ""
         let shapesInSet  = allShapeSets.first(where: { $0.name == shapeSetName })?.shapes.map { $0.name } ?? []
         let allRendererSets = controller.projectConfig?.renderingConfig.library.rendererSets ?? []
 
         return VStack(alignment: .leading, spacing: 4) {
-            // Shape set
-            stateDetailRow("Shape Set") {
-                Picker("", selection: bindStateStr(cycleIdx, stateIdx, \.shapeSetName)) {
-                    Text("—").tag("")
-                    ForEach(allShapeSets, id: \.name) { set in
-                        Text(set.name).tag(set.name)
+            // Source type toggle
+            stateDetailRow("Source") {
+                Picker("", selection: Binding(
+                    get: { isSVG },
+                    set: { newIsSVG in
+                        controller.updateProjectConfig { cfg in
+                            guard cfg.cycles.indices.contains(cycleIdx),
+                                  cfg.cycles[cycleIdx].states.indices.contains(stateIdx) else { return }
+                            cfg.cycles[cycleIdx].states[stateIdx].svgFilename = newIsSVG ? "" : nil
+                        }
                     }
+                )) {
+                    Text("Loom").tag(false)
+                    Text("SVG").tag(true)
                 }
+                .pickerStyle(.segmented)
                 .labelsHidden()
-                .frame(maxWidth: 180)
+                .frame(maxWidth: 120)
             }
 
-            // Shape name
-            stateDetailRow("Shape") {
-                if shapesInSet.isEmpty {
-                    TextField("", text: bindStateStr(cycleIdx, stateIdx, \.shapeName))
-                        .textFieldStyle(.squareBorder)
-                        .font(.system(size: 12))
-                        .frame(maxWidth: 180)
-                } else {
-                    Picker("", selection: bindStateStr(cycleIdx, stateIdx, \.shapeName)) {
+            if isSVG {
+                // SVG file
+                stateDetailRow("SVG File") {
+                    HStack(spacing: 6) {
+                        Text(svgFilename.isEmpty ? "No file chosen" : svgFilename)
+                            .font(.system(size: 11))
+                            .foregroundStyle(svgFilename.isEmpty ? .tertiary : .primary)
+                            .lineLimit(1)
+                            .truncationMode(.middle)
+                            .frame(maxWidth: 110, alignment: .leading)
+                        Button("Choose…") {
+                            pickSVGFile(cycleIdx: cycleIdx, stateIdx: stateIdx)
+                        }
+                        .buttonStyle(.plain)
+                        .font(.system(size: 11))
+                        .foregroundStyle(Color.accentColor)
+                    }
+                }
+            } else {
+                // Shape set
+                stateDetailRow("Shape Set") {
+                    Picker("", selection: bindStateStr(cycleIdx, stateIdx, \.shapeSetName)) {
                         Text("—").tag("")
-                        ForEach(shapesInSet, id: \.self) { name in
-                            Text(name).tag(name)
+                        ForEach(allShapeSets, id: \.name) { set in
+                            Text(set.name).tag(set.name)
                         }
                     }
                     .labelsHidden()
                     .frame(maxWidth: 180)
                 }
-            }
 
-            // Renderer override
-            stateDetailRow("Renderer") {
-                Picker("", selection: bindStateOptStr(cycleIdx, stateIdx, \.rendererSetName)) {
-                    Text("Inherit").tag(String?.none)
-                    ForEach(allRendererSets, id: \.name) { set in
-                        Text(set.name).tag(String?.some(set.name))
+                // Shape name
+                stateDetailRow("Shape") {
+                    if shapesInSet.isEmpty {
+                        TextField("", text: bindStateStr(cycleIdx, stateIdx, \.shapeName))
+                            .textFieldStyle(.squareBorder)
+                            .font(.system(size: 12))
+                            .frame(maxWidth: 180)
+                    } else {
+                        Picker("", selection: bindStateStr(cycleIdx, stateIdx, \.shapeName)) {
+                            Text("—").tag("")
+                            ForEach(shapesInSet, id: \.self) { name in
+                                Text(name).tag(name)
+                            }
+                        }
+                        .labelsHidden()
+                        .frame(maxWidth: 180)
                     }
                 }
-                .labelsHidden()
-                .frame(maxWidth: 180)
+
+                // Renderer override
+                stateDetailRow("Renderer") {
+                    Picker("", selection: bindStateOptStr(cycleIdx, stateIdx, \.rendererSetName)) {
+                        Text("Inherit").tag(String?.none)
+                        ForEach(allRendererSets, id: \.name) { set in
+                            Text(set.name).tag(String?.some(set.name))
+                        }
+                    }
+                    .labelsHidden()
+                    .frame(maxWidth: 180)
+                }
             }
 
             Divider().padding(.horizontal, 12)
@@ -302,6 +355,31 @@ struct SpriteCycleEditorView: View {
             }
         }
         .padding(.top, 4)
+    }
+
+    private func pickSVGFile(cycleIdx: Int, stateIdx: Int) {
+        let panel = NSOpenPanel()
+        panel.allowedContentTypes = [UTType(filenameExtension: "svg") ?? .data]
+        panel.canChooseFiles = true
+        panel.canChooseDirectories = false
+        panel.allowsMultipleSelection = false
+        panel.message = "Select an SVG file for this cycle state"
+        panel.begin { response in
+            guard response == .OK, let url = panel.url else { return }
+            guard let projectURL = controller.projectURL else { return }
+            let destDir = projectURL.appendingPathComponent("svgs/sprites")
+            let destURL = destDir.appendingPathComponent(url.lastPathComponent)
+            try? FileManager.default.createDirectory(at: destDir, withIntermediateDirectories: true)
+            if !FileManager.default.fileExists(atPath: destURL.path) {
+                try? FileManager.default.copyItem(at: url, to: destURL)
+            }
+            let filename = url.lastPathComponent
+            controller.updateProjectConfig { cfg in
+                guard cfg.cycles.indices.contains(cycleIdx),
+                      cfg.cycles[cycleIdx].states.indices.contains(stateIdx) else { return }
+                cfg.cycles[cycleIdx].states[stateIdx].svgFilename = filename
+            }
+        }
     }
 
     private func stateDetailRow<Content: View>(_ label: String, @ViewBuilder content: () -> Content) -> some View {

@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 import LoomEngine
 
@@ -7,6 +8,7 @@ struct CyclePreviewPanel: View {
     @Binding var selectedStateIndex: Int?
 
     @State private var allPolygons: [Int: [Polygon2D]] = [:]
+    @State private var allSVGImages: [Int: NSImage] = [:]
     @State private var isPlaying = false
     @State private var playFrame = 0
 
@@ -42,7 +44,7 @@ struct CyclePreviewPanel: View {
                         Text("Add states to preview")
                             .font(.system(size: 11))
                             .foregroundStyle(.secondary)
-                    } else if allPolygons.isEmpty {
+                    } else if allPolygons.isEmpty && allSVGImages.isEmpty {
                         Text("No geometry")
                             .font(.system(size: 11))
                             .foregroundStyle(.secondary)
@@ -171,6 +173,8 @@ struct CyclePreviewPanel: View {
                 draw(polys, in: ctx, size: size,
                      color: Color(red: 0.35, green: 0.55, blue: 1.0).opacity(0.28),
                      lineWidth: 1.0)
+            } else if let img = allSVGImages[prevIdx] {
+                drawSVGImage(img, ctx: ctx, size: size, alpha: 0.28)
             }
         }
 
@@ -180,6 +184,8 @@ struct CyclePreviewPanel: View {
                 draw(polys, in: ctx, size: size,
                      color: Color(red: 1.0, green: 0.55, blue: 0.25).opacity(0.28),
                      lineWidth: 1.0)
+            } else if let img = allSVGImages[nextIdx] {
+                drawSVGImage(img, ctx: ctx, size: size, alpha: 0.28)
             }
         }
 
@@ -188,7 +194,27 @@ struct CyclePreviewPanel: View {
                 draw(polys, in: ctx, size: size,
                      color: Color(red: 0.36, green: 0.82, blue: 0.50).opacity(layer.alpha * 0.92),
                      lineWidth: 1.3)
+            } else if let img = allSVGImages[layer.stateIndex] {
+                drawSVGImage(img, ctx: ctx, size: size, alpha: layer.alpha * 0.92)
             }
+        }
+    }
+
+    private func drawSVGImage(_ nsImage: NSImage, ctx: GraphicsContext, size: CGSize, alpha: Double) {
+        let drawSize = min(size.width, size.height) * 0.80
+        let cx = size.width / 2
+        let cy = size.height / 2
+        let rect = CGRect(x: cx - drawSize / 2, y: cy - drawSize / 2,
+                          width: drawSize, height: drawSize)
+        ctx.withCGContext { cgCtx in
+            cgCtx.saveGState()
+            cgCtx.setAlpha(CGFloat(alpha))
+            let nsCtx = NSGraphicsContext(cgContext: cgCtx, flipped: true)
+            NSGraphicsContext.saveGraphicsState()
+            NSGraphicsContext.current = nsCtx
+            nsImage.draw(in: rect)
+            NSGraphicsContext.restoreGraphicsState()
+            cgCtx.restoreGState()
         }
     }
 
@@ -294,12 +320,21 @@ struct CyclePreviewPanel: View {
         guard let cfg = controller.projectConfig,
               let projectURL = controller.projectURL
         else { return }
-        var result: [Int: [Polygon2D]] = [:]
+        var polyResult: [Int: [Polygon2D]] = [:]
+        var svgResult:  [Int: NSImage]     = [:]
         for (i, state) in cycle.states.enumerated() {
-            let polys = loadPolygons(for: state, config: cfg, projectURL: projectURL)
-            if !polys.isEmpty { result[i] = polys }
+            if let svgFile = state.svgFilename, !svgFile.isEmpty {
+                let url = projectURL
+                    .appendingPathComponent("svgs/sprites")
+                    .appendingPathComponent(svgFile)
+                if let img = NSImage(contentsOf: url) { svgResult[i] = img }
+            } else {
+                let polys = loadPolygons(for: state, config: cfg, projectURL: projectURL)
+                if !polys.isEmpty { polyResult[i] = polys }
+            }
         }
-        allPolygons = result
+        allPolygons  = polyResult
+        allSVGImages = svgResult
     }
 
     private func loadPolygons(for state: SpriteCycleState,

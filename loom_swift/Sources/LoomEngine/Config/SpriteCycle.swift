@@ -29,6 +29,9 @@ public struct SpriteCycleState: Codable, Equatable, Sendable {
     public var shapeName:        String
     /// Renderer set override. `nil` = inherit from the sprite's own rendererSetName.
     public var rendererSetName:  String?
+    /// Filename of an SVG in the project's `svgs/sprites/` directory.
+    /// When non-nil this state renders the SVG image and the shape/renderer fields are ignored.
+    public var svgFilename:      String?
     /// Frames this state is fully shown (minimum 1).
     public var holdFrames:       Int
     /// Frames to cross-fade into the next state (0 = hard cut).
@@ -48,6 +51,7 @@ public struct SpriteCycleState: Codable, Equatable, Sendable {
         shapeSetName:     String     = "",
         shapeName:        String     = "",
         rendererSetName:  String?    = nil,
+        svgFilename:      String?    = nil,
         holdFrames:       Int        = 4,
         transitionFrames: Int        = 0,
         easing:           EasingType = .easeInOutCubic,
@@ -61,6 +65,7 @@ public struct SpriteCycleState: Codable, Equatable, Sendable {
         self.shapeSetName     = shapeSetName
         self.shapeName        = shapeName
         self.rendererSetName  = rendererSetName
+        self.svgFilename      = svgFilename
         self.holdFrames       = holdFrames
         self.transitionFrames = transitionFrames
         self.easing           = easing
@@ -77,6 +82,7 @@ public struct SpriteCycleState: Codable, Equatable, Sendable {
         shapeSetName     = try c.decodeIfPresent(String.self,     forKey: .shapeSetName)     ?? ""
         shapeName        = try c.decodeIfPresent(String.self,     forKey: .shapeName)        ?? ""
         rendererSetName  = try c.decodeIfPresent(String.self,     forKey: .rendererSetName)
+        svgFilename      = try c.decodeIfPresent(String.self,     forKey: .svgFilename)
         holdFrames       = try c.decodeIfPresent(Int.self,        forKey: .holdFrames)       ?? 4
         transitionFrames = try c.decodeIfPresent(Int.self,        forKey: .transitionFrames) ?? 0
         easing           = try c.decodeIfPresent(EasingType.self, forKey: .easing)           ?? .easeInOutCubic

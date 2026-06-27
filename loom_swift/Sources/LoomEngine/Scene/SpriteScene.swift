@@ -1172,6 +1172,34 @@ public struct SpriteScene: @unchecked Sendable {
         let needsOffscreen = cycleLayers.count > 1
 
         for layer in cycleLayers {
+            // SVG cycle state: bypass polygon pipeline entirely.
+#if canImport(AppKit)
+            if cycle.states.indices.contains(layer.stateIndex),
+               let svgFile = cycle.states[layer.stateIndex].svgFilename,
+               let nsImage = svgImages[svgFile] {
+                var svgInstance = instance
+                if needsOffscreen {
+                    guard let offscreen = makeOffscreenContext(size: viewTransform.canvasSize) else { continue }
+                    svgInstance.state.transform.opacity = 1.0
+                    renderSVGInstance(svgInstance, nsImage: nsImage, parentWorld: parentWorld,
+                                      into: offscreen, viewTransform: viewTransform,
+                                      spriteIndex: spriteIndex, elapsedFrames: elapsedFrames)
+                    guard let img = offscreen.makeImage() else { continue }
+                    context.saveGState()
+                    context.concatenate(context.ctm.inverted())
+                    context.setAlpha(CGFloat(layer.alpha * spriteOpacity))
+                    let sz = viewTransform.canvasSize
+                    context.draw(img, in: CGRect(x: 0, y: 0, width: sz.width, height: sz.height))
+                    context.restoreGState()
+                } else {
+                    svgInstance.state.transform.opacity = spriteOpacity
+                    renderSVGInstance(svgInstance, nsImage: nsImage, parentWorld: parentWorld,
+                                      into: context, viewTransform: viewTransform,
+                                      spriteIndex: spriteIndex, elapsedFrames: elapsedFrames)
+                }
+                continue
+            }
+#endif
             guard instance.cycleStatePolygons.indices.contains(layer.stateIndex) else { continue }
             let layerPolys = instance.cycleStatePolygons[layer.stateIndex]
             guard !layerPolys.isEmpty else { continue }
