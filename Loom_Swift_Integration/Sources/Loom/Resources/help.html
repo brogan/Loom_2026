@@ -219,6 +219,7 @@
   <a class="nav-link nav-sub" href="#cycles-states">States &amp; Transitions</a>
   <a class="nav-link nav-sub" href="#cycles-loop">Loop Modes</a>
   <a class="nav-link nav-sub" href="#cycles-assign">Assigning Cycles</a>
+  <a class="nav-link nav-sub" href="#cycles-preview">Editor Preview</a>
   <a class="nav-link" href="#layers">Layers</a>
   <a class="nav-link nav-sub" href="#layers-parallax">Parallax</a>
   <a class="nav-link nav-sub" href="#layers-blur">Blur &amp; DOF</a>
@@ -1369,6 +1370,35 @@
   </ol>
 
   <div class="tip"><strong>Timing relative to the global clock.</strong> Cycle playback is driven by the global elapsed frame counter, not a per-sprite counter. All sprites sharing the same cycle are therefore synchronised — they step through states together. If you need offset timing between sprites on the same cycle, apply a gate start or a position keyframe offset to shift when the sprite becomes active relative to frame 0.</div>
+
+  <h3 id="cycles-preview">Editor Preview</h3>
+  <p>The Cycle Editor sheet has a live wireframe preview panel on its right side. It shows the cycle's geometry at the current preview frame with onion-skin overlays for the adjacent states, so you can judge timing and shape transitions without leaving the editor.</p>
+
+  <h4>Onion skins</h4>
+  <p>Three layers are drawn simultaneously:</p>
+  <table class="control-table">
+    <thead><tr><th>Colour</th><th>What it shows</th></tr></thead>
+    <tbody>
+      <tr><td><span style="color:#596eff">●</span> Blue ghost</td><td>The state <em>before</em> the currently displayed state (wraps around for the first state).</td></tr>
+      <tr><td><span style="color:#5dd080">●</span> Green wireframe</td><td>The current state at full opacity. During a cross-fade transition both outgoing and incoming states are drawn at their blend alphas, exactly as the engine would render them.</td></tr>
+      <tr><td><span style="color:#ff8c40">●</span> Orange ghost</td><td>The state <em>after</em> the currently displayed state (wraps around for the last state). Hidden when the cycle has exactly 2 states to avoid showing the same shape twice.</td></tr>
+    </tbody>
+  </table>
+
+  <h4>Playback controls</h4>
+  <table class="control-table">
+    <thead><tr><th>Control</th><th>Description</th></tr></thead>
+    <tbody>
+      <tr><td><span class="icon-key">▶</span> Play / <span class="icon-key">⏸</span> Pause</td><td>Play the cycle at 12 fps, stepping through all frames including within-state hold frames and cross-fade transitions. The state-list selection tracks the currently playing state. Click again or use any step control to stop.</td></tr>
+      <tr><td><span class="icon-key">⏮</span> Step back</td><td>Stop playback and step one frame backward. Wraps to the last frame at frame 1.</td></tr>
+      <tr><td><span class="icon-key">⏭</span> Step forward</td><td>Stop playback and step one frame forward. Wraps to frame 1 at the end of the cycle.</td></tr>
+      <tr><td><span class="icon-key">↺</span> Rewind</td><td>Stop playback and return to frame 1, state 1.</td></tr>
+    </tbody>
+  </table>
+
+  <p>The frame counter shows the current frame and the total cycle length. The state counter shows which state index the current frame falls in. Selecting a state row in the list jumps the preview to that state's first frame.</p>
+
+  <div class="note"><strong>Preview geometry is unsubdivided.</strong> The preview draws the raw polygon outlines loaded from the project's polygon files — the same wireframe representation used in the Geometry editor. Subdivision curves, brush stroke widths, renderer colours, and stamp effects are not shown. This is intentional: the wireframe makes shape-change timing and inter-state alignment easy to read without visual noise from the renderer.</div>
 
 </section>
 
