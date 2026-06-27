@@ -1284,6 +1284,21 @@
     </tbody>
   </table>
 
+  <h4>Wireframe positioning proxy</h4>
+  <p>SVG sprites have no polygon geometry, so they are invisible in the wireframe view and cannot be positioned visually using the standard drag tools. The solution is to assign a lightweight <strong>proxy polygon</strong> to the sprite's base shape fields. The wireframe draws this proxy; the renderer ignores it at runtime because the <code>svgFilename</code> path returns before any polygon drawing occurs.</p>
+
+  <ol class="steps">
+    <li><strong>One-time setup — create the proxy shape.</strong> In the <strong>Geometry tab</strong>, create a polygon set. A 4-sided regular polygon at the default size works well; name the set something like <code>_proxy</code> and the shape <code>square</code>. You only need to do this once per project.</li>
+    <li><strong>Assign the proxy to the sprite.</strong> Select the SVG sprite in the Sprites tab. In the inspector's <strong>Shape</strong> section, set <strong>Shape Set</strong> to <code>_proxy</code> and <strong>Shape</strong> to <code>square</code>. The proxy square immediately appears in the wireframe view at the sprite's current position.</li>
+    <li><strong>Size the proxy to match the SVG.</strong> Use the sprite's <strong>Scale X</strong> and <strong>Scale Y</strong> fields to match the proxy square's on-screen footprint to the expected size and aspect ratio of the SVG. Because the SVG is rendered at the same transform, the proxy and the SVG will overlap exactly in the final output.</li>
+    <li><strong>Position using the wireframe.</strong> With the proxy visible, use the wireframe view to drag or numerically position the sprite as you would any polygon sprite. Camera panning, zoom, and the parallax depth value all behave identically.</li>
+    <li><strong>Verify in the canvas.</strong> Switch to the live canvas to confirm the SVG appears where the proxy indicated. No further adjustment is normally needed — the proxy and SVG share the same transform.</li>
+  </ol>
+
+  <div class="tip"><strong>Multiple SVG sprites sharing a proxy.</strong> All SVG sprites in a project can share the same proxy shape set — each sprite's individual Scale and Position fields determine its unique on-screen placement. You never need more than one proxy shape.</div>
+
+  <div class="note"><strong>Why the proxy is invisible at runtime.</strong> When a sprite has <code>svgFilename</code> set, Loom's render loop immediately routes to the SVG draw path and returns, bypassing the polygon pipeline entirely. The proxy geometry is loaded into the wireframe but is never touched during rendering. There is no "turn off rendering" step required.</div>
+
   <h4>File location and loading</h4>
   <p>SVG files must be placed in <code>&lt;project&gt;/svgs/sprites/</code>. This folder is created automatically when a project is first opened. Loom loads all <code>.svg</code> files from this directory at project-open time. If you add or remove files while the project is open, use <strong>Reload</strong> (<kbd>⌘R</kbd>) to pick up the changes.</p>
 
@@ -1372,6 +1387,20 @@
   <div class="tip"><strong>Keeping the Loom aesthetic.</strong> SVG files carry their own styling, so you are not constrained to Loom's renderer. If you want to match Loom's flat, solid-fill look, simply author the SVG with flat fills and no gradients or filters. The visual result is indistinguishable from a Loom renderer-set fill, and you gain per-path colour control.</div>
 
   <div class="note"><strong>Project reload required for live canvas.</strong> The engine loads <code>svgs/sprites/</code> once at project open. After adding a new SVG file via Choose…, the cycle editor preview shows it immediately (it loads direct from disk), but the rendered canvas will not show it until you close and reopen the project. Replacing an existing file with the same filename takes effect on the next project open as well.</div>
+
+  <h4>Wireframe positioning proxy for cycle sprites</h4>
+  <p>A cycle sprite — whether its states are Loom polygons, SVGs, or a mix — has no base geometry displayed in the wireframe view unless the sprite's own <strong>Shape Set</strong> and <strong>Shape</strong> fields are populated independently of the cycle. The proxy strategy gives the wireframe something to show:</p>
+
+  <ol class="steps">
+    <li><strong>One-time setup.</strong> In the Geometry tab, create a shape set (e.g. <code>_proxy</code>) containing a simple polygon — a 4-sided regular polygon works well. This is a project-wide resource; you only create it once.</li>
+    <li><strong>Assign the proxy to the sprite.</strong> In the Sprites tab, select the cycle sprite. In the inspector's <strong>Shape</strong> section, set <strong>Shape Set</strong> to <code>_proxy</code> and <strong>Shape</strong> to <code>square</code>. The proxy square appears in the wireframe at the sprite's world position.</li>
+    <li><strong>Size to match.</strong> Adjust <strong>Scale X</strong> and <strong>Scale Y</strong> until the proxy's wireframe footprint matches the intended on-screen area of the cycle. Because all rendering — Loom polygon states, SVG states — uses the same sprite transform, the proxy is a true WYSIWYG stand-in.</li>
+    <li><strong>Position using the wireframe.</strong> Drag or numerically set the sprite's position using the wireframe view as normal. Depth and camera responses apply identically.</li>
+  </ol>
+
+  <p>The proxy polygon is never rendered during playback. For cycle sprites, the cycle state rendering takes over completely each frame, bypassing the sprite's base shape. For SVG states specifically, the SVG draw path returns before any polygon drawing occurs. No renderer needs to be disabled.</p>
+
+  <div class="tip">All cycle sprites in a project can share the same <code>_proxy</code> shape set. Each sprite's individual Scale and Position fields give it unique on-screen placement.</div>
 
   <h3 id="cycles-loop">Loop Modes</h3>
   <table>
