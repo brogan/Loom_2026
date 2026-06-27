@@ -313,6 +313,8 @@ private struct GeometryInspector: View {
             }
             QuickSetupSection(folder: folder, geoName: name)
                 .environmentObject(controller)
+            CycleSetupSection(folder: folder, geoName: name)
+                .environmentObject(controller)
             PipelinesSection(geoName: name)
                 .environmentObject(controller)
         }
@@ -2969,6 +2971,296 @@ private struct PipelinesSection: View {
 
     private func deleteAllPipelines(_ pipelines: [PipelineSummary]) {
         pipelines.forEach { deletePipeline($0) }
+    }
+}
+
+// MARK: - Cycle Setup section
+
+/// Shown only when the geometry file has 2+ layers.
+/// Creates shape sets for every layer + one sprite + one renderer + one cycle.
+private struct CycleSetupSection: View {
+    @EnvironmentObject private var controller: AppController
+    let folder:  String
+    let geoName: String
+
+    @State private var baseName:         String       = ""
+    @State private var primaryLayerID:   String       = ""
+    @State private var spriteSetName:    String       = ""
+    @State private var rendererSetName:  String       = ""
+    @State private var rendererMode:     RendererMode = .filledStroked
+    @State private var cycleName:        String       = ""
+    @State private var holdFrames:       Int          = 4
+    @State private var transitionFrames: Int          = 2
+
+    var body: some View {
+        let layers = geometryLayers
+        guard layers.count >= 2 else { return AnyView(EmptyView()) }
+
+        return AnyView(InspectorSection("Cycle Setup") {
+            InspectorField("Base name") {
+                TextField("", text: $baseName)
+                    .textFieldStyle(.squareBorder)
+                    .font(.system(size: 11))
+                    .frame(maxWidth: .infinity)
+                    .onChange(of: baseName) { _, _ in applyRecommendedNames(overwrite: true) }
+            }
+            .loomHelp("Root name for the generated cycle, sprite, and renderer set.")
+
+            InspectorField("Primary layer") {
+                Picker("", selection: $primaryLayerID) {
+                    ForEach(layers, id: \.id) { layer in
+                        Text(layer.name).tag(layer.id.uuidString)
+                    }
+                }
+                .labelsHidden()
+                .pickerStyle(.menu)
+                .font(.system(size: 11))
+                .frame(maxWidth: .infinity)
+            }
+            .loomHelp("The layer used as the visible sprite. All other layers become cycle states.")
+
+            InspectorField("Sprite set") {
+                TextField("", text: $spriteSetName)
+                    .textFieldStyle(.squareBorder)
+                    .font(.system(size: 11))
+                    .frame(maxWidth: .infinity)
+            }
+
+            InspectorField("Renderer set") {
+                TextField("", text: $rendererSetName)
+                    .textFieldStyle(.squareBorder)
+                    .font(.system(size: 11))
+                    .frame(maxWidth: .infinity)
+            }
+
+            InspectorField("Mode") {
+                Picker("", selection: $rendererMode) {
+                    ForEach(RendererMode.allCases, id: \.self) { m in
+                        Text(m.displayName).tag(m)
+                    }
+                }
+                .labelsHidden()
+                .font(.system(size: 11))
+                .frame(maxWidth: .infinity)
+            }
+
+            InspectorField("Cycle name") {
+                TextField("", text: $cycleName)
+                    .textFieldStyle(.squareBorder)
+                    .font(.system(size: 11))
+                    .frame(maxWidth: .infinity)
+            }
+
+            InspectorField("Hold frames") {
+                HStack(spacing: 4) {
+                    Stepper("", value: $holdFrames, in: 1...120)
+                        .labelsHidden()
+                    Text("\(holdFrames)")
+                        .font(.system(size: 11, design: .monospaced))
+                        .frame(width: 28)
+                }
+            }
+            .loomHelp("How many frames each geometry layer is held before transitioning.")
+
+            InspectorField("Trans frames") {
+                HStack(spacing: 4) {
+                    Stepper("", value: $transitionFrames, in: 0...60)
+                        .labelsHidden()
+                    Text("\(transitionFrames)")
+                        .font(.system(size: 11, design: .monospaced))
+                        .frame(width: 28)
+                }
+            }
+            .loomHelp("Cross-fade frames between states. 0 = hard cut.")
+
+            Button("Make Cycle Setup") { makeCycleSetup(layers: layers) }
+                .frame(maxWidth: .infinity)
+                .font(.system(size: 11))
+                .disabled(!canMake)
+                .padding(.horizontal, 12)
+                .padding(.vertical, 3)
+        }
+        .onAppear {
+            if primaryLayerID.isEmpty, let first = layers.first {
+                primaryLayerID = first.id.uuidString
+            }
+            applyRecommendedNames(overwrite: false)
+        }
+        .onChange(of: geoName) { _, _ in
+            primaryLayerID = layers.first?.id.uuidString ?? ""
+            applyRecommendedNames(overwrite: true)
+        })
+    }
+
+    // MARK: - Helpers
+
+    private var stem: String {
+        let s = geoName.trimmingCharacters(in: .whitespacesAndNewlines)
+        let allowed = CharacterSet.alphanumerics.union(CharacterSet(charactersIn: "_-"))
+        let chars = s.unicodeScalars.map { allowed.contains($0) ? Character($0) : "_" }
+        return String(chars).trimmingCharacters(in: CharacterSet(charactersIn: "_"))
+    }
+
+    private func applyRecommendedNames(overwrite: Bool) {
+        func set(_ field: inout String, _ value: String) {
+            if overwrite || field.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                field = value
+            }
+        }
+        let s = stem.isEmpty ? "cycle" : stem
+        set(&baseName,        s)
+        set(&spriteSetName,   s)
+        set(&rendererSetName, "\(s)_renderer")
+        set(&cycleName,       "\(s)Cycle")
+    }
+
+    private var canMake: Bool {
+        !geoName.isEmpty &&
+        !primaryLayerID.isEmpty &&
+        !baseName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty &&
+        !cycleName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty &&
+        geometryLayers.count >= 2
+    }
+
+    private var geometryLayers: [EditableGeometryLayer] {
+        guard folder == "polygonSets",
+              let projectURL = controller.projectURL,
+              let def = controller.projectConfig?.polygonConfig.library.polygonSets
+                  .first(where: { $0.name == geoName }),
+              !def.filename.isEmpty,
+              def.filename.lowercased().hasSuffix(".json")
+        else { return [] }
+
+        let dir = (def.folder == "polygonSet" || def.folder.isEmpty) ? "polygonSets" : def.folder
+        let doc = try? EditableGeometryJSONLoader.load(
+            url: projectURL.appendingPathComponent(dir).appendingPathComponent(def.filename)
+        )
+        return doc?.layers ?? []
+    }
+
+    // MARK: - Build action
+
+    private func makeCycleSetup(layers: [EditableGeometryLayer]) {
+        guard let def = controller.projectConfig?.polygonConfig.library.polygonSets
+                .first(where: { $0.name == geoName })
+        else { return }
+
+        let base            = baseName.trimmingCharacters(in: .whitespacesAndNewlines)
+        let spriteSet       = spriteSetName.trimmingCharacters(in: .whitespacesAndNewlines)
+        let rendSet         = rendererSetName.trimmingCharacters(in: .whitespacesAndNewlines)
+        let cycleNameClean  = cycleName.trimmingCharacters(in: .whitespacesAndNewlines)
+        let primaryID       = primaryLayerID
+
+        controller.updateProjectConfig { cfg in
+            // 1. Polygon set + shape set per layer
+            var cycleStates: [SpriteCycleState] = []
+            var primaryShapeSetName = ""
+            var primaryShapeName    = ""
+
+            for layer in layers {
+                let layerStem    = sanitize(layer.name)
+                let polySetName  = "\(base)_\(layerStem)"
+                let shapeSetName = "\(base)_\(layerStem)_Shapes"
+                let shapeName    = "\(base)_\(layerStem)_Shape"
+
+                // Polygon set
+                let polyDef = PolygonSetDef(
+                    name: polySetName,
+                    folder: def.folder.isEmpty ? "polygonSets" : def.folder,
+                    filename: def.filename,
+                    polygonType: def.polygonType,
+                    regularParams: nil,
+                    editableLayerID: layer.id,
+                    editableLayerName: layer.name
+                )
+                if let idx = cfg.polygonConfig.library.polygonSets.firstIndex(where: { $0.name == polySetName }) {
+                    cfg.polygonConfig.library.polygonSets[idx] = polyDef
+                } else {
+                    cfg.polygonConfig.library.polygonSets.append(polyDef)
+                }
+
+                // Shape set
+                let shape = ShapeDef(
+                    name: shapeName,
+                    sourceType: .polygonSet,
+                    polygonSetName: polySetName,
+                    subdivisionParamsSetName: ""
+                )
+                if let setIdx = cfg.shapeConfig.library.shapeSets.firstIndex(where: { $0.name == shapeSetName }) {
+                    if let shpIdx = cfg.shapeConfig.library.shapeSets[setIdx].shapes
+                            .firstIndex(where: { $0.name == shapeName }) {
+                        cfg.shapeConfig.library.shapeSets[setIdx].shapes[shpIdx] = shape
+                    } else {
+                        cfg.shapeConfig.library.shapeSets[setIdx].shapes.append(shape)
+                    }
+                } else {
+                    cfg.shapeConfig.library.shapeSets.append(ShapeSet(name: shapeSetName, shapes: [shape]))
+                }
+
+                // Cycle state for this layer
+                let state = SpriteCycleState(
+                    shapeSetName: shapeSetName,
+                    shapeName: shapeName,
+                    holdFrames: holdFrames,
+                    transitionFrames: transitionFrames
+                )
+                cycleStates.append(state)
+
+                if layer.id.uuidString == primaryID {
+                    primaryShapeSetName = shapeSetName
+                    primaryShapeName    = shapeName
+                }
+            }
+
+            // 2. Renderer set (shared)
+            let rendererName = base
+            if !cfg.renderingConfig.library.rendererSets.contains(where: { $0.name == rendSet }) {
+                let renderer = Renderer(
+                    name: rendererName,
+                    mode: rendererMode,
+                    strokeWidth: 1.0,
+                    strokeColor: .black,
+                    fillColor: LoomColor(r: 220, g: 220, b: 220)
+                )
+                cfg.renderingConfig.library.rendererSets.append(
+                    RendererSet(name: rendSet, renderers: [renderer])
+                )
+            }
+
+            // 3. Cycle
+            let cycle = SpriteCycle(name: cycleNameClean, loopMode: .loop, states: cycleStates)
+            if let cyIdx = cfg.cycles.firstIndex(where: { $0.name == cycleNameClean }) {
+                cfg.cycles[cyIdx] = cycle
+            } else {
+                cfg.cycles.append(cycle)
+            }
+
+            // 4. One sprite on the primary layer with the cycle assigned
+            let spriteName = base
+            let sprite = SpriteDef(
+                name: spriteName,
+                shapeSetName: primaryShapeSetName.isEmpty ? (cycleStates.first.map { $0.shapeSetName } ?? "") : primaryShapeSetName,
+                shapeName: primaryShapeName.isEmpty ? (cycleStates.first.map { $0.shapeName } ?? "") : primaryShapeName,
+                rendererSetName: rendSet,
+                cycleName: cycleNameClean
+            )
+            if let setIdx = cfg.spriteConfig.library.spriteSets.firstIndex(where: { $0.name == spriteSet }) {
+                if let sprIdx = cfg.spriteConfig.library.spriteSets[setIdx].sprites
+                        .firstIndex(where: { $0.name == spriteName }) {
+                    cfg.spriteConfig.library.spriteSets[setIdx].sprites[sprIdx] = sprite
+                } else {
+                    cfg.spriteConfig.library.spriteSets[setIdx].sprites.append(sprite)
+                }
+            } else {
+                cfg.spriteConfig.library.spriteSets.append(SpriteSet(name: spriteSet, sprites: [sprite]))
+            }
+        }
+    }
+
+    private func sanitize(_ s: String) -> String {
+        let allowed = CharacterSet.alphanumerics.union(CharacterSet(charactersIn: "_-"))
+        let chars = s.unicodeScalars.map { allowed.contains($0) ? Character($0) : "_" }
+        return String(chars).trimmingCharacters(in: CharacterSet(charactersIn: "_"))
     }
 }
 
