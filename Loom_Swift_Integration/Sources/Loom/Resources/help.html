@@ -205,6 +205,7 @@
   <a class="nav-link" href="#global">Global</a>
   <a class="nav-link" href="#geometry">Geometry</a>
   <a class="nav-link nav-sub" href="#geometry-editor">Editor Tools</a>
+  <a class="nav-link nav-sub" href="#geometry-cycle-setup">Cycle Setup</a>
   <a class="nav-link nav-sub" href="#geometry-layers">Layers</a>
   <a class="nav-link nav-sub" href="#geometry-morph-layers">Morph Layer Import</a>
   <a class="nav-link nav-sub" href="#geometry-pressure">Pressure Sensitivity</a>
@@ -670,6 +671,33 @@
     <li>If the geometry is not subdividable, the subdivision field shows <strong>None</strong>. Polygonal geometry can also be deliberately assigned <strong>None</strong> when subdivision is not wanted.</li>
     <li>Make Pipeline creates the necessary behind-the-scenes links but leaves you in the current tab. A visual status signal confirms that the pipeline has been built.</li>
   </ul>
+
+  <h3 id="geometry-cycle-setup">Cycle setup</h3>
+  <p>When the selected geometry file has two or more layers, a <strong>Cycle Setup</strong> section appears below Quick Setup. It creates everything needed for a cycle animation in one step — without requiring separate sprites for each geometry layer.</p>
+  <p>Fill in the fields and click <strong>Make Cycle Setup</strong>:</p>
+  <table>
+    <thead><tr><th>Field</th><th>Description</th></tr></thead>
+    <tbody>
+      <tr><td>Base name</td><td>Root name used to derive all generated asset names.</td></tr>
+      <tr><td>Primary layer</td><td>The geometry layer used as the visible sprite. This is the layer the sprite will display when no cycle override is active — typically the neutral or rest pose.</td></tr>
+      <tr><td>Sprite set</td><td>The sprite set the new sprite is added to.</td></tr>
+      <tr><td>Renderer set</td><td>A single shared renderer set created for the sprite. All cycle states inherit it by default.</td></tr>
+      <tr><td>Mode</td><td>Drawing mode for the renderer (Stroked, Filled, Filled+Stroked, etc.).</td></tr>
+      <tr><td>Cycle name</td><td>Name of the new SpriteCycle created and assigned to the sprite.</td></tr>
+      <tr><td>Hold frames</td><td>How many frames each layer is displayed before transitioning. Applied to all states equally; adjust individual states in the Cycles tab afterwards.</td></tr>
+      <tr><td>Trans frames</td><td>Cross-fade frames between states. 0 = hard cut.</td></tr>
+    </tbody>
+  </table>
+  <p>What Cycle Setup creates:</p>
+  <ul>
+    <li>A <strong>polygon set</strong> for each layer (so each layer can be addressed independently)</li>
+    <li>A <strong>shape set</strong> for each layer (one shape per set)</li>
+    <li>One <strong>renderer set</strong> shared by the sprite and used as the default for all cycle states</li>
+    <li>One <strong>SpriteCycle</strong> with one state per layer, in layer order</li>
+    <li>One <strong>sprite</strong> assigned to the primary layer with the cycle already wired</li>
+  </ul>
+  <p>No additional sprites are created for the secondary layers — they exist only as shape sets referenced by the cycle states. Open the <strong>Cycles tab</strong> after running Cycle Setup to reorder states, adjust per-state hold and transition frames, add renderer overrides, or change easing.</p>
+  <div class="tip"><strong>Compared to Quick Setup.</strong> Quick Setup builds one pipeline (geometry → subdivision → shape → renderer → sprite) per run. It is the right tool when you want full control over each pipeline or when you have a single-layer geometry. Cycle Setup is the right tool when your geometry file has multiple layers representing animation frames of the same subject — it creates the minimal asset set for cycle playback with no redundant sprites to manage.</div>
 
   <h3 id="geometry-editor">Geometry Editor</h3>
   <p>The editor opens as an overlay covering the canvas. It provides a full set of vector-drawing tools for layered JSON geometry. The editor title bar includes a <strong>Default Geometry View</strong> button to return to the normal geometry preview.</p>
@@ -2119,7 +2147,7 @@
     <tbody>
       <tr><td>Select one keyframe</td><td>Click a diamond.</td></tr>
       <tr><td>Add or remove from selection</td><td><kbd>Shift</kbd>-click a keyframe.</td></tr>
-      <tr><td>Rubber-band select</td><td>Drag across the timeline body to select keyframes across one or more lanes.</td></tr>
+      <tr><td>Rubber-band select</td><td><kbd>⌘</kbd>-drag anywhere on the timeline body to draw a selection rectangle — all keyframes whose diamonds fall inside are selected. <kbd>⌘⇧</kbd>-drag adds to the existing selection rather than replacing it.</td></tr>
       <tr><td>Select a full lane</td><td>Click the lane label to select all keyframes in that lane.</td></tr>
       <tr><td>Select all keyframes</td><td>Press <kbd>⌘A</kbd> to select every keyframe in the entire timeline — all sprites, all lanes, all renderer lanes, and all camera lanes — regardless of whether rows are expanded.</td></tr>
       <tr><td>Delete selected</td><td>Press <kbd>Delete</kbd> or <kbd>Backspace</kbd>.</td></tr>
@@ -2143,7 +2171,7 @@
 
   <h4>Workflow</h4>
   <ol class="steps">
-    <li>Select the keyframes you want to retime. Use rubber-band drag for a region, click a lane label for a full lane, or press <kbd>⌘A</kbd> to select everything.</li>
+    <li>Select the keyframes you want to retime. Use <kbd>⌘</kbd>-drag for a rubber-band region, click a lane label for a full lane, or press <kbd>⌘A</kbd> to select everything.</li>
     <li>When two or more keyframes are selected, a <strong>scale field</strong> appears in the top-left corner of the timeline header alongside the zoom buttons. It shows <strong>100</strong> (percent).</li>
     <li>Type a new percentage value:
       <ul>
