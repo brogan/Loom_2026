@@ -38,7 +38,8 @@ struct SpriteCycleEditorView: View {
                 emptyCycleMessage
             }
         }
-        .frame(width: 680, height: 540)
+        .frame(minWidth: 560, idealWidth: 680, maxWidth: .infinity,
+               minHeight: 440, idealHeight: 540, maxHeight: .infinity)
         .background(Color(nsColor: .windowBackgroundColor))
     }
 
