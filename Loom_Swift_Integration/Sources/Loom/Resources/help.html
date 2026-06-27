@@ -838,11 +838,13 @@
       <tr><td><span class="icon-key">−</span>Zoom out</td><td>Decrease the editor view scale.</td></tr>
       <tr><td><span class="icon-key">✋</span>Pan view</td><td>Drag the canvas to move the editor view without moving geometry.</td></tr>
       <tr><td><span class="icon-key">#</span>Grid</td><td>Show or hide the grid. The grid detail menu offers Quadrants, Standard, and Fine views.</td></tr>
+      <tr><td><span class="icon-key">⊞</span>Canvas frame</td><td>Overlay the project canvas proportions as an amber guide rectangle. The rectangle is fitted inside the editor's ±0.52 square to preserve the correct aspect ratio. A dimension label (e.g. <em>1920 × 1080</em>) appears at the top-left corner. Use this as a placement reference when designing geometry intended to fill or align to the final render frame — for backgrounds, full-bleed shapes, or stamp point layouts.</td></tr>
       <tr><td><span class="icon-key">⊙</span>Controls</td><td>Show or hide Bézier control points.</td></tr>
       <tr><td><span class="icon-key">▧</span>Reference image</td><td>Load a greyed-out background image for tracing or mesh construction. Adjust opacity, toggle visibility, or clear it. Reference images are never rendered.</td></tr>
     </tbody>
   </table>
   <p>Snap operations always use the finest internal grid spacing, even when the visible grid is set to Quadrants or Standard.</p>
+  <div class="note"><strong>Canvas frame guide and coordinate space.</strong> The geometry editor uses a normalised coordinate space independent of canvas pixel dimensions. The canvas frame guide shows the correct <em>proportions</em> of your render output — it does not map geometry coordinates to canvas pixels. For geometry that should fill the frame, design it to fit within the amber rectangle; the sprite's position and scale transforms then place it on the canvas.</div>
 
   <h4>Delete and File controls</h4>
   <table class="control-table">

@@ -193,9 +193,10 @@ final class AppController: ObservableObject, @unchecked Sendable {
     @Published var geometryEditorLastClickPosition: Vector2D = .zero
     @Published var geometryEditorViewZoom:        Double = 1.0
     @Published var geometryEditorViewCentre:      Vector2D = .zero
-    @Published var geometryEditorShowsGrid:       Bool = true
+    @Published var geometryEditorShowsGrid:          Bool = true
     @Published var geometryEditorShowsControlPoints: Bool = true
-    @Published var geometryEditorGridDetail:      GeometryEditorGridDetail = .standard
+    @Published var geometryEditorGridDetail:         GeometryEditorGridDetail = .standard
+    @Published var geometryEditorShowsCanvasFrame:   Bool = false
     @Published var geometryEditorReferenceImage:  NSImage? = nil
     @Published var geometryEditorReferenceImageURL: URL? = nil
     @Published var geometryEditorShowsReferenceImage: Bool = true

@@ -1001,6 +1001,16 @@ private struct GeometryEditorMainShell: View {
 
                 Divider().frame(height: 16)
 
+                // Canvas frame guide
+                toolbarIconButton(
+                    help: "Show canvas frame: overlay the project's canvas proportions as a guide rectangle",
+                    selected: controller.geometryEditorShowsCanvasFrame
+                ) {
+                    Image(systemName: "aspectratio").font(.system(size: 13))
+                } action: { controller.geometryEditorShowsCanvasFrame.toggle() }
+
+                Divider().frame(height: 16)
+
                 // Morph target lock
                 Button {
                     controller.toggleCurrentGeometryMorphTargetLock()
@@ -1619,6 +1629,7 @@ private struct EditableGeometryCanvas: View {
                  with: .color(Color(red: 0.105, green: 0.108, blue: 0.12)))
         drawReferenceImage(ctx: ctx, project: projectPoint)
         drawGrid(ctx: ctx, size: size, project: projectPoint)
+        drawCanvasFrame(ctx: ctx, project: projectPoint)
 
         for layer in document.layers where layerCanDraw(layer) {
             for polygon in layer.polygons where polygon.isVisible {
@@ -1743,6 +1754,53 @@ private struct EditableGeometryCanvas: View {
             value += step
         }
         ctx.stroke(path, with: .color(color), lineWidth: lineWidth)
+    }
+
+    private func drawCanvasFrame(ctx: GraphicsContext, project: (Vector2D) -> CGPoint) {
+        guard controller.geometryEditorShowsCanvasFrame,
+              let cfg = controller.projectConfig
+        else { return }
+
+        let cw = Double(max(1, cfg.globalConfig.width))
+        let ch = Double(max(1, cfg.globalConfig.height))
+        let aspect = cw / ch
+
+        // Fit the canvas rect inside the ±0.52 square, preserving aspect ratio.
+        let halfW: Double
+        let halfH: Double
+        if aspect >= 1.0 {
+            halfW = 0.52
+            halfH = 0.52 / aspect
+        } else {
+            halfH = 0.52
+            halfW = 0.52 * aspect
+        }
+
+        let tl = project(Vector2D(x: -halfW, y: -halfH))
+        let tr = project(Vector2D(x:  halfW, y: -halfH))
+        let br = project(Vector2D(x:  halfW, y:  halfH))
+        let bl = project(Vector2D(x: -halfW, y:  halfH))
+
+        var frame = Path()
+        frame.move(to: tl)
+        frame.addLine(to: tr)
+        frame.addLine(to: br)
+        frame.addLine(to: bl)
+        frame.closeSubpath()
+
+        // Subtle fill so the canvas area reads as distinct from the margins.
+        ctx.fill(frame, with: .color(Color.white.opacity(0.03)))
+        ctx.stroke(frame, with: .color(Color(red: 1.0, green: 0.72, blue: 0.2).opacity(0.80)), lineWidth: 1.5)
+
+        // Dimension label in the top-left corner of the frame.
+        let label = "\(cfg.globalConfig.width) × \(cfg.globalConfig.height)"
+        ctx.draw(
+            Text(label)
+                .font(.system(size: 9, design: .monospaced))
+                .foregroundStyle(Color(red: 1.0, green: 0.72, blue: 0.2).opacity(0.70)),
+            at: CGPoint(x: tl.x + 4, y: tl.y + 10),
+            anchor: .leading
+        )
     }
 
     private func draw(
