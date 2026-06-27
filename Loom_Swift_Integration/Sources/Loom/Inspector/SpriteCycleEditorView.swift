@@ -172,10 +172,10 @@ struct SpriteCycleEditorView: View {
 
                 VStack(alignment: .leading, spacing: 1) {
                     if let svg = state.svgFilename {
-                        Text(svg.isEmpty ? "No SVG file" : svg)
+                        Text(svg.isEmpty ? "No image file" : svg)
                             .font(.system(size: 12))
                             .lineLimit(1)
-                        Text("SVG sprite")
+                        Text("Image sprite")
                             .font(.system(size: 10))
                             .foregroundStyle(.tertiary)
                     } else {
@@ -252,7 +252,7 @@ struct SpriteCycleEditorView: View {
                     }
                 )) {
                     Text("Loom").tag(false)
-                    Text("SVG").tag(true)
+                    Text("Image").tag(true)
                 }
                 .pickerStyle(.segmented)
                 .labelsHidden()
@@ -260,8 +260,8 @@ struct SpriteCycleEditorView: View {
             }
 
             if isSVG {
-                // SVG file
-                stateDetailRow("SVG File") {
+                // Image file
+                stateDetailRow("Image File") {
                     HStack(spacing: 6) {
                         Text(svgFilename.isEmpty ? "No file chosen" : svgFilename)
                             .font(.system(size: 11))
@@ -359,11 +359,11 @@ struct SpriteCycleEditorView: View {
 
     private func pickSVGFile(cycleIdx: Int, stateIdx: Int) {
         let panel = NSOpenPanel()
-        panel.allowedContentTypes = [UTType(filenameExtension: "svg") ?? .data]
+        panel.allowedContentTypes = [.image, UTType(filenameExtension: "svg") ?? .image]
         panel.canChooseFiles = true
         panel.canChooseDirectories = false
         panel.allowsMultipleSelection = false
-        panel.message = "Select an SVG file for this cycle state"
+        panel.message = "Select an image file (SVG, PNG, JPG, TIFF, GIF) for this cycle state"
         panel.begin { response in
             guard response == .OK, let url = panel.url else { return }
             guard let projectURL = controller.projectURL else { return }

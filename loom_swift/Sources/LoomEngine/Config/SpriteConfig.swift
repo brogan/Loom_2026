@@ -59,12 +59,13 @@ public struct SpriteDef: Codable, Sendable {
     /// negative = closer. Requires `CameraConfig.perspectiveStrength > 0` to have any visual effect.
     public var depth: Double = 0
 
-    // MARK: SVG sprite
+    // MARK: Image sprite
 
-    /// Filename of an SVG file in the project's `svg_sprites/` subdirectory.
-    /// When set, this sprite renders the SVG image using all standard transform drivers
-    /// (position, scale, rotation, opacity, depth/parallax, camera, hierarchy, gate).
-    /// The shape/renderer pipeline is bypassed.
+    /// Filename of an image file (SVG, PNG, JPG, TIFF, GIF) in the project's
+    /// `svgs/sprites/` subdirectory. When set, this sprite renders the image using
+    /// all standard transform drivers (position, scale, rotation, opacity,
+    /// depth/parallax, camera, hierarchy, gate). The shape/renderer pipeline is bypassed.
+    /// JSON key kept as `svgFilename` for backward compatibility.
     public var svgFilename: String?
 
     // MARK: SpriteCycle

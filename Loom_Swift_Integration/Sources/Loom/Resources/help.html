@@ -214,10 +214,10 @@
   <a class="nav-link nav-sub" href="#sprites-coordinates">Coordinate System</a>
   <a class="nav-link nav-sub" href="#sprites-hierarchy">Hierarchy</a>
   <a class="nav-link nav-sub" href="#sprites-depth">Depth &amp; Parallax</a>
-  <a class="nav-link nav-sub" href="#sprites-svg">SVG Sprites</a>
+  <a class="nav-link nav-sub" href="#sprites-svg">Image Sprites</a>
   <a class="nav-link" href="#cycles">Cycles</a>
   <a class="nav-link nav-sub" href="#cycles-states">States &amp; Transitions</a>
-  <a class="nav-link nav-sub" href="#cycles-svg">SVG States</a>
+  <a class="nav-link nav-sub" href="#cycles-svg">Image States</a>
   <a class="nav-link nav-sub" href="#cycles-loop">Loop Modes</a>
   <a class="nav-link nav-sub" href="#cycles-assign">Assigning Cycles</a>
   <a class="nav-link nav-sub" href="#cycles-manage">Renaming &amp; Duplicating</a>
@@ -1249,55 +1249,55 @@
 
   <div class="tip"><strong>Tip:</strong> Camera zoom animation also creates depth — zooming in makes background sprites grow more slowly than focal-plane sprites, giving a push-in feel. Both the pan offset and the zoom factor are scaled by <code>f</code>, so depth interacts equally with all camera motion.</div>
 
-  <h3 id="sprites-svg">SVG Sprites</h3>
-  <p>Any sprite can display an SVG image file in place of its polygon geometry. The SVG is rendered at full vector quality each frame by macOS — it is re-rasterised at the correct screen size automatically, so there is no resolution loss when the sprite is scaled up. All standard transform drivers and camera features apply exactly as they do to polygon sprites.</p>
+  <h3 id="sprites-svg">Image Sprites</h3>
+  <p>Any sprite can display an image file in place of its polygon geometry. Supported formats are <strong>SVG, PNG, JPG, TIFF, GIF,</strong> and <strong>WebP</strong>. macOS renders SVGs at full vector quality (no resolution loss at any scale); raster formats (PNG, JPG, etc.) render at their native pixel resolution and will soften if scaled up significantly. All standard transform drivers and camera features apply exactly as they do to polygon sprites.</p>
 
-  <p>The intended workflow pairs SVG sprites with <a href="#geometry-svg-import">SVG Geometry Import</a>: design artwork in Inkscape with full colour, gradients, and fills; import the <em>geometry</em> into Loom for subdivision and rendering experiments; place the <em>styled SVG</em> in <code>svgs/sprites/</code> to use as an animated sprite that retains Inkscape's visual style.</p>
+  <p>This is the direct, intuitive path for incorporating bitmap artwork — photographs, painted backgrounds, conventional sprites, UI elements — without passing through the polygon or renderer pipeline at all.</p>
 
   <h4>Setup</h4>
   <ol class="steps">
-    <li>Place one or more <code>.svg</code> files in the project's <code>svgs/sprites/</code> folder. Loom creates this folder automatically inside every project's <code>svgs/</code> directory.</li>
-    <li>In the Sprites tab, select the sprite you want to assign the SVG to.</li>
-    <li>In the inspector's <strong>Sprite</strong> section, a dropdown labelled <strong>SVG sprite</strong> appears (it is hidden when <code>svgs/sprites/</code> is empty). Choose the filename from the list.</li>
-    <li>The sprite now renders the SVG instead of its polygon geometry. The renderer set and subdivision set assigned to that sprite are bypassed — the SVG carries its own internal styling.</li>
+    <li>Place one or more image files in the project's <code>svgs/sprites/</code> folder. Loom creates this folder automatically. Any mix of SVG, PNG, JPG, TIFF, GIF, or WebP files is accepted.</li>
+    <li>In the Sprites tab, select the sprite.</li>
+    <li>In the inspector's <strong>Sprite</strong> section, an <strong>Image</strong> dropdown appears (hidden when <code>svgs/sprites/</code> is empty). Choose the filename.</li>
+    <li>The sprite now renders the image. The renderer set and subdivision set are bypassed — the image carries its own visual styling.</li>
     <li>Adjust position, scale, rotation, and depth in the Transform section as usual. Animate any of these with the Animation drivers.</li>
   </ol>
 
-  <div class="tip"><strong>Tip:</strong> To revert to polygon rendering, set the SVG sprite picker back to <strong>None</strong>. The sprite's geometry and renderer set are preserved and resume drawing immediately.</div>
+  <div class="tip"><strong>Tip:</strong> To revert to polygon rendering, set the Image picker back to <strong>None</strong>. The sprite's geometry and renderer set are preserved and resume immediately.</div>
 
-  <h4>What drivers apply to SVG sprites</h4>
+  <h4>What drivers apply to image sprites</h4>
   <table>
-    <thead><tr><th>Driver / feature</th><th>Works with SVG sprite?</th></tr></thead>
+    <thead><tr><th>Driver / feature</th><th>Works?</th></tr></thead>
     <tbody>
       <tr><td>Position X / Y</td><td>Yes — all modes (constant, noise, oscillator, keyframe)</td></tr>
       <tr><td>Scale X / Y</td><td>Yes — scales the drawn image rectangle</td></tr>
       <tr><td>Rotation</td><td>Yes — rotates around the sprite's world-space centre</td></tr>
-      <tr><td>Opacity</td><td>Yes — fades the entire SVG image uniformly</td></tr>
+      <tr><td>Opacity</td><td>Yes — fades the entire image uniformly</td></tr>
       <tr><td>Depth / parallax</td><td>Yes — depth value works with camera perspective strength</td></tr>
-      <tr><td>Camera (pan, zoom, rotation, tracking)</td><td>Yes — SVG position and orientation follow camera transforms</td></tr>
+      <tr><td>Camera (pan, zoom, rotation, tracking)</td><td>Yes — image position and orientation follow camera transforms</td></tr>
       <tr><td>Parent / child hierarchy</td><td>Yes — position, rotation, and scale inheritance all work</td></tr>
       <tr><td>Gate (frame in / out)</td><td>Yes — sprite is hidden outside the gate range</td></tr>
-      <tr><td>Shape variants / shape driver</td><td>No — the shape driver selects between polygon geometry variants, not SVG files</td></tr>
+      <tr><td>Shape variants / shape driver</td><td>No — the shape driver selects between polygon geometry variants</td></tr>
       <tr><td>Morph targets</td><td>No — morph interpolation operates on polygon point arrays</td></tr>
       <tr><td>Subdivision</td><td>No — subdivision is a polygon-only operation</td></tr>
-      <tr><td>Renderer set (stroke, fill, brush)</td><td>No — the SVG renders its own internal styling</td></tr>
+      <tr><td>Renderer set (stroke, fill, brush)</td><td>No — the image carries its own styling</td></tr>
     </tbody>
   </table>
 
   <h4>Wireframe positioning proxy</h4>
-  <p>SVG sprites have no polygon geometry, so they are invisible in the wireframe view and cannot be positioned visually using the standard drag tools. The solution is to assign a lightweight <strong>proxy polygon</strong> to the sprite's base shape fields. The wireframe draws this proxy; the renderer ignores it at runtime because the <code>svgFilename</code> path returns before any polygon drawing occurs.</p>
+  <p>Image sprites have no polygon geometry, so they are invisible in the wireframe view and cannot be positioned visually using the standard drag tools. The solution is to assign a lightweight <strong>proxy polygon</strong> to the sprite's base shape fields. The wireframe draws this proxy; the renderer ignores it at runtime because the image draw path returns before any polygon rendering occurs.</p>
 
   <ol class="steps">
-    <li><strong>One-time setup — create the proxy shape.</strong> In the <strong>Geometry tab</strong>, create a polygon set. A 4-sided regular polygon at the default size works well; name the set something like <code>_proxy</code> and the shape <code>square</code>. You only need to do this once per project.</li>
-    <li><strong>Assign the proxy to the sprite.</strong> Select the SVG sprite in the Sprites tab. In the inspector's <strong>Shape</strong> section, set <strong>Shape Set</strong> to <code>_proxy</code> and <strong>Shape</strong> to <code>square</code>. The proxy square immediately appears in the wireframe view at the sprite's current position.</li>
-    <li><strong>Size the proxy to match the SVG.</strong> Use the sprite's <strong>Scale X</strong> and <strong>Scale Y</strong> fields to match the proxy square's on-screen footprint to the expected size and aspect ratio of the SVG. Because the SVG is rendered at the same transform, the proxy and the SVG will overlap exactly in the final output.</li>
-    <li><strong>Position using the wireframe.</strong> With the proxy visible, use the wireframe view to drag or numerically position the sprite as you would any polygon sprite. Camera panning, zoom, and the parallax depth value all behave identically.</li>
-    <li><strong>Verify in the canvas.</strong> Switch to the live canvas to confirm the SVG appears where the proxy indicated. No further adjustment is normally needed — the proxy and SVG share the same transform.</li>
+    <li><strong>One-time setup — create the proxy shape.</strong> In the <strong>Geometry tab</strong>, create a polygon set. A 4-sided regular polygon works well; name the set something like <code>_proxy</code> and the shape <code>square</code>. You only need to do this once per project.</li>
+    <li><strong>Assign the proxy to the sprite.</strong> Select the image sprite in the Sprites tab. In the inspector's <strong>Shape</strong> section, set <strong>Shape Set</strong> to <code>_proxy</code> and <strong>Shape</strong> to <code>square</code>. The proxy square immediately appears in the wireframe view at the sprite's current position.</li>
+    <li><strong>Size the proxy to match the image.</strong> Use the sprite's <strong>Scale X</strong> and <strong>Scale Y</strong> fields to match the proxy's wireframe footprint to the intended on-screen area of the image. The image is rendered at the same transform, so the proxy is a true WYSIWYG stand-in.</li>
+    <li><strong>Position using the wireframe.</strong> Use the wireframe view to drag or numerically position the sprite as you would any polygon sprite. Camera panning, zoom, and parallax depth behave identically.</li>
+    <li><strong>Verify in the canvas.</strong> Switch to the live canvas to confirm the image appears where the proxy indicated. No further adjustment is normally needed.</li>
   </ol>
 
-  <div class="tip"><strong>Multiple SVG sprites sharing a proxy.</strong> All SVG sprites in a project can share the same proxy shape set — each sprite's individual Scale and Position fields determine its unique on-screen placement. You never need more than one proxy shape.</div>
+  <div class="tip"><strong>All image sprites in a project can share the same proxy shape set.</strong> Each sprite's individual Scale and Position fields give it unique on-screen placement. You never need more than one proxy shape.</div>
 
-  <div class="note"><strong>Why the proxy is invisible at runtime.</strong> When a sprite has <code>svgFilename</code> set, Loom's render loop immediately routes to the SVG draw path and returns, bypassing the polygon pipeline entirely. The proxy geometry is loaded into the wireframe but is never touched during rendering. There is no "turn off rendering" step required.</div>
+  <div class="note"><strong>Why the proxy is invisible at runtime.</strong> When a sprite has an image assigned, Loom's render loop immediately routes to the image draw path and returns, bypassing the polygon pipeline entirely. There is no "turn off rendering" step required.</div>
 
   <h4>File location and loading</h4>
   <p>SVG files must be placed in <code>&lt;project&gt;/svgs/sprites/</code>. This folder is created automatically when a project is first opened. Loom loads all <code>.svg</code> files from this directory at project-open time. If you add or remove files while the project is open, use <strong>Reload</strong> (<kbd>⌘R</kbd>) to pick up the changes.</p>
@@ -1367,38 +1367,34 @@
 
   <div class="note"><strong>Hard cuts and offscreen compositing.</strong> Hard-cut states (Trans frames = 0) are rendered directly into the main context with zero additional cost. Cross-fade transitions use an offscreen CGContext per layer and alpha-composite the result, so they carry a per-frame memory and GPU cost proportional to canvas size. Use transitions deliberately rather than by default.</div>
 
-  <h3 id="cycles-svg">SVG states</h3>
-  <p>Each cycle state has a <strong>Source</strong> toggle at the top of its expanded detail panel: <strong>Loom</strong> (the default) or <strong>SVG</strong>. In SVG mode the state references a self-contained SVG file instead of a Loom polygon and renderer set. The hold frames, transition frames, easing, and loop mode all work identically regardless of source type.</p>
+  <h3 id="cycles-svg">Image states</h3>
+  <p>Each cycle state has a <strong>Source</strong> toggle at the top of its expanded detail panel: <strong>Loom</strong> (the default) or <strong>Image</strong>. In Image mode the state references an image file — SVG, PNG, JPG, TIFF, or GIF — instead of a Loom polygon and renderer set. The hold frames, transition frames, easing, and loop mode all work identically regardless of source type.</p>
 
-  <h4>Why SVG states?</h4>
-  <p>Loom's renderer applies a single style uniformly to all polygons in a sprite. SVG files carry per-path fill and stroke natively, so a single SVG can represent a multi-coloured character — face, hair, eyes, and clothing each in their own colour — without any changes to Loom's polygon or renderer data model. SVG states are the intended tool for conventional sprites where per-element colouring matters.</p>
+  <h4>Why image states?</h4>
+  <p>Loom's renderer applies a single style uniformly to all polygons in a sprite. Image files carry their own per-element colour, texture, and shading, making them the natural tool for conventional animation sprites: a painted walk cycle, a photograph sequence, or a multi-coloured character where face, hair, and clothing each need their own colour. SVG images scale without resolution loss; PNG/JPG bitmaps give you full painted or photographic quality at a fixed resolution.</p>
 
-  <h4>Setting up an SVG state</h4>
+  <h4>Setting up an image state</h4>
   <ol class="steps">
     <li>Open the cycle editor and expand a state row.</li>
-    <li>In the <strong>Source</strong> picker at the top of the detail section, select <strong>SVG</strong>. The shape set, shape, and renderer controls are replaced by an SVG File row.</li>
-    <li>Click <strong>Choose…</strong> to open a file picker. Select any <code>.svg</code> file on disk. Loom copies it into the project's <code>svgs/sprites/</code> folder automatically and stores the filename.</li>
-    <li>The cycle editor preview updates immediately to show the SVG image. The Loom canvas will show the SVG after the project is reloaded (the engine loads <code>svgs/sprites/</code> at project open time).</li>
+    <li>In the <strong>Source</strong> picker at the top of the detail section, select <strong>Image</strong>. The shape set, shape, and renderer controls are replaced by an Image File row.</li>
+    <li>Click <strong>Choose…</strong> to open a file picker. Select any SVG, PNG, JPG, TIFF, or GIF file on disk. Loom copies it into the project's <code>svgs/sprites/</code> folder automatically and stores the filename.</li>
+    <li>The cycle editor preview updates immediately to show the image. The Loom canvas will show it after the project is reloaded (the engine loads <code>svgs/sprites/</code> at project open time).</li>
   </ol>
 
   <h4>Rendering and transitions</h4>
-  <p>SVG states are rasterised to an image and blitted at the sprite's current transform — position, scale, and rotation keyframes all apply normally. Cross-fade transitions between SVG states, or between an SVG state and a Loom polygon state, composite correctly at their respective alphas via the same offscreen mechanism used for Loom transitions.</p>
+  <p>Image states are drawn at the sprite's current transform — position, scale, and rotation keyframes all apply normally. Cross-fade transitions between image states, or between an image state and a Loom polygon state, composite correctly at their respective alphas via the same offscreen mechanism used for Loom transitions.</p>
 
-  <div class="tip"><strong>Keeping the Loom aesthetic.</strong> SVG files carry their own styling, so you are not constrained to Loom's renderer. If you want to match Loom's flat, solid-fill look, simply author the SVG with flat fills and no gradients or filters. The visual result is indistinguishable from a Loom renderer-set fill, and you gain per-path colour control.</div>
-
-  <div class="note"><strong>Project reload required for live canvas.</strong> The engine loads <code>svgs/sprites/</code> once at project open. After adding a new SVG file via Choose…, the cycle editor preview shows it immediately (it loads direct from disk), but the rendered canvas will not show it until you close and reopen the project. Replacing an existing file with the same filename takes effect on the next project open as well.</div>
+  <div class="note"><strong>Project reload required for live canvas.</strong> The engine loads <code>svgs/sprites/</code> once at project open. After adding a new file via Choose…, the cycle editor preview shows it immediately (it loads direct from disk), but the rendered canvas will not show it until you close and reopen the project.</div>
 
   <h4>Wireframe positioning proxy for cycle sprites</h4>
-  <p>A cycle sprite — whether its states are Loom polygons, SVGs, or a mix — has no base geometry displayed in the wireframe view unless the sprite's own <strong>Shape Set</strong> and <strong>Shape</strong> fields are populated independently of the cycle. The proxy strategy gives the wireframe something to show:</p>
+  <p>A cycle sprite — whether its states are Loom polygons, images, or a mix — has no base geometry displayed in the wireframe view unless the sprite's own <strong>Shape Set</strong> and <strong>Shape</strong> fields are populated independently of the cycle. The proxy strategy gives the wireframe something to show:</p>
 
   <ol class="steps">
     <li><strong>One-time setup.</strong> In the Geometry tab, create a shape set (e.g. <code>_proxy</code>) containing a simple polygon — a 4-sided regular polygon works well. This is a project-wide resource; you only create it once.</li>
     <li><strong>Assign the proxy to the sprite.</strong> In the Sprites tab, select the cycle sprite. In the inspector's <strong>Shape</strong> section, set <strong>Shape Set</strong> to <code>_proxy</code> and <strong>Shape</strong> to <code>square</code>. The proxy square appears in the wireframe at the sprite's world position.</li>
-    <li><strong>Size to match.</strong> Adjust <strong>Scale X</strong> and <strong>Scale Y</strong> until the proxy's wireframe footprint matches the intended on-screen area of the cycle. Because all rendering — Loom polygon states, SVG states — uses the same sprite transform, the proxy is a true WYSIWYG stand-in.</li>
-    <li><strong>Position using the wireframe.</strong> Drag or numerically set the sprite's position using the wireframe view as normal. Depth and camera responses apply identically.</li>
+    <li><strong>Size to match.</strong> Adjust <strong>Scale X</strong> and <strong>Scale Y</strong> until the proxy's wireframe footprint matches the intended on-screen area of the cycle. All rendering — Loom polygon states, image states — uses the same sprite transform, so the proxy is a true WYSIWYG stand-in.</li>
+    <li><strong>Position using the wireframe.</strong> Drag or numerically set the sprite's position as normal. Depth and camera responses apply identically.</li>
   </ol>
-
-  <p>The proxy polygon is never rendered during playback. For cycle sprites, the cycle state rendering takes over completely each frame, bypassing the sprite's base shape. For SVG states specifically, the SVG draw path returns before any polygon drawing occurs. No renderer needs to be disabled.</p>
 
   <div class="tip">All cycle sprites in a project can share the same <code>_proxy</code> shape set. Each sprite's individual Scale and Position fields give it unique on-screen placement.</div>
 

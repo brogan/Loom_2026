@@ -450,15 +450,16 @@ public struct LoomEngine: @unchecked Sendable {
     }
 
 #if canImport(AppKit)
-    /// Load all SVG files from `<projectDirectory>/svgs/sprites/`, keyed by filename.
-    /// NSImage on macOS natively renders SVG as vector — no pre-rasterization.
+    /// Load all image files (SVG, PNG, JPG, TIFF, GIF) from `<projectDirectory>/svgs/sprites/`,
+    /// keyed by filename. NSImage handles all formats natively.
     private static func loadSVGImages(projectDirectory: URL) -> [String: NSImage] {
         let directory = projectDirectory.appendingPathComponent("svgs/sprites")
         guard let entries = try? FileManager.default.contentsOfDirectory(
             at: directory, includingPropertiesForKeys: nil
         ) else { return [:] }
+        let supported: Set<String> = ["svg", "png", "jpg", "jpeg", "tiff", "tif", "gif", "webp"]
         var result: [String: NSImage] = [:]
-        for url in entries where url.pathExtension.lowercased() == "svg" {
+        for url in entries where supported.contains(url.pathExtension.lowercased()) {
             if let img = NSImage(contentsOf: url) {
                 result[url.lastPathComponent] = img
             }

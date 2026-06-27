@@ -67,7 +67,7 @@ struct SpritesInspector: View {
             }
             let svgFiles = svgSpriteFiles()
             if !svgFiles.isEmpty {
-                InspectorField("SVG sprite") {
+                InspectorField("Image") {
                     Picker("", selection: svgFilenameBinding(setIdx: setIdx, spriteIdx: spriteIdx)) {
                         Text("None").tag("")
                         ForEach(svgFiles, id: \.self) { name in
@@ -78,7 +78,7 @@ struct SpritesInspector: View {
                     .font(.system(size: 12))
                     .frame(maxWidth: 150)
                 }
-                .loomHelp("SVG file from the project's svgs/sprites/ folder to render as this sprite instead of a generated shape.")
+                .loomHelp("Image file (SVG, PNG, JPG, TIFF, GIF) from the project's svgs/sprites/ folder. When set, renders this image instead of the polygon/renderer pipeline. Assign proxy geometry to the sprite's Shape fields for wireframe positioning.")
             }
         }
     }
@@ -158,15 +158,16 @@ struct SpritesInspector: View {
         )
     }
 
-    /// Returns SVG filenames available in the project's `svg_sprites/` directory.
+    /// Returns image filenames (SVG, PNG, JPG, TIFF, GIF) from `svgs/sprites/`.
     private func svgSpriteFiles() -> [String] {
         guard let url = controller.projectURL else { return [] }
         let dir = url.appendingPathComponent("svgs/sprites")
         let entries = (try? FileManager.default.contentsOfDirectory(
             at: dir, includingPropertiesForKeys: nil
         )) ?? []
+        let supported: Set<String> = ["svg", "png", "jpg", "jpeg", "tiff", "tif", "gif", "webp"]
         return entries
-            .filter { $0.pathExtension.lowercased() == "svg" }
+            .filter { supported.contains($0.pathExtension.lowercased()) }
             .map    { $0.lastPathComponent }
             .sorted()
     }
