@@ -1,6 +1,19 @@
 import SwiftUI
 import LoomEngine
 
+// Wrapper shown in the main panel when a cycle is selected.
+// Owns selectedStateIndex so the preview and list stay in sync.
+struct CyclesMainView: View {
+    @EnvironmentObject private var controller: AppController
+    let cycle: SpriteCycle
+    @State private var selectedStateIndex: Int? = nil
+
+    var body: some View {
+        CyclePreviewPanel(cycle: cycle, selectedStateIndex: $selectedStateIndex)
+            .environmentObject(controller)
+    }
+}
+
 struct CyclesTabView: View {
 
     @EnvironmentObject private var controller: AppController

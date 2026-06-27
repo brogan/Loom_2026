@@ -243,6 +243,7 @@
   <a class="nav-link nav-sub" href="#animation-drivers">Driver Types</a>
   <a class="nav-link nav-sub" href="#animation-timeline">Timeline</a>
   <a class="nav-link nav-sub" href="#animation-lane-controls">Lane Controls</a>
+  <a class="nav-link nav-sub" href="#animation-solo">Solo Mode</a>
   <a class="nav-link nav-sub" href="#animation-editing">Timeline Editing</a>
   <a class="nav-link nav-sub" href="#animation-scale-timing">Scale Timing</a>
   <a class="nav-link nav-sub" href="#animation-visual-kf">Visual KF Editing</a>
@@ -2172,6 +2173,17 @@
   </ul>
   <p>The same batch eye appears at the top of the driver section group in the inspector. In the inspector it collapses or expands section panels rather than hiding timeline rows — the two states are independent.</p>
   <div class="tip"><strong>Typical workflow:</strong> Open a new sprite, click the plain eye on the sprite row to collapse all six unused driver sections, then enable and expand only the drivers you actually need. This keeps both the timeline and the inspector compact as you build up animation.</div>
+
+  <h3 id="animation-solo">Solo mode</h3>
+  <p>Each sprite summary row and the Camera summary row carry a <strong>star-in-circle</strong> button (<span style="font-family: -apple-system, sans-serif;">⊛</span>) to the left of the batch eye. Clicking it puts the timeline into <strong>solo mode</strong> for that item:</p>
+  <ul>
+    <li>All other sprites and (when soloing a sprite) the camera block are hidden from both the lane header column and the canvas. Only the soloed item's rows are shown.</li>
+    <li>The star fills and turns yellow to confirm solo is active.</li>
+    <li>Clicking the filled star a second time exits solo mode and restores the full view.</li>
+    <li>Clicking a <em>different</em> item's star switches solo to that item immediately.</li>
+  </ul>
+  <p>Solo mode is a display-only filter — it has no effect on rendering, driver state, or keyframe values. It is useful when a project has many sprites and you want to focus on one sprite's keyframe lanes without the surrounding visual noise.</p>
+  <div class="tip"><strong>Tip:</strong> Solo mode and lane hiding are independent. Hidden lanes remain hidden while soloed, and the batch eye on the soloed row still works normally to show or hide individual lanes within the focused view.</div>
 
   <h3 id="animation-editing">Timeline editing</h3>
   <table>

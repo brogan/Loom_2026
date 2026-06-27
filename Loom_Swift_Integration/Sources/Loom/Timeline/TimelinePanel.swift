@@ -128,6 +128,7 @@ struct TimelinePanel: View {
     @State private var lastMarkerTap:         (x: CGFloat, time: Date)? = nil
     @State private var rulerContextFrame:     Int           = 0
     @State private var hoveredMarkerIndex:   Int?          = nil
+    @State private var soloKey:              String?       = nil
 
     private let headerWidth:  CGFloat = 160
     private let rowHeight:    CGFloat = 22
@@ -140,7 +141,10 @@ struct TimelinePanel: View {
     private let resizeHandleHeight: CGFloat = 26
     private let bottomPadding:     CGFloat = 16
 
-    private var cameraRowCount: Int { cameraExpanded ? 1 + visibleCameraLanes().count : 1 }
+    private var cameraRowCount: Int {
+        guard cameraBlockVisible else { return 0 }
+        return cameraExpanded ? 1 + visibleCameraLanes().count : 1
+    }
     private var spriteStartY: CGFloat { totalRulerHeight + CGFloat(cameraRowCount) * rowHeight }
     private var timelineContentHeight: CGFloat {
         totalRulerHeight + CGFloat(cameraRowCount + spriteTimelineRowCount) * rowHeight
@@ -346,6 +350,7 @@ struct TimelinePanel: View {
             .frame(height: totalRulerHeight)
             .padding(.horizontal, 6)
 
+            if cameraBlockVisible {
             // Camera block
             HStack(spacing: 4) {
                 Button {
@@ -362,6 +367,8 @@ struct TimelinePanel: View {
                     .font(.system(size: 9)).foregroundStyle(.teal)
                 Text("Camera").font(.system(size: 11, weight: .medium))
                 Spacer()
+                soloButton(key: cameraSoloKey)
+                    .padding(.trailing, 2)
                 let hiddenCamCount = CameraLane.allCases.filter { hiddenLanes.contains(cameraLaneID($0)) }.count
                 let unusedCamCount: Int = {
                     guard let cam = controller.projectConfig?.globalConfig.camera else { return 0 }
@@ -445,9 +452,10 @@ struct TimelinePanel: View {
                                     onToggleHidden: { hiddenLanes.insert(cameraLaneID(lane)) })
                 }
             }
+            } // end if cameraBlockVisible
 
             // Sprite block
-            ForEach(timelineNodes, id: \.sprite.name) { node in
+            ForEach(soloedTimelineNodes, id: \.sprite.name) { node in
                 spriteHeaderRow(node)
                 if expandedSprites.contains(node.sprite.name) {
                     let si = timelineNodes.firstIndex { $0.sprite.name == node.sprite.name } ?? 0
@@ -558,6 +566,8 @@ struct TimelinePanel: View {
                 .frame(width: 6, height: 6)
             Text(sprite.name).font(.system(size: 11)).lineLimit(1).truncationMode(.tail)
             Spacer()
+            soloButton(key: sprite.name)
+                .padding(.trailing, 2)
             let rendRows = rendererRows(for: node)
             let hiddenCount =
                 DriverLane.allCases.filter { hiddenLanes.contains(spriteLaneID(spriteName: sprite.name, lane: $0)) }.count
@@ -1035,22 +1045,24 @@ struct TimelinePanel: View {
 
     private func drawBackground(_ ctx: inout GraphicsContext, size: CGSize) {
         // Camera block
-        ctx.fill(Path(CGRect(x: 0, y: totalRulerHeight, width: size.width, height: rowHeight)),
-                 with: .color(Color(NSColor.windowBackgroundColor).opacity(0.55)))
-        if cameraExpanded {
-            var camY = totalRulerHeight + rowHeight
-            for j in 0..<visibleCameraLanes().count {
-                ctx.fill(Path(CGRect(x: 0, y: camY, width: size.width, height: rowHeight)),
-                         with: .color(j.isMultiple(of: 2)
-                             ? Color(NSColor.windowBackgroundColor).opacity(0.35)
-                             : Color(NSColor.windowBackgroundColor).opacity(0.25)))
-                camY += rowHeight
+        if cameraBlockVisible {
+            ctx.fill(Path(CGRect(x: 0, y: totalRulerHeight, width: size.width, height: rowHeight)),
+                     with: .color(Color(NSColor.windowBackgroundColor).opacity(0.55)))
+            if cameraExpanded {
+                var camY = totalRulerHeight + rowHeight
+                for j in 0..<visibleCameraLanes().count {
+                    ctx.fill(Path(CGRect(x: 0, y: camY, width: size.width, height: rowHeight)),
+                             with: .color(j.isMultiple(of: 2)
+                                 ? Color(NSColor.windowBackgroundColor).opacity(0.35)
+                                 : Color(NSColor.windowBackgroundColor).opacity(0.25)))
+                    camY += rowHeight
+                }
             }
         }
         // Sprite block
         let pxPerFrame = CGFloat(zoom)
         var rowY = spriteStartY
-        for (i, node) in timelineNodes.enumerated() {
+        for (i, node) in soloedTimelineNodes.enumerated() {
             let sprite = node.sprite
             ctx.fill(
                 Path(CGRect(x: 0, y: rowY, width: size.width, height: rowHeight)),
@@ -1134,12 +1146,15 @@ struct TimelinePanel: View {
             hPath.addLine(to: CGPoint(x: size.width, y: y))
         }
 
-        var rowY = totalRulerHeight + rowHeight
-        sep(rowY)
-        if cameraExpanded {
-            for _ in 0..<visibleCameraLanes().count { rowY += rowHeight; sep(rowY) }
+        if cameraBlockVisible {
+            var camSepY = totalRulerHeight + rowHeight
+            sep(camSepY)
+            if cameraExpanded {
+                for _ in 0..<visibleCameraLanes().count { camSepY += rowHeight; sep(camSepY) }
+            }
         }
-        for node in timelineNodes {
+        var rowY = spriteStartY
+        for node in soloedTimelineNodes {
             rowY += rowHeight; sep(rowY)
             if expandedSprites.contains(node.sprite.name) {
                 let laneCount = visibleSpriteLanes(for: node).count + visibleRendererRows(for: node).count
@@ -1271,7 +1286,8 @@ struct TimelinePanel: View {
         drawCameraKeyframes(&ctx, size: size)
         var rowY = spriteStartY
 
-        for (si, node) in timelineNodes.enumerated() {
+        for node in soloedTimelineNodes {
+            let si = timelineListIndex(for: node)
             let sprite = node.sprite
             let midY = rowY + rowHeight / 2
             if let drivers = sprite.animation.drivers {
@@ -1592,8 +1608,9 @@ struct TimelinePanel: View {
 
     private func rowInfo(at point: CGPoint) -> RowInfo? {
         var rowY = spriteStartY
-        for (i, node) in timelineNodes.enumerated() {
+        for node in soloedTimelineNodes {
             let sprite = node.sprite
+            let i = timelineListIndex(for: node)
             if point.y >= rowY && point.y < rowY + rowHeight {
                 return RowInfo(spriteListIdx: i, lane: nil)
             }
@@ -1691,7 +1708,7 @@ struct TimelinePanel: View {
     private func keyframeLocations() -> [(item: TimelineSelectionItem, point: CGPoint)] {
         let pxPerFrame = CGFloat(zoom)
         var result: [(TimelineSelectionItem, CGPoint)] = []
-        if cameraExpanded {
+        if cameraBlockVisible && cameraExpanded {
             let cam = controller.projectConfig?.globalConfig.camera ?? .disabled
             var rowY = totalRulerHeight + rowHeight
             for lane in visibleCameraLanes() {
@@ -1705,7 +1722,8 @@ struct TimelinePanel: View {
         }
 
         var rowY = spriteStartY
-        for (si, node) in timelineNodes.enumerated() {
+        for node in soloedTimelineNodes {
+            let si = timelineListIndex(for: node)
             rowY += rowHeight
             if expandedSprites.contains(node.sprite.name) {
                 for lane in visibleSpriteLanes(for: node) {
@@ -2762,7 +2780,8 @@ struct TimelinePanel: View {
     }
 
     private func drawCameraKeyframes(_ ctx: inout GraphicsContext, size: CGSize) {
-        guard let cam = controller.projectConfig?.globalConfig.camera else { return }
+        guard cameraBlockVisible,
+              let cam = controller.projectConfig?.globalConfig.camera else { return }
         let pxPerFrame = CGFloat(zoom)
 
         // Summary row: union of all lane frames
@@ -2857,6 +2876,33 @@ struct TimelinePanel: View {
 
     // MARK: - Lane visibility helpers
 
+    private let cameraSoloKey = "__camera__"
+
+    private var cameraBlockVisible: Bool { soloKey == nil || soloKey == cameraSoloKey }
+
+    private var soloedTimelineNodes: [TimelineNode] {
+        guard let key = soloKey, key != cameraSoloKey else { return timelineNodes }
+        return timelineNodes.filter { $0.sprite.name == key }
+    }
+
+    private func timelineListIndex(for node: TimelineNode) -> Int {
+        timelineNodes.firstIndex { $0.sprite.name == node.sprite.name } ?? 0
+    }
+
+    private func soloButton(key: String) -> some View {
+        let isActive = soloKey == key
+        return Button {
+            soloKey = isActive ? nil : key
+        } label: {
+            Image(systemName: isActive ? "star.circle.fill" : "star.circle")
+                .font(.system(size: 10))
+                .foregroundStyle(isActive ? Color.yellow : Color.secondary.opacity(0.45))
+        }
+        .buttonStyle(.plain)
+        .help(isActive ? "Exit solo mode" : "Solo: focus timeline on this item")
+        .modifier(LoomHoverHelp(isActive ? "Exit solo mode" : "Solo: focus timeline on this item"))
+    }
+
     private func spriteLaneID(spriteName: String, lane: DriverLane) -> String {
         "s:\(spriteName):\(lane.rawValue)"
     }
@@ -2877,7 +2923,7 @@ struct TimelinePanel: View {
     }
 
     private var spriteTimelineRowCount: Int {
-        timelineNodes.reduce(0) { count, node in
+        soloedTimelineNodes.reduce(0) { count, node in
             var rows = count + 1
             if expandedSprites.contains(node.sprite.name) {
                 rows += visibleSpriteLanes(for: node).count

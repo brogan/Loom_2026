@@ -247,6 +247,15 @@ struct ContentView: View {
                 .colorScheme(.dark)
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
+        case .cycles:
+            if let idx = controller.selectedCycleIndex,
+               let cycle = controller.projectConfig?.cycles[safe: idx] {
+                CyclesMainView(cycle: cycle)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .environmentObject(controller)
+            } else {
+                liveCanvas
+            }
         case .subdivision:
             ZStack(alignment: .topTrailing) {
                 if subdivisionPreviewMode {
