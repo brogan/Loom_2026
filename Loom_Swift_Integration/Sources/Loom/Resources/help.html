@@ -217,6 +217,7 @@
   <a class="nav-link nav-sub" href="#sprites-svg">SVG Sprites</a>
   <a class="nav-link" href="#cycles">Cycles</a>
   <a class="nav-link nav-sub" href="#cycles-states">States &amp; Transitions</a>
+  <a class="nav-link nav-sub" href="#cycles-svg">SVG States</a>
   <a class="nav-link nav-sub" href="#cycles-loop">Loop Modes</a>
   <a class="nav-link nav-sub" href="#cycles-assign">Assigning Cycles</a>
   <a class="nav-link nav-sub" href="#cycles-manage">Renaming &amp; Duplicating</a>
@@ -1350,6 +1351,27 @@
   <p>The total cycle length shown in the Cycles tab is the sum of all states' hold + transition frames, adjusted for the active loop mode.</p>
 
   <div class="note"><strong>Hard cuts and offscreen compositing.</strong> Hard-cut states (Trans frames = 0) are rendered directly into the main context with zero additional cost. Cross-fade transitions use an offscreen CGContext per layer and alpha-composite the result, so they carry a per-frame memory and GPU cost proportional to canvas size. Use transitions deliberately rather than by default.</div>
+
+  <h3 id="cycles-svg">SVG states</h3>
+  <p>Each cycle state has a <strong>Source</strong> toggle at the top of its expanded detail panel: <strong>Loom</strong> (the default) or <strong>SVG</strong>. In SVG mode the state references a self-contained SVG file instead of a Loom polygon and renderer set. The hold frames, transition frames, easing, and loop mode all work identically regardless of source type.</p>
+
+  <h4>Why SVG states?</h4>
+  <p>Loom's renderer applies a single style uniformly to all polygons in a sprite. SVG files carry per-path fill and stroke natively, so a single SVG can represent a multi-coloured character — face, hair, eyes, and clothing each in their own colour — without any changes to Loom's polygon or renderer data model. SVG states are the intended tool for conventional sprites where per-element colouring matters.</p>
+
+  <h4>Setting up an SVG state</h4>
+  <ol class="steps">
+    <li>Open the cycle editor and expand a state row.</li>
+    <li>In the <strong>Source</strong> picker at the top of the detail section, select <strong>SVG</strong>. The shape set, shape, and renderer controls are replaced by an SVG File row.</li>
+    <li>Click <strong>Choose…</strong> to open a file picker. Select any <code>.svg</code> file on disk. Loom copies it into the project's <code>svgs/sprites/</code> folder automatically and stores the filename.</li>
+    <li>The cycle editor preview updates immediately to show the SVG image. The Loom canvas will show the SVG after the project is reloaded (the engine loads <code>svgs/sprites/</code> at project open time).</li>
+  </ol>
+
+  <h4>Rendering and transitions</h4>
+  <p>SVG states are rasterised to an image and blitted at the sprite's current transform — position, scale, and rotation keyframes all apply normally. Cross-fade transitions between SVG states, or between an SVG state and a Loom polygon state, composite correctly at their respective alphas via the same offscreen mechanism used for Loom transitions.</p>
+
+  <div class="tip"><strong>Keeping the Loom aesthetic.</strong> SVG files carry their own styling, so you are not constrained to Loom's renderer. If you want to match Loom's flat, solid-fill look, simply author the SVG with flat fills and no gradients or filters. The visual result is indistinguishable from a Loom renderer-set fill, and you gain per-path colour control.</div>
+
+  <div class="note"><strong>Project reload required for live canvas.</strong> The engine loads <code>svgs/sprites/</code> once at project open. After adding a new SVG file via Choose…, the cycle editor preview shows it immediately (it loads direct from disk), but the rendered canvas will not show it until you close and reopen the project. Replacing an existing file with the same filename takes effect on the next project open as well.</div>
 
   <h3 id="cycles-loop">Loop Modes</h3>
   <table>
