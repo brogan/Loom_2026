@@ -723,8 +723,13 @@ public struct SpriteScene: @unchecked Sendable {
         let compositeImg: CGImage
         if blurRadius > 0.5 {
             let ciImg = CIImage(cgImage: img)
+            // clampedToExtent() extends edge pixels to infinity so the blur kernel
+            // at canvas boundaries blends edge colour with itself rather than with
+            // transparent, eliminating the halo that otherwise appears at the edges
+            // of blurred foreground/background layers.
+            let clamped = ciImg.clampedToExtent()
             if let filter = CIFilter(name: "CIGaussianBlur",
-                                     parameters: [kCIInputImageKey: ciImg,
+                                     parameters: [kCIInputImageKey: clamped,
                                                   kCIInputRadiusKey: blurRadius]),
                let output = filter.outputImage,
                let blurred = SpriteScene.ciContext.createCGImage(
