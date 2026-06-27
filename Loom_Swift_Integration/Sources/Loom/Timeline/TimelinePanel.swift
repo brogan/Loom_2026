@@ -861,7 +861,15 @@ struct TimelinePanel: View {
             } else {
                 let row = rowInfo(at: v.startLocation)
                 let onLaneRow = row?.lane != nil || row?.rendererLane != nil
-                if optionModifierActive || onLaneRow {
+                // Command+drag = rubber-band select (anywhere on the timeline).
+                // Command+Shift+drag = additive rubber-band.
+                // Plain drag on a lane row or Option+drag = pan.
+                if commandModifierActive {
+                    dragKind = .rubberBand
+                    rubberBandStart = v.startLocation
+                    rubberBandEnd = v.location
+                    rubberBandAdditive = shiftModifierActive
+                } else if optionModifierActive || onLaneRow {
                     dragKind = .pan
                 } else {
                     dragKind = .rubberBand
@@ -1397,6 +1405,10 @@ struct TimelinePanel: View {
 
     private var optionModifierActive: Bool {
         NSEvent.modifierFlags.contains(.option)
+    }
+
+    private var commandModifierActive: Bool {
+        NSEvent.modifierFlags.contains(.command)
     }
 
     private func clearTimelineSelection() {
