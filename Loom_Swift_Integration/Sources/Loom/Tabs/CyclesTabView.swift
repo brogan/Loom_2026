@@ -17,6 +17,9 @@ struct CyclesMainView: View {
 struct CyclesTabView: View {
 
     @EnvironmentObject private var controller: AppController
+    @State private var renamingIndex: Int? = nil
+    @State private var renameText: String = ""
+    @FocusState private var renameFieldFocused: Bool
 
     var body: some View {
         VStack(spacing: 0) {
@@ -45,6 +48,18 @@ struct CyclesTabView: View {
             .buttonStyle(.plain)
             .help("Add cycle")
             .modifier(LoomHoverHelp("Add cycle"))
+
+            Button {
+                if let idx = controller.selectedCycleIndex {
+                    controller.duplicateCycle(at: idx)
+                }
+            } label: {
+                Image(systemName: "plus.square.on.square").font(.system(size: 11))
+            }
+            .buttonStyle(.plain)
+            .disabled(controller.selectedCycleIndex == nil)
+            .help("Duplicate selected cycle")
+            .modifier(LoomHoverHelp("Duplicate selected cycle"))
 
             Button {
                 if let idx = controller.selectedCycleIndex {
@@ -86,35 +101,68 @@ struct CyclesTabView: View {
 
     private func cycleRow(cycle: SpriteCycle, index: Int) -> some View {
         let isSelected = controller.selectedCycleIndex == index
+        let isRenaming = renamingIndex == index
         return HStack(spacing: 8) {
             VStack(alignment: .leading, spacing: 1) {
-                Text(cycle.name.isEmpty ? "Cycle" : cycle.name)
-                    .font(.system(size: 12))
-                    .lineLimit(1)
+                if isRenaming {
+                    TextField("", text: $renameText)
+                        .font(.system(size: 12))
+                        .textFieldStyle(.plain)
+                        .focused($renameFieldFocused)
+                        .onSubmit { commitRename(index: index) }
+                } else {
+                    Text(cycle.name.isEmpty ? "Cycle" : cycle.name)
+                        .font(.system(size: 12))
+                        .lineLimit(1)
+                }
                 Text("\(cycle.states.count) states · \(cycle.totalCycleFrames) frames")
                     .font(.system(size: 10))
                     .foregroundStyle(.tertiary)
                     .lineLimit(1)
             }
             Spacer()
-            Text(cycle.loopMode.displayName)
-                .font(.system(size: 10))
-                .foregroundStyle(.secondary)
-            Button {
-                controller.selectedCycleIndex = index
-                controller.showingCycleEditor = true
-            } label: {
-                Image(systemName: "pencil")
+            if !isRenaming {
+                Text(cycle.loopMode.displayName)
                     .font(.system(size: 10))
+                    .foregroundStyle(.secondary)
+                Button {
+                    controller.selectedCycleIndex = index
+                    controller.showingCycleEditor = true
+                } label: {
+                    Image(systemName: "pencil")
+                        .font(.system(size: 10))
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(.secondary)
+                .help("Edit cycle")
             }
-            .buttonStyle(.plain)
-            .foregroundStyle(.secondary)
-            .help("Edit cycle")
         }
         .padding(.horizontal, 10)
         .padding(.vertical, 6)
         .background(isSelected ? Color.accentColor.opacity(0.15) : Color.clear)
         .contentShape(Rectangle())
-        .onTapGesture { controller.selectedCycleIndex = index }
+        .onTapGesture(count: 2) {
+            controller.selectedCycleIndex = index
+            renameText = cycle.name
+            renamingIndex = index
+            renameFieldFocused = true
+        }
+        .onTapGesture {
+            if renamingIndex != nil && renamingIndex != index {
+                commitRename(index: renamingIndex!)
+            }
+            controller.selectedCycleIndex = index
+        }
+    }
+
+    private func commitRename(index: Int) {
+        let trimmed = renameText.trimmingCharacters(in: .whitespaces)
+        if !trimmed.isEmpty {
+            controller.updateProjectConfig { cfg in
+                guard cfg.cycles.indices.contains(index) else { return }
+                cfg.cycles[index].name = trimmed
+            }
+        }
+        renamingIndex = nil
     }
 }

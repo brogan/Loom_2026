@@ -6500,6 +6500,18 @@ final class AppController: ObservableObject, @unchecked Sendable {
         updateProjectConfig { cfg in cfg.cycles.move(fromOffsets: source, toOffset: destination) }
     }
 
+    func duplicateCycle(at index: Int) {
+        guard let cfg = projectConfig, cfg.cycles.indices.contains(index) else { return }
+        var copy = cfg.cycles[index]
+        let existingNames = Set(cfg.cycles.map { $0.name })
+        var candidate = copy.name + " copy"
+        var n = 2
+        while existingNames.contains(candidate) { candidate = copy.name + " copy \(n)"; n += 1 }
+        copy.name = candidate
+        updateProjectConfig { cfg in cfg.cycles.append(copy) }
+        selectedCycleIndex = (projectConfig?.cycles.count ?? 1) - 1
+    }
+
     func assignCycle(named cycleName: String, toSprite spriteName: String, inSet setName: String) {
         updateProjectConfig { cfg in
             for si in cfg.spriteConfig.library.spriteSets.indices
