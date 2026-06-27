@@ -219,6 +219,7 @@
   <a class="nav-link nav-sub" href="#cycles-states">States &amp; Transitions</a>
   <a class="nav-link nav-sub" href="#cycles-loop">Loop Modes</a>
   <a class="nav-link nav-sub" href="#cycles-assign">Assigning Cycles</a>
+  <a class="nav-link nav-sub" href="#cycles-manage">Renaming &amp; Duplicating</a>
   <a class="nav-link nav-sub" href="#cycles-preview">Editor Preview</a>
   <a class="nav-link" href="#layers">Layers</a>
   <a class="nav-link nav-sub" href="#layers-parallax">Parallax</a>
@@ -1371,6 +1372,13 @@
   </ol>
 
   <div class="tip"><strong>Timing relative to the global clock.</strong> Cycle playback is driven by the global elapsed frame counter, not a per-sprite counter. All sprites sharing the same cycle are therefore synchronised — they step through states together. If you need offset timing between sprites on the same cycle, apply a gate start or a position keyframe offset to shift when the sprite becomes active relative to frame 0.</div>
+
+  <h3 id="cycles-manage">Renaming and duplicating cycles</h3>
+  <p><strong>Renaming:</strong> Double-click any cycle row in the Cycles tab list to edit its name inline. The name field activates in place; press Return to confirm or click another row to confirm and move selection. The loop mode badge and pencil button hide during editing to keep the row uncluttered.</p>
+
+  <p><strong>Duplicating:</strong> Select a cycle and click the <strong>duplicate button</strong> (<span style="font-family: -apple-system, sans-serif;">⧉</span>) in the toolbar — it sits between the + and − buttons. The full cycle is copied: every state, hold frame, transition, easing setting, and renderer override. The copy is appended to the list with <em>" copy"</em> appended to the original name (or <em>" copy 2"</em>, <em>" copy 3"</em> etc. if the name is already taken), and it is selected immediately.</p>
+
+  <div class="tip"><strong>Typical workflow.</strong> Duplicate an existing, timing-tuned cycle, then double-click the copy to rename it, then open its editor to swap the shape sets for the new variation — for example turning <em>walk_right</em> into <em>walk_left</em> by pointing each state at the mirrored shape set. The timing and easing carry over exactly.</div>
 
   <h3 id="cycles-preview">Editor Preview</h3>
   <p>The Cycle Editor sheet has a live wireframe preview panel on its right side. It shows the cycle's geometry at the current preview frame with onion-skin overlays for the adjacent states, so you can judge timing and shape transitions without leaving the editor.</p>
