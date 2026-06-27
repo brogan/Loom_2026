@@ -358,8 +358,9 @@ struct SpriteCycleEditorView: View {
     }
 
     private func pickSVGFile(cycleIdx: Int, stateIdx: Int) {
+        let supportedExts = ["svg", "png", "jpg", "jpeg", "tiff", "tif", "gif", "webp"]
         let panel = NSOpenPanel()
-        panel.allowedContentTypes = [.image, UTType(filenameExtension: "svg") ?? .image]
+        panel.allowedContentTypes = supportedExts.compactMap { UTType(filenameExtension: $0) }
         panel.canChooseFiles = true
         panel.canChooseDirectories = false
         panel.allowsMultipleSelection = false
@@ -367,13 +368,30 @@ struct SpriteCycleEditorView: View {
         panel.begin { response in
             guard response == .OK, let url = panel.url else { return }
             guard let projectURL = controller.projectURL else { return }
-            let destDir = projectURL.appendingPathComponent("svgs/sprites")
-            let destURL = destDir.appendingPathComponent(url.lastPathComponent)
-            try? FileManager.default.createDirectory(at: destDir, withIntermediateDirectories: true)
-            if !FileManager.default.fileExists(atPath: destURL.path) {
-                try? FileManager.default.copyItem(at: url, to: destURL)
-            }
             let filename = url.lastPathComponent
+            let destDir  = projectURL.appendingPathComponent("svgs/sprites")
+            let destURL  = destDir.appendingPathComponent(filename)
+            do {
+                try FileManager.default.createDirectory(at: destDir, withIntermediateDirectories: true)
+                if FileManager.default.fileExists(atPath: destURL.path) {
+                    try FileManager.default.removeItem(at: destURL)
+                }
+                try FileManager.default.copyItem(at: url, to: destURL)
+            } catch {
+                DispatchQueue.main.async {
+                    let alert = NSAlert()
+                    alert.messageText = "Could not copy image"
+                    alert.informativeText = error.localizedDescription
+                    alert.alertStyle = .warning
+                    alert.runModal()
+                }
+                return
+            }
+            // Inject the new image into the engine's live cache so the canvas updates
+            // immediately without requiring a project reload.
+            if let img = NSImage(contentsOf: destURL) {
+                controller.registerSpriteImage(img, filename: filename)
+            }
             controller.updateProjectConfig { cfg in
                 guard cfg.cycles.indices.contains(cycleIdx),
                       cfg.cycles[cycleIdx].states.indices.contains(stateIdx) else { return }

@@ -11,7 +11,7 @@ struct CyclePreviewPanel: View {
     @State private var allSVGImages: [Int: NSImage] = [:]
     @State private var isPlaying = false
     @State private var playFrame = 0
-    @State private var bgBrightness: Double = 0.08
+    @AppStorage("cyclePreview.bgBrightness") private var bgBrightness: Double = 0.08
 
     private let previewFPS = 12.0
 
@@ -208,21 +208,17 @@ struct CyclePreviewPanel: View {
     }
 
     private func drawSVGImage(_ nsImage: NSImage, ctx: GraphicsContext, size: CGSize, alpha: Double) {
-        let drawSize = min(size.width, size.height) * 0.80
-        let cx = size.width / 2
-        let cy = size.height / 2
-        let rect = CGRect(x: cx - drawSize / 2, y: cy - drawSize / 2,
-                          width: drawSize, height: drawSize)
-        ctx.withCGContext { cgCtx in
-            cgCtx.saveGState()
-            cgCtx.setAlpha(CGFloat(alpha))
-            let nsCtx = NSGraphicsContext(cgContext: cgCtx, flipped: true)
-            NSGraphicsContext.saveGraphicsState()
-            NSGraphicsContext.current = nsCtx
-            nsImage.draw(in: rect)
-            NSGraphicsContext.restoreGraphicsState()
-            cgCtx.restoreGState()
-        }
+        let maxDim = min(size.width, size.height) * 0.80
+        let imgSize = nsImage.size
+        let aspect: CGFloat = (imgSize.width > 0 && imgSize.height > 0)
+            ? imgSize.width / imgSize.height : 1.0
+        let drawW = aspect >= 1.0 ? maxDim : maxDim * aspect
+        let drawH = aspect >= 1.0 ? maxDim / aspect : maxDim
+        let rect = CGRect(x: (size.width - drawW) / 2, y: (size.height - drawH) / 2,
+                          width: drawW, height: drawH)
+        var gctx = ctx
+        gctx.opacity = alpha
+        gctx.draw(Image(nsImage: nsImage), in: rect)
     }
 
     private func draw(_ polygons: [Polygon2D], in ctx: GraphicsContext, size: CGSize,
@@ -330,11 +326,14 @@ struct CyclePreviewPanel: View {
         var polyResult: [Int: [Polygon2D]] = [:]
         var svgResult:  [Int: NSImage]     = [:]
         for (i, state) in cycle.states.enumerated() {
-            if let svgFile = state.svgFilename, !svgFile.isEmpty {
-                let url = projectURL
-                    .appendingPathComponent("svgs/sprites")
-                    .appendingPathComponent(svgFile)
-                if let img = NSImage(contentsOf: url) { svgResult[i] = img }
+            if let svgFile = state.svgFilename {
+                // Image-mode state: never load polygons, even when no file is chosen yet.
+                if !svgFile.isEmpty {
+                    let url = projectURL
+                        .appendingPathComponent("svgs/sprites")
+                        .appendingPathComponent(svgFile)
+                    if let img = NSImage(contentsOf: url) { svgResult[i] = img }
+                }
             } else {
                 let polys = loadPolygons(for: state, config: cfg, projectURL: projectURL)
                 if !polys.isEmpty { polyResult[i] = polys }

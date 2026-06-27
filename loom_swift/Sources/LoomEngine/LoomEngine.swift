@@ -113,6 +113,15 @@ public struct LoomEngine: @unchecked Sendable {
     /// All sprite instances in the scene (base geometry + def, no animation applied).
     public var spriteInstances: [SpriteInstance] { scene.instances }
 
+#if canImport(AppKit)
+    /// Insert or replace a single image in the sprite image cache without a full project reload.
+    /// Called after the user picks a new image file via the cycle editor so the live canvas
+    /// reflects the change immediately.
+    public mutating func registerSpriteImage(_ image: NSImage, filename: String) {
+        scene.svgImages[filename] = image
+    }
+#endif
+
     /// Current project frame on the same clock used for driver keyframe evaluation.
     public var currentFrame: Int {
         max(0, Int(elapsedFrames.rounded(.down)))

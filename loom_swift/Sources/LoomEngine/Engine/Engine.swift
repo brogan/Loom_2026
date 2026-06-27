@@ -1,5 +1,8 @@
 import CoreGraphics
 import Foundation
+#if canImport(AppKit)
+import AppKit
+#endif
 
 // MARK: - Engine
 
@@ -156,3 +159,14 @@ public final class Engine: @unchecked Sendable {
     /// Use this to determine how many virtual frames a synchronous animated-still export needs.
     public var maxAnimationFrames: Int { loomEngine.maxAnimationFrames }
 }
+
+#if canImport(AppKit)
+extension Engine {
+    /// Insert or replace a single image in the sprite image cache without a full project reload.
+    /// Called after a new image file is copied to `svgs/sprites/` so the live canvas
+    /// reflects the change immediately.
+    public func registerSpriteImage(_ image: NSImage, filename: String) {
+        loomEngine.registerSpriteImage(image, filename: filename)
+    }
+}
+#endif

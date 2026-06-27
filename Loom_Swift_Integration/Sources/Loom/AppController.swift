@@ -5861,6 +5861,13 @@ final class AppController: ObservableObject, @unchecked Sendable {
         clearSelections()
     }
 
+    /// Insert or replace a single image in the engine's live sprite-image cache.
+    /// Call after copying a new image file into `svgs/sprites/` so the canvas
+    /// reflects the change without requiring a full project reload.
+    func registerSpriteImage(_ image: NSImage, filename: String) {
+        engine?.registerSpriteImage(image, filename: filename)
+    }
+
     func reload() {
         guard let url = projectURL else { return }
         LoomLogger.info("Reloading project: \(url.path)")
