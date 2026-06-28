@@ -449,6 +449,8 @@
   <h4>Why keep geometry separate from style?</h4>
   <p>In most drawing software, the stroke colour, fill, and line weight are properties of the shape itself. In Loom they are not — the polygon stores only the vertex positions. Colour, fill, brush, and rendering mode are all defined in the <em>renderer set</em>, which is assigned to a sprite at the project level. This separation means you can take one polygon and instantly compare it with twenty different rendering approaches, or share the same renderer across twenty different geometries. It is a deliberately computational model that enables systematic visual exploration.</p>
 
+  <p>If you want visual material where geometry and style are already combined — an Inkscape illustration, a painted character, a photograph — Loom accommodates that directly. Place an SVG, PNG, JPG, TIFF, or GIF in the project's <code>svgs/sprites/</code> folder and assign it to a sprite as an image sprite. The file renders exactly as authored, with its own embedded colour, shading, and texture intact. All of Loom's transform drivers, camera effects, parallax, hierarchy, and compositing features apply to it just as they do to polygon sprites. The separation-of-concerns model is an option, not a constraint.</p>
+
   <h3 id="foundations-bezier">Bézier curves</h3>
 
   <h4>What is a Bézier curve?</h4>
