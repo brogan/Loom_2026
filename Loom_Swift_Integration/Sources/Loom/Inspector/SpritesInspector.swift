@@ -574,10 +574,9 @@ struct SpritesInspector: View {
         guard setIdx < cfg.spriteConfig.library.spriteSets.count else { return }
         let sprites = cfg.spriteConfig.library.spriteSets[setIdx].sprites
         for i in sprites.indices where sprites[i].parentName == parentName {
-            if sprites[i].inheritMask.position {
-                cfg.spriteConfig.library.spriteSets[setIdx].sprites[i].position.x += dx
-                cfg.spriteConfig.library.spriteSets[setIdx].sprites[i].position.y += dy
-            }
+            guard sprites[i].inheritMask.position else { continue }
+            cfg.spriteConfig.library.spriteSets[setIdx].sprites[i].position.x += dx
+            cfg.spriteConfig.library.spriteSets[setIdx].sprites[i].position.y += dy
             propagatePosition(dx: dx, dy: dy,
                               from: sprites[i].name, in: &cfg, setIdx: setIdx)
         }

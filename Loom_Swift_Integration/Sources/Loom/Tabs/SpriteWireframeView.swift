@@ -384,8 +384,7 @@ struct SpriteWireframeView: View {
         guard let cfg = controller.projectConfig else { return }
         let sprites     = cfg.spriteConfig.library.allSprites
         let instanceMap = makeInstanceMap()
-        let liveOffsets = computeLiveChildOffsets(sprites: sprites)
-        let wireWorlds  = buildWireWorlds(sprites: sprites, liveOffsets: liveOffsets)
+        let wireWorlds  = buildWireWorlds(sprites: sprites)
 
         for sprite in sprites {
             let isSelected = controller.selectedSpriteID == sprite.name
@@ -428,31 +427,6 @@ struct SpriteWireframeView: View {
         }
     }
 
-    // Compute position deltas that children should apply during a live drag of their parent.
-    private func computeLiveChildOffsets(sprites: [SpriteDef]) -> [String: Vector2D] {
-        guard activeDragHandle != nil,
-              let draggedID = controller.selectedSpriteID,
-              let live = liveTransform,
-              let draggedSprite = sprites.first(where: { $0.name == draggedID })
-        else { return [:] }
-        let dx = live.posX - draggedSprite.position.x
-        let dy = live.posY - draggedSprite.position.y
-        guard dx != 0 || dy != 0 else { return [:] }
-        var offsets: [String: Vector2D] = [:]
-        collectChildOffsets(parentName: draggedID, dx: dx, dy: dy, sprites: sprites, offsets: &offsets)
-        return offsets
-    }
-
-    private func collectChildOffsets(parentName: String, dx: Double, dy: Double,
-                                     sprites: [SpriteDef], offsets: inout [String: Vector2D]) {
-        for sprite in sprites where sprite.parentName == parentName {
-            if sprite.inheritMask.position {
-                let cur = offsets[sprite.name] ?? .zero
-                offsets[sprite.name] = Vector2D(x: cur.x + dx, y: cur.y + dy)
-            }
-            collectChildOffsets(parentName: sprite.name, dx: dx, dy: dy, sprites: sprites, offsets: &offsets)
-        }
-    }
 
     private func drawPlaceholder(ctx: GraphicsContext, centre: CGPoint, color: Color) {
         let s: CGFloat = 9
@@ -599,15 +573,10 @@ struct SpriteWireframeView: View {
 
     /// Build WireWorld for every sprite in declaration order so children can
     /// look up their parent's already-resolved world.
-    private func buildWireWorlds(sprites: [SpriteDef],
-                                 liveOffsets: [String: Vector2D]) -> [String: WireWorld] {
+    private func buildWireWorlds(sprites: [SpriteDef]) -> [String: WireWorld] {
         var worlds: [String: WireWorld] = [:]
         for sprite in sprites {
-            var eff = resolvedDef(sprite)
-            if let off = liveOffsets[sprite.name] {
-                eff.position.x += off.x
-                eff.position.y += off.y
-            }
+            let eff    = resolvedDef(sprite)
             let parent = sprite.parentName.flatMap { worlds[$0] }
             worlds[sprite.name] = computeWireWorld(raw: sprite, eff: eff, parent: parent)
         }
@@ -802,7 +771,7 @@ struct SpriteWireframeView: View {
         let rect        = canvasRect(viewSize: viewSize)
         let instanceMap = makeInstanceMap()
         let sprites     = cfg.spriteConfig.library.allSprites
-        let wireWorlds  = buildWireWorlds(sprites: sprites, liveOffsets: [:])
+        let wireWorlds  = buildWireWorlds(sprites: sprites)
 
         // Try engine-instance sprites first (precise bbox hit)
         for sprite in sprites.reversed() {
@@ -845,7 +814,7 @@ struct SpriteWireframeView: View {
         let instanceMap    = makeInstanceMap()
         let resolvedSprite = resolvedDef(sprite)
         let sprites        = cfg.spriteConfig.library.allSprites
-        let wireWorlds     = buildWireWorlds(sprites: sprites, liveOffsets: [:])
+        let wireWorlds     = buildWireWorlds(sprites: sprites)
         let world          = wireWorlds[spriteID]
 
         // Compute screen bbox from engine geometry or placeholder
