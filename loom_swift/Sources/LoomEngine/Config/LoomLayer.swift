@@ -1,3 +1,5 @@
+import Foundation
+
 /// One compositing layer in a Loom project.
 ///
 /// Layers form a stack (array order = bottom to top).  Each layer owns a set of
@@ -6,8 +8,9 @@
 /// composited onto the main canvas with its blend mode and opacity.
 ///
 /// Projects with no layers defined fall back to the legacy flat depth-sort path.
-public struct LoomLayer: Codable, Equatable, Sendable {
+public struct LoomLayer: Codable, Equatable, Identifiable, Sendable {
 
+    public var id:              UUID
     public var name:            String
     public var isVisible:       Bool
     /// Camera-offset parallax scale.  0 = layer is fixed; 1 = moves fully with camera.
@@ -21,6 +24,7 @@ public struct LoomLayer: Codable, Equatable, Sendable {
     public var spriteSetNames:  [String]
 
     public init(
+        id:             UUID           = UUID(),
         name:           String         = "Layer",
         isVisible:      Bool           = true,
         parallaxFactor: Double         = 1.0,
@@ -31,6 +35,7 @@ public struct LoomLayer: Codable, Equatable, Sendable {
         blendMode:      LayerBlendMode = .normal,
         spriteSetNames: [String]       = []
     ) {
+        self.id             = id
         self.name           = name
         self.isVisible      = isVisible
         self.parallaxFactor = parallaxFactor
@@ -45,12 +50,13 @@ public struct LoomLayer: Codable, Equatable, Sendable {
     // MARK: - Codable (safe defaults for missing fields)
 
     private enum CodingKeys: String, CodingKey {
-        case name, isVisible, parallaxFactor, opacity, opacityDriver
+        case id, name, isVisible, parallaxFactor, opacity, opacityDriver
         case blur, blurDriver, blendMode, spriteSetNames
     }
 
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
+        id             = try c.decodeIfPresent(UUID.self,           forKey: .id)             ?? UUID()
         name           = try c.decodeIfPresent(String.self,         forKey: .name)           ?? "Layer"
         isVisible      = try c.decodeIfPresent(Bool.self,           forKey: .isVisible)      ?? true
         parallaxFactor = try c.decodeIfPresent(Double.self,         forKey: .parallaxFactor) ?? 1.0

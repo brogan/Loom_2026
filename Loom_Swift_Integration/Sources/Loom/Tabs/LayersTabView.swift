@@ -57,7 +57,7 @@ struct LayersTabView: View {
             get: { controller.selectedLayerIndex },
             set: { controller.selectedLayerIndex = $0 }
         )) {
-            ForEach(Array(layers.enumerated()), id: \.offset) { idx, layer in
+            ForEach(Array(layers.enumerated()), id: \.element.id) { idx, layer in
                 layerRow(layer: layer, index: idx)
                     .tag(idx)
                     .listRowInsets(EdgeInsets(top: 0, leading: 0, bottom: 0, trailing: 0))

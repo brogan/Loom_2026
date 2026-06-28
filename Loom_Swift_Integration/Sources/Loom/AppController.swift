@@ -6545,8 +6545,12 @@ final class AppController: ObservableObject, @unchecked Sendable {
     }
 
     func moveLayer(from source: IndexSet, to destination: Int) {
+        let selectedID = selectedLayerIndex.flatMap { projectConfig?.layers.indices.contains($0) == true ? projectConfig?.layers[$0].id : nil }
         updateProjectConfig { cfg in
             cfg.layers.move(fromOffsets: source, toOffset: destination)
+        }
+        if let id = selectedID {
+            selectedLayerIndex = projectConfig?.layers.firstIndex(where: { $0.id == id })
         }
     }
 
