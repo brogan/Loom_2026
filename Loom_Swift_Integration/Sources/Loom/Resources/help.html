@@ -132,6 +132,9 @@
   #pdf-btn svg { flex-shrink: 0; }
 
   /* ── Print / PDF export ──────────────────────────── */
+  /* TOC hidden on screen; shown only in print */
+  #toc { display: none; }
+
   @media print {
     #topbar, #sidebar, #pdf-btn { display: none !important; }
     #main { margin: 0; padding: 24px 32px; max-width: none; }
@@ -159,6 +162,52 @@
     .steps li::before { background: #0060bf; }
     mark { background: #ffe066; color: #000; }
     section { margin-bottom: 24px; }
+
+    /* TOC */
+    #toc {
+      display: block;
+      page-break-after: always;
+      padding-bottom: 24pt;
+    }
+    #toc h2 {
+      font-size: 18pt;
+      font-weight: 700;
+      color: #000;
+      border-bottom: 1.5pt solid #000;
+      padding-bottom: 6pt;
+      margin-bottom: 18pt;
+      page-break-before: avoid;
+    }
+    .toc-group {
+      font-size: 7.5pt;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: #555;
+      margin: 14pt 0 4pt;
+    }
+    .toc-entry {
+      display: flex;
+      align-items: baseline;
+      line-height: 1.7;
+    }
+    .toc-entry a {
+      color: #000;
+      text-decoration: none;
+      white-space: nowrap;
+      font-size: 10pt;
+    }
+    .toc-entry.sub a {
+      padding-left: 16pt;
+      font-size: 9.5pt;
+      color: #333;
+    }
+    .toc-fill {
+      flex: 1;
+      border-bottom: 0.5pt dotted #bbb;
+      margin: 0 5pt 2pt;
+      min-width: 20pt;
+    }
   }
 </style>
 </head>
@@ -274,6 +323,99 @@
 
 <!-- MAIN -->
 <main id="main">
+
+<!-- ────────────────────────────────────────────────── -->
+<!-- TABLE OF CONTENTS (print / PDF only) -->
+<section id="toc">
+  <h2>Contents</h2>
+
+  <div class="toc-group">Overview</div>
+  <div class="toc-entry"><a href="#overview">What is Loom?</a><span class="toc-fill"></span></div>
+  <div class="toc-entry sub"><a href="#overview-workflow">Core Workflow</a><span class="toc-fill"></span></div>
+  <div class="toc-entry sub"><a href="#overview-project">Project Structure</a><span class="toc-fill"></span></div>
+
+  <div class="toc-group">Foundations</div>
+  <div class="toc-entry"><a href="#foundations">Concepts &amp; Geometry</a><span class="toc-fill"></span></div>
+  <div class="toc-entry sub"><a href="#foundations-vectors">Vector Geometry</a><span class="toc-fill"></span></div>
+  <div class="toc-entry sub"><a href="#foundations-bezier">Bézier Curves</a><span class="toc-fill"></span></div>
+  <div class="toc-entry sub"><a href="#foundations-subdivision">Recursive Subdivision</a><span class="toc-fill"></span></div>
+
+  <div class="toc-group">Getting Started</div>
+  <div class="toc-entry"><a href="#start">Quick Start</a><span class="toc-fill"></span></div>
+  <div class="toc-entry sub"><a href="#start-new">New Project</a><span class="toc-fill"></span></div>
+  <div class="toc-entry sub"><a href="#start-open">Open Project</a><span class="toc-fill"></span></div>
+  <div class="toc-entry sub"><a href="#start-playback">Playback</a><span class="toc-fill"></span></div>
+
+  <div class="toc-group">Tabs</div>
+  <div class="toc-entry"><a href="#global">Global</a><span class="toc-fill"></span></div>
+  <div class="toc-entry"><a href="#geometry">Geometry</a><span class="toc-fill"></span></div>
+  <div class="toc-entry sub"><a href="#geometry-editor">Editor Tools</a><span class="toc-fill"></span></div>
+  <div class="toc-entry sub"><a href="#geometry-extend-curve">Extend Open Curve with P2P</a><span class="toc-fill"></span></div>
+  <div class="toc-entry sub"><a href="#geometry-cycle-setup">Cycle Setup</a><span class="toc-fill"></span></div>
+  <div class="toc-entry sub"><a href="#geometry-layers">Layers</a><span class="toc-fill"></span></div>
+  <div class="toc-entry sub"><a href="#geometry-morph-layers">Morph Layer Import</a><span class="toc-fill"></span></div>
+  <div class="toc-entry sub"><a href="#geometry-pressure">Pressure Sensitivity</a><span class="toc-fill"></span></div>
+  <div class="toc-entry sub"><a href="#geometry-svg-import">SVG Geometry Import</a><span class="toc-fill"></span></div>
+  <div class="toc-entry"><a href="#sprites">Sprites</a><span class="toc-fill"></span></div>
+  <div class="toc-entry sub"><a href="#sprites-coordinates">Coordinate System</a><span class="toc-fill"></span></div>
+  <div class="toc-entry sub"><a href="#sprites-hierarchy">Hierarchy</a><span class="toc-fill"></span></div>
+  <div class="toc-entry sub"><a href="#sprites-depth">Depth &amp; Parallax</a><span class="toc-fill"></span></div>
+  <div class="toc-entry sub"><a href="#sprites-svg">Image Sprites</a><span class="toc-fill"></span></div>
+  <div class="toc-entry sub"><a href="#sprites-variant-images">Per-Variant Images</a><span class="toc-fill"></span></div>
+  <div class="toc-entry"><a href="#cycles">Cycles</a><span class="toc-fill"></span></div>
+  <div class="toc-entry sub"><a href="#cycles-states">States &amp; Transitions</a><span class="toc-fill"></span></div>
+  <div class="toc-entry sub"><a href="#cycles-svg">Image States</a><span class="toc-fill"></span></div>
+  <div class="toc-entry sub"><a href="#cycles-loop">Loop Modes</a><span class="toc-fill"></span></div>
+  <div class="toc-entry sub"><a href="#cycles-assign">Creating &amp; Assigning Cycles</a><span class="toc-fill"></span></div>
+  <div class="toc-entry sub"><a href="#cycles-manage">Renaming &amp; Duplicating</a><span class="toc-fill"></span></div>
+  <div class="toc-entry sub"><a href="#cycles-preview">Editor Preview</a><span class="toc-fill"></span></div>
+  <div class="toc-entry"><a href="#layers">Layers</a><span class="toc-fill"></span></div>
+  <div class="toc-entry sub"><a href="#layers-reorder">Reordering</a><span class="toc-fill"></span></div>
+  <div class="toc-entry sub"><a href="#layers-parallax">Parallax</a><span class="toc-fill"></span></div>
+  <div class="toc-entry sub"><a href="#layers-blur">Blur &amp; Depth of Field</a><span class="toc-fill"></span></div>
+  <div class="toc-entry sub"><a href="#layers-blend">Blend Modes</a><span class="toc-fill"></span></div>
+  <div class="toc-entry"><a href="#subdivision">Subdivision</a><span class="toc-fill"></span></div>
+  <div class="toc-entry sub"><a href="#subdivision-algorithms">Algorithms</a><span class="toc-fill"></span></div>
+  <div class="toc-entry sub"><a href="#subdivision-edge-curvature">Edge Curvature</a><span class="toc-fill"></span></div>
+  <div class="toc-entry sub"><a href="#subdivision-ptw">PTW</a><span class="toc-fill"></span></div>
+  <div class="toc-entry sub"><a href="#subdivision-ptp">PTP</a><span class="toc-fill"></span></div>
+  <div class="toc-entry sub"><a href="#subdivision-pressure">Pressure</a><span class="toc-fill"></span></div>
+  <div class="toc-entry sub"><a href="#subdivision-bake">Baking</a><span class="toc-fill"></span></div>
+  <div class="toc-entry sub"><a href="#subdivision-custom">Custom Compositor</a><span class="toc-fill"></span></div>
+  <div class="toc-entry"><a href="#rendering">Rendering</a><span class="toc-fill"></span></div>
+  <div class="toc-entry sub"><a href="#rendering-modes">Render Modes</a><span class="toc-fill"></span></div>
+  <div class="toc-entry sub"><a href="#rendering-brush">Brushes &amp; Stamps</a><span class="toc-fill"></span></div>
+  <div class="toc-entry sub"><a href="#rendering-drivers">Renderer Drivers &amp; Blur</a><span class="toc-fill"></span></div>
+  <div class="toc-entry sub"><a href="#rendering-color-drivers">Colour Blend Modes</a><span class="toc-fill"></span></div>
+
+  <div class="toc-group">Animation</div>
+  <div class="toc-entry"><a href="#animation">Drivers &amp; Keyframes</a><span class="toc-fill"></span></div>
+  <div class="toc-entry sub"><a href="#animation-drivers">Driver Types</a><span class="toc-fill"></span></div>
+  <div class="toc-entry sub"><a href="#animation-timeline">Timeline</a><span class="toc-fill"></span></div>
+  <div class="toc-entry sub"><a href="#animation-lane-controls">Lane Controls</a><span class="toc-fill"></span></div>
+  <div class="toc-entry sub"><a href="#animation-solo">Solo Mode</a><span class="toc-fill"></span></div>
+  <div class="toc-entry sub"><a href="#animation-lane-solo">Lane Solo</a><span class="toc-fill"></span></div>
+  <div class="toc-entry sub"><a href="#animation-editing">Timeline Editing</a><span class="toc-fill"></span></div>
+  <div class="toc-entry sub"><a href="#animation-scale-timing">Scale Timing</a><span class="toc-fill"></span></div>
+  <div class="toc-entry sub"><a href="#animation-visual-kf">Visual Keyframe Editing</a><span class="toc-fill"></span></div>
+  <div class="toc-entry sub"><a href="#animation-camera">Camera</a><span class="toc-fill"></span></div>
+  <div class="toc-entry sub"><a href="#animation-parallax">Depth &amp; Parallax</a><span class="toc-fill"></span></div>
+  <div class="toc-entry sub"><a href="#animation-morph">Morph Targets</a><span class="toc-fill"></span></div>
+  <div class="toc-entry sub"><a href="#animation-set-swap">Set Swap Drivers</a><span class="toc-fill"></span></div>
+  <div class="toc-entry sub"><a href="#animation-cycle-driver">Cycle Driver</a><span class="toc-fill"></span></div>
+  <div class="toc-entry sub"><a href="#animation-easing">Easing Algorithms</a><span class="toc-fill"></span></div>
+
+  <div class="toc-group">Export</div>
+  <div class="toc-entry"><a href="#export">Output Options</a><span class="toc-fill"></span></div>
+  <div class="toc-entry sub"><a href="#export-still">Still Image</a><span class="toc-fill"></span></div>
+  <div class="toc-entry sub"><a href="#export-svg">SVG Export</a><span class="toc-fill"></span></div>
+  <div class="toc-entry sub"><a href="#export-video">Video Export</a><span class="toc-fill"></span></div>
+  <div class="toc-entry sub"><a href="#export-frame-range">Frame Range</a><span class="toc-fill"></span></div>
+
+  <div class="toc-group">Reference</div>
+  <div class="toc-entry"><a href="#shortcuts">Keyboard Shortcuts</a><span class="toc-fill"></span></div>
+  <div class="toc-entry"><a href="#fileformat">File Formats</a><span class="toc-fill"></span></div>
+</section>
 
 <!-- ────────────────────────────────────────────────── -->
 <section id="overview">
