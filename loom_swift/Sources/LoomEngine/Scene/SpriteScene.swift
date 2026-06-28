@@ -792,9 +792,11 @@ public struct SpriteScene: @unchecked Sendable {
         /// Animated world position in pixels from canvas centre.
         var positionPx:     Vector2D
         /// World position with no animation applied (def.position composed through hierarchy).
-        /// Used to compute child offsets so that a child's wireframe position equals its visual
-        /// resting position relative to the parent.
         var basePositionPx: Vector2D
+        /// Raw stored position in pixels (def.position only, never modified by ancestor
+        /// transforms). Used by children as their local-space origin when computing offsets,
+        /// so that grandparent scaling does not corrupt grandchild positions.
+        var storedPositionPx: Vector2D
         /// Combined animated rotation in degrees.
         var rotationDeg:    Double
         /// Combined base rotation in degrees (def.rotation only, no animation).
@@ -841,16 +843,15 @@ public struct SpriteScene: @unchecked Sendable {
                 baseRotDeg += parent.baseRotationDeg
             }
             if mask.position {
-                // Child position relative to parent's base position, then rotated by
-                // parent's animated rotation and translated to parent's animated position.
-                // This ensures that the visual offset seen in the wireframe is preserved
-                // when the parent moves or rotates.
+                // Child position relative to parent's stored (raw) position, then scaled,
+                // rotated by parent's animated rotation, and translated to parent's animated
+                // position. storedPositionPx is used (not basePositionPx) because basePositionPx
+                // is the world position after ancestor scaling — a different coordinate space
+                // from the child's raw stored position, causing wrong grandchild offsets.
                 let rad  = parent.rotationDeg * .pi / 180.0
                 let cosR = cos(rad), sinR = sin(rad)
-                var relTx = localTx - parent.basePositionPx.x
-                var relTy = localTy - parent.basePositionPx.y
-                // When scale is inherited the child offset is in parent-local space,
-                // so it must be scaled along with the parent's geometry.
+                var relTx = localTx - parent.storedPositionPx.x
+                var relTy = localTy - parent.storedPositionPx.y
                 if mask.scale {
                     relTx *= parent.scale.x
                     relTy *= parent.scale.y
@@ -858,11 +859,10 @@ public struct SpriteScene: @unchecked Sendable {
                 txPx = parent.positionPx.x + relTx * cosR - relTy * sinR
                 tyPx = parent.positionPx.y + relTx * sinR + relTy * cosR
 
-                // Base world position uses parent's base rotation.
                 let baseRad  = parent.baseRotationDeg * .pi / 180.0
                 let cosB = cos(baseRad), sinB = sin(baseRad)
-                var relBaseTx = baseTx - parent.basePositionPx.x
-                var relBaseTy = baseTy - parent.basePositionPx.y
+                var relBaseTx = baseTx - parent.storedPositionPx.x
+                var relBaseTy = baseTy - parent.storedPositionPx.y
                 if mask.scale {
                     relBaseTx *= parent.scale.x
                     relBaseTy *= parent.scale.y
@@ -873,11 +873,12 @@ public struct SpriteScene: @unchecked Sendable {
         }
 
         return ParentWorld(
-            positionPx:     Vector2D(x: txPx,    y: tyPx),
-            basePositionPx: Vector2D(x: baseTxPx, y: baseTyPx),
-            rotationDeg:    rotDeg,
+            positionPx:      Vector2D(x: txPx,    y: tyPx),
+            basePositionPx:  Vector2D(x: baseTxPx, y: baseTyPx),
+            storedPositionPx: Vector2D(x: baseTx,  y: baseTy),
+            rotationDeg:     rotDeg,
             baseRotationDeg: baseRotDeg,
-            scale:          Vector2D(x: sx, y: sy)
+            scale:           Vector2D(x: sx, y: sy)
         )
     }
 
@@ -1297,8 +1298,8 @@ public struct SpriteScene: @unchecked Sendable {
             if mask.position {
                 let rad  = parent.rotationDeg * .pi / 180.0
                 let cosP = cos(rad), sinP = sin(rad)
-                var relTx = localTx - parent.basePositionPx.x
-                var relTy = localTy - parent.basePositionPx.y
+                var relTx = localTx - parent.storedPositionPx.x
+                var relTy = localTy - parent.storedPositionPx.y
                 if mask.scale {
                     relTx *= parent.scale.x
                     relTy *= parent.scale.y
@@ -1457,7 +1458,6 @@ public struct SpriteScene: @unchecked Sendable {
         if let parent = parentWorld {
             let mask = def.inheritMask
             if mask.scale {
-                // Parent scale is stored without ×2; multiply against child's ×2-normalised value.
                 sx *= parent.scale.x
                 sy *= parent.scale.y
             }
@@ -1467,10 +1467,8 @@ public struct SpriteScene: @unchecked Sendable {
             if mask.position {
                 let rad  = parent.rotationDeg * .pi / 180.0
                 let cosP = cos(rad), sinP = sin(rad)
-                var relTx = localTx - parent.basePositionPx.x
-                var relTy = localTy - parent.basePositionPx.y
-                // When scale is inherited the child offset is in parent-local space,
-                // so it must be scaled along with the parent's geometry.
+                var relTx = localTx - parent.storedPositionPx.x
+                var relTy = localTy - parent.storedPositionPx.y
                 if mask.scale {
                     relTx *= parent.scale.x
                     relTy *= parent.scale.y

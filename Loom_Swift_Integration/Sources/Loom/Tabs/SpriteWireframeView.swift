@@ -566,6 +566,10 @@ struct SpriteWireframeView: View {
     private struct WireWorld {
         var posX, posY:         Double  // animated world position (percent units)
         var basePosX, basePosY: Double  // base world position (no animation)
+        /// Raw stored position (raw.position.x/y), never modified by ancestor transforms.
+        /// Used by children as the local-space origin when computing their offset, so that
+        /// grandparent scaling doesn't corrupt the grandchild's relative position.
+        var storedPosX, storedPosY: Double
         var rotDeg:             Double  // animated world rotation (degrees)
         var baseRotDeg:         Double
         var scaleX, scaleY:     Double  // combined world scale (without ×2)
@@ -607,8 +611,11 @@ struct SpriteWireframeView: View {
             if mask.position {
                 let rad  = p.rotDeg * .pi / 180.0
                 let cosR = cos(rad), sinR = sin(rad)
-                var relX = posX - p.basePosX
-                var relY = posY - p.basePosY
+                // Use parent's storedPosX (raw unscaled position) as the local-space origin.
+                // basePosX reflects the world position after ancestor scaling, which is in a
+                // different coordinate space from the child's raw stored position.
+                var relX = posX - p.storedPosX
+                var relY = posY - p.storedPosY
                 if mask.scale {
                     relX *= p.scaleX
                     relY *= p.scaleY
@@ -618,8 +625,8 @@ struct SpriteWireframeView: View {
 
                 let baseRad = p.baseRotDeg * .pi / 180.0
                 let cosB = cos(baseRad), sinB = sin(baseRad)
-                var relBaseX = basePosX - p.basePosX
-                var relBaseY = basePosY - p.basePosY
+                var relBaseX = raw.position.x - p.storedPosX
+                var relBaseY = raw.position.y - p.storedPosY
                 if mask.scale {
                     relBaseX *= p.scaleX
                     relBaseY *= p.scaleY
@@ -631,6 +638,7 @@ struct SpriteWireframeView: View {
 
         return WireWorld(posX: posX, posY: posY,
                          basePosX: basePosX, basePosY: basePosY,
+                         storedPosX: raw.position.x, storedPosY: raw.position.y,
                          rotDeg: rotDeg, baseRotDeg: baseRotDeg,
                          scaleX: scaleX, scaleY: scaleY)
     }
