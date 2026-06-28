@@ -279,17 +279,20 @@
 <section id="overview">
   <h2>What is Loom?</h2>
 
-  <p>Loom is a generative art environment built around the computational affordances that make software fundamentally different from physical drawing — not a simulation of analogue tools, but a space to explore what computation alone makes possible.</p>
+  <p>Loom is a 2D animation and generative art environment. It covers a broad range — from purely algorithmic, computationally-driven work at one end to traditional cel-style character animation at the other — and most productions sit somewhere between those poles, combining generative elements with conventionally animated sprites or imported artwork.</p>
 
-  <p>Three affordances are central to how Loom works:</p>
+  <p>At the generative end, Loom's recursive subdivision engine and parametric driver system let the machine generate structural complexity from simple geometry: one polygon becomes thousands of sub-polygons; a noise driver on a renderer colour produces organic variation across an entire frame range; jitter pools create rapid, unpredictable style switching frame by frame. At the animation end, SpriteCycles sequence geometry and bitmap frames with per-state timing and transitions; sprite hierarchies with inheritance masks support rigged characters; keyframe drivers handle position, rotation, scale, opacity, morph targets, and active set assignments with the precision expected of a dedicated animation tool.</p>
+
+  <p>Four affordances are central to how Loom works across both modes:</p>
 
   <ul>
     <li><strong>Separation of concerns.</strong> Geometry, subdivision rules, and rendering style are defined independently and combined at render time. The same polygon can be subdivided twenty different ways and rendered twenty different ways — none of those choices are baked into the geometry itself. Changing a subdivision rule or renderer propagates instantly to every sprite that uses it.</li>
-    <li><strong>Recursive subdivision.</strong> A single polygon can be subdivided repeatedly, each pass splitting its children according to rules. Five levels of Quad subdivision on a square produces thousands of sub-polygons. The emergent complexity arises purely from the algorithm and the initial geometry — you draw one shape, the machine multiplies it.</li>
-    <li><strong>Parametric animation.</strong> Properties do not only move between keyframes. Noise, oscillators, jitter, and set-swap drivers produce behaviour over time without any keyframes at all. A single noise driver on a renderer colour produces an organic breathing effect across an entire frame range. Jitter drivers on subdivision or renderer set assignments create rapid structural variation frame by frame.</li>
+    <li><strong>Recursive subdivision.</strong> A single polygon can be subdivided repeatedly, each pass splitting its children according to a rule. Five levels of Quad subdivision on a square produces thousands of sub-polygons. The emergent complexity arises purely from the algorithm and the initial geometry — you draw one shape, the machine multiplies it.</li>
+    <li><strong>Parametric animation.</strong> Properties do not only move between keyframes. Noise, oscillators, jitter, and set-swap drivers produce behaviour over time without any keyframes at all. These compose naturally with conventional keyframe animation on the same sprite.</li>
+    <li><strong>Cycle and image animation.</strong> SpriteCycles step through geometry states and image frames with independent hold and transition timing, enabling walk cycles, expression sequences, and mixed polygon/bitmap animation on a single sprite. Image sprites — SVG, PNG, JPG, TIFF, GIF — are first-class citizens alongside polygon geometry, with all standard transform drivers and camera features applying equally to both.</li>
   </ul>
 
-  <div class="note"><strong>A note on approachability.</strong> Loom is less intuitive than ordinary drawing or animation software. Its pipeline — geometry → subdivision → rendering → animation — requires understanding each stage before they can be meaningfully combined. The reward for that investment is a depth of creative exploration that would be impossible to reach by hand: structural variation at scale, live set switching, recursive fractal-like complexity generated from simple inputs. The <a href="#foundations">Foundations</a> section below introduces the core geometric concepts if you are coming to Loom without a background in vector geometry or subdivision.</div>
+  <div class="note"><strong>A note on approachability.</strong> Loom's full pipeline — geometry → subdivision → rendering → animation — requires understanding each stage before they combine effectively. For generative work that rewards this investment. For traditional animation you can skip subdivision entirely: place image sprites or assign simple geometry, rig a hierarchy, and drive the timeline — no subdivision knowledge required. The <a href="#foundations">Foundations</a> section introduces the core geometric concepts if you are coming to Loom without a background in vector geometry or subdivision.</div>
 
   <div class="diagram">
     <svg width="560" height="110" viewBox="0 0 560 110" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -327,16 +330,24 @@
       <div class="card-desc">20+ algorithms — Quad, Tri, Split, Echo, Star — each with ratio, inset, and per-wall colour controls. Apply recursively to any depth.</div>
     </div>
     <div class="card">
+      <div class="card-title">SpriteCycles</div>
+      <div class="card-desc">Named, reusable animation cycles step through geometry states and image frames with per-state hold and transition timing, four loop modes, and renderer overrides. Supports walk cycles, expression swaps, and mixed polygon/bitmap sequences on a single sprite.</div>
+    </div>
+    <div class="card">
+      <div class="card-title">Image sprites</div>
+      <div class="card-desc">SVG, PNG, JPG, TIFF, and GIF files are first-class sprites alongside polygon geometry. All transform drivers, camera effects, depth/parallax, and sprite hierarchy apply equally to image and polygon sprites.</div>
+    </div>
+    <div class="card">
       <div class="card-title">Animated rendering</div>
       <div class="card-desc">Custom brush and stamp PNG patterns, stencil masking, progressive drawing, and colour, width, opacity, and blur animation on every renderer.</div>
     </div>
     <div class="card">
       <div class="card-title">Procedural drivers</div>
-      <div class="card-desc">Noise, oscillator, jitter, and keyframe drivers animate sprite transforms, camera motion, renderer-level colour, width, opacity — and now the active subdivision and renderer sets themselves.</div>
+      <div class="card-desc">Noise, oscillator, jitter, and keyframe drivers animate sprite transforms, camera motion, renderer-level colour, width, and opacity — composable with conventional keyframe animation on the same sprite.</div>
     </div>
     <div class="card">
       <div class="card-title">Set swap drivers</div>
-      <div class="card-desc">Animate which subdivision parameter set or renderer set is active per sprite, per frame — via keyframe steps or jitter pools with rate control.</div>
+      <div class="card-desc">Keyframe or jitter-driven switching of the active subdivision set, renderer set, or SpriteCycle per sprite per frame — enabling structural and stylistic variation over time.</div>
     </div>
     <div class="card">
       <div class="card-title">Morph targets</div>
@@ -344,7 +355,7 @@
     </div>
     <div class="card">
       <div class="card-title">Sprite hierarchy</div>
-      <div class="card-desc">Parent–child sprite trees with selectable inherit masks for position, rotation, and scale.</div>
+      <div class="card-desc">Parent–child sprite trees with selectable inherit masks for position, rotation, and scale — supporting rigged character setups.</div>
     </div>
     <div class="card">
       <div class="card-title">Pressure sensitivity</div>
@@ -357,13 +368,13 @@
   </div>
 
   <h3 id="overview-workflow">Core workflow</h3>
+  <p>The generative pipeline and the image/cycle animation path share the same sprite and timeline infrastructure — only the middle stages differ.</p>
   <ol class="steps">
-    <li>Create or open a project. The project folder holds all geometry files, brushes, stamps, and the <code>project_config.json</code>.</li>
-    <li>In the <strong>Geometry</strong> tab, draw or import polygon, open-curve, and point geometry using the built-in editor.</li>
-    <li>In the <strong>Sprites</strong> tab, create sprite instances and assign your geometry. Set position, scale, and rotation. Establish parent–child hierarchies if needed.</li>
-    <li>In the <strong>Subdivision</strong> tab, define sets of subdivision parameters and assign them to sprites. Preview the subdivided result and bake when ready.</li>
-    <li>In the <strong>Rendering</strong> tab, create renderer sets — choose fill/stroke modes or brush/stamp patterns. Assign each renderer set to the sprites that should use it.</li>
-    <li>Add animation via the <strong>Sprites inspector</strong>, <strong>Rendering inspector</strong>, or the <strong>Timeline</strong>. Use drivers for sprite transforms, camera motion, renderer colours, stroke width, and renderer opacity.</li>
+    <li>Create or open a project. The project folder holds geometry files, brushes, stamps, image sprites, and <code>project_config.json</code>.</li>
+    <li><strong>Geometry path:</strong> In the <strong>Geometry</strong> tab, draw or import polygon, open-curve, and point geometry. In the <strong>Subdivision</strong> tab, define parameter sets and assign them to sprites. In the <strong>Rendering</strong> tab, create renderer sets and assign them to sprites. <strong>Image path:</strong> Place SVG, PNG, or other image files in <code>svgs/sprites/</code> and assign them directly to sprites in the inspector — no subdivision or renderer set required.</li>
+    <li>In the <strong>Sprites</strong> tab, create sprite instances. Set position, scale, and rotation. Establish parent–child hierarchies for rigged setups.</li>
+    <li>In the <strong>Cycles</strong> tab, define SpriteCycles for walk cycles, expression sequences, or any multi-state animation. Assign cycles to sprites in the Sprites inspector.</li>
+    <li>Add animation via the <strong>Sprites inspector</strong> or the <strong>Timeline</strong>. Keyframe drivers handle transforms, morph, opacity, active subdivision set, renderer set, and active cycle. Procedural drivers (noise, oscillator, jitter) are available on any numeric lane.</li>
     <li>Press <strong>Play</strong> (Space) to preview. Export as a still, SVG, or video from the toolbar.</li>
   </ol>
 
@@ -376,6 +387,7 @@
       <tr><td><code>polygonSets/</code></td><td>JSON layered geometry files and legacy XML geometry files loaded by sprites</td></tr>
       <tr><td><code>brushes/</code></td><td>PNG brush pattern images</td></tr>
       <tr><td><code>stamps/</code></td><td>PNG stamp pattern images</td></tr>
+      <tr><td><code>svgs/sprites/</code></td><td>Image sprite files (SVG, PNG, JPG, TIFF, GIF, WebP) referenced by sprites and cycle states</td></tr>
       <tr><td><code>svgs/</code></td><td>Exported SVG wireframe files</td></tr>
       <tr><td><code>renders/</code></td><td>PNG stills and exported video files</td></tr>
     </tbody>
