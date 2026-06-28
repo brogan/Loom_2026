@@ -205,6 +205,7 @@
   <a class="nav-link" href="#global">Global</a>
   <a class="nav-link" href="#geometry">Geometry</a>
   <a class="nav-link nav-sub" href="#geometry-editor">Editor Tools</a>
+  <a class="nav-link nav-sub" href="#geometry-extend-curve">Extend Open Curve with P2P</a>
   <a class="nav-link nav-sub" href="#geometry-cycle-setup">Cycle Setup</a>
   <a class="nav-link nav-sub" href="#geometry-layers">Layers</a>
   <a class="nav-link nav-sub" href="#geometry-morph-layers">Morph Layer Import</a>
@@ -246,6 +247,7 @@
   <a class="nav-link nav-sub" href="#animation-timeline">Timeline</a>
   <a class="nav-link nav-sub" href="#animation-lane-controls">Lane Controls</a>
   <a class="nav-link nav-sub" href="#animation-solo">Solo Mode</a>
+  <a class="nav-link nav-sub" href="#animation-lane-solo">Lane Solo</a>
   <a class="nav-link nav-sub" href="#animation-editing">Timeline Editing</a>
   <a class="nav-link nav-sub" href="#animation-scale-timing">Scale Timing</a>
   <a class="nav-link nav-sub" href="#animation-visual-kf">Visual KF Editing</a>
@@ -740,8 +742,8 @@
       <tr><td><span class="icon-key">⊙</span>Point</td><td>Click to create standalone points. Points can render directly, or act as stamp positions for image-based rendering. The point tool remains active for repeated placement.</td></tr>
       <tr><td><span class="icon-key">⬯</span>Oval</td><td>Create an algorithmic oval. Loom treats it as closed polygon geometry for subdivision and rendering, but it can retain parametric controls while edited.</td></tr>
       <tr><td><span class="icon-key">☆</span>Regular polygon</td><td>Create algorithmic regular polygons and stars. Sides, radius, inner radius, and rotation are editable while the polygon remains parametric.</td></tr>
-      <tr><td><span class="icon-key">⌁</span>Point-by-point</td><td>Click anchors only; Loom infers Bézier control points between anchors. Finalise as a closed polygon or open curve using the buttons on the same row.</td></tr>
-      <tr><td><span class="icon-key">▣</span>Finalise polygon</td><td>Closes the current point-by-point draft or mesh draft as a closed polygon. In mesh mode, <kbd>P</kbd> performs the same commit.</td></tr>
+      <tr><td><span class="icon-key">⌁</span>Point-by-point</td><td>Click anchors only; Loom infers Bézier control points between anchors. Finalise as a closed polygon or open curve using the buttons on the same row. Can also be used to extend an existing selected open curve — see <a href="#geometry-extend-curve">Extending a freehand open curve with P2P</a>.</td></tr>
+      <tr><td><span class="icon-key">▣</span>Finalise polygon</td><td>Closes the current point-by-point draft or mesh draft as a closed polygon. Also used to finalise a freehand-curve extension (open curve selected + draft points present). Press <kbd>P</kbd> as a keyboard shortcut in all cases.</td></tr>
       <tr><td><span class="icon-key">⌒</span>Finalise open curve</td><td>Finishes a point-by-point draft as an open curve instead of closing it.</td></tr>
       <tr><td><span class="icon-key">⌗</span>Mesh build</td><td>Extend polygonal meshes from existing edges. Drag the red edge-centre affordance to create provisional geometry; release to keep extending; press <kbd>P</kbd> when the whole new polygon is ready.</td></tr>
       <tr><td><span class="icon-key">△</span>Fill triangle</td><td>Build a triangle from two selected connected edges where the opening is unambiguous.</td></tr>
@@ -751,6 +753,23 @@
       <tr><td><span class="icon-key">⌫</span>Clear draft</td><td>Discard the current point-by-point or creation draft without changing saved geometry.</td></tr>
     </tbody>
   </table>
+
+  <h4 id="geometry-extend-curve">Extending a freehand open curve with P2P</h4>
+  <p>A common cel-animation task is to draw an organic foreground outline with Freehand — a landscape edge, a floor line — and then neatly close it to form a filled polygon by connecting the two endpoints via straight-line corners. Doing the whole shape in freehand is tedious; doing it entirely in P2P loses the organic quality. The extension workflow combines both:</p>
+  <ol>
+    <li>Draw the organic outline using the <strong>Freehand</strong> tool. Release <em>without</em> closing the stroke so it becomes an <strong>open curve</strong>. The open curve is automatically selected.</li>
+    <li>Switch to <strong>Point-by-point</strong>. The open curve selection is kept — you are now in extension mode.</li>
+    <li>Click each corner or base point on the canvas. An orange ring marks the curve's end anchor so you know where the chain is anchored; the draft line continues visually from there. A dashed closing line shows the path back to the curve's <em>start</em> anchor.</li>
+    <li>Press <kbd>P</kbd> (or click <strong>Finalise polygon</strong>) when all corner points are placed. Loom merges the open curve's cubic segments with straight-line P2P segments, adds a straight closing segment back to the curve's start, and produces a single closed polygon. The open curve is removed.</li>
+  </ol>
+  <div class="tip"><strong>Example — foreground landscape for a layered scene:</strong> Draw the top silhouette of a hillside with Freehand (open curve). Switch to P2P and click the bottom-right corner of the canvas frame, then the bottom-left corner. Press P. The result is a closed polygon whose top edge is the organic hill outline and whose bottom three edges are the straight frame border. Import it into the sprite's geometry, set the layer to the foreground depth, and use a fill renderer.</div>
+  <ul>
+    <li>Extension mode requires exactly <strong>one</strong> open curve selected and at least <strong>one</strong> P2P draft point.</li>
+    <li>The freehand portion retains full cubic Bézier data; P2P segments are straight-line cubics (inferred smooth handles).</li>
+    <li>The resulting polygon is named after the original open curve unless it was an auto-generated "Freehand Curve N", in which case it is renamed "Polygon N".</li>
+    <li>If you press <strong>Finalise polygon</strong> with an open curve selected but <em>no</em> draft points, the curve is closed with a single straight segment from end to start — the standard quick-close path.</li>
+    <li>Undo covers the whole operation as one snapshot.</li>
+  </ul>
 
   <h4>Edit and selection controls</h4>
   <table class="control-table">
@@ -2029,7 +2048,7 @@
       <tr><td>Hold length</td><td>Frames to keep geometry drawn before clearing (ghost/trail effect).</td></tr>
     </tbody>
   </table>
-  <p>Each renderer driver section header in the inspector shows the same <strong>keyframe indicator</strong> and <strong>enabled checkbox</strong> as sprite drivers — see <a href="#animation-lane-controls">Driver enabled state and lane visibility</a>. A batch eye above the five driver sections collapses all unused renderer driver panels at once. Renderer driver lanes in the timeline also carry per-lane enabled checkboxes, keyframe indicators, and eye hide controls, and are included in the sprite-row batch eye.</p>
+  <p>Each renderer driver section header in the inspector shows the same <strong>keyframe indicator</strong> and <strong>enabled checkbox</strong> as sprite drivers — see <a href="#animation-lane-controls">Driver enabled state and lane visibility</a>. A batch eye above the five driver sections collapses all unused renderer driver panels at once. Renderer driver lanes in the timeline also carry per-lane enabled checkboxes, keyframe indicators, and star solo buttons, and are included in the sprite-row batch eye.</p>
 
   <h4>Internal renderer changes</h4>
   <p>Fill colour, stroke colour, and stroke width changes can operate at different scales. <strong>Poly</strong> applies changes per subdivision child polygon; <strong>Sprite</strong> applies one value to the whole sprite; <strong>Global</strong> applies one value across the render. Random palette changes do not require global animation to be enabled when a static randomised result is desired.</p>
@@ -2125,7 +2144,7 @@
   </table>
 
   <h3 id="animation-timeline">Timeline</h3>
-  <p>The Timeline panel appears at the bottom of the window when a project is open. It shows keyframe lanes for the camera, sprites, and renderer drivers associated with a selected sprite's renderer set. Renderer lanes use a slightly darker background so they are visually distinct from sprite transform lanes. Each lane header shows an <strong>enabled checkbox</strong>, a <strong>keyframe indicator</strong>, and an <strong>eye icon</strong> for hiding unused lanes — see <a href="#animation-lane-controls">Driver enabled state and lane visibility</a>.</p>
+  <p>The Timeline panel appears at the bottom of the window when a project is open. It shows keyframe lanes for the camera, sprites, and renderer drivers associated with a selected sprite's renderer set. Renderer lanes use a slightly darker background so they are visually distinct from sprite transform lanes. Each lane header shows an <strong>enabled checkbox</strong>, a <strong>keyframe indicator</strong>, and a <strong>star solo button</strong> for exclusive-focus filtering — see <a href="#animation-lane-controls">Driver enabled state and lane visibility</a> and <a href="#animation-solo">Solo mode</a>.</p>
 
   <div class="diagram">
     <svg width="520" height="90" viewBox="0 0 520 90" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -2212,9 +2231,9 @@
         <td>A hollow circle means no keyframes have been created for this driver. A solid green circle means one or more keyframes exist. The indicator is read-only and updates immediately when keyframes are added or removed.</td>
       </tr>
       <tr>
-        <td><strong>Eye icon (per lane)</strong></td>
+        <td><strong>Star / lane solo</strong></td>
         <td>Timeline lane header only</td>
-        <td>Hides or reveals this specific lane row in the timeline canvas. Hiding a lane is purely visual — it does not affect rendering or the driver's enabled state. Hidden lanes can be restored individually, or with the batch eye on the sprite/camera summary row.</td>
+        <td>Solos this specific lane: clicking hides all <em>other</em> lanes for the same entity so only this lane remains visible. Clicking again restores all lanes. This is an exclusive-focus toggle, not a simple hide — see <a href="#animation-lane-solo">Lane solo</a>. The star fills yellow when the lane is soloed.</td>
       </tr>
     </tbody>
   </table>
@@ -2230,15 +2249,26 @@
   <div class="tip"><strong>Typical workflow:</strong> Open a new sprite, click the plain eye on the sprite row to collapse all six unused driver sections, then enable and expand only the drivers you actually need. This keeps both the timeline and the inspector compact as you build up animation.</div>
 
   <h3 id="animation-solo">Solo mode</h3>
-  <p>Each sprite summary row and the Camera summary row carry a <strong>star-in-circle</strong> button (<span style="font-family: -apple-system, sans-serif;">⊛</span>) to the left of the batch eye. Clicking it puts the timeline into <strong>solo mode</strong> for that item:</p>
+  <p>The timeline has two levels of solo: <strong>sprite/camera solo</strong> (hides other entities) and <strong>lane solo</strong> (hides other lanes within an entity). Both use the same <strong>star</strong> icon (<span style="font-family: -apple-system, sans-serif;">★</span>): hollow and dim when inactive, filled yellow when active.</p>
+
+  <h4>Sprite and camera solo</h4>
+  <p>Each sprite summary row and the Camera summary row carry a star button at the right edge of the header. Clicking it puts the timeline into <strong>exclusive focus</strong> for that item:</p>
   <ul>
-    <li>All other sprites and (when soloing a sprite) the camera block are hidden from both the lane header column and the canvas. Only the soloed item's rows are shown.</li>
-    <li>The star fills and turns yellow to confirm solo is active.</li>
-    <li>Clicking the filled star a second time exits solo mode and restores the full view.</li>
-    <li>Clicking a <em>different</em> item's star switches solo to that item immediately.</li>
+    <li><strong>Sprite solo</strong> — all other sprite rows and the camera block are hidden. Only the soloed sprite's lanes are visible.</li>
+    <li><strong>Camera solo</strong> — all sprite rows are hidden. Only the camera's expanded lanes are visible.</li>
+    <li>The star fills yellow to confirm solo is active. Clicking it again exits solo and restores the full view.</li>
+    <li>Clicking a <em>different</em> entity's star switches solo to that entity immediately.</li>
   </ul>
-  <p>Solo mode is a display-only filter — it has no effect on rendering, driver state, or keyframe values. It is useful when a project has many sprites and you want to focus on one sprite's keyframe lanes without the surrounding visual noise.</p>
-  <div class="tip"><strong>Tip:</strong> Solo mode and lane hiding are independent. Hidden lanes remain hidden while soloed, and the batch eye on the soloed row still works normally to show or hide individual lanes within the focused view.</div>
+
+  <h4 id="animation-lane-solo">Lane solo</h4>
+  <p>Each individual lane row (position, rotation, scale, opacity, etc. and all renderer lanes) also carries a star button. Clicking it solos that lane <em>within</em> its sprite or camera block:</p>
+  <ul>
+    <li>All other lanes for the same entity — including renderer lanes — are hidden. Only the clicked lane remains visible.</li>
+    <li>Clicking the soloed lane's star again restores all lanes for that entity.</li>
+    <li>Lane solo and sprite/camera solo stack: you can solo a sprite first, then solo one of its lanes.</li>
+  </ul>
+  <p>Both levels of solo are display-only — they have no effect on rendering, driver enabled state, or keyframe values.</p>
+  <div class="tip"><strong>Tip:</strong> Lane solo is the fastest way to focus on a single driver when a sprite has many active lanes. Solo the sprite first (to hide other sprites), then solo the Position lane; the result is a clean view of exactly one keyframe track.</div>
 
   <h3 id="animation-editing">Timeline editing</h3>
   <table>
