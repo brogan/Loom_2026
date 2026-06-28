@@ -436,8 +436,11 @@ struct TimelinePanel: View {
                         case .rotation: return cam?.rotation.enabled ?? false
                         }
                     }()
+                    let camAllIDs = CameraLane.allCases.map { cameraLaneID($0) }
+                    let camThisID = cameraLaneID(lane)
                     driverHeaderRow(lane.label, color: lane.color,
                                     isEnabled: isEnab, hasKeyframes: hasKF, isHidden: false,
+                                    isSoloed: isLaneSoloed(camThisID, among: camAllIDs),
                                     onTap: { selectCameraLane(lane, additive: shiftModifierActive) },
                                     onToggleEnabled: {
                                         controller.updateProjectConfig { cfg in
@@ -449,7 +452,7 @@ struct TimelinePanel: View {
                                             }
                                         }
                                     },
-                                    onToggleHidden: { hiddenLanes.insert(cameraLaneID(lane)) })
+                                    onSolo: { soloLane(camThisID, among: camAllIDs) })
                 }
             }
             } // end if cameraBlockVisible
@@ -475,8 +478,11 @@ struct TimelinePanel: View {
                             case .rendererSet:    return d.rendererSet.enabled
                             }
                         }()
+                        let sprAllIDs = allSpriteRowIDs(for: node)
+                        let sprThisID = spriteLaneID(spriteName: node.sprite.name, lane: lane)
                         driverHeaderRow(lane.label, color: lane.color,
                                         isEnabled: isEnab, hasKeyframes: hasKF, isHidden: false,
+                                        isSoloed: isLaneSoloed(sprThisID, among: sprAllIDs),
                                         onTap: { selectSpriteLane(spriteListIdx: si, lane: lane,
                                                                    additive: shiftModifierActive) },
                                         onToggleEnabled: {
@@ -495,9 +501,7 @@ struct TimelinePanel: View {
                                                 }
                                             }
                                         },
-                                        onToggleHidden: {
-                                            hiddenLanes.insert(spriteLaneID(spriteName: node.sprite.name, lane: lane))
-                                        })
+                                        onSolo: { soloLane(sprThisID, among: sprAllIDs) })
                     }
                     ForEach(visibleRendererRows(for: node), id: \.id) { row in
                         let rend    = renderer(atSet: row.rendererSetIdx, item: row.rendererItemIdx)
@@ -512,8 +516,11 @@ struct TimelinePanel: View {
                             case .blur:        return d.blur.enabled
                             }
                         }()
+                        let rendAllIDs = allSpriteRowIDs(for: node)
+                        let rendThisID = rendererLaneID(row)
                         driverHeaderRow(row.label, color: row.lane.color, isRenderer: true,
                                         isEnabled: isEnab, hasKeyframes: hasKF, isHidden: false,
+                                        isSoloed: isLaneSoloed(rendThisID, among: rendAllIDs),
                                         onTap: { selectRendererLane(spriteListIdx: si, row: row,
                                                                      additive: shiftModifierActive) },
                                         onToggleEnabled: {
@@ -530,9 +537,7 @@ struct TimelinePanel: View {
                                                 }
                                             }
                                         },
-                                        onToggleHidden: {
-                                            hiddenLanes.insert(rendererLaneID(row))
-                                        })
+                                        onSolo: { soloLane(rendThisID, among: rendAllIDs) })
                     }
                 }
             }
@@ -684,9 +689,10 @@ struct TimelinePanel: View {
         isEnabled: Bool,
         hasKeyframes: Bool,
         isHidden: Bool,
+        isSoloed: Bool = false,
         onTap: (() -> Void)? = nil,
         onToggleEnabled: @escaping () -> Void,
-        onToggleHidden: @escaping () -> Void
+        onSolo: @escaping () -> Void
     ) -> some View {
         HStack(spacing: 4) {
             Color.clear.frame(width: 14)
@@ -706,12 +712,13 @@ struct TimelinePanel: View {
                     .foregroundStyle(isEnabled ? Color.accentColor : Color.secondary.opacity(0.6))
             }
             .buttonStyle(.plain)
-            Button(action: onToggleHidden) {
-                Image(systemName: "eye.slash")
-                    .font(.system(size: 10))
-                    .foregroundStyle(Color.secondary.opacity(0.5))
+            Button(action: onSolo) {
+                Image(systemName: isSoloed ? "star.fill" : "star")
+                    .font(.system(size: 11))
+                    .foregroundStyle(isSoloed ? Color.yellow : Color.secondary.opacity(0.45))
             }
             .buttonStyle(.plain)
+            .help(isSoloed ? "Exit solo" : "Solo this lane")
         }
         .padding(.trailing, 6)
         .frame(height: rowHeight)
@@ -2881,7 +2888,8 @@ struct TimelinePanel: View {
     private var cameraBlockVisible: Bool { soloKey == nil || soloKey == cameraSoloKey }
 
     private var soloedTimelineNodes: [TimelineNode] {
-        guard let key = soloKey, key != cameraSoloKey else { return timelineNodes }
+        guard let key = soloKey else { return timelineNodes }
+        if key == cameraSoloKey { return [] }
         return timelineNodes.filter { $0.sprite.name == key }
     }
 
@@ -2894,8 +2902,8 @@ struct TimelinePanel: View {
         return Button {
             soloKey = isActive ? nil : key
         } label: {
-            Image(systemName: isActive ? "star.circle.fill" : "star.circle")
-                .font(.system(size: 10))
+            Image(systemName: isActive ? "star.fill" : "star")
+                .font(.system(size: 13))
                 .foregroundStyle(isActive ? Color.yellow : Color.secondary.opacity(0.45))
         }
         .buttonStyle(.plain)
@@ -2912,6 +2920,24 @@ struct TimelinePanel: View {
     private func cameraLaneID(_ lane: CameraLane) -> String {
         "c:\(lane.rawValue)"
     }
+    private func allSpriteRowIDs(for node: TimelineNode) -> [String] {
+        DriverLane.allCases.map { spriteLaneID(spriteName: node.sprite.name, lane: $0) }
+            + rendererRows(for: node).map { rendererLaneID($0) }
+    }
+
+    private func soloLane(_ id: String, among allIDs: [String]) {
+        let othersAllHidden = allIDs.filter { $0 != id }.allSatisfy { hiddenLanes.contains($0) }
+        if othersAllHidden {
+            allIDs.forEach { hiddenLanes.remove($0) }
+        } else {
+            allIDs.filter { $0 != id }.forEach { hiddenLanes.insert($0) }
+        }
+    }
+
+    private func isLaneSoloed(_ id: String, among allIDs: [String]) -> Bool {
+        allIDs.filter { $0 != id }.allSatisfy { hiddenLanes.contains($0) }
+    }
+
     private func visibleSpriteLanes(for node: TimelineNode) -> [DriverLane] {
         DriverLane.allCases.filter { !hiddenLanes.contains(spriteLaneID(spriteName: node.sprite.name, lane: $0)) }
     }
