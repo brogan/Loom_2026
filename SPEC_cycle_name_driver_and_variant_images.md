@@ -197,6 +197,14 @@ Variant images are loaded from the same directory as `def.svgFilename` images
 (`svgs/sprites/` relative to the project folder). No new loading infrastructure
 is needed.
 
+> **Deferred:** `LoomEngine.loadSVGImages` currently loads every file in
+> `svgs/sprites/` unconditionally, regardless of whether any sprite references
+> it. This is fine for small projects but becomes a startup-time and memory
+> problem as the folder grows. When that becomes noticeable, refactor the loader
+> to build a reference set by scanning all `svgFilename`, cycle-state image, and
+> variant image fields first, then load only those filenames. That change belongs
+> together with any future selective-loading work — not as a separate patch.
+
 ### Inspector UI
 
 In the sprite variants list (shape driver section of the sprite inspector), each
