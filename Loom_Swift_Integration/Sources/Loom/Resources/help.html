@@ -224,6 +224,7 @@
   <a class="nav-link nav-sub" href="#cycles-manage">Renaming &amp; Duplicating</a>
   <a class="nav-link nav-sub" href="#cycles-preview">Editor Preview</a>
   <a class="nav-link" href="#layers">Layers</a>
+  <a class="nav-link nav-sub" href="#layers-reorder">Reordering</a>
   <a class="nav-link nav-sub" href="#layers-parallax">Parallax</a>
   <a class="nav-link nav-sub" href="#layers-blur">Blur &amp; DOF</a>
   <a class="nav-link nav-sub" href="#layers-blend">Blend Modes</a>
@@ -1487,7 +1488,11 @@
   <div class="tip"><strong>Unassigned sprites.</strong> Sprites not assigned to any layer are rendered first into the main context using the legacy flat depth-sort. They appear beneath all layers. This preserves backward compatibility: existing projects with no layers load and render identically to before.</div>
 
   <h3>Layer list</h3>
-  <p>The Layers tab shows a bottom-to-top stack. Layers are rendered in list order — the first layer in the list is drawn first (furthest back). Use the <strong>+</strong> and <strong>−</strong> toolbar buttons to add and remove layers; drag to reorder. The eye icon toggles layer visibility. Each row shows the layer name, assigned sprite set names, a parallax badge (when not 1×), and a blend mode badge (when not Normal).</p>
+  <p>The Layers tab shows a bottom-to-top stack. Layers are rendered in list order — the first layer in the list is drawn first (furthest back). Use the <strong>+</strong> and <strong>−</strong> toolbar buttons to add and remove layers. The eye icon toggles layer visibility. Each row shows the layer name, assigned sprite set names, a parallax badge (when not 1×), and a blend mode badge (when not Normal).</p>
+
+  <h4 id="layers-reorder">Reordering layers</h4>
+  <p>Drag any layer row to a new position in the stack. To drag: hover over a row until the grip handle appears on the left edge, then click and drag it up or down. The layer snaps into place when you release. Render order updates immediately — the first row in the list is always drawn first (bottom of the compositing stack).</p>
+  <div class="tip">Reordering layers changes compositing order but does not reassign sprite sets. Sprites in each layer stay where they are; only the order in which the layer buffers are composited onto the canvas changes.</div>
 
   <h3>Layer inspector</h3>
   <p>Select a layer to edit its properties in the inspector.</p>
