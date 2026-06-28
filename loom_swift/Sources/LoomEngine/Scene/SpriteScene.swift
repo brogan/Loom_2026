@@ -72,6 +72,10 @@ public struct SpriteScene: @unchecked Sendable {
     /// Compositing layers from project config.  Empty = legacy flat depth-sort path.
     var layers: [LoomLayer] = []
 
+    /// Persistent offscreen buffers for `.once` and `.accumulate` layers, keyed by layer UUID.
+    /// Created on first use; retained across frames. Cleared by the invalidation helpers below.
+    var layerBuffers: [UUID: CGContext] = [:]
+
     /// Named sprite cycles keyed by name for O(1) lookup during render.
     private let allCycles: [String: SpriteCycle]
 
@@ -602,13 +606,14 @@ public struct SpriteScene: @unchecked Sendable {
     ///   - brushImages:    CGImages keyed by filename, used for `RendererMode.brushed` sprites.
     ///   - elapsedFrames:  Accumulated fractional frame count (= elapsed seconds × targetFPS),
     ///                     forwarded to the brush meander phase for frame-rate-independent animation.
-    func render<RNG: RandomNumberGenerator>(
+    mutating func render<RNG: RandomNumberGenerator>(
         into context: CGContext,
         viewTransform: ViewTransform,
         brushImages: [String: CGImage] = [:],
         stampImages: [String: CGImage] = [:],
         elapsedFrames: Double = 0,
         perspectiveStrength: Double = 0,
+        backgroundColor: CGColor = CGColor(gray: 0, alpha: 1),
         progressiveBrushStates: inout [String: BrushProgressiveState],
         progressiveBrushEnabled: Bool = false,
         using rng: inout RNG
@@ -621,6 +626,7 @@ public struct SpriteScene: @unchecked Sendable {
                 stampImages: stampImages,
                 elapsedFrames: elapsedFrames,
                 perspectiveStrength: perspectiveStrength,
+                backgroundColor: backgroundColor,
                 progressiveBrushStates: &progressiveBrushStates,
                 progressiveBrushEnabled: progressiveBrushEnabled,
                 using: &rng
@@ -656,13 +662,14 @@ public struct SpriteScene: @unchecked Sendable {
 
     // MARK: - Layered rendering
 
-    private func renderLayered<RNG: RandomNumberGenerator>(
+    private mutating func renderLayered<RNG: RandomNumberGenerator>(
         into context: CGContext,
         viewTransform: ViewTransform,
         brushImages: [String: CGImage],
         stampImages: [String: CGImage],
         elapsedFrames: Double,
         perspectiveStrength: Double,
+        backgroundColor: CGColor,
         progressiveBrushStates: inout [String: BrushProgressiveState],
         progressiveBrushEnabled: Bool,
         using rng: inout RNG
@@ -698,27 +705,14 @@ public struct SpriteScene: @unchecked Sendable {
 
         // Render each layer bottom-to-top.
         for (layerIndex, layer) in layers.enumerated() {
-            guard layer.isVisible else { continue }
-            guard let offscreen = makeOffscreenContext(size: viewTransform.canvasSize) else { continue }
+            guard layer.isVisible else {
+                if layer.redrawMode != .full { layerBuffers.removeValue(forKey: layer.id) }
+                continue
+            }
 
             let lt = layerViewTransform(viewTransform, parallaxFactor: layer.parallaxFactor)
             let layerIndices = instances.indices.filter { layer.spriteSetNames.contains(instances[$0].spriteSetName) }
             let drawOrder    = layerIndices.sorted { instances[$0].def.depth > instances[$1].def.depth }
-
-            for i in drawOrder {
-                let instance = instances[i]
-                let parentWorld = instance.def.parentName.flatMap { parentWorlds[$0] }
-                let spriteTransform = depthAdjustedTransform(lt,
-                                                             depth: instance.def.depth,
-                                                             perspectiveStrength: perspectiveStrength)
-                renderInstance(instance, spriteIndex: i, parentWorld: parentWorld,
-                               into: offscreen, viewTransform: spriteTransform,
-                               brushImages: brushImages, stampImages: stampImages,
-                               elapsedFrames: elapsedFrames,
-                               progressiveBrushStates: &progressiveBrushStates,
-                               progressiveBrushEnabled: progressiveBrushEnabled,
-                               using: &rng)
-            }
 
             let opacity = max(0, min(1, DriverEvaluator.evaluate(
                 layer.opacityDriver, globalElapsed: elapsedFrames,
@@ -729,10 +723,104 @@ public struct SpriteScene: @unchecked Sendable {
                 targetFPS: targetFPS, spriteIndex: layerIndex
             )) * Double(qualityMultiple)
 
-            applyLayerComposite(from: offscreen, blurRadius: blurRadius, opacity: opacity,
-                                blendMode: layer.blendMode, into: context,
-                                canvasSize: viewTransform.canvasSize)
+            switch layer.redrawMode {
+
+            case .full:
+                // Discard any persistent buffer left from a previous mode.
+                layerBuffers.removeValue(forKey: layer.id)
+                guard let offscreen = makeOffscreenContext(size: viewTransform.canvasSize) else { continue }
+                for i in drawOrder {
+                    let instance = instances[i]
+                    let parentWorld = instance.def.parentName.flatMap { parentWorlds[$0] }
+                    let st = depthAdjustedTransform(lt, depth: instance.def.depth,
+                                                    perspectiveStrength: perspectiveStrength)
+                    renderInstance(instance, spriteIndex: i, parentWorld: parentWorld,
+                                   into: offscreen, viewTransform: st,
+                                   brushImages: brushImages, stampImages: stampImages,
+                                   elapsedFrames: elapsedFrames,
+                                   progressiveBrushStates: &progressiveBrushStates,
+                                   progressiveBrushEnabled: progressiveBrushEnabled,
+                                   using: &rng)
+                }
+                applyLayerComposite(from: offscreen, blurRadius: blurRadius, opacity: opacity,
+                                    blendMode: layer.blendMode, into: context,
+                                    canvasSize: viewTransform.canvasSize)
+
+            case .once:
+                if layerBuffers[layer.id] == nil {
+                    guard let fresh = makeOffscreenContext(size: viewTransform.canvasSize) else { continue }
+                    for i in drawOrder {
+                        let instance = instances[i]
+                        let parentWorld = instance.def.parentName.flatMap { parentWorlds[$0] }
+                        let st = depthAdjustedTransform(lt, depth: instance.def.depth,
+                                                        perspectiveStrength: perspectiveStrength)
+                        renderInstance(instance, spriteIndex: i, parentWorld: parentWorld,
+                                       into: fresh, viewTransform: st,
+                                       brushImages: brushImages, stampImages: stampImages,
+                                       elapsedFrames: elapsedFrames,
+                                       progressiveBrushStates: &progressiveBrushStates,
+                                       progressiveBrushEnabled: progressiveBrushEnabled,
+                                       using: &rng)
+                    }
+                    layerBuffers[layer.id] = fresh
+                }
+                guard let buffer = layerBuffers[layer.id] else { continue }
+                applyLayerComposite(from: buffer, blurRadius: blurRadius, opacity: opacity,
+                                    blendMode: layer.blendMode, into: context,
+                                    canvasSize: viewTransform.canvasSize)
+
+            case .accumulate:
+                if layerBuffers[layer.id] == nil {
+                    guard let fresh = makeOffscreenContext(size: viewTransform.canvasSize) else { continue }
+                    layerBuffers[layer.id] = fresh
+                }
+                guard let buffer = layerBuffers[layer.id] else { continue }
+                // Fade step: blend background colour over existing content at (1-accumulateFade) opacity,
+                // so old content drifts toward the background rather than persisting indefinitely.
+                let fadeAlpha = CGFloat(1.0 - layer.accumulateFade)
+                if fadeAlpha > 0 {
+                    buffer.saveGState()
+                    let fadeColor = backgroundColor.copy(alpha: fadeAlpha)
+                               ?? CGColor(gray: 0, alpha: fadeAlpha)
+                    buffer.setFillColor(fadeColor)
+                    buffer.fill(CGRect(origin: .zero, size: viewTransform.canvasSize))
+                    buffer.restoreGState()
+                }
+                for i in drawOrder {
+                    let instance = instances[i]
+                    let parentWorld = instance.def.parentName.flatMap { parentWorlds[$0] }
+                    let st = depthAdjustedTransform(lt, depth: instance.def.depth,
+                                                    perspectiveStrength: perspectiveStrength)
+                    renderInstance(instance, spriteIndex: i, parentWorld: parentWorld,
+                                   into: buffer, viewTransform: st,
+                                   brushImages: brushImages, stampImages: stampImages,
+                                   elapsedFrames: elapsedFrames,
+                                   progressiveBrushStates: &progressiveBrushStates,
+                                   progressiveBrushEnabled: progressiveBrushEnabled,
+                                   using: &rng)
+                }
+                applyLayerComposite(from: buffer, blurRadius: blurRadius, opacity: opacity,
+                                    blendMode: layer.blendMode, into: context,
+                                    canvasSize: viewTransform.canvasSize)
+            }
         }
+    }
+
+    // MARK: - Layer buffer invalidation
+
+    /// Clears persistent buffers for `.accumulate` layers only.
+    /// Call on seek so ghost trails restart from the new playhead position.
+    /// `.once` buffers are preserved — they are time-independent.
+    mutating func invalidateAccumulateBuffers() {
+        for layer in layers where layer.redrawMode == .accumulate {
+            layerBuffers.removeValue(forKey: layer.id)
+        }
+    }
+
+    /// Clears all persistent layer buffers (`.once` and `.accumulate`).
+    /// Call when canvas size changes or on full project reload.
+    mutating func invalidateAllLayerBuffers() {
+        layerBuffers.removeAll()
     }
 
     /// Returns a ViewTransform with the camera offset scaled by `parallaxFactor`.
@@ -795,7 +883,7 @@ public struct SpriteScene: @unchecked Sendable {
         )
     }
 
-    public func render<RNG: RandomNumberGenerator>(
+    public mutating func render<RNG: RandomNumberGenerator>(
         into context: CGContext,
         viewTransform: ViewTransform,
         brushImages: [String: CGImage] = [:],

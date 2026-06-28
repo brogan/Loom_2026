@@ -180,6 +180,7 @@ public struct LoomEngine: @unchecked Sendable {
         frameCount             = frame
         elapsedFrames          = globalElapsed
         accumulationCanvas     = nil        // force fresh render at seek position
+        scene.invalidateAccumulateBuffers()
         brushProgressiveStates = [:]
         sceneAdvancedThisFrame = true
         var rng = SystemRandomNumberGenerator()
@@ -304,6 +305,7 @@ public struct LoomEngine: @unchecked Sendable {
                      brushImages: brushImages, stampImages: stampImages,
                      elapsedFrames: elapsedFrames,
                      perspectiveStrength: config.globalConfig.camera.perspectiveStrength,
+                     backgroundColor: config.globalConfig.backgroundColor.cgColor,
                      progressiveBrushStates: &brushProgressiveStates,
                      progressiveBrushEnabled: config.globalConfig.animating,
                      using: &spriteRNG)

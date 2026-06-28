@@ -1,6 +1,6 @@
 # Spec: Per-Layer Redraw Modes
 
-**Status:** Planned  
+**Status:** Implemented  
 **Scope:** loom_swift engine + Loom_Swift_Integration UI  
 **Dependencies:** Existing `LoomLayer` / `renderLayered` compositing infrastructure
 

@@ -278,6 +278,7 @@
   <a class="nav-link nav-sub" href="#layers-parallax">Parallax</a>
   <a class="nav-link nav-sub" href="#layers-blur">Blur &amp; DOF</a>
   <a class="nav-link nav-sub" href="#layers-blend">Blend Modes</a>
+  <a class="nav-link nav-sub" href="#layers-redraw">Redraw Modes</a>
   <a class="nav-link" href="#subdivision">Subdivision</a>
   <a class="nav-link nav-sub" href="#subdivision-algorithms">Algorithms</a>
   <a class="nav-link nav-sub" href="#subdivision-edge-curvature">Edge Curvature</a>
@@ -374,6 +375,7 @@
   <div class="toc-entry sub"><a href="#layers-parallax">Parallax</a><span class="toc-fill"></span></div>
   <div class="toc-entry sub"><a href="#layers-blur">Blur &amp; Depth of Field</a><span class="toc-fill"></span></div>
   <div class="toc-entry sub"><a href="#layers-blend">Blend Modes</a><span class="toc-fill"></span></div>
+  <div class="toc-entry sub"><a href="#layers-redraw">Redraw Modes</a><span class="toc-fill"></span></div>
   <div class="toc-entry"><a href="#subdivision">Subdivision</a><span class="toc-fill"></span></div>
   <div class="toc-entry sub"><a href="#subdivision-algorithms">Algorithms</a><span class="toc-fill"></span></div>
   <div class="toc-entry sub"><a href="#subdivision-edge-curvature">Edge Curvature</a><span class="toc-fill"></span></div>
@@ -1691,6 +1693,8 @@
       <tr><td>Parallax</td><td>Scales how much of the camera pan is applied to this layer. <strong>0</strong> = fixed to the canvas (does not move when the camera pans — true distant background). <strong>0.5</strong> = half camera speed (midground). <strong>1</strong> = full camera movement (same as unassigned sprites — standard). Values above 1 move faster than the camera (close foreground). Negative values produce counter-motion — the layer moves opposite to the camera direction, a dramatic non-naturalistic effect. Slider range −2 to 3; the float field accepts any value. See <a href="#layers-parallax">Parallax</a> below.</td></tr>
       <tr><td>Opacity</td><td>Overall layer opacity (0–1). Applied on top of any per-sprite or per-renderer opacity. An opacity driver lets you animate the entire layer fading in or out.</td></tr>
       <tr><td>Blur</td><td>Gaussian blur radius in logical pixels applied to the entire composited layer before it is drawn to the canvas. Use to simulate depth-of-field. See <a href="#layers-blur">Blur &amp; DOF</a> below.</td></tr>
+      <tr><td>Redraw</td><td>Controls how the layer's offscreen buffer is managed between frames: <strong>Full</strong> (default — clear and redraw every frame), <strong>Once</strong> (draw once, hold permanently), or <strong>Accumulate</strong> (fade toward background, then draw new frame). See <a href="#layers-redraw">Redraw Modes</a> below.</td></tr>
+      <tr><td>Retain</td><td>(Accumulate mode only.) Fraction of previous frame content kept before the new frame is drawn. Range 0.50–0.99. Higher = slower fade, longer trails.</td></tr>
       <tr><td>Sprite Sets</td><td>Which sprite sets belong to this layer. Check boxes. A sprite set can belong to at most one layer at a time — assigning it here removes it from any other layer. Sprites in unchecked sets fall back to the legacy unassigned path.</td></tr>
     </tbody>
   </table>
@@ -1756,6 +1760,47 @@
       <tr><td>Add</td><td>Adds pixel values (clamped to white). Creates strong brightening — good for light beams and particle effects.</td></tr>
     </tbody>
   </table>
+
+  <h3 id="layers-redraw">Redraw Modes</h3>
+  <p>By default every layer is cleared and redrawn from scratch on every frame — exactly like a normal animation cel. The <strong>Redraw</strong> section in the layer inspector offers two additional modes for layers that do not need to be regenerated every frame, or that should intentionally accumulate their history.</p>
+  <table>
+    <thead><tr><th>Mode</th><th>Buffer behaviour</th><th>Typical use</th></tr></thead>
+    <tbody>
+      <tr><td><strong>Full</strong></td><td>Cleared and redrawn every frame.</td><td>All animated layers. The default — identical to previous Loom behaviour.</td></tr>
+      <tr><td><strong>Once</strong></td><td>Drawn once on the first frame; never redrawn.</td><td>Static background plates: a painted sky, a watercolour wash, a bitmap texture. Costs one render call at startup and zero thereafter.</td></tr>
+      <tr><td><strong>Accumulate</strong></td><td>Previous content is faded toward the background colour, then the new frame is drawn on top.</td><td>Ghost trails, motion blur, long-exposure effects, soft midground accumulation.</td></tr>
+    </tbody>
+  </table>
+
+  <h4 id="layers-redraw-accumulate">Accumulate — the Retain slider</h4>
+  <p>When a layer is set to <strong>Accumulate</strong>, a <strong>Retain</strong> slider (range 0.50–0.99) appears below the mode picker. It controls what fraction of the previous frame's content is kept each frame before the new frame is painted on top.</p>
+  <ul>
+    <li><strong>Higher value</strong> (e.g. 0.97–0.99): slow fade — ghost trails persist for many frames, giving a long-exposure or smeared-ink look.</li>
+    <li><strong>Lower value</strong> (e.g. 0.50–0.80): fast fade — each frame's content dissolves within a handful of frames, leaving only a faint motion shadow.</li>
+  </ul>
+  <p>The fade is toward the project's <strong>background colour</strong> (set in the Rendering tab), not toward transparency. At 30 fps, the approximate half-life (time for old content to reach 50% opacity) is:</p>
+  <pre>half-life (frames) ≈ log(0.5) / log(Retain)</pre>
+  <p>For example, Retain 0.95 → ~13-frame half-life (~0.4 s at 30 fps). Retain 0.99 → ~69-frame half-life (~2.3 s).</p>
+
+  <h4 id="layers-redraw-scrub">Scrubbing and seek behaviour</h4>
+  <p>Redraw mode affects how layers behave when you scrub the timeline or jump to a specific frame:</p>
+  <ul>
+    <li><strong>Full</strong>: no persistent buffer — no issue. Every frame is independent.</li>
+    <li><strong>Once</strong>: buffer is preserved on seek. The static plate is frame-independent and does not need to be regenerated.</li>
+    <li><strong>Accumulate</strong>: buffer is <em>cleared</em> on seek. The trail must restart from the new playhead position rather than carry forward a trail from a different part of the timeline. This is the correct behaviour — it matches how physical multiple-exposure effects work. After seeking, accumulation builds up again as playback proceeds.</li>
+  </ul>
+
+  <h4 id="layers-redraw-example">Three-layer composition pattern</h4>
+  <p>The motivating use case for per-layer redraw modes is a composition like this:</p>
+  <table>
+    <thead><tr><th>Layer (bottom→top)</th><th>Mode</th><th>Role</th></tr></thead>
+    <tbody>
+      <tr><td>Background</td><td>Once</td><td>Painted plate or colour wash. Drawn once at frame 0; never touched again.</td></tr>
+      <tr><td>Midground</td><td>Accumulate (Retain 0.95)</td><td>Softly accumulating movement — figures, particles, or brushwork that leave a dissolving trail.</td></tr>
+      <tr><td>Foreground</td><td>Full</td><td>Sharp, fully-redrawn animated layer on top.</td></tr>
+    </tbody>
+  </table>
+  <p>Each layer is composited independently with its own parallax factor, opacity, and blend mode, so the three effects coexist without interfering.</p>
 
 </section>
 

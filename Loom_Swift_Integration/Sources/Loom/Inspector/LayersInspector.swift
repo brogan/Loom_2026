@@ -5,6 +5,7 @@ struct LayersInspector: View {
 
     @EnvironmentObject private var controller: AppController
     @State private var spriteSetsCollapsed   = false
+    @State private var redrawCollapsed       = false
     @State private var opacityCollapsed      = false
     @State private var blurCollapsed         = true
     @State private var opacityDrvCollapsed   = true
@@ -62,6 +63,29 @@ struct LayersInspector: View {
                         value: bindDouble(idx, \.parallaxFactor),
                         width: 44, fractionDigits: 2
                     )
+                }
+            }
+
+            // MARK: Redraw
+            InspectorSection("Redraw", isCollapsed: $redrawCollapsed) {
+                InspectorField("Mode") {
+                    Picker("", selection: bindRedrawMode(idx)) {
+                        ForEach(LayerRedrawMode.allCases, id: \.self) { mode in
+                            Text(mode.displayName).tag(mode)
+                        }
+                    }
+                    .labelsHidden()
+                    .pickerStyle(.menu)
+                    .frame(width: 120)
+                }
+                if layer.redrawMode == .accumulate {
+                    InspectorField("Retain") {
+                        Slider(value: bindDouble(idx, \.accumulateFade), in: 0.5...0.99)
+                        FloatEntryField(
+                            value: bindDouble(idx, \.accumulateFade),
+                            width: 44, fractionDigits: 2
+                        )
+                    }
                 }
             }
 
@@ -189,6 +213,17 @@ struct LayersInspector: View {
             set: { v in ctl.updateProjectConfig { cfg in
                 guard cfg.layers.indices.contains(idx) else { return }
                 cfg.layers[idx][keyPath: kp] = v
+            }}
+        )
+    }
+
+    private func bindRedrawMode(_ idx: Int) -> Binding<LayerRedrawMode> {
+        let ctl = controller
+        return Binding(
+            get: { ctl.projectConfig?.layers[safe: idx]?.redrawMode ?? .full },
+            set: { v in ctl.updateProjectConfig { cfg in
+                guard cfg.layers.indices.contains(idx) else { return }
+                cfg.layers[idx].redrawMode = v
             }}
         )
     }
