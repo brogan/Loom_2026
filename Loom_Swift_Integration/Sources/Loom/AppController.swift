@@ -1842,10 +1842,35 @@ final class AppController: ObservableObject, @unchecked Sendable {
         return values.map(normalizedPressure) + Array(repeating: normalizedPressure(values.last ?? 1.0), count: count - values.count)
     }
 
+    var selectedOpenCurveForExtension: EditableOpenCurve? {
+        guard geometryEditorTool == .pointByPoint,
+              !geometryEditorDraftPoints.isEmpty,
+              let document = geometryEditorDocument,
+              let layerID = geometryEditorSelection.layerID,
+              geometryEditorSelection.openCurveIDs.count == 1,
+              let curveID = geometryEditorSelection.openCurveIDs.first,
+              let layer = document.layers.first(where: { $0.id == layerID }),
+              let curve = layer.openCurves.first(where: { $0.id == curveID }),
+              layerCanEdit(layerID)
+        else { return nil }
+        return curve
+    }
+
+    var openCurveExtensionAnchors: (start: Vector2D, end: Vector2D)? {
+        guard let curve = selectedOpenCurveForExtension,
+              let firstID = curve.anchorIDs.first,
+              let lastID = curve.anchorIDs.last,
+              let firstPos = curve.point(id: firstID)?.position,
+              let lastPos = curve.point(id: lastID)?.position
+        else { return nil }
+        return (start: firstPos, end: lastPos)
+    }
+
     var canFinaliseGeometryDraftPolygon: Bool {
         (geometryEditorDraftPoints.count >= 3 && selectedGeometryEditorLayerCanEdit) ||
         canFinaliseGeometryMeshExtend ||
-        canCloseSelectedOpenCurve
+        canCloseSelectedOpenCurve ||
+        (selectedOpenCurveForExtension != nil && geometryEditorDraftPoints.count >= 1)
     }
 
     var canFinaliseGeometryDraftOpenCurve: Bool {
@@ -1860,6 +1885,10 @@ final class AppController: ObservableObject, @unchecked Sendable {
         }
         if geometryEditorDraftPoints.isEmpty, canCloseSelectedOpenCurve {
             closeSelectedOpenCurve()
+            return
+        }
+        if let curve = selectedOpenCurveForExtension {
+            finaliseOpenCurveExtension(curve: curve)
             return
         }
         var document = geometryEditorDocument ?? EditableGeometryDocument(name: "Untitled Polygon")
@@ -2544,6 +2573,75 @@ final class AppController: ObservableObject, @unchecked Sendable {
         document.layers[layerIndex].polygons.append(polygon)
         geometryEditorSelection = EditableGeometrySelection(layerID: layerID, polygonIDs: [polygon.id])
         setGeometryEditorDocument(document)
+    }
+
+    private func finaliseOpenCurveExtension(curve: EditableOpenCurve) {
+        let draftPts = geometryEditorDraftPoints
+        guard !draftPts.isEmpty,
+              var document = geometryEditorDocument,
+              let layerID = geometryEditorSelection.layerID,
+              let layerIndex = document.layers.firstIndex(where: { $0.id == layerID }),
+              let curveIndex = document.layers[layerIndex].openCurves.firstIndex(where: { $0.id == curve.id }),
+              let startAnchorID = curve.anchorIDs.first,
+              let endAnchorID = curve.anchorIDs.last,
+              let startPos = curve.point(id: startAnchorID)?.position
+        else { return }
+
+        var allPoints  = curve.points
+        var allSegments = curve.segments
+
+        // Append straight-line P2P segments from curve's end through each draft point.
+        var prevAnchorID = endAnchorID
+        func prevPos() -> Vector2D { allPoints.first { $0.id == prevAnchorID }?.position ?? .zero }
+        for pt in draftPts {
+            let p = prevPos()
+            let d = pt - p
+            let co = EditableCubicPoint(position: p + d * (1.0 / 3.0), kind: .control)
+            let ci = EditableCubicPoint(position: p + d * (2.0 / 3.0), kind: .control)
+            let ea = EditableCubicPoint(position: pt, kind: .anchor)
+            allPoints.append(contentsOf: [co, ci, ea])
+            allSegments.append(EditableCubicSegment(
+                startAnchorID: prevAnchorID,
+                controlOutID: co.id,
+                controlInID: ci.id,
+                endAnchorID: ea.id
+            ))
+            prevAnchorID = ea.id
+        }
+
+        // Closing segment from last draft point back to curve's start anchor.
+        let lastPt = prevPos()
+        let cd = startPos - lastPt
+        let cco = EditableCubicPoint(position: lastPt + cd * (1.0 / 3.0), kind: .control)
+        let cci = EditableCubicPoint(position: lastPt + cd * (2.0 / 3.0), kind: .control)
+        allPoints.append(contentsOf: [cco, cci])
+        allSegments.append(EditableCubicSegment(
+            startAnchorID: prevAnchorID,
+            controlOutID: cco.id,
+            controlInID: cci.id,
+            endAnchorID: startAnchorID
+        ))
+
+        let allPressures = curve.pressures + Array(repeating: 1.0, count: draftPts.count + 1)
+        let polygonIndex = document.layers[layerIndex].polygons.count + 1
+        let polygon = EditableClosedPolygon(
+            name: curve.name.hasPrefix("Freehand Curve") ? "Polygon \(polygonIndex)" : curve.name,
+            points: allPoints,
+            segments: allSegments,
+            pressures: allPressures.count == allSegments.count
+                ? allPressures
+                : Array(repeating: 1.0, count: allSegments.count),
+            isVisible: true
+        )
+
+        recordGeometryEditorUndoSnapshot()
+        document.layers[layerIndex].openCurves.remove(at: curveIndex)
+        document.layers[layerIndex].polygons.append(polygon)
+        selectedGeometryEditorLayerID = layerID
+        geometryEditorSelection = EditableGeometrySelection(layerID: layerID, polygonIDs: [polygon.id])
+        setGeometryEditorDocument(document)
+        geometryEditorDraftPoints.removeAll()
+        postStatus("Closed freehand curve + \(draftPts.count) P2P point\(draftPts.count == 1 ? "" : "s") into polygon")
     }
 
     @discardableResult

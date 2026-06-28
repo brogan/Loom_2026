@@ -2226,29 +2226,45 @@ private struct EditableGeometryCanvas: View {
     }
 
     private func drawDraft(ctx: GraphicsContext, project: (Vector2D) -> CGPoint) {
-        let points = controller.geometryEditorDraftPoints
-        guard !points.isEmpty else { return }
+        let draftPts = controller.geometryEditorDraftPoints
+        guard !draftPts.isEmpty else { return }
 
-        if points.count >= 2 {
+        // When extending an open curve, the visual chain starts at the curve's end anchor
+        // and the closing dashed line targets the curve's start anchor.
+        let extensionAnchors = controller.openCurveExtensionAnchors
+        let chainPoints: [Vector2D]
+        let closingTarget: Vector2D
+        if let anchors = extensionAnchors {
+            chainPoints  = [anchors.end] + draftPts
+            closingTarget = anchors.start
+        } else {
+            chainPoints  = draftPts
+            closingTarget = draftPts[0]
+        }
+
+        // Straight-line skeleton
+        if chainPoints.count >= 2 {
             var preview = Path()
-            preview.move(to: project(points[0]))
-            for point in points.dropFirst() {
-                preview.addLine(to: project(point))
-            }
+            preview.move(to: project(chainPoints[0]))
+            for pt in chainPoints.dropFirst() { preview.addLine(to: project(pt)) }
             ctx.stroke(preview, with: .color(Color.orange.opacity(0.65)), lineWidth: 1.2)
         }
 
-        if points.count >= 3 {
+        // Dashed closing line to the real closing target
+        let lastPt = chainPoints.last ?? draftPts.last!
+        if lastPt != closingTarget {
             var closing = Path()
-            closing.move(to: project(points[points.count - 1]))
-            closing.addLine(to: project(points[0]))
-            ctx.stroke(closing, with: .color(Color.orange.opacity(0.45)), style: StrokeStyle(lineWidth: 1, dash: [5, 4]))
+            closing.move(to: project(lastPt))
+            closing.addLine(to: project(closingTarget))
+            ctx.stroke(closing, with: .color(Color.orange.opacity(0.45)),
+                       style: StrokeStyle(lineWidth: 1, dash: [5, 4]))
         }
 
-        let autoCurvePoints = automaticBezierPoints(for: points)
+        // Smooth auto-bezier preview over the chain
+        let autoCurvePoints = automaticBezierPoints(for: chainPoints)
         if autoCurvePoints.count >= 4 {
             var completed = Path()
-            completed.move(to: project(points[0]))
+            completed.move(to: project(chainPoints[0]))
             for base in stride(from: 0, to: autoCurvePoints.count, by: 4) {
                 completed.addCurve(
                     to: project(autoCurvePoints[base + 3]),
@@ -2259,17 +2275,20 @@ private struct EditableGeometryCanvas: View {
             ctx.stroke(completed, with: .color(Color.orange), lineWidth: 1.6)
         }
 
-        for point in points {
-            let location = project(point)
-            ctx.fill(
-                Path(ellipseIn: CGRect(
-                    x: location.x - 4,
-                    y: location.y - 4,
-                    width: 8,
-                    height: 8
-                )),
-                with: .color(Color.orange)
-            )
+        // Dot at curve-end anchor to show where the extension starts
+        if let anchors = extensionAnchors {
+            let endLoc = project(anchors.end)
+            ctx.fill(Path(ellipseIn: CGRect(x: endLoc.x - 5, y: endLoc.y - 5, width: 10, height: 10)),
+                     with: .color(Color.orange.opacity(0.7)))
+            ctx.stroke(Path(ellipseIn: CGRect(x: endLoc.x - 5, y: endLoc.y - 5, width: 10, height: 10)),
+                       with: .color(Color.orange), lineWidth: 1)
+        }
+
+        // Dots at each user-placed draft point
+        for pt in draftPts {
+            let loc = project(pt)
+            ctx.fill(Path(ellipseIn: CGRect(x: loc.x - 4, y: loc.y - 4, width: 8, height: 8)),
+                     with: .color(Color.orange))
         }
     }
 
