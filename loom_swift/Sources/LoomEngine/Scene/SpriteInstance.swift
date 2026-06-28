@@ -41,6 +41,11 @@ public struct SpriteInstance: Sendable {
     /// Parallel to `def.spriteVariants`; index 0 = first named variant.
     public var variantRendererSets: [RendererSet]
 
+    /// Optional override image filename for each variant (mirrors `def.spriteVariants[i].imageFilename`).
+    /// `nil` at index i means that variant uses its geometry/renderer set instead.
+    /// Parallel to `variantPolygons`.
+    public var variantImageFilenames: [String?]
+
     // MARK: SpriteCycle runtime data
 
     /// Polygon sets for each `SpriteCycleState` in the assigned cycle.
@@ -68,6 +73,7 @@ public struct SpriteInstance: Sendable {
         sequencePolygons: [[Polygon2D]] = [],
         variantPolygons: [[Polygon2D]] = [],
         variantRendererSets: [RendererSet] = [],
+        variantImageFilenames: [String?] = [],
         cycleStatePolygons: [[Polygon2D]] = [],
         cycleStateRendererSets: [RendererSet?] = [],
         driverCycleData: [String: CycleRenderData] = [:],
@@ -81,6 +87,7 @@ public struct SpriteInstance: Sendable {
         self.sequencePolygons       = sequencePolygons
         self.variantPolygons        = variantPolygons
         self.variantRendererSets    = variantRendererSets
+        self.variantImageFilenames  = variantImageFilenames
         self.cycleStatePolygons     = cycleStatePolygons
         self.cycleStateRendererSets = cycleStateRendererSets
         self.driverCycleData        = driverCycleData

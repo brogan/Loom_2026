@@ -749,21 +749,43 @@ private struct DriverSectionsView: View {
         let selfName   = spriteSet?.sprites[safe: spriteIdx]?.name ?? ""
         let otherNames = spriteSet?.sprites.map { $0.name }.filter { $0 != selfName } ?? []
         let svBinding  = spriteVariantsBinding()
+        let imgFiles   = svgSpriteFiles()
         InspectorSection("Shape Variants", isCollapsed: $svCollapsed) {
             ForEach(svBinding.wrappedValue.indices, id: \.self) { i in
                 InspectorField("Variant \(i + 1)") {
                     Picker("", selection: Binding(
-                        get: { svBinding.wrappedValue[safe: i] ?? "" },
+                        get: { svBinding.wrappedValue[safe: i]?.spriteName ?? "" },
                         set: { newVal in
                             var arr = svBinding.wrappedValue
-                            if i < arr.count { arr[i] = newVal }
+                            if i < arr.count {
+                                arr[i] = SpriteVariantEntry(spriteName: newVal,
+                                                            imageFilename: arr[i].imageFilename)
+                            }
                             svBinding.wrappedValue = arr
                         }
                     )) {
                         ForEach(otherNames, id: \.self) { Text($0).tag($0) }
                     }
                     .labelsHidden()
-                    .frame(maxWidth: 150)
+                    .frame(maxWidth: 120)
+                    if !imgFiles.isEmpty {
+                        Picker("", selection: Binding(
+                            get: { svBinding.wrappedValue[safe: i]?.imageFilename ?? "" },
+                            set: { newVal in
+                                var arr = svBinding.wrappedValue
+                                if i < arr.count {
+                                    arr[i] = SpriteVariantEntry(spriteName: arr[i].spriteName,
+                                                                imageFilename: newVal.isEmpty ? nil : newVal)
+                                }
+                                svBinding.wrappedValue = arr
+                            }
+                        )) {
+                            Text("—").tag("")
+                            ForEach(imgFiles, id: \.self) { Text($0).tag($0) }
+                        }
+                        .labelsHidden()
+                        .frame(maxWidth: 120)
+                    }
                     Button {
                         var arr = svBinding.wrappedValue
                         arr.remove(at: i)
@@ -775,11 +797,11 @@ private struct DriverSectionsView: View {
                     }
                     .buttonStyle(.plain).foregroundStyle(.secondary)
                 }
-                .loomHelp("Alternative sprite whose geometry is blended with this sprite's current shape via the Shape driver.")
+                .loomHelp("Alternative sprite whose geometry and renderer are swapped in by the Shape driver. Optionally assign an image file to render a bitmap/SVG instead of the polygon pipeline for this variant.")
             }
             Button {
                 var arr = svBinding.wrappedValue
-                arr.append(otherNames.first(where: { !arr.contains($0) }) ?? "")
+                arr.append(SpriteVariantEntry(spriteName: otherNames.first(where: { !arr.map(\.spriteName).contains($0) }) ?? ""))
                 svBinding.wrappedValue = arr
             } label: {
                 Label("Add variant", systemImage: "plus").font(.system(size: 11))
@@ -926,7 +948,20 @@ private struct DriverSectionsView: View {
         )
     }
 
-    private func spriteVariantsBinding() -> Binding<[String]> {
+    private func svgSpriteFiles() -> [String] {
+        guard let url = controller.projectURL else { return [] }
+        let dir = url.appendingPathComponent("svgs/sprites")
+        let entries = (try? FileManager.default.contentsOfDirectory(
+            at: dir, includingPropertiesForKeys: nil
+        )) ?? []
+        let supported: Set<String> = ["svg", "png", "jpg", "jpeg", "tiff", "tif", "gif", "webp"]
+        return entries
+            .filter { supported.contains($0.pathExtension.lowercased()) }
+            .map    { $0.lastPathComponent }
+            .sorted()
+    }
+
+    private func spriteVariantsBinding() -> Binding<[SpriteVariantEntry]> {
         let ctl = controller; let si = setIdx; let pi = spriteIdx
         return Binding(
             get: {

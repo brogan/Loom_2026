@@ -216,6 +216,7 @@
   <a class="nav-link nav-sub" href="#sprites-hierarchy">Hierarchy</a>
   <a class="nav-link nav-sub" href="#sprites-depth">Depth &amp; Parallax</a>
   <a class="nav-link nav-sub" href="#sprites-svg">Image Sprites</a>
+  <a class="nav-link nav-sub" href="#sprites-variant-images">Variant Images</a>
   <a class="nav-link" href="#cycles">Cycles</a>
   <a class="nav-link nav-sub" href="#cycles-states">States &amp; Transitions</a>
   <a class="nav-link nav-sub" href="#cycles-svg">Image States</a>
@@ -256,6 +257,7 @@
   <a class="nav-link nav-sub" href="#animation-parallax">Depth &amp; Parallax</a>
   <a class="nav-link nav-sub" href="#animation-morph">Morph Targets</a>
   <a class="nav-link nav-sub" href="#animation-set-swap">Set Swap Drivers</a>
+  <a class="nav-link nav-sub" href="#animation-cycle-driver">Cycle Driver</a>
   <a class="nav-link nav-sub" href="#animation-easing">Easing Algorithms</a>
 
   <div class="nav-section">Export</div>
@@ -1297,7 +1299,7 @@
       <tr><td>Camera (pan, zoom, rotation, tracking)</td><td>Yes — image position and orientation follow camera transforms</td></tr>
       <tr><td>Parent / child hierarchy</td><td>Yes — position, rotation, and scale inheritance all work</td></tr>
       <tr><td>Gate (frame in / out)</td><td>Yes — sprite is hidden outside the gate range</td></tr>
-      <tr><td>Shape variants / shape driver</td><td>No — the shape driver selects between polygon geometry variants</td></tr>
+      <tr><td>Shape variants / shape driver</td><td>Partially — the shape driver works normally; individual variants can additionally carry an image filename that overrides their polygon geometry (see <a href="#sprites-variant-images">Per-Variant Images</a>)</td></tr>
       <tr><td>Morph targets</td><td>No — morph interpolation operates on polygon point arrays</td></tr>
       <tr><td>Subdivision</td><td>No — subdivision is a polygon-only operation</td></tr>
       <tr><td>Renderer set (stroke, fill, brush)</td><td>No — the image carries its own styling</td></tr>
@@ -1356,6 +1358,33 @@
   <p>macOS caches a rasterised bitmap of each NSImage after the first draw at a given size. For a sprite whose scale does not change frame-to-frame — a static background logo, for example — the rendering cost after the first frame is negligible. For sprites with animated scale, macOS re-rasterises when the drawn size changes significantly, which adds a small per-frame cost proportional to the SVG complexity. Simple Inkscape exports (a few dozen paths) have no measurable impact. Very complex SVGs with thousands of paths (detailed illustrations, large type specimens) may add a few milliseconds per frame.</p>
 
   <div class="note">SVG sprites bypass Loom's polygon rendering pipeline entirely. They cannot be subdivided, and Loom's renderer sets (stroke colour, brush, stamp modes) do not apply. If you want Loom's rendering on SVG-derived geometry, use <a href="#geometry-svg-import">Import SVG…</a> in the Geometry tab instead — this converts the path data to a polygon set that goes through the full subdivision and rendering pipeline.</div>
+
+  <h3 id="sprites-variant-images">Per-Variant Images</h3>
+  <p>Each entry in a sprite's <strong>Shape Variants</strong> list can optionally carry its own image filename. When the shape driver selects that variant index, the image is rendered instead of the variant's polygon geometry — letting you mix Loom polygon variants and image variants freely on the same sprite.</p>
+
+  <h4>Use case</h4>
+  <p>A character sprite may have a polygon idle state (index 0) and a bitmap jump frame that was painted externally (variant 1). A single shape driver keyframe at the jump frame switches both the geometry slot and the image in one step. No separate sprite is needed for the image state.</p>
+
+  <h4>Setup</h4>
+  <ol class="steps">
+    <li>Place the image file in the project's <code>svgs/sprites/</code> folder (same folder as regular image sprites — see <a href="#sprites-svg">Image Sprites</a> for supported formats).</li>
+    <li>In the Sprites tab, select the sprite. Open the inspector's <strong>Shape Variants</strong> section.</li>
+    <li>Each variant row now shows two dropdowns: the existing <strong>sprite name</strong> picker on the left, and a new <strong>image file</strong> picker on the right. The image picker lists all files in <code>svgs/sprites/</code>; leave it at <strong>—</strong> to keep geometry rendering for that variant.</li>
+    <li>Choose an image filename for any variants that should display an image.</li>
+    <li>Enable the <strong>Shape</strong> driver on the sprite and add a keyframe selecting the image variant's index. At runtime the image renders at the sprite's full transform.</li>
+  </ol>
+
+  <h4>Behaviour rules</h4>
+  <ul>
+    <li>A variant with no image assigned (picker shows <strong>—</strong>) renders its geometry and renderer set as normal — no change to existing behaviour.</li>
+    <li>A variant with an image assigned renders the image instead, bypassing the polygon and renderer pipeline for that index — exactly as <code>svgFilename</code> does for the whole sprite.</li>
+    <li>Geometry variants and image variants can be freely mixed: index 0 can be a polygon shape while index 1 is a bitmap, or any other combination.</li>
+    <li>All transform drivers (position, scale, rotation, opacity, depth, camera) apply normally to the rendered image — the same set that applies to regular image sprites.</li>
+    <li>If the named file is not found in <code>svgs/sprites/</code> at render time the variant falls back to its polygon geometry silently.</li>
+    <li>The base sprite (shape driver index 0) continues to use the top-level <strong>Image</strong> field in the inspector; per-variant images apply only to variant indices 1 and above.</li>
+  </ul>
+
+  <div class="tip"><strong>Combining with the Cycle driver.</strong> Per-variant images work independently of the cycle driver. If both are active on the same sprite, the cycle driver takes priority for the cycle path; the shape driver handles variant image switching on a completely separate index track. Both compose naturally.</div>
 
 </section>
 
@@ -2570,6 +2599,53 @@
   <p>Keyframes on these lanes display the set name rather than a numeric value. The standard timeline editing operations (add, delete, drag, copy/paste, select all) work identically to other lanes. Easing is not available for name lanes — the transition is always a step.</p>
 
   <div class="note">If neither driver is enabled, the sprite uses its statically assigned subdivision set and renderer set as normal — these drivers only take effect when explicitly enabled. The lanes are visible in the timeline but can be hidden with the batch eye control like any other unused lane.</div>
+
+  <h3 id="animation-cycle-driver">Cycle Driver</h3>
+  <p>The <strong>Cycle</strong> driver overrides the cycle assigned to a sprite at runtime — switching the active <strong>SpriteCycle</strong> frame by frame without requiring separate sprites. It uses the same step semantics as the Subdivision Set and Renderer Set drivers: the transition is immediate, not interpolated.</p>
+
+  <h4>Use case</h4>
+  <p>A character sprite may have multiple named cycles — <em>idle</em>, <em>walk</em>, <em>run</em>, <em>jump</em>. Without the cycle driver, <code>cycleName</code> is a static assignment per sprite and switching mid-animation requires parent-child sprite tricks or other workarounds. With the cycle driver enabled, a single keyframe track on the timeline switches which cycle runs on any given frame.</p>
+
+  <h4>Setup</h4>
+  <ol class="steps">
+    <li>In the <strong>Sprites tab</strong>, select the sprite.</li>
+    <li>In the inspector's <strong>Animation</strong> section, expand <strong>Cycle Driver</strong>.</li>
+    <li>Enable the driver with the checkbox. Set the mode to <strong>Keyframe</strong>.</li>
+    <li>Add keyframes, choosing a cycle name for each frame. The dropdown lists all cycles currently defined in the project.</li>
+    <li>The <strong>Cycle</strong> lane appears in the timeline panel for this sprite.</li>
+  </ol>
+
+  <h4>Driver modes</h4>
+  <table>
+    <thead><tr><th>Mode</th><th>Behaviour</th></tr></thead>
+    <tbody>
+      <tr>
+        <td><strong>Constant</strong></td>
+        <td>Always uses the same named cycle, overriding the sprite's static cycle assignment. Useful for quickly reassigning a cycle without editing the sprite definition.</td>
+      </tr>
+      <tr>
+        <td><strong>Keyframe</strong></td>
+        <td>A step-function track: the active cycle is the name from the most recent keyframe at or before the current frame. Loop, Once, and Ping-Pong loop modes are available.</td>
+      </tr>
+      <tr>
+        <td><strong>Jitter</strong></td>
+        <td>Picks a cycle name at random from a configurable pool each evaluation interval. The choice is deterministic per seed, sprite index, and frame. <strong>Period (f)</strong> controls how many frames each randomly-chosen cycle is held before re-rolling.</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <h4>Behaviour rules</h4>
+  <ul>
+    <li>When disabled, the sprite's static <code>cycleName</code> assignment is used — no change from prior behaviour.</li>
+    <li>When enabled, the driver value completely overrides <code>cycleName</code> for that frame. The cycle's internal playback counter continues without interruption; switching cycles does not reset it.</li>
+    <li>If the driver evaluates to a name that does not match any cycle in the project, the sprite falls back to its static <code>cycleName</code> for that frame.</li>
+    <li>Geometry for all cycles referenced by the driver (base value, keyframe values, and jitter pool) is pre-loaded at scene initialisation so switching incurs no I/O cost at render time.</li>
+  </ul>
+
+  <h4>Timeline lane</h4>
+  <p>The <strong>Cycle</strong> lane appears in the timeline panel when the driver is enabled. Keyframes display the cycle name rather than a numeric value. Easing is not available — the switch is always a step, matching the Subdivision Set and Renderer Set lanes.</p>
+
+  <div class="note">The Cycle driver requires at least one <a href="#cycles">SpriteCycle</a> to be defined in the project. The dropdown in the driver's keyframe editor lists all named cycles. If none exist the driver has nothing to switch to — define cycles first in the Cycles tab, then return to wire the driver.</div>
 
   <h3 id="animation-easing">Easing algorithms</h3>
   <p>Easing controls the <em>velocity profile</em> of a keyframe segment — how fast the interpolated value moves through its range between two keyframes. Every keyframe has an individual easing setting that applies from that keyframe to the next. Easing affects all driver types equally: position, scale, rotation, morph, opacity, shape, and all renderer driver lanes.</p>

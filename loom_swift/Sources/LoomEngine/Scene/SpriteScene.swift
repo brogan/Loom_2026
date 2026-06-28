@@ -254,10 +254,11 @@ public struct SpriteScene: @unchecked Sendable {
         }
 
         // ── 7. Load sprite-replacement variants ─────────────────────────────
-        var variantPolygons:     [[Polygon2D]] = []
-        var variantRendererSets: [RendererSet] = []
-        for variantName in sprite.spriteVariants {
-            guard let variantDef = sameSetSprites.first(where: { $0.name == variantName }) else { continue }
+        var variantPolygons:       [[Polygon2D]] = []
+        var variantRendererSets:   [RendererSet] = []
+        var variantImageFilenames: [String?]     = []
+        for entry in sprite.spriteVariants {
+            guard let variantDef = sameSetSprites.first(where: { $0.name == entry.spriteName }) else { continue }
             let vShapeDef = config.shapeConfig.library.shapeSets
                 .first(where: { $0.name == variantDef.shapeSetName })?
                 .shapes.first(where: { $0.name == variantDef.shapeName })
@@ -267,6 +268,7 @@ public struct SpriteScene: @unchecked Sendable {
                 ?? RendererSet(name: variantDef.rendererSetName, renderers: [Renderer(name: "default")])
             variantPolygons.append(vPolygons)
             variantRendererSets.append(vRendererSet)
+            variantImageFilenames.append(entry.imageFilename)
         }
 
         // ── 8. Load SpriteCycle state polygons ──────────────────────────────
@@ -326,6 +328,7 @@ public struct SpriteScene: @unchecked Sendable {
             sequencePolygons:       sequencePolygons,
             variantPolygons:        variantPolygons,
             variantRendererSets:    variantRendererSets,
+            variantImageFilenames:  variantImageFilenames,
             cycleStatePolygons:     cycleStatePolygons,
             cycleStateRendererSets: cycleStateRendererSets,
             driverCycleData:        driverCycleData,
@@ -996,6 +999,19 @@ public struct SpriteScene: @unchecked Sendable {
             let maxIdx = max(0, activeInstance.rendererSet.renderers.count - 1)
             activeInstance.state.activeRendererIndex = min(activeInstance.state.activeRendererIndex, maxIdx)
         }
+
+        // ── Variant image override: render image instead of geometry when set ──
+#if canImport(AppKit)
+        if shapeIdx > 0,
+           shapeIdx - 1 < instance.variantImageFilenames.count,
+           let imgName = instance.variantImageFilenames[shapeIdx - 1],
+           let nsImage = svgImages[imgName] {
+            renderSVGInstance(activeInstance, nsImage: nsImage, parentWorld: parentWorld,
+                              into: context, viewTransform: viewTransform,
+                              spriteIndex: spriteIndex, elapsedFrames: elapsedFrames)
+            return
+        }
+#endif
 
         // Renderer-set driver overrides the shape-driver's set selection when active.
         if let drv = activeInstance.def.animation.drivers?.rendererSet, drv.enabled,

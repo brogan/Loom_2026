@@ -1,3 +1,25 @@
+/// One entry in `SpriteDef.spriteVariants` — a sibling sprite name plus an
+/// optional override image filename.  Backward-compatible decoder: a plain
+/// JSON string decodes as `spriteName` with `imageFilename = nil`.
+public struct SpriteVariantEntry: Codable, Equatable, Sendable {
+    public var spriteName:    String
+    public var imageFilename: String?
+
+    public init(spriteName: String, imageFilename: String? = nil) {
+        self.spriteName    = spriteName
+        self.imageFilename = imageFilename
+    }
+
+    public init(from decoder: Decoder) throws {
+        if let c = try? decoder.singleValueContainer(), let s = try? c.decode(String.self) {
+            spriteName = s; imageFilename = nil; return
+        }
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        spriteName    = try c.decode(String.self, forKey: .spriteName)
+        imageFilename = try c.decodeIfPresent(String.self, forKey: .imageFilename)
+    }
+}
+
 /// One sprite definition loaded from `sprites.xml`.
 ///
 /// Describes which shape and renderer set to use, the initial transform, and
@@ -36,7 +58,7 @@ public struct SpriteDef: Codable, Sendable {
 
     /// Ordered list of sprite names (same SpriteSet) available for replacement.
     /// Index 0 is always "self" (implicit); spriteVariants[0] corresponds to shape index 1.
-    public var spriteVariants: [String] = []
+    public var spriteVariants: [SpriteVariantEntry] = []
 
     // MARK: Gate
 
@@ -87,7 +109,7 @@ public struct SpriteDef: Codable, Sendable {
         parentName: String?        = nil,
         inheritMask: InheritMask   = .positionAndRotation,
         shapeSequence: ShapeSequence? = nil,
-        spriteVariants: [String]   = [],
+        spriteVariants: [SpriteVariantEntry] = [],
         gateStart: Int             = 0,
         gateEnd: Int               = 0,
         morphTargetNames: [String] = [],
@@ -128,7 +150,7 @@ public struct SpriteDef: Codable, Sendable {
         parentName      = try c.decodeIfPresent(String.self,           forKey: .parentName)
         inheritMask     = try c.decodeIfPresent(InheritMask.self,      forKey: .inheritMask)     ?? .positionAndRotation
         shapeSequence   = try c.decodeIfPresent(ShapeSequence.self,    forKey: .shapeSequence)
-        spriteVariants    = try c.decodeIfPresent([String].self,         forKey: .spriteVariants)    ?? []
+        spriteVariants    = try c.decodeIfPresent([SpriteVariantEntry].self, forKey: .spriteVariants) ?? []
         gateStart         = try c.decodeIfPresent(Int.self,              forKey: .gateStart)         ?? 0
         gateEnd           = try c.decodeIfPresent(Int.self,              forKey: .gateEnd)           ?? 0
         morphTargetNames  = try c.decodeIfPresent([String].self,         forKey: .morphTargetNames)  ?? []
