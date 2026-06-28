@@ -7,6 +7,7 @@ enum TimelineLane: Int, CaseIterable, Hashable {
     case position = 0, scale, rotation, morph, opacity, shape
     case subdivisionSet = 6
     case rendererSet    = 7
+    case cycleName      = 8
 
     var label: String {
         switch self {
@@ -18,6 +19,7 @@ enum TimelineLane: Int, CaseIterable, Hashable {
         case .shape:         return "Shape"
         case .subdivisionSet: return "Subdiv"
         case .rendererSet:   return "Rend.Set"
+        case .cycleName:     return "Cycle"
         }
     }
 
@@ -31,6 +33,7 @@ enum TimelineLane: Int, CaseIterable, Hashable {
         case .shape:         return .mint
         case .subdivisionSet: return Color(hue: 0.56, saturation: 0.65, brightness: 0.80)
         case .rendererSet:   return Color(hue: 0.08, saturation: 0.65, brightness: 0.85)
+        case .cycleName:     return Color(hue: 0.52, saturation: 0.70, brightness: 0.82)
         }
     }
 
@@ -44,6 +47,7 @@ enum TimelineLane: Int, CaseIterable, Hashable {
         case .shape:         return drivers.shape.keyframes.map(\.frame)
         case .subdivisionSet: return drivers.subdivisionSet.keyframes.map(\.frame)
         case .rendererSet:   return drivers.rendererSet.keyframes.map(\.frame)
+        case .cycleName:     return drivers.cycleName.keyframes.map(\.frame)
         }
     }
 }

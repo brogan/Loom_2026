@@ -289,6 +289,34 @@ public struct SpriteScene: @unchecked Sendable {
             }
         }
 
+        // ── 9. Pre-load cycle geometry for cycleNameDriver references ────────
+        var driverCycleData: [String: CycleRenderData] = [:]
+        if let drivers = sprite.animation.drivers, drivers.cycleName.enabled {
+            let referencedNames = Set(
+                ([drivers.cycleName.base] + drivers.cycleName.keyframes.map(\.value) + drivers.cycleName.jitterPool)
+                    .filter { !$0.isEmpty }
+            )
+            for name in referencedNames {
+                guard driverCycleData[name] == nil,
+                      let cycle = config.cycles.first(where: { $0.name == name })
+                else { continue }
+                var polys: [[Polygon2D]] = []
+                var sets:  [RendererSet?] = []
+                for state in cycle.states {
+                    let shapeDef = config.shapeConfig.library.shapeSets
+                        .first(where: { $0.name == state.shapeSetName })?
+                        .shapes.first(where: { $0.name == state.shapeName })
+                    polys.append(shapeDef.flatMap {
+                        try? loadBasePolygons(shapeDef: $0, config: config, projectDirectory: projectDirectory)
+                    } ?? [])
+                    sets.append(state.rendererSetName.flatMap {
+                        config.renderingConfig.library.rendererSet(named: $0)
+                    })
+                }
+                driverCycleData[name] = CycleRenderData(statePolygons: polys, stateRendererSets: sets)
+            }
+        }
+
         return SpriteInstance(
             def:                    sprite,
             basePolygons:           basePolygons,
@@ -300,6 +328,7 @@ public struct SpriteScene: @unchecked Sendable {
             variantRendererSets:    variantRendererSets,
             cycleStatePolygons:     cycleStatePolygons,
             cycleStateRendererSets: cycleStateRendererSets,
+            driverCycleData:        driverCycleData,
             state:                  SpriteState.initial(for: rendererSet)
         )
     }
@@ -916,7 +945,28 @@ public struct SpriteScene: @unchecked Sendable {
         }
 #endif
 
-        // ── SpriteCycle: override shape/renderer per cycle state ─────────────
+        // ── Cycle-name driver: override the active cycle at runtime ──────────
+        if let drv = instance.def.animation.drivers?.cycleName, drv.enabled,
+           let overrideName = DriverEvaluator.evaluateName(drv, globalElapsed: elapsedFrames,
+                                                           spriteIndex: spriteIndex),
+           let overrideCycle = allCycles[overrideName] {
+            var cycleInstance = instance
+            cycleInstance.def.cycleName = overrideName
+            if let cached = instance.driverCycleData[overrideName] {
+                cycleInstance.cycleStatePolygons     = cached.statePolygons
+                cycleInstance.cycleStateRendererSets = cached.stateRendererSets
+            }
+            renderCycleInstance(cycleInstance, spriteIndex: spriteIndex, parentWorld: parentWorld,
+                                cycle: overrideCycle, into: context, viewTransform: viewTransform,
+                                brushImages: brushImages, stampImages: stampImages,
+                                elapsedFrames: elapsedFrames,
+                                progressiveBrushStates: &progressiveBrushStates,
+                                progressiveBrushEnabled: progressiveBrushEnabled,
+                                using: &rng)
+            return
+        }
+
+        // ── SpriteCycle: static cycle assignment ──────────────────────────────
         if let cycleName = instance.def.cycleName,
            let cycle = allCycles[cycleName],
            !instance.cycleStatePolygons.isEmpty {

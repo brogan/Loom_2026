@@ -627,8 +627,9 @@ private struct DriverSectionsView: View {
     @State private var mphCollapsed  = true
     @State private var opacCollapsed = true
     @State private var shpCollapsed  = true
-    @State private var subdivSetDriverCollapsed = true
-    @State private var rendSetDriverCollapsed   = true
+    @State private var subdivSetDriverCollapsed  = true
+    @State private var rendSetDriverCollapsed    = true
+    @State private var cycleNameDriverCollapsed  = true
     @State private var mtCollapsed  = true
     @State private var svCollapsed  = true
 
@@ -657,6 +658,13 @@ private struct DriverSectionsView: View {
                 isCollapsed: $rendSetDriverCollapsed,
                 isHighlighted: selectedLane == .rendererSet,
                 options: controller.projectConfig?.renderingConfig.library.rendererSets.map(\.name) ?? []
+            )
+            NameDriverEditor(
+                label: "Cycle Driver",
+                driver: db.cycleName,
+                isCollapsed: $cycleNameDriverCollapsed,
+                isHighlighted: selectedLane == .cycleName,
+                options: controller.projectConfig?.cycles.map(\.name) ?? []
             )
             DoubleDriverEditor(label: "Morph",    driver: db.morph,    isCollapsed: $mphCollapsed,
                                isHighlighted: selectedLane == .morph)
@@ -792,6 +800,7 @@ private struct DriverSectionsView: View {
         shpCollapsed  = !d.shape.enabled         && d.shape.keyframes.isEmpty
         subdivSetDriverCollapsed = !d.subdivisionSet.enabled && d.subdivisionSet.keyframes.isEmpty
         rendSetDriverCollapsed   = !d.rendererSet.enabled   && d.rendererSet.keyframes.isEmpty
+        cycleNameDriverCollapsed = !d.cycleName.enabled     && d.cycleName.keyframes.isEmpty
         let sprite = controller.projectConfig?.spriteConfig.library
                          .spriteSets[safe: setIdx]?.sprites[safe: spriteIdx]
         mtCollapsed = sprite?.morphTargetNames.isEmpty != false
@@ -806,7 +815,7 @@ private struct DriverSectionsView: View {
 
     private var driverCollapsedCount: Int {
         [posCollapsed, sclCollapsed, rotCollapsed, mphCollapsed, opacCollapsed, shpCollapsed,
-         subdivSetDriverCollapsed, rendSetDriverCollapsed]
+         subdivSetDriverCollapsed, rendSetDriverCollapsed, cycleNameDriverCollapsed]
             .filter { $0 }.count
     }
 
@@ -821,6 +830,7 @@ private struct DriverSectionsView: View {
             !d.shape.enabled         && d.shape.keyframes.isEmpty         && !shpCollapsed,
             !d.subdivisionSet.enabled && d.subdivisionSet.keyframes.isEmpty && !subdivSetDriverCollapsed,
             !d.rendererSet.enabled   && d.rendererSet.keyframes.isEmpty   && !rendSetDriverCollapsed,
+            !d.cycleName.enabled     && d.cycleName.keyframes.isEmpty     && !cycleNameDriverCollapsed,
         ].filter { $0 }.count
     }
 
@@ -834,12 +844,13 @@ private struct DriverSectionsView: View {
         if !d.shape.enabled         && d.shape.keyframes.isEmpty         { shpCollapsed = true }
         if !d.subdivisionSet.enabled && d.subdivisionSet.keyframes.isEmpty { subdivSetDriverCollapsed = true }
         if !d.rendererSet.enabled   && d.rendererSet.keyframes.isEmpty   { rendSetDriverCollapsed = true }
+        if !d.cycleName.enabled     && d.cycleName.keyframes.isEmpty     { cycleNameDriverCollapsed = true }
     }
 
     private func expandAllDriverSections() {
         posCollapsed = false; sclCollapsed = false; rotCollapsed = false
         mphCollapsed = false; opacCollapsed = false; shpCollapsed = false
-        subdivSetDriverCollapsed = false; rendSetDriverCollapsed = false
+        subdivSetDriverCollapsed = false; rendSetDriverCollapsed = false; cycleNameDriverCollapsed = false
     }
 
     @ViewBuilder

@@ -81,11 +81,20 @@ struct KeyframeInspector: View {
                     .font(.system(size: 11, design: .monospaced))
                     .foregroundStyle(.secondary)
             }
+        case .cycleName:
+            InspectorField("Cycle") {
+                let v = controller.projectConfig?.spriteConfig.library
+                    .spriteSets[safe: sel.setIdx]?.sprites[safe: sel.spriteIdx]?
+                    .animation.drivers?.cycleName.keyframes[safe: sel.keyframeIdx]?.value ?? ""
+                Text(v.isEmpty ? "—" : v)
+                    .font(.system(size: 11, design: .monospaced))
+                    .foregroundStyle(.secondary)
+            }
         }
 
         // Easing is only relevant for interpolating drivers (not step/name drivers)
         switch sel.lane {
-        case .subdivisionSet, .rendererSet:
+        case .subdivisionSet, .rendererSet, .cycleName:
             EmptyView()
         default:
             InspectorField("Easing") {
@@ -180,6 +189,10 @@ struct KeyframeInspector: View {
                             guard sel.keyframeIdx < drivers.rendererSet.keyframes.count else { return }
                             drivers.rendererSet.keyframes[sel.keyframeIdx].frame = newFrame
                             drivers.rendererSet.keyframes.sort { $0.frame < $1.frame }
+                        case .cycleName:
+                            guard sel.keyframeIdx < drivers.cycleName.keyframes.count else { return }
+                            drivers.cycleName.keyframes[sel.keyframeIdx].frame = newFrame
+                            drivers.cycleName.keyframes.sort { $0.frame < $1.frame }
                         }
                     }
                 }
@@ -335,6 +348,7 @@ struct KeyframeInspector: View {
                 case .shape:          return drivers.shape.keyframes[safe: sel.keyframeIdx]?.easing ?? .linear
                 case .subdivisionSet: return .linear  // step driver — no easing
                 case .rendererSet:    return .linear  // step driver — no easing
+                case .cycleName:      return .linear  // step driver — no easing
                 }
             },
             set: { e in
@@ -359,7 +373,7 @@ struct KeyframeInspector: View {
                         case .shape:
                             guard sel.keyframeIdx < drivers.shape.keyframes.count else { return }
                             drivers.shape.keyframes[sel.keyframeIdx].easing = e
-                        case .subdivisionSet, .rendererSet:
+                        case .subdivisionSet, .rendererSet, .cycleName:
                             break  // step drivers — no easing stored
                         }
                     }

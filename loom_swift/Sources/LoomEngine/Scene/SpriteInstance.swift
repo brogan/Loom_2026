@@ -51,6 +51,11 @@ public struct SpriteInstance: Sendable {
     /// Parallel to `cycleStatePolygons`.
     public var cycleStateRendererSets: [RendererSet?]
 
+    /// Pre-loaded geometry for cycles referenced by the `cycleNameDriver`.
+    /// Keyed by cycle name. Populated at scene init for any cycle name that
+    /// appears in the driver's keyframes so geometry is ready at render time.
+    public var driverCycleData: [String: CycleRenderData] = [:]
+
     /// Mutable per-frame state (updated by `SpriteScene.advance`).
     public var state: SpriteState
 
@@ -65,6 +70,7 @@ public struct SpriteInstance: Sendable {
         variantRendererSets: [RendererSet] = [],
         cycleStatePolygons: [[Polygon2D]] = [],
         cycleStateRendererSets: [RendererSet?] = [],
+        driverCycleData: [String: CycleRenderData] = [:],
         state: SpriteState
     ) {
         self.def                    = def
@@ -77,6 +83,22 @@ public struct SpriteInstance: Sendable {
         self.variantRendererSets    = variantRendererSets
         self.cycleStatePolygons     = cycleStatePolygons
         self.cycleStateRendererSets = cycleStateRendererSets
+        self.driverCycleData        = driverCycleData
         self.state                  = state
+    }
+}
+
+// MARK: - CycleRenderData
+
+/// Pre-loaded geometry for one SpriteCycle, keyed by cycle name in
+/// `SpriteInstance.driverCycleData`. Mirrors the per-state arrays on
+/// `SpriteInstance` but scoped to a single named cycle.
+public struct CycleRenderData: Sendable {
+    public var statePolygons:     [[Polygon2D]]
+    public var stateRendererSets: [RendererSet?]
+
+    public init(statePolygons: [[Polygon2D]], stateRendererSets: [RendererSet?]) {
+        self.statePolygons     = statePolygons
+        self.stateRendererSets = stateRendererSets
     }
 }

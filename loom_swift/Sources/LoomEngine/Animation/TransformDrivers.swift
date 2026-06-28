@@ -33,6 +33,9 @@ public struct TransformDrivers: Codable, Equatable, Sendable {
     /// Overrides which renderer set draws the sprite each frame.
     /// Disabled (default) leaves the static renderer-set assignment in effect.
     public var rendererSet:    NameDriver   = .disabled
+    /// Overrides which SpriteCycle runs on this sprite each frame.
+    /// Disabled (default) leaves the static cycleName assignment in effect.
+    public var cycleName:      NameDriver   = .disabled
 
     public init(
         position:      VectorDriver = VectorDriver(mode: .constant, base: .zero,                 loopMode: .once),
@@ -42,7 +45,8 @@ public struct TransformDrivers: Codable, Equatable, Sendable {
         opacity:       DoubleDriver = DoubleDriver(mode: .constant, base: 1, loopMode: .once),
         shape:         DoubleDriver = DoubleDriver(mode: .constant, base: 0, loopMode: .once),
         subdivisionSet: NameDriver  = .disabled,
-        rendererSet:    NameDriver  = .disabled
+        rendererSet:    NameDriver  = .disabled,
+        cycleName:      NameDriver  = .disabled
     ) {
         self.position      = position
         self.scale         = scale
@@ -52,6 +56,7 @@ public struct TransformDrivers: Codable, Equatable, Sendable {
         self.shape         = shape
         self.subdivisionSet = subdivisionSet
         self.rendererSet    = rendererSet
+        self.cycleName      = cycleName
     }
 
     /// All drivers at constant identity — no animation.
@@ -69,6 +74,7 @@ public struct TransformDrivers: Codable, Equatable, Sendable {
         shape           = try c.decodeIfPresent(DoubleDriver.self, forKey: .shape)         ?? DoubleDriver(mode: .constant, base: 0, loopMode: .once)
         subdivisionSet  = try c.decodeIfPresent(NameDriver.self,   forKey: .subdivisionSet) ?? .disabled
         rendererSet     = try c.decodeIfPresent(NameDriver.self,   forKey: .rendererSet)    ?? .disabled
+        cycleName       = try c.decodeIfPresent(NameDriver.self,   forKey: .cycleName)      ?? .disabled
     }
 }
 

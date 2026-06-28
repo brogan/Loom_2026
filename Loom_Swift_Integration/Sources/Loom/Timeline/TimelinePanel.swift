@@ -476,6 +476,7 @@ struct TimelinePanel: View {
                             case .shape:          return d.shape.enabled
                             case .subdivisionSet: return d.subdivisionSet.enabled
                             case .rendererSet:    return d.rendererSet.enabled
+                            case .cycleName:      return d.cycleName.enabled
                             }
                         }()
                         let sprAllIDs = allSpriteRowIDs(for: node)
@@ -497,6 +498,7 @@ struct TimelinePanel: View {
                                                     case .shape:          d.shape.enabled.toggle()
                                                     case .subdivisionSet: d.subdivisionSet.enabled.toggle()
                                                     case .rendererSet:    d.rendererSet.enabled.toggle()
+                                                    case .cycleName:      d.cycleName.enabled.toggle()
                                                     }
                                                 }
                                             }
@@ -592,6 +594,7 @@ struct TimelinePanel: View {
                         case .shape:          return d.shape.enabled
                         case .subdivisionSet: return d.subdivisionSet.enabled
                         case .rendererSet:    return d.rendererSet.enabled
+                        case .cycleName:      return d.cycleName.enabled
                         }
                     }()
                     return !en && lane.keyframeFrames(from: d).isEmpty
@@ -640,6 +643,7 @@ struct TimelinePanel: View {
                                 case .shape:          return d.shape.enabled
                                 case .subdivisionSet: return d.subdivisionSet.enabled
                                 case .rendererSet:    return d.rendererSet.enabled
+                                case .cycleName:      return d.cycleName.enabled
                                 }
                             }()
                             if !en && lane.keyframeFrames(from: d).isEmpty {
@@ -1820,6 +1824,9 @@ struct TimelinePanel: View {
                 case .rendererSet:
                     guard let value = drivers.rendererSet.keyframes[safe: keyframeIdx] else { return nil }
                     return .spriteName(spriteListIdx: spriteListIdx, lane: lane, offset: frameOffset, value: value)
+                case .cycleName:
+                    guard let value = drivers.cycleName.keyframes[safe: keyframeIdx] else { return nil }
+                    return .spriteName(spriteListIdx: spriteListIdx, lane: lane, offset: frameOffset, value: value)
                 }
 
             case .renderer(let spriteListIdx, let rendererSetIdx, let rendererItemIdx, let lane, let keyframeIdx):
@@ -1935,6 +1942,11 @@ struct TimelinePanel: View {
                             drivers.rendererSet.keyframes.removeAll { $0.frame == targetFrame }
                             drivers.rendererSet.keyframes.append(value)
                             drivers.rendererSet.keyframes.sort { $0.frame < $1.frame }
+                        case .cycleName:
+                            drivers.cycleName.mode = .keyframe
+                            drivers.cycleName.keyframes.removeAll { $0.frame == targetFrame }
+                            drivers.cycleName.keyframes.append(value)
+                            drivers.cycleName.keyframes.sort { $0.frame < $1.frame }
                         default:
                             break
                         }
@@ -2080,6 +2092,8 @@ struct TimelinePanel: View {
                             if keyframeIdx < drivers.subdivisionSet.keyframes.count { drivers.subdivisionSet.keyframes.remove(at: keyframeIdx) }
                         case .rendererSet:
                             if keyframeIdx < drivers.rendererSet.keyframes.count { drivers.rendererSet.keyframes.remove(at: keyframeIdx) }
+                        case .cycleName:
+                            if keyframeIdx < drivers.cycleName.keyframes.count { drivers.cycleName.keyframes.remove(at: keyframeIdx) }
                         }
                     }
                 case .renderer(_, let rendererSetIdx, let rendererItemIdx, let lane, let keyframeIdx):
@@ -2196,6 +2210,7 @@ struct TimelinePanel: View {
                         case .shape:          if ki < d.shape.keyframes.count         { d.shape.keyframes[ki].frame         = newFrame }
                         case .subdivisionSet: if ki < d.subdivisionSet.keyframes.count { d.subdivisionSet.keyframes[ki].frame = newFrame }
                         case .rendererSet:    if ki < d.rendererSet.keyframes.count   { d.rendererSet.keyframes[ki].frame   = newFrame }
+                        case .cycleName:      if ki < d.cycleName.keyframes.count     { d.cycleName.keyframes[ki].frame     = newFrame }
                         }
                     }
                     sortSprites.insert(loc.setIdx * 100_000 + loc.spriteIdx)
@@ -2296,6 +2311,10 @@ struct TimelinePanel: View {
                     guard kfIdx < drivers.rendererSet.keyframes.count else { return }
                     drivers.rendererSet.keyframes[kfIdx].frame = newFrame
                     drivers.rendererSet.keyframes.sort { $0.frame < $1.frame }
+                case .cycleName:
+                    guard kfIdx < drivers.cycleName.keyframes.count else { return }
+                    drivers.cycleName.keyframes[kfIdx].frame = newFrame
+                    drivers.cycleName.keyframes.sort { $0.frame < $1.frame }
                 }
             }
         }
@@ -2377,6 +2396,16 @@ struct TimelinePanel: View {
                     drivers.rendererSet.keyframes.removeAll { $0.frame == frame }
                     drivers.rendererSet.keyframes.append(NameKeyframe(frame: frame, value: currentVal))
                     drivers.rendererSet.keyframes.sort { $0.frame < $1.frame }
+                case .cycleName:
+                    drivers.cycleName.mode = .keyframe
+                    drivers.cycleName.enabled = true
+                    let currentVal: String = {
+                        let sorted = drivers.cycleName.keyframes.sorted { $0.frame < $1.frame }
+                        return sorted.last(where: { $0.frame <= frame })?.value ?? drivers.cycleName.base
+                    }()
+                    drivers.cycleName.keyframes.removeAll { $0.frame == frame }
+                    drivers.cycleName.keyframes.append(NameKeyframe(frame: frame, value: currentVal))
+                    drivers.cycleName.keyframes.sort { $0.frame < $1.frame }
                 }
             }
         }
@@ -2537,6 +2566,9 @@ struct TimelinePanel: View {
                 case .rendererSet:
                     guard kfIdx < drivers.rendererSet.keyframes.count else { return }
                     drivers.rendererSet.keyframes.remove(at: kfIdx)
+                case .cycleName:
+                    guard kfIdx < drivers.cycleName.keyframes.count else { return }
+                    drivers.cycleName.keyframes.remove(at: kfIdx)
                 }
             }
         }
