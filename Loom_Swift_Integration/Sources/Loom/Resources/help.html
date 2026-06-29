@@ -1003,28 +1003,36 @@
   </ol>
 
   <h4 id="geometry-knife-anchor">Anchor-Point Knife Cuts</h4>
-  <p>Both the straight knife and the curved knife have an <strong>anchor-point mode</strong> that splits a polygon exactly at two of its existing vertices — without inserting any new anchor points. This is useful when the desired cut endpoints coincide with vertices that are already there, and additional nearby points would complicate the geometry.</p>
+  <p>Both the straight knife and the curved knife have an <strong>anchor-point mode</strong> that defines the knife line by Command-clicking two existing vertices rather than dragging. The two points can be on the same polygon or on different polygons in the same layer — the behaviour differs in a useful way.</p>
 
   <h5>How to use it</h5>
   <ol>
     <li>Activate the <strong>Knife</strong> or <strong>Curved Knife</strong> tool.</li>
-    <li><strong>Command-click</strong> on an existing anchor point of the polygon you want to split. An orange filled circle marks the first endpoint.</li>
-    <li><strong>Command-click</strong> a second anchor point <em>on the same polygon</em>. An orange dashed line (or curve) appears between the two points as a preview.
+    <li><strong>Command-click</strong> on an existing anchor point. An orange filled circle marks the first endpoint.</li>
+    <li><strong>Command-click</strong> a second anchor point in the <em>same layer</em>. An orange dashed preview appears between the two points.
       <ul>
         <li><strong>Straight knife:</strong> the preview is a straight dashed chord.</li>
         <li><strong>Curved knife:</strong> the preview is a dashed bezier curve with two open-circle control handles. Drag either handle to adjust the curvature before committing.</li>
       </ul>
     </li>
-    <li>Press <strong>K</strong> or <strong>Return</strong> to commit the cut. The polygon is replaced by two polygons that share the two selected vertices as their common endpoints. No new anchor points are created.</li>
+    <li>Press <strong>K</strong> or <strong>Return</strong> to commit the cut.</li>
     <li>Press <strong>Escape</strong> at any time to cancel and discard the selection.</li>
   </ol>
 
+  <h5>Same polygon — topological split (no new points)</h5>
+  <p>When both anchors are on the <em>same polygon</em>, the polygon is split exactly at those two vertices. No new anchor points are created — the selected vertices become the shared corners of the two resulting polygons. This is the cleanest possible cut for cases where the desired split points already exist in the geometry.</p>
+
+  <h5>Different polygons — cross-boundary cut</h5>
+  <p>When the two anchors are on <em>different polygons</em> in the same layer, the line between them acts like a regular knife drag across all geometry in that layer. New intersection points are inserted wherever the line crosses a polygon edge — including any shared edge created by a previous cut. The anchor positions lock the knife's start and end exactly to those vertices.</p>
+  <p>Example: after splitting a fish shape horizontally from mouth to tail, Command-click an anchor on the top half and an anchor on the bottom half to make a vertical cut. The horizontal middle edge is intersected automatically, producing a new point on it, and both halves are split cleanly.</p>
+  <p>The status bar shows <em>"will intersect intermediate geometry"</em> to confirm you are in the cross-polygon path.</p>
+
   <h5>Notes</h5>
   <ul>
-    <li>Both selected points must belong to the same polygon. Clicking a point on a different polygon is ignored.</li>
+    <li>Both selected points must be in the same geometry layer. Clicking a point on a different layer is ignored.</li>
     <li>Clicking the same vertex twice is ignored.</li>
     <li>Starting a drag (without Command) while anchor-point mode is active cancels the anchor selection and starts a normal knife drag.</li>
-    <li>The all-visible-layers scope toggle does not apply to anchor-point cuts — the operation always affects only the layer that owns the polygon being split.</li>
+    <li>The all-visible-layers scope toggle does not apply to anchor-point cuts — the operation always affects only the layer that owns the selected anchors.</li>
   </ul>
 
   <h4>Transform controls</h4>
