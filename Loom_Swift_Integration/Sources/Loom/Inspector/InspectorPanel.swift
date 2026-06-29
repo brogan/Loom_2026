@@ -2983,8 +2983,11 @@ private struct CycleSetupSection: View {
     let folder:  String
     let geoName: String
 
+    static let noneSubdivName = "(None)"
+
     @State private var baseName:         String       = ""
     @State private var primaryLayerID:   String       = ""
+    @State private var subdivSetName:    String       = CycleSetupSection.noneSubdivName
     @State private var spriteSetName:    String       = ""
     @State private var rendererSetName:  String       = ""
     @State private var rendererMode:     RendererMode = .filledStroked
@@ -3018,6 +3021,19 @@ private struct CycleSetupSection: View {
                 .frame(maxWidth: .infinity)
             }
             .loomHelp("The layer used as the visible sprite. All other layers become cycle states.")
+
+            InspectorField("Subdivision set") {
+                Picker("", selection: $subdivSetName) {
+                    ForEach(subdivSetOptions, id: \.self) { name in
+                        Text(name).tag(name)
+                    }
+                }
+                .labelsHidden()
+                .pickerStyle(.menu)
+                .font(.system(size: 11))
+                .frame(maxWidth: .infinity)
+            }
+            .loomHelp("Subdivision parameter set applied to every layer's shape. Choose (None) for raw unsubdivided geometry.")
 
             InspectorField("Sprite set") {
                 TextField("", text: $spriteSetName)
@@ -3122,6 +3138,13 @@ private struct CycleSetupSection: View {
         geometryLayers.count >= 2
     }
 
+    private var subdivSetOptions: [String] {
+        let existing = controller.projectConfig?.subdivisionConfig.paramsSets.map(\.name) ?? []
+        var opts = [Self.noneSubdivName]
+        for name in existing where !opts.contains(name) { opts.append(name) }
+        return opts
+    }
+
     private var geometryLayers: [EditableGeometryLayer] {
         guard folder == "polygonSets",
               let projectURL = controller.projectURL,
@@ -3184,7 +3207,7 @@ private struct CycleSetupSection: View {
                     name: shapeName,
                     sourceType: .polygonSet,
                     polygonSetName: polySetName,
-                    subdivisionParamsSetName: ""
+                    subdivisionParamsSetName: subdivSetName == Self.noneSubdivName ? "" : subdivSetName
                 )
                 if let setIdx = cfg.shapeConfig.library.shapeSets.firstIndex(where: { $0.name == shapeSetName }) {
                     if let shpIdx = cfg.shapeConfig.library.shapeSets[setIdx].shapes
