@@ -1306,26 +1306,51 @@ final class AppController: ObservableObject, @unchecked Sendable {
         var selectedPolygons = Set<EditableGeometryID>()
         var selectedCurves   = Set<EditableGeometryID>()
         let weldSnapshot     = snapshotWeldPoints(in: document)
+        let isCurved         = geometryEditorTool == .curvedKnife
+        let knifeSeg: [Vector2D]? = isCurved
+            ? (state.cp1.flatMap { cp1 in state.cp2.map { cp2 in [state.point1, cp1, cp2, point2] } })
+            : nil
 
         for layerIndex in document.layers.indices {
             guard document.layers[layerIndex].id == state.layerID else { continue }
-            let layer     = document.layers[layerIndex]
+            let layer      = document.layers[layerIndex]
             let panelLayer = geometryEditorLayers.first { $0.id == layer.id }
-            let isVisible  = layer.isVisible && (panelLayer?.isVisible ?? true)
+            let isVisible  = layer.isVisible  && (panelLayer?.isVisible  ?? true)
             let isEditable = layer.isEditable && (panelLayer?.isEditable ?? true)
             guard isVisible && isEditable else { continue }
 
-            // Polygons
-            var toRemove   = Set<EditableGeometryID>()
-            var replacements: [EditableClosedPolygon] = []
+            var toRemove: Set<EditableGeometryID>      = []
+            var replacements: [EditableClosedPolygon]  = []
             for polygon in layer.polygons {
                 guard polygon.isVisible else { continue }
-                let pieces: [EditableClosedPolygon]?
-                if geometryEditorTool == .curvedKnife, let cp1 = state.cp1, let cp2 = state.cp2 {
-                    let seg = [state.point1, cp1, cp2, point2]
-                    pieces = curvedKnifePieces(for: polygon, knifeSeg: seg)
+
+                // Determine if this polygon owns one of the selected anchor vertices.
+                // When it does, the intersection at that vertex is injected manually
+                // because the normal detectors miss an exact-vertex start/end.
+                let injectedAnchorID: EditableGeometryID?
+                let injectedAnchorPt: Vector2D?
+                if polygon.id == state.polygonID {
+                    injectedAnchorID = state.pointID1
+                    injectedAnchorPt = state.point1
+                } else if polygon.id == state.polygonID2, let pid2 = state.pointID2 {
+                    injectedAnchorID = pid2
+                    injectedAnchorPt = point2
                 } else {
-                    pieces = knifePieces(for: polygon, lineStart: state.point1, lineEnd: point2)
+                    injectedAnchorID = nil
+                    injectedAnchorPt = nil
+                }
+
+                let pieces: [EditableClosedPolygon]?
+                if let seg = knifeSeg {
+                    pieces = anchorCurvedKnifePieces(
+                        for: polygon, knifeSeg: seg,
+                        preAnchorID: injectedAnchorID, preAnchorPt: injectedAnchorPt
+                    )
+                } else {
+                    pieces = anchorKnifePieces(
+                        for: polygon, lineStart: state.point1, lineEnd: point2,
+                        preAnchorID: injectedAnchorID, preAnchorPt: injectedAnchorPt
+                    )
                 }
                 guard let pieces else { continue }
                 toRemove.insert(polygon.id)
@@ -1338,14 +1363,13 @@ final class AppController: ObservableObject, @unchecked Sendable {
                 document.layers[layerIndex].polygons.append(contentsOf: replacements)
             }
 
-            // Open curves
-            var curvesToRemove   = Set<EditableGeometryID>()
-            var curveReplacements: [EditableOpenCurve] = []
+            // Open curves — no anchor injection needed (anchor selection only works on polygon vertices)
+            var curvesToRemove: Set<EditableGeometryID>  = []
+            var curveReplacements: [EditableOpenCurve]   = []
             for curve in layer.openCurves {
                 guard curve.isVisible else { continue }
                 let pieces: [EditableOpenCurve]?
-                if geometryEditorTool == .curvedKnife, let cp1 = state.cp1, let cp2 = state.cp2 {
-                    let seg = [state.point1, cp1, cp2, point2]
+                if let seg = knifeSeg {
                     pieces = curvedKnifePieces(for: curve, knifeSeg: seg)
                 } else {
                     pieces = knifePieces(for: curve, lineStart: state.point1, lineEnd: point2)
@@ -1372,12 +1396,88 @@ final class AppController: ObservableObject, @unchecked Sendable {
         restoreWelds(from: weldSnapshot, in: &document)
         setGeometryEditorDocument(document)
         geometryEditorSelection = EditableGeometrySelection(
-            layerID:        state.layerID,
-            polygonIDs:     selectedPolygons,
-            openCurveIDs:   selectedCurves
+            layerID:      state.layerID,
+            polygonIDs:   selectedPolygons,
+            openCurveIDs: selectedCurves
         )
         postStatus("Anchor knife: cut \(cutCount) shape(s)")
         cancelGeometryKnifeAnchorState()
+    }
+
+    /// Straight-knife polygon split with an optional pre-injected vertex intersection.
+    /// `preAnchorID/Pt` are set when this polygon owns one of the two selected anchors;
+    /// the normal `knifeIntersections` silently drops exact-vertex endpoints so we inject manually.
+    private func anchorKnifePieces(
+        for polygon: EditableClosedPolygon,
+        lineStart: Vector2D, lineEnd: Vector2D,
+        preAnchorID: EditableGeometryID?, preAnchorPt: Vector2D?
+    ) -> [EditableClosedPolygon]? {
+        let segments = orderedEditorSegments(for: polygon)
+        var intersections = knifeIntersections(segments: segments, lineStart: lineStart, lineEnd: lineEnd)
+        injectAnchorIfNeeded(
+            into: &intersections, polygon: polygon, segments: segments,
+            anchorID: preAnchorID, anchorPt: preAnchorPt
+        )
+        return buildKnifePieces(polygon: polygon, segments: segments, intersections: intersections)
+    }
+
+    /// Curved-knife polygon split with an optional pre-injected vertex intersection.
+    private func anchorCurvedKnifePieces(
+        for polygon: EditableClosedPolygon,
+        knifeSeg: [Vector2D],
+        preAnchorID: EditableGeometryID?, preAnchorPt: Vector2D?
+    ) -> [EditableClosedPolygon]? {
+        let segments = orderedEditorSegments(for: polygon)
+        var intersections = curvedKnifeIntersections(segments: segments, knifeB: knifeSeg)
+        injectAnchorIfNeeded(
+            into: &intersections, polygon: polygon, segments: segments,
+            anchorID: preAnchorID, anchorPt: preAnchorPt
+        )
+        return buildKnifePieces(polygon: polygon, segments: segments, intersections: intersections)
+    }
+
+    /// Inject a pre-known vertex intersection and remove any detected duplicate within tolerance.
+    private func injectAnchorIfNeeded(
+        into intersections: inout [GeometryKnifeIntersection],
+        polygon: EditableClosedPolygon,
+        segments: [[Vector2D]],
+        anchorID: EditableGeometryID?,
+        anchorPt: Vector2D?
+    ) {
+        guard let anchorID, let anchorPt,
+              let segIdx = polygon.segments.firstIndex(where: { $0.startAnchorID == anchorID })
+        else { return }
+        let injected = GeometryKnifeIntersection(segmentIndex: segIdx, t: 0, point: anchorPt)
+        intersections.removeAll { abs($0.globalT - injected.globalT) < 0.015 }
+        intersections.append(injected)
+        intersections.sort { $0.globalT < $1.globalT }
+    }
+
+    /// Shared piece-builder used by the anchor-injection paths.
+    private func buildKnifePieces(
+        polygon: EditableClosedPolygon,
+        segments: [[Vector2D]],
+        intersections: [GeometryKnifeIntersection]
+    ) -> [EditableClosedPolygon]? {
+        guard intersections.count >= 2, intersections.count.isMultiple(of: 2) else { return nil }
+        var pieces: [EditableClosedPolygon] = []
+        for index in intersections.indices {
+            let next = intersections.index(after: index) == intersections.endIndex
+                ? intersections.startIndex : intersections.index(after: index)
+            let pieceSegs = buildClosedKnifePiece(
+                segments: segments,
+                from: intersections[index],
+                to: intersections[next]
+            )
+            guard pieceSegs.count >= 2,
+                  let piece = editableClosedPolygon(
+                    name: "\(polygon.name) Cut \(pieces.count + 1)",
+                    segments: pieceSegs, isVisible: polygon.isVisible
+                  )
+            else { continue }
+            pieces.append(piece)
+        }
+        return pieces.count >= 2 ? pieces : nil
     }
 
     func cancelGeometryKnifeAnchorState() {
