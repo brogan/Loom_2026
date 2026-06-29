@@ -1,4 +1,5 @@
 import CoreGraphics
+@preconcurrency import CoreImage
 import Foundation
 
 /// Produces a light-map `CGImage` at canvas resolution by evaluating all enabled lights
@@ -12,6 +13,8 @@ import Foundation
 /// **Coordinate space**: position (0,0) = canvas centre; ±0.5 = canvas edges.
 /// Radius and area dimensions are in the same normalized units (0.5 = half canvas width).
 public enum LightMapRenderer {
+
+    private static let ciContext = CIContext()
 
     // MARK: - Resolved light (all drivers evaluated)
 
@@ -179,65 +182,42 @@ public enum LightMapRenderer {
         let center    = toPixel(posX: light.posX, posY: light.posY, canvasSize: canvasSize)
         let radius    = toPixelRadius(light.radius, canvasSize: canvasSize)
         let totalHalf = CGFloat(light.coneAngle + light.penumbraAngle)
+        let screenDir = CGFloat(-light.direction)
 
-        // In CGContext Y is down, so "up" is −Y.  direction = 0 means right (+X).
-        // direction = π/2 means up = −Y in screen space → angle = −π/2 from positive X.
-        let screenDir = CGFloat(-light.direction)  // flip Y axis
-        let startAngle = screenDir - totalHalf
-        let endAngle   = screenDir + totalHalf
-
-        // Clip to cone path.
         let conePath = CGMutablePath()
         conePath.move(to: center)
         conePath.addArc(center: center, radius: radius,
-                        startAngle: startAngle, endAngle: endAngle,
+                        startAngle: screenDir - totalHalf,
+                        endAngle:   screenDir + totalHalf,
                         clockwise: false)
         conePath.closeSubpath()
 
-        guard let (coreGradient, _) = makeRadialGradient(light) else { return }
+        guard let (gradient, _) = makeRadialGradient(light) else { return }
+
+        // Render the cone (clipped to outer boundary including penumbra) into a
+        // temporary context, then apply a Gaussian blur whose sigma is proportional
+        // to penumbraAngle × radius_px.  The blur converts the hard clip edge into
+        // a smooth angular falloff — exactly what a theatrical penumbra looks like.
+        guard let tmp = makeContext(size: canvasSize) else { return }
+        tmp.addPath(conePath)
+        tmp.clip()
+        tmp.drawRadialGradient(gradient,
+                               startCenter: center, startRadius: 0,
+                               endCenter:   center, endRadius:   radius,
+                               options: [])
+
+        guard let rawImg = tmp.makeImage() else { return }
+
+        let blurSigma = max(3.0, Double(radius) * light.penumbraAngle * 0.5)
+        let blurred = CIImage(cgImage: rawImg)
+            .applyingFilter("CIGaussianBlur", parameters: ["inputRadius": blurSigma])
+            .cropped(to: CGRect(origin: .zero, size: canvasSize))
+
+        guard let softImg = ciContext.createCGImage(blurred, from: blurred.extent) else { return }
 
         ctx.saveGState()
-        ctx.addPath(conePath)
-        ctx.clip()
         ctx.setBlendMode(.plusLighter)
-        ctx.drawRadialGradient(
-            coreGradient,
-            startCenter: center, startRadius: 0,
-            endCenter:   center, endRadius:   radius,
-            options: []
-        )
-
-        // Penumbra: draw a second, softer pass outside the inner cone (inside total cone)
-        // by re-drawing with lowered intensity for the penumbra band only.
-        if light.penumbraAngle > 0.001 {
-            let innerHalf = CGFloat(light.coneAngle)
-            let innerStart = screenDir - innerHalf
-            let innerEnd   = screenDir + innerHalf
-
-            // Invert clip: everything inside total cone but OUTSIDE inner cone.
-            let totalConePath = CGMutablePath()
-            totalConePath.move(to: center)
-            totalConePath.addArc(center: center, radius: radius,
-                                 startAngle: startAngle, endAngle: endAngle,
-                                 clockwise: false)
-            totalConePath.closeSubpath()
-
-            let innerConePath = CGMutablePath()
-            innerConePath.move(to: center)
-            innerConePath.addArc(center: center, radius: radius,
-                                 startAngle: innerStart, endAngle: innerEnd,
-                                 clockwise: false)
-            innerConePath.closeSubpath()
-
-            // Erase the inner cone region from the penumbra layer
-            let penumbraPath = CGMutablePath()
-            penumbraPath.addPath(totalConePath)
-            // CGContext evenOdd: draw penumbra in the ring between inner and total cones.
-            // We do this by drawing with reduced alpha over the full region
-            // (already drawn at full alpha in inner), which has a soft look.
-            // Simple approach: skip the complex even-odd and just draw a dimmer gradient.
-        }
-
+        ctx.draw(softImg, in: CGRect(origin: .zero, size: canvasSize))
         ctx.restoreGState()
     }
 
