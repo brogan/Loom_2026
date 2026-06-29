@@ -884,8 +884,17 @@ public struct SpriteScene: @unchecked Sendable {
     ) {
         guard let map = getOrComputeLightMap(canvasSize: canvasSize, elapsedFrames: elapsedFrames)
         else { return }
+        // Snapshot the layer so we can clip the multiply to pixels that already
+        // have content.  CGBlendMode.multiply computes
+        // result_alpha = src_a + dst_a − src_a×dst_a.  The light map is always
+        // fully opaque (alpha=1), so without a clip every transparent pixel gets
+        // result_alpha = 1, turning it opaque and blocking layers behind.
+        // clip(to:mask:) uses the CGImage alpha channel as the mask, so pixels
+        // where the layer is transparent are excluded from the multiply draw.
+        guard let layerMask = ctx.makeImage() else { return }
         ctx.saveGState()
         ctx.concatenate(ctx.ctm.inverted())
+        ctx.clip(to: CGRect(origin: .zero, size: canvasSize), mask: layerMask)
         ctx.setBlendMode(.multiply)
         ctx.draw(map, in: CGRect(origin: .zero, size: canvasSize))
         ctx.restoreGState()
