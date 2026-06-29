@@ -1604,7 +1604,7 @@ private struct EditableGeometryCanvas: View {
                         return true
                     }
                     // k — commit curved knife cut
-                    if key == "k" && controller.geometryEditorTool == .curvedKnife {
+                    if (key == "k" || key == "\r") && controller.geometryEditorTool == .curvedKnife {
                         controller.finishGeometryCurvedKnifeCut()
                         return true
                     }
