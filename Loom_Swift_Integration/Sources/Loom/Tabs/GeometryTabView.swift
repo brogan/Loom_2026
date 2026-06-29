@@ -1108,6 +1108,7 @@ private struct EditableGeometryCanvas: View {
     @State private var lastPanScreenPoint: CGPoint?
     @State private var activeSelectionCanvasDrag = false
     @State private var activeClickOnlySelection = false
+    @State private var isAnchorKnifeClick = false
     private let weldedEdgeColor = Color(red: 0.72, green: 0.22, blue: 1.0)
     private let weldedAnchorColor = Color(red: 0.95, green: 0.58, blue: 1.0)
 
@@ -1371,21 +1372,73 @@ private struct EditableGeometryCanvas: View {
                             return
 
                         case .knife:
-                            let point = unproject(value.location, canvasSize: canvasSize)
-                            if controller.geometryEditorKnifeLine == nil {
-                                controller.beginGeometryKnifeLine(at: unproject(value.startLocation, canvasSize: canvasSize))
+                            let point      = unproject(value.location,      canvasSize: canvasSize)
+                            let startWorld = unproject(value.startLocation,  canvasSize: canvasSize)
+                            if controller.geometryEditorKnifeLine == nil && !isAnchorKnifeClick {
+                                if NSEvent.modifierFlags.contains(.command) {
+                                    // Command-click: anchor-point selection.
+                                    if let hit = hitTestPoint(at: value.startLocation, canvasSize: canvasSize),
+                                       let polygonID = hit.polygonID {
+                                        controller.handleKnifeAnchorSelect(
+                                            layerID:    hit.layerID,
+                                            polygonID:  polygonID,
+                                            pointID:    hit.pointID,
+                                            worldPoint: startWorld
+                                        )
+                                    }
+                                    isAnchorKnifeClick = true
+                                } else {
+                                    // Normal drag: cancel any anchor state and start a knife line.
+                                    if controller.geometryKnifeAnchorState != nil {
+                                        controller.cancelGeometryKnifeAnchorState()
+                                    }
+                                    controller.beginGeometryKnifeLine(at: startWorld)
+                                    controller.updateGeometryKnifeLine(to: point)
+                                }
+                            } else if !isAnchorKnifeClick {
+                                controller.updateGeometryKnifeLine(to: point)
                             }
-                            controller.updateGeometryKnifeLine(to: point)
 
                         case .curvedKnife:
-                            let point = unproject(value.location, canvasSize: canvasSize)
-                            if let line = controller.geometryEditorCurvedKnifeLine {
+                            let point      = unproject(value.location,     canvasSize: canvasSize)
+                            let startWorld = unproject(value.startLocation, canvasSize: canvasSize)
+                            if NSEvent.modifierFlags.contains(.command) && !isAnchorKnifeClick
+                               && controller.geometryEditorCurvedKnifeLine == nil {
+                                // Command-click: anchor-point selection.
+                                if let hit = hitTestPoint(at: value.startLocation, canvasSize: canvasSize),
+                                   let polygonID = hit.polygonID {
+                                    controller.handleKnifeAnchorSelect(
+                                        layerID:    hit.layerID,
+                                        polygonID:  polygonID,
+                                        pointID:    hit.pointID,
+                                        worldPoint: startWorld
+                                    )
+                                }
+                                isAnchorKnifeClick = true
+                            } else if let anchor = controller.geometryKnifeAnchorState,
+                                      anchor.pointID2 != nil, !isAnchorKnifeClick {
+                                // Both anchor points set: handle-drag for curved knife adjustment.
+                                if anchor.activeDragTarget != nil {
+                                    controller.updateKnifeAnchorHandleDrag(to: point)
+                                } else if controller.beginKnifeAnchorHandleDrag(near: startWorld) {
+                                    controller.updateKnifeAnchorHandleDrag(to: point)
+                                } else {
+                                    // Drag outside handles → cancel anchor mode, start fresh knife.
+                                    controller.cancelGeometryKnifeAnchorState()
+                                    controller.beginGeometryCurvedKnifeLine(at: startWorld)
+                                    controller.updateGeometryCurvedKnifeLine(to: point)
+                                }
+                            } else if controller.geometryKnifeAnchorState != nil {
+                                // One anchor set, no Command, not handle drag → cancel and normal knife.
+                                controller.cancelGeometryKnifeAnchorState()
+                                controller.beginGeometryCurvedKnifeLine(at: startWorld)
+                                controller.updateGeometryCurvedKnifeLine(to: point)
+                            } else if let line = controller.geometryEditorCurvedKnifeLine {
                                 if line.phase == .dragging {
                                     controller.updateGeometryCurvedKnifeLine(to: point)
                                 } else if line.activeDragTarget != nil {
                                     controller.updateCurvedKnifeHandleDrag(to: point)
                                 } else {
-                                    let startWorld = unproject(value.startLocation, canvasSize: canvasSize)
                                     if !controller.beginCurvedKnifeHandleDrag(near: startWorld) {
                                         controller.cancelGeometryCurvedKnifeLine()
                                         controller.beginGeometryCurvedKnifeLine(at: startWorld)
@@ -1395,7 +1448,7 @@ private struct EditableGeometryCanvas: View {
                                     }
                                 }
                             } else {
-                                controller.beginGeometryCurvedKnifeLine(at: unproject(value.startLocation, canvasSize: canvasSize))
+                                controller.beginGeometryCurvedKnifeLine(at: startWorld)
                                 controller.updateGeometryCurvedKnifeLine(to: point)
                             }
 
@@ -1547,12 +1600,20 @@ private struct EditableGeometryCanvas: View {
                             rubberBandAddsToSelection = false
                             dragUndoRecorded = false
                         case .knife:
-                            controller.updateGeometryKnifeLine(to: unproject(value.location, canvasSize: canvasSize))
-                            controller.finishGeometryKnifeCut()
+                            if isAnchorKnifeClick {
+                                isAnchorKnifeClick = false
+                            } else {
+                                controller.updateGeometryKnifeLine(to: unproject(value.location, canvasSize: canvasSize))
+                                controller.finishGeometryKnifeCut()
+                            }
 
                         case .curvedKnife:
                             let point = unproject(value.location, canvasSize: canvasSize)
-                            if let line = controller.geometryEditorCurvedKnifeLine {
+                            if isAnchorKnifeClick {
+                                isAnchorKnifeClick = false
+                            } else if controller.geometryKnifeAnchorState?.activeDragTarget != nil {
+                                controller.endKnifeAnchorHandleDrag()
+                            } else if let line = controller.geometryEditorCurvedKnifeLine {
                                 if line.phase == .dragging {
                                     controller.updateGeometryCurvedKnifeLine(to: point)
                                     controller.endGeometryCurvedKnifeLineDrag()
@@ -1604,14 +1665,23 @@ private struct EditableGeometryCanvas: View {
                         return true
                     }
                     // k — commit curved knife cut
-                    if (key == "k" || key == "\r") && controller.geometryEditorTool == .curvedKnife {
-                        controller.finishGeometryCurvedKnifeCut()
-                        return true
+                    if key == "k" || key == "\r" {
+                        // Anchor-point knife (both tools): commit if both points are selected.
+                        if let anchor = controller.geometryKnifeAnchorState, anchor.pointID2 != nil {
+                            controller.commitAnchorKnifeCut()
+                            return true
+                        }
+                        // Regular curved knife commit.
+                        if controller.geometryEditorTool == .curvedKnife {
+                            controller.finishGeometryCurvedKnifeCut()
+                            return true
+                        }
                     }
-                    // Escape — cancel mesh extend draft / curved knife
+                    // Escape — cancel mesh extend draft / curved knife / anchor state
                     if key == "\u{1B}" {
                         controller.cancelGeometryMeshExtendDraft()
                         controller.cancelGeometryCurvedKnifeLine()
+                        controller.cancelGeometryKnifeAnchorState()
                         return true
                     }
                     return false
@@ -1666,6 +1736,7 @@ private struct EditableGeometryCanvas: View {
         }
         drawKnifeLine(ctx: ctx, project: projectPoint)
         drawCurvedKnifeLine(ctx: ctx, project: projectPoint)
+        drawKnifeAnchorState(ctx: ctx, project: projectPoint)
         drawExtrudePreview(ctx: ctx, project: projectPoint)
         drawRubberBand(ctx: ctx)
     }
@@ -2446,6 +2517,46 @@ private struct EditableGeometryCanvas: View {
                 Path(ellipseIn: CGRect(x: point.x - 4, y: point.y - 4, width: 8, height: 8)),
                 with: .color(Color.red.opacity(0.9))
             )
+        }
+    }
+
+    private func drawKnifeAnchorState(ctx: GraphicsContext, project: (Vector2D) -> CGPoint) {
+        guard let state = controller.geometryKnifeAnchorState else { return }
+
+        let p1 = project(state.point1)
+        ctx.fill(Path(ellipseIn: CGRect(x: p1.x - 5, y: p1.y - 5, width: 10, height: 10)),
+                 with: .color(Color.orange.opacity(0.9)))
+
+        guard let point2 = state.point2 else { return }
+        let p2 = project(point2)
+        ctx.fill(Path(ellipseIn: CGRect(x: p2.x - 5, y: p2.y - 5, width: 10, height: 10)),
+                 with: .color(Color.orange.opacity(0.9)))
+
+        if controller.geometryEditorTool == .curvedKnife,
+           let cp1 = state.cp1, let cp2 = state.cp2 {
+            let c1 = project(cp1)
+            let c2 = project(cp2)
+
+            var bezPath = Path()
+            bezPath.move(to: p1)
+            bezPath.addCurve(to: p2, control1: c1, control2: c2)
+            ctx.stroke(bezPath, with: .color(Color.orange.opacity(0.85)),
+                       style: StrokeStyle(lineWidth: 1.5, lineCap: .round, dash: [6, 4]))
+
+            for (anchor, handle) in [(p1, c1), (p2, c2)] {
+                var arm = Path()
+                arm.move(to: anchor); arm.addLine(to: handle)
+                ctx.stroke(arm, with: .color(Color.orange.opacity(0.5)),
+                           style: StrokeStyle(lineWidth: 1.0, lineCap: .round, dash: [3, 3]))
+                ctx.stroke(Path(ellipseIn: CGRect(x: handle.x - 5, y: handle.y - 5, width: 10, height: 10)),
+                           with: .color(Color.orange.opacity(0.9)),
+                           style: StrokeStyle(lineWidth: 1.5))
+            }
+        } else {
+            var path = Path()
+            path.move(to: p1); path.addLine(to: p2)
+            ctx.stroke(path, with: .color(Color.orange.opacity(0.85)),
+                       style: StrokeStyle(lineWidth: 1.5, lineCap: .round, dash: [6, 4]))
         }
     }
 

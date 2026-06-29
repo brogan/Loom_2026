@@ -82,6 +82,20 @@ struct GeometryCurvedKnifeLine: Equatable {
     var bezierSegment: [Vector2D] { [start, controlOut, controlIn, end] }
 }
 
+struct GeometryKnifeAnchorState: Equatable {
+    var polygonID:        EditableGeometryID
+    var layerID:          EditableGeometryID
+    var pointID1:         EditableGeometryID
+    var point1:           Vector2D
+    var pointID2:         EditableGeometryID? = nil
+    var point2:           Vector2D?           = nil
+    /// Curved Knife only — control point near point1 (controlOut direction)
+    var cp1:              Vector2D?           = nil
+    /// Curved Knife only — control point near point2 (controlIn direction)
+    var cp2:              Vector2D?           = nil
+    var activeDragTarget: Int?                = nil   // 0 = cp1, 1 = cp2
+}
+
 struct GeometryExtrudeDraft: Equatable {
     enum Mode: Equatable { case displacement, scale }
     var mode: Mode
@@ -188,6 +202,7 @@ final class AppController: ObservableObject, @unchecked Sendable {
     @Published var geometryEditorKnifeCutsAllVisibleLayers: Bool = false
     @Published var geometryEditorCurvedKnifeLine: GeometryCurvedKnifeLine? = nil
     @Published var geometryEditorCurvedKnifeCutsAllVisibleLayers: Bool = false
+    @Published var geometryKnifeAnchorState:                      GeometryKnifeAnchorState? = nil
     @Published var geometryEditorExtrudeDraft:    GeometryExtrudeDraft? = nil { didSet { refreshGeometryEditorSaveState() } }
     @Published var geometryEditorClipboard:       GeometryClipboardEntry? = nil
     @Published var geometryEditorLastClickPosition: Vector2D = .zero
@@ -1099,6 +1114,175 @@ final class AppController: ObservableObject, @unchecked Sendable {
 
     func cancelGeometryCurvedKnifeLine() {
         geometryEditorCurvedKnifeLine = nil
+        geometryKnifeAnchorState = nil
+    }
+
+    // MARK: - Anchor-point knife
+
+    /// Called by the view when the user Command-clicks near a polygon anchor in Knife
+    /// or Curved Knife mode. Selects anchor 1 on the first call; anchor 2 on the second.
+    func handleKnifeAnchorSelect(
+        layerID:    EditableGeometryID,
+        polygonID:  EditableGeometryID,
+        pointID:    EditableGeometryID,
+        worldPoint: Vector2D
+    ) {
+        guard geometryEditorTool == .knife || geometryEditorTool == .curvedKnife else { return }
+
+        guard var state = geometryKnifeAnchorState else {
+            geometryKnifeAnchorState = GeometryKnifeAnchorState(
+                polygonID:  polygonID,
+                layerID:    layerID,
+                pointID1:   pointID,
+                point1:     worldPoint
+            )
+            postStatus("Anchor knife: Command-click a second point on the same polygon (Escape to cancel)")
+            return
+        }
+
+        guard state.pointID2 == nil else { return }
+        guard polygonID == state.polygonID else {
+            postStatus("Anchor knife: both points must be on the same polygon")
+            return
+        }
+        guard pointID != state.pointID1 else { return }
+
+        state.pointID2 = pointID
+        state.point2   = worldPoint
+
+        if geometryEditorTool == .curvedKnife {
+            let delta = worldPoint - state.point1
+            state.cp1 = state.point1 + delta * (1.0 / 3.0)
+            state.cp2 = state.point1 + delta * (2.0 / 3.0)
+            postStatus("Curved anchor knife: drag handles to adjust, then press K or Return to cut")
+        } else {
+            postStatus("Anchor knife: press K or Return to cut, or Escape to cancel")
+        }
+        geometryKnifeAnchorState = state
+    }
+
+    /// Picks up a bezier handle drag for curved-knife anchor mode. Returns true if a handle was hit.
+    func beginKnifeAnchorHandleDrag(near worldPoint: Vector2D) -> Bool {
+        guard geometryEditorTool == .curvedKnife,
+              var state = geometryKnifeAnchorState,
+              state.pointID2 != nil,
+              let cp1 = state.cp1,
+              let cp2 = state.cp2
+        else { return false }
+        let hitRadius = 0.03
+        if cp1.distance(to: worldPoint) < hitRadius {
+            state.activeDragTarget = 0
+            geometryKnifeAnchorState = state
+            return true
+        }
+        if cp2.distance(to: worldPoint) < hitRadius {
+            state.activeDragTarget = 1
+            geometryKnifeAnchorState = state
+            return true
+        }
+        return false
+    }
+
+    func updateKnifeAnchorHandleDrag(to worldPoint: Vector2D) {
+        guard var state = geometryKnifeAnchorState,
+              let target = state.activeDragTarget
+        else { return }
+        if target == 0 { state.cp1 = worldPoint }
+        else           { state.cp2 = worldPoint }
+        geometryKnifeAnchorState = state
+    }
+
+    func endKnifeAnchorHandleDrag() {
+        guard var state = geometryKnifeAnchorState else { return }
+        state.activeDragTarget = nil
+        geometryKnifeAnchorState = state
+    }
+
+    func commitAnchorKnifeCut() {
+        guard let state   = geometryKnifeAnchorState,
+              let pointID2 = state.pointID2,
+              let point2   = state.point2,
+              var document = geometryEditorDocument
+        else { return }
+
+        guard let layerIdx = document.layers.firstIndex(where: { $0.id == state.layerID }),
+              let polyIdx  = document.layers[layerIdx].polygons.firstIndex(where: { $0.id == state.polygonID })
+        else {
+            postStatus("Anchor knife: polygon no longer found")
+            cancelGeometryKnifeAnchorState()
+            return
+        }
+
+        let polygon  = document.layers[layerIdx].polygons[polyIdx]
+        let allSegs  = orderedEditorSegments(for: polygon)
+
+        // Find the segment that STARTS at each selected anchor.
+        guard let segIdx1 = polygon.segments.firstIndex(where: { $0.startAnchorID == state.pointID1 }),
+              let segIdx2 = polygon.segments.firstIndex(where: { $0.startAnchorID == pointID2 })
+        else {
+            postStatus("Anchor knife: selected vertices not found in polygon segments")
+            cancelGeometryKnifeAnchorState()
+            return
+        }
+
+        // Construct fake intersections at t=0 (exact vertex positions).
+        let int1 = GeometryKnifeIntersection(segmentIndex: segIdx1, t: 0, point: state.point1)
+        let int2 = GeometryKnifeIntersection(segmentIndex: segIdx2, t: 0, point: point2)
+
+        // Closing segments (the cut edge shared between the two pieces).
+        // Piece 1 traverses anchor1→anchor2 via existing polygon edges; its closing segment
+        // runs back from anchor2 to anchor1.
+        // Piece 2 traverses anchor2→anchor1 via existing polygon edges; its closing segment
+        // runs forward from anchor1 to anchor2.
+        let closing2to1: [Vector2D]
+        let closing1to2: [Vector2D]
+
+        if geometryEditorTool == .curvedKnife, let cp1 = state.cp1, let cp2 = state.cp2 {
+            // User-defined bezier from point1→point2: [point1, cp1, cp2, point2]
+            // Reverse (point2→point1): [point2, cp2, cp1, point1]
+            closing2to1 = [point2, cp2, cp1, state.point1]
+            closing1to2 = [state.point1, cp1, cp2, point2]
+        } else {
+            closing2to1 = BezierMath.connector(from: point2, to: state.point1,
+                                               cpRatios: Vector2D(x: 1.0 / 3.0, y: 2.0 / 3.0))
+            closing1to2 = BezierMath.connector(from: state.point1, to: point2,
+                                               cpRatios: Vector2D(x: 1.0 / 3.0, y: 2.0 / 3.0))
+        }
+
+        var piece1Segs = pathSegmentsBetween(segments: allSegs, from: int1, to: int2, wraps: true)
+        piece1Segs.append(closing2to1)
+
+        var piece2Segs = pathSegmentsBetween(segments: allSegs, from: int2, to: int1, wraps: true)
+        piece2Segs.append(closing1to2)
+
+        guard let piece1 = editableClosedPolygon(name: "\(polygon.name) 1",
+                                                  segments: piece1Segs,
+                                                  isVisible: polygon.isVisible),
+              let piece2 = editableClosedPolygon(name: "\(polygon.name) 2",
+                                                  segments: piece2Segs,
+                                                  isVisible: polygon.isVisible)
+        else {
+            postStatus("Anchor knife: cut did not produce two valid polygons — try Escape and retry")
+            cancelGeometryKnifeAnchorState()
+            return
+        }
+
+        let weldSnapshot = snapshotWeldPoints(in: document)
+        recordGeometryEditorUndoSnapshot()
+        document.layers[layerIdx].polygons.remove(at: polyIdx)
+        document.layers[layerIdx].polygons.append(contentsOf: [piece1, piece2])
+        restoreWelds(from: weldSnapshot, in: &document)
+        setGeometryEditorDocument(document)
+        geometryEditorSelection = EditableGeometrySelection(
+            layerID:    state.layerID,
+            polygonIDs: [piece1.id, piece2.id]
+        )
+        postStatus("Anchor knife: polygon split at existing vertices")
+        cancelGeometryKnifeAnchorState()
+    }
+
+    func cancelGeometryKnifeAnchorState() {
+        geometryKnifeAnchorState = nil
     }
 
     func beginGeometryKnifeLine(at point: Vector2D) {
@@ -1125,6 +1309,7 @@ final class AppController: ObservableObject, @unchecked Sendable {
 
     func cancelGeometryKnifeLine() {
         geometryEditorKnifeLine = nil
+        geometryKnifeAnchorState = nil
     }
 
     // MARK: - Extrude tools

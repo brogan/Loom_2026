@@ -730,7 +730,7 @@ private struct GeometryEditorShellInspector: View {
                         controller.startKnifeGeometryCut()
                     }
                     iconButton(
-                        help: "Knife scope: cut through all visible layers",
+                        help: "Cut through all visible layers (drag mode only — anchor-point cuts always target the polygon's own layer)",
                         disabled: controller.geometryEditorTool != .knife,
                         selected: controller.geometryEditorTool == .knife && controller.geometryEditorKnifeCutsAllVisibleLayers
                     ) {
@@ -748,7 +748,7 @@ private struct GeometryEditorShellInspector: View {
                         controller.startCurvedKnifeGeometryCut()
                     }
                     iconButton(
-                        help: "Curved knife scope: cut through all visible layers",
+                        help: "Cut through all visible layers (drag mode only — anchor-point cuts always target the polygon's own layer)",
                         disabled: controller.geometryEditorTool != .curvedKnife,
                         selected: controller.geometryEditorTool == .curvedKnife && controller.geometryEditorCurvedKnifeCutsAllVisibleLayers
                     ) {
