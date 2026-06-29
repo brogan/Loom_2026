@@ -1375,7 +1375,17 @@ private struct EditableGeometryCanvas: View {
                             let point      = unproject(value.location,      canvasSize: canvasSize)
                             let startWorld = unproject(value.startLocation,  canvasSize: canvasSize)
                             if controller.geometryEditorKnifeLine == nil && !isAnchorKnifeClick {
-                                if NSEvent.modifierFlags.contains(.command) {
+                                if NSEvent.modifierFlags.contains(.shift) {
+                                    // Shift-click: insert anchor point on the nearest edge.
+                                    if let hit = hitTestEdge(at: value.startLocation, canvasSize: canvasSize) {
+                                        controller.insertPointOnSegment(
+                                            layerID: hit.layerID, polygonID: hit.polygonID,
+                                            openCurveID: hit.openCurveID,
+                                            segmentIndex: hit.segmentIndex, t: hit.t
+                                        )
+                                    }
+                                    isAnchorKnifeClick = true
+                                } else if NSEvent.modifierFlags.contains(.command) {
                                     // Command-click: anchor-point selection.
                                     if let hit = hitTestPoint(at: value.startLocation, canvasSize: canvasSize),
                                        let polygonID = hit.polygonID {
@@ -1402,7 +1412,19 @@ private struct EditableGeometryCanvas: View {
                         case .curvedKnife:
                             let point      = unproject(value.location,     canvasSize: canvasSize)
                             let startWorld = unproject(value.startLocation, canvasSize: canvasSize)
-                            if NSEvent.modifierFlags.contains(.command) && !isAnchorKnifeClick
+                            if NSEvent.modifierFlags.contains(.shift) && !isAnchorKnifeClick
+                               && controller.geometryEditorCurvedKnifeLine == nil
+                               && controller.geometryKnifeAnchorState == nil {
+                                // Shift-click: insert anchor point on the nearest edge.
+                                if let hit = hitTestEdge(at: value.startLocation, canvasSize: canvasSize) {
+                                    controller.insertPointOnSegment(
+                                        layerID: hit.layerID, polygonID: hit.polygonID,
+                                        openCurveID: hit.openCurveID,
+                                        segmentIndex: hit.segmentIndex, t: hit.t
+                                    )
+                                }
+                                isAnchorKnifeClick = true
+                            } else if NSEvent.modifierFlags.contains(.command) && !isAnchorKnifeClick
                                && controller.geometryEditorCurvedKnifeLine == nil {
                                 // Command-click: anchor-point selection.
                                 if let hit = hitTestPoint(at: value.startLocation, canvasSize: canvasSize),
@@ -2912,6 +2934,85 @@ private struct EditableGeometryCanvas: View {
         return bestHit
     }
 
+    // MARK: - Edge hit-test (Shift-click point insertion)
+
+    private func hitTestEdge(at location: CGPoint, canvasSize: CGFloat) -> GeometryEdgeHit? {
+        let (scale, origin) = viewTransform(canvasSize: canvasSize)
+        let screenRadius: CGFloat = 10
+        var bestHit: GeometryEdgeHit? = nil
+        var bestDist = CGFloat.greatestFiniteMagnitude
+
+        for layer in document.layers where layerCanEdit(layer) {
+            for polygon in layer.polygons where polygon.isVisible {
+                for (segIdx, seg) in rawSegments(for: polygon).enumerated() {
+                    let (t, d) = closestOnSegment(seg, to: location, scale: scale, origin: origin)
+                    if d < screenRadius, d < bestDist {
+                        bestDist = d
+                        bestHit = GeometryEdgeHit(layerID: layer.id, polygonID: polygon.id,
+                                                  openCurveID: nil, segmentIndex: segIdx, t: t)
+                    }
+                }
+            }
+            for curve in layer.openCurves where curve.isVisible {
+                for (segIdx, seg) in rawSegments(for: curve).enumerated() {
+                    let (t, d) = closestOnSegment(seg, to: location, scale: scale, origin: origin)
+                    if d < screenRadius, d < bestDist {
+                        bestDist = d
+                        bestHit = GeometryEdgeHit(layerID: layer.id, polygonID: nil,
+                                                  openCurveID: curve.id, segmentIndex: segIdx, t: t)
+                    }
+                }
+            }
+        }
+        return bestHit
+    }
+
+    private func rawSegments(for polygon: EditableClosedPolygon) -> [[Vector2D]] {
+        let pm = Dictionary(uniqueKeysWithValues: polygon.points.map { ($0.id, $0.position) })
+        return polygon.segments.compactMap { s in
+            guard let a0 = pm[s.startAnchorID], let c0 = pm[s.controlOutID],
+                  let c1 = pm[s.controlInID],   let a1 = pm[s.endAnchorID] else { return nil }
+            return [a0, c0, c1, a1]
+        }
+    }
+
+    private func rawSegments(for curve: EditableOpenCurve) -> [[Vector2D]] {
+        let pm = Dictionary(uniqueKeysWithValues: curve.points.map { ($0.id, $0.position) })
+        return curve.segments.compactMap { s in
+            guard let a0 = pm[s.startAnchorID], let c0 = pm[s.controlOutID],
+                  let c1 = pm[s.controlInID],   let a1 = pm[s.endAnchorID] else { return nil }
+            return [a0, c0, c1, a1]
+        }
+    }
+
+    // Sample + ternary-search for the closest point on a bezier in screen space.
+    private func closestOnSegment(
+        _ seg: [Vector2D], to loc: CGPoint,
+        scale: CGFloat, origin: CGPoint
+    ) -> (t: Double, screenDist: CGFloat) {
+        let n = 20
+        var bestT = 0.0
+        var bestDist = CGFloat.greatestFiniteMagnitude
+        for i in 0...n {
+            let t = Double(i) / Double(n)
+            let s = project(BezierMath.point(seg: seg, t: t), scale: scale, origin: origin)
+            let d = hypot(s.x - loc.x, s.y - loc.y)
+            if d < bestDist { bestDist = d; bestT = t }
+        }
+        var lo = max(0.0, bestT - 1.0 / Double(n))
+        var hi = min(1.0, bestT + 1.0 / Double(n))
+        for _ in 0..<20 {
+            let m1 = lo + (hi - lo) / 3
+            let m2 = hi - (hi - lo) / 3
+            let s1 = project(BezierMath.point(seg: seg, t: m1), scale: scale, origin: origin)
+            let s2 = project(BezierMath.point(seg: seg, t: m2), scale: scale, origin: origin)
+            if hypot(s1.x - loc.x, s1.y - loc.y) < hypot(s2.x - loc.x, s2.y - loc.y) { hi = m2 } else { lo = m1 }
+        }
+        let ft = (lo + hi) / 2
+        let fs = project(BezierMath.point(seg: seg, t: ft), scale: scale, origin: origin)
+        return (ft, hypot(fs.x - loc.x, fs.y - loc.y))
+    }
+
     private func hitTestPolygon(at location: CGPoint, canvasSize: CGFloat) -> GeometryPolygonHit? {
         let (scale, origin) = viewTransform(canvasSize: canvasSize)
 
@@ -3495,6 +3596,14 @@ private struct EditableGeometryCanvas: View {
         controller.geometryEditorSelection.segmentIDs.isEmpty &&
         controller.geometryEditorTool == .openCurves
     }
+}
+
+private struct GeometryEdgeHit {
+    var layerID:      EditableGeometryID
+    var polygonID:    EditableGeometryID?
+    var openCurveID:  EditableGeometryID?
+    var segmentIndex: Int
+    var t:            Double
 }
 
 private struct GeometryPointHit: Equatable {

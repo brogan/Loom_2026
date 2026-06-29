@@ -3437,6 +3437,107 @@ final class AppController: ObservableObject, @unchecked Sendable {
         !geometryEditorHistory.redoStack.isEmpty
     }
 
+    // MARK: - Insert point on edge
+
+    func insertPointOnSegment(
+        layerID:      EditableGeometryID,
+        polygonID:    EditableGeometryID?,
+        openCurveID:  EditableGeometryID?,
+        segmentIndex: Int,
+        t:            Double
+    ) {
+        guard var document = geometryEditorDocument,
+              let layerIdx = document.layers.firstIndex(where: { $0.id == layerID })
+        else { return }
+
+        let weldSnapshot = snapshotWeldPoints(in: document)
+
+        if let polyID = polygonID,
+           let polyIdx = document.layers[layerIdx].polygons.firstIndex(where: { $0.id == polyID }) {
+            guard document.layers[layerIdx].polygons[polyIdx].segments.indices.contains(segmentIndex)
+            else { return }
+            splitPolygonSegment(&document.layers[layerIdx].polygons[polyIdx], at: segmentIndex, t: t)
+        } else if let curveID = openCurveID,
+                  let curveIdx = document.layers[layerIdx].openCurves.firstIndex(where: { $0.id == curveID }) {
+            guard document.layers[layerIdx].openCurves[curveIdx].segments.indices.contains(segmentIndex)
+            else { return }
+            splitCurveSegment(&document.layers[layerIdx].openCurves[curveIdx], at: segmentIndex, t: t)
+        } else {
+            return
+        }
+
+        recordGeometryEditorUndoSnapshot()
+        restoreWelds(from: weldSnapshot, in: &document)
+        setGeometryEditorDocument(document)
+        postStatus("Anchor point inserted on edge")
+    }
+
+    private func splitPolygonSegment(_ polygon: inout EditableClosedPolygon, at segIdx: Int, t: Double) {
+        let seg = polygon.segments[segIdx]
+        let pointMap = Dictionary(uniqueKeysWithValues: polygon.points.map { ($0.id, $0.position) })
+        guard let a0 = pointMap[seg.startAnchorID], let c0 = pointMap[seg.controlOutID],
+              let c1 = pointMap[seg.controlInID],   let a1 = pointMap[seg.endAnchorID]
+        else { return }
+
+        let (left, right) = BezierMath.split(seg: [a0, c0, c1, a1], t: t)
+
+        if let idx = polygon.points.firstIndex(where: { $0.id == seg.controlOutID }) {
+            polygon.points[idx].position = left[1]
+        }
+        if let idx = polygon.points.firstIndex(where: { $0.id == seg.controlInID }) {
+            polygon.points[idx].position = right[2]
+        }
+
+        let newAnchor  = EditableCubicPoint(position: left[3],  kind: .anchor)
+        let newCtrlIn  = EditableCubicPoint(position: left[2],  kind: .control)
+        let newCtrlOut = EditableCubicPoint(position: right[1], kind: .control)
+        polygon.points.append(contentsOf: [newAnchor, newCtrlIn, newCtrlOut])
+
+        let seg1 = EditableCubicSegment(
+            startAnchorID: seg.startAnchorID, controlOutID: seg.controlOutID,
+            controlInID:   newCtrlIn.id,      endAnchorID:  newAnchor.id
+        )
+        let seg2 = EditableCubicSegment(
+            startAnchorID: newAnchor.id,      controlOutID: newCtrlOut.id,
+            controlInID:   seg.controlInID,   endAnchorID:  seg.endAnchorID
+        )
+        polygon.segments.remove(at: segIdx)
+        polygon.segments.insert(contentsOf: [seg1, seg2], at: segIdx)
+    }
+
+    private func splitCurveSegment(_ curve: inout EditableOpenCurve, at segIdx: Int, t: Double) {
+        let seg = curve.segments[segIdx]
+        let pointMap = Dictionary(uniqueKeysWithValues: curve.points.map { ($0.id, $0.position) })
+        guard let a0 = pointMap[seg.startAnchorID], let c0 = pointMap[seg.controlOutID],
+              let c1 = pointMap[seg.controlInID],   let a1 = pointMap[seg.endAnchorID]
+        else { return }
+
+        let (left, right) = BezierMath.split(seg: [a0, c0, c1, a1], t: t)
+
+        if let idx = curve.points.firstIndex(where: { $0.id == seg.controlOutID }) {
+            curve.points[idx].position = left[1]
+        }
+        if let idx = curve.points.firstIndex(where: { $0.id == seg.controlInID }) {
+            curve.points[idx].position = right[2]
+        }
+
+        let newAnchor  = EditableCubicPoint(position: left[3],  kind: .anchor)
+        let newCtrlIn  = EditableCubicPoint(position: left[2],  kind: .control)
+        let newCtrlOut = EditableCubicPoint(position: right[1], kind: .control)
+        curve.points.append(contentsOf: [newAnchor, newCtrlIn, newCtrlOut])
+
+        let seg1 = EditableCubicSegment(
+            startAnchorID: seg.startAnchorID, controlOutID: seg.controlOutID,
+            controlInID:   newCtrlIn.id,      endAnchorID:  newAnchor.id
+        )
+        let seg2 = EditableCubicSegment(
+            startAnchorID: newAnchor.id,      controlOutID: newCtrlOut.id,
+            controlInID:   seg.controlInID,   endAnchorID:  seg.endAnchorID
+        )
+        curve.segments.remove(at: segIdx)
+        curve.segments.insert(contentsOf: [seg1, seg2], at: segIdx)
+    }
+
     func recordGeometryEditorUndoSnapshot() {
         guard let document = geometryEditorDocument else { return }
         geometryEditorHistory.record(
