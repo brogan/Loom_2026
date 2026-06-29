@@ -16,6 +16,8 @@ public struct ProjectConfig: Codable, Sendable {
     public var layers:            [LoomLayer]
     /// Named sprite cycles (walk cycles, image sequences, etc.).  Empty = no cycles defined.
     public var cycles:            [SpriteCycle]
+    /// Theatrical lighting configuration.  Default disabled = zero render overhead.
+    public var lightingConfig:    LightingConfig
 
     public init(
         globalConfig: GlobalConfig           = .default,
@@ -28,7 +30,8 @@ public struct ProjectConfig: Codable, Sendable {
         renderingConfig: RenderingConfig     = RenderingConfig(),
         spriteConfig: SpriteConfig           = SpriteConfig(),
         layers: [LoomLayer]                  = [],
-        cycles: [SpriteCycle]                = []
+        cycles: [SpriteCycle]                = [],
+        lightingConfig: LightingConfig       = LightingConfig()
     ) {
         self.globalConfig      = globalConfig
         self.shapeConfig       = shapeConfig
@@ -41,6 +44,7 @@ public struct ProjectConfig: Codable, Sendable {
         self.spriteConfig      = spriteConfig
         self.layers            = layers
         self.cycles            = cycles
+        self.lightingConfig    = lightingConfig
     }
 
     // MARK: - Codable
@@ -48,6 +52,7 @@ public struct ProjectConfig: Codable, Sendable {
     private enum CodingKeys: String, CodingKey {
         case globalConfig, shapeConfig, polygonConfig, curveConfig, ovalConfig
         case pointConfig, subdivisionConfig, renderingConfig, spriteConfig, layers, cycles
+        case lightingConfig
     }
 
     public init(from decoder: Decoder) throws {
@@ -61,7 +66,8 @@ public struct ProjectConfig: Codable, Sendable {
         subdivisionConfig = try c.decode(SubdivisionConfig.self, forKey: .subdivisionConfig)
         renderingConfig   = try c.decode(RenderingConfig.self,   forKey: .renderingConfig)
         spriteConfig      = try c.decode(SpriteConfig.self,      forKey: .spriteConfig)
-        layers            = try c.decodeIfPresent([LoomLayer].self,    forKey: .layers)  ?? []
-        cycles            = try c.decodeIfPresent([SpriteCycle].self,  forKey: .cycles)  ?? []
+        layers            = try c.decodeIfPresent([LoomLayer].self,    forKey: .layers)         ?? []
+        cycles            = try c.decodeIfPresent([SpriteCycle].self,  forKey: .cycles)         ?? []
+        lightingConfig    = try c.decodeIfPresent(LightingConfig.self, forKey: .lightingConfig) ?? LightingConfig()
     }
 }

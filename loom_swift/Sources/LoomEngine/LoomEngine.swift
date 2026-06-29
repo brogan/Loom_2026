@@ -113,6 +113,18 @@ public struct LoomEngine: @unchecked Sendable {
     /// All sprite instances in the scene (base geometry + def, no animation applied).
     public var spriteInstances: [SpriteInstance] { scene.instances }
 
+    /// Push a new lighting config into the live scene without a full reload.
+    /// Used by the Lights inspector for immediate visual feedback on every edit.
+    public mutating func updateLightingConfig(_ lc: LightingConfig) {
+        scene.lightingConfig = lc
+        scene.invalidateLightMap()
+    }
+
+    /// Push updated layers (e.g. receivesLighting toggle) into the live scene.
+    public mutating func updateLayers(_ layers: [LoomLayer]) {
+        scene.layers = layers
+    }
+
 #if canImport(AppKit)
     /// Insert or replace a single image in the sprite image cache without a full project reload.
     /// Called after the user picks a new image file via the cycle editor so the live canvas
@@ -181,6 +193,7 @@ public struct LoomEngine: @unchecked Sendable {
         elapsedFrames          = globalElapsed
         accumulationCanvas     = nil        // force fresh render at seek position
         scene.invalidateAccumulateBuffers()
+        scene.invalidateLightMap()
         brushProgressiveStates = [:]
         sceneAdvancedThisFrame = true
         var rng = SystemRandomNumberGenerator()

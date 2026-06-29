@@ -45,34 +45,39 @@ public struct LoomLayer: Codable, Equatable, Identifiable, Sendable {
     public var redrawMode:      LayerRedrawMode
     /// Fraction of previous frame content retained each frame in `.accumulate` mode.
     /// Range 0–1; typical values 0.90–0.99. Lower = faster fade. (0.95 = ~13 frame half-life at 30fps)
-    public var accumulateFade:  Double
+    public var accumulateFade:   Double
+    /// When `true` the lighting pass (light map multiply) is applied to this layer's buffer
+    /// before compositing. Default `false` → zero lighting overhead for this layer.
+    public var receivesLighting: Bool
 
     public init(
-        id:             UUID            = UUID(),
-        name:           String          = "Layer",
-        isVisible:      Bool            = true,
-        parallaxFactor: Double          = 1.0,
-        opacity:        Double          = 1.0,
-        opacityDriver:  DoubleDriver    = .one,
-        blur:           Double          = 0.0,
-        blurDriver:     DoubleDriver    = .zero,
-        blendMode:      LayerBlendMode  = .normal,
-        spriteSetNames: [String]        = [],
-        redrawMode:     LayerRedrawMode = .full,
-        accumulateFade: Double          = 0.95
+        id:               UUID            = UUID(),
+        name:             String          = "Layer",
+        isVisible:        Bool            = true,
+        parallaxFactor:   Double          = 1.0,
+        opacity:          Double          = 1.0,
+        opacityDriver:    DoubleDriver    = .one,
+        blur:             Double          = 0.0,
+        blurDriver:       DoubleDriver    = .zero,
+        blendMode:        LayerBlendMode  = .normal,
+        spriteSetNames:   [String]        = [],
+        redrawMode:       LayerRedrawMode = .full,
+        accumulateFade:   Double          = 0.95,
+        receivesLighting: Bool            = false
     ) {
-        self.id             = id
-        self.name           = name
-        self.isVisible      = isVisible
-        self.parallaxFactor = parallaxFactor
-        self.opacity        = opacity
-        self.opacityDriver  = opacityDriver
-        self.blur           = blur
-        self.blurDriver     = blurDriver
-        self.blendMode      = blendMode
-        self.spriteSetNames = spriteSetNames
-        self.redrawMode     = redrawMode
-        self.accumulateFade = accumulateFade
+        self.id               = id
+        self.name             = name
+        self.isVisible        = isVisible
+        self.parallaxFactor   = parallaxFactor
+        self.opacity          = opacity
+        self.opacityDriver    = opacityDriver
+        self.blur             = blur
+        self.blurDriver       = blurDriver
+        self.blendMode        = blendMode
+        self.spriteSetNames   = spriteSetNames
+        self.redrawMode       = redrawMode
+        self.accumulateFade   = accumulateFade
+        self.receivesLighting = receivesLighting
     }
 
     // MARK: - Codable (safe defaults for missing fields)
@@ -80,22 +85,23 @@ public struct LoomLayer: Codable, Equatable, Identifiable, Sendable {
     private enum CodingKeys: String, CodingKey {
         case id, name, isVisible, parallaxFactor, opacity, opacityDriver
         case blur, blurDriver, blendMode, spriteSetNames
-        case redrawMode, accumulateFade
+        case redrawMode, accumulateFade, receivesLighting
     }
 
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
-        id             = try c.decodeIfPresent(UUID.self,             forKey: .id)             ?? UUID()
-        name           = try c.decodeIfPresent(String.self,           forKey: .name)           ?? "Layer"
-        isVisible      = try c.decodeIfPresent(Bool.self,             forKey: .isVisible)      ?? true
-        parallaxFactor = try c.decodeIfPresent(Double.self,           forKey: .parallaxFactor) ?? 1.0
-        opacity        = try c.decodeIfPresent(Double.self,           forKey: .opacity)        ?? 1.0
-        opacityDriver  = try c.decodeIfPresent(DoubleDriver.self,     forKey: .opacityDriver)  ?? .one
-        blur           = try c.decodeIfPresent(Double.self,           forKey: .blur)           ?? 0.0
-        blurDriver     = try c.decodeIfPresent(DoubleDriver.self,     forKey: .blurDriver)     ?? .zero
-        blendMode      = try c.decodeIfPresent(LayerBlendMode.self,   forKey: .blendMode)      ?? .normal
-        spriteSetNames = try c.decodeIfPresent([String].self,         forKey: .spriteSetNames) ?? []
-        redrawMode     = try c.decodeIfPresent(LayerRedrawMode.self,  forKey: .redrawMode)     ?? .full
-        accumulateFade = try c.decodeIfPresent(Double.self,           forKey: .accumulateFade) ?? 0.95
+        id               = try c.decodeIfPresent(UUID.self,             forKey: .id)               ?? UUID()
+        name             = try c.decodeIfPresent(String.self,           forKey: .name)             ?? "Layer"
+        isVisible        = try c.decodeIfPresent(Bool.self,             forKey: .isVisible)        ?? true
+        parallaxFactor   = try c.decodeIfPresent(Double.self,           forKey: .parallaxFactor)   ?? 1.0
+        opacity          = try c.decodeIfPresent(Double.self,           forKey: .opacity)          ?? 1.0
+        opacityDriver    = try c.decodeIfPresent(DoubleDriver.self,     forKey: .opacityDriver)    ?? .one
+        blur             = try c.decodeIfPresent(Double.self,           forKey: .blur)             ?? 0.0
+        blurDriver       = try c.decodeIfPresent(DoubleDriver.self,     forKey: .blurDriver)       ?? .zero
+        blendMode        = try c.decodeIfPresent(LayerBlendMode.self,   forKey: .blendMode)        ?? .normal
+        spriteSetNames   = try c.decodeIfPresent([String].self,         forKey: .spriteSetNames)   ?? []
+        redrawMode       = try c.decodeIfPresent(LayerRedrawMode.self,  forKey: .redrawMode)       ?? .full
+        accumulateFade   = try c.decodeIfPresent(Double.self,           forKey: .accumulateFade)   ?? 0.95
+        receivesLighting = try c.decodeIfPresent(Bool.self,             forKey: .receivesLighting) ?? false
     }
 }

@@ -158,6 +158,12 @@ public final class Engine: @unchecked Sendable {
     /// Maximum `totalDraws` across all sprites; 0 when every sprite is unlimited.
     /// Use this to determine how many virtual frames a synchronous animated-still export needs.
     public var maxAnimationFrames: Int { loomEngine.maxAnimationFrames }
+
+    /// Push a new lighting config into the live scene without a full project reload.
+    /// Call this on every lighting inspector edit for immediate visual feedback.
+    public func updateLightingConfig(_ lc: LightingConfig) {
+        loomEngine.updateLightingConfig(lc)
+    }
 }
 
 #if canImport(AppKit)
