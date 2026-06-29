@@ -983,15 +983,24 @@
     <thead><tr><th>Icon / Control</th><th>Description</th></tr></thead>
     <tbody>
       <tr><td><span class="icon-key">⧉</span>Duplicate</td><td>Duplicate selected polygons, open curves, or points and keep the copy selected.</td></tr>
-      <tr><td><span class="icon-key">▰</span>Knife</td><td>Drag a straight cut line through polygons or open curves. The default cuts only the active editable layer.</td></tr>
+      <tr><td><span class="icon-key">▰</span>Knife</td><td>Drag a straight cut line through polygons or open curves. The default cuts only the active editable layer. <strong>Shift-click</strong> on an edge to insert a point without cutting. <strong>Command-click</strong> two existing vertices to define the cut by their positions.</td></tr>
       <tr><td><span class="icon-key">▱▰▱</span>All visible layers</td><td>Adjunct to Knife or Curved Knife. When enabled, the knife cuts through all visible layers instead of only the active layer.</td></tr>
-      <tr><td><span class="icon-key">∿</span>Curved Knife</td><td>Cut with a cubic bezier curve. Drag to set the chord, then drag the two orange control-point handles to bend the curve, then press <strong>K</strong> to make the cut. Press <strong>Escape</strong> or drag elsewhere to cancel.</td></tr>
+      <tr><td><span class="icon-key">∿</span>Curved Knife</td><td>Cut with a cubic bezier curve. Drag to set the chord, then drag the two orange control-point handles to bend the curve, then press <strong>K</strong> or <strong>Return</strong> to make the cut. <strong>Shift-click</strong> on an edge to insert a point without cutting. <strong>Command-click</strong> two existing vertices to define the cut by their positions.</td></tr>
       <tr><td><span class="icon-key">▱▰▱</span>All visible layers (Curved)</td><td>Same scope toggle as the straight knife, applied to the Curved Knife tool.</td></tr>
       <tr><td><span class="icon-key">↗</span>Displacement extrude</td><td>Extrude selected edges, polygons, or open curves by dragging a displaced copy and stitching quads back to the original.</td></tr>
       <tr><td><span class="icon-key">⇱</span>Scale extrude</td><td>Extrude selected geometry as an outer or inner ring by dragging right/up or left/down.</td></tr>
     </tbody>
   </table>
   <p>Knife operations preserve weld links where matching cut points remain. Selecting the two matching internal edges created by a polygon cut and pressing Delete heals the cut by merging the adjacent polygons.</p>
+
+  <h4>Inserting a point on an edge</h4>
+  <p>With either knife tool active, <strong>Shift-click</strong> anywhere on an existing polygon or open-curve edge to insert a new anchor point at exactly that position. The bezier segment is split cleanly using de Casteljau subdivision — the curve shape is preserved exactly, the two adjacent control handles are updated in place, and the new anchor receives its own control-in and control-out handles.</p>
+  <ul>
+    <li>Works on both polygons and open curves.</li>
+    <li>The click must land within 10 screen pixels of an edge. The closest edge wins when multiple edges are nearby.</li>
+    <li>Full undo support — press <strong>⌘Z</strong> to remove the inserted point.</li>
+    <li>Shift-click does not start a knife drag. Release and drag normally for a cut.</li>
+  </ul>
 
   <h4>Using the Curved Knife</h4>
   <ol>
