@@ -89,6 +89,10 @@ struct GeometryKnifeAnchorState: Equatable {
     var point1:           Vector2D
     var pointID2:         EditableGeometryID? = nil
     var point2:           Vector2D?           = nil
+    /// Polygon that owns pointID2. nil until second point is selected.
+    /// When equal to polygonID the cut is a clean topological split (no new points).
+    /// When different the cut runs as a regular knife through all polygons in the layer.
+    var polygonID2:       EditableGeometryID? = nil
     /// Curved Knife only — control point near point1 (controlOut direction)
     var cp1:              Vector2D?           = nil
     /// Curved Knife only — control point near point2 (controlIn direction)
@@ -1141,22 +1145,32 @@ final class AppController: ObservableObject, @unchecked Sendable {
         }
 
         guard state.pointID2 == nil else { return }
-        guard polygonID == state.polygonID else {
-            postStatus("Anchor knife: both points must be on the same polygon")
+        guard layerID == state.layerID else {
+            postStatus("Anchor knife: both points must be on the same geometry layer")
             return
         }
         guard pointID != state.pointID1 else { return }
 
-        state.pointID2 = pointID
-        state.point2   = worldPoint
+        state.pointID2  = pointID
+        state.point2    = worldPoint
+        state.polygonID2 = polygonID
 
+        let crossPoly = (polygonID != state.polygonID)
         if geometryEditorTool == .curvedKnife {
             let delta = worldPoint - state.point1
             state.cp1 = state.point1 + delta * (1.0 / 3.0)
             state.cp2 = state.point1 + delta * (2.0 / 3.0)
-            postStatus("Curved anchor knife: drag handles to adjust, then press K or Return to cut")
+            if crossPoly {
+                postStatus("Curved anchor knife: drag handles to adjust, then press K or Return to cut (will intersect intermediate geometry)")
+            } else {
+                postStatus("Curved anchor knife: drag handles to adjust, then press K or Return to cut")
+            }
         } else {
-            postStatus("Anchor knife: press K or Return to cut, or Escape to cancel")
+            if crossPoly {
+                postStatus("Anchor knife: press K or Return to cut (will intersect intermediate geometry), or Escape to cancel")
+            } else {
+                postStatus("Anchor knife: press K or Return to cut, or Escape to cancel")
+            }
         }
         geometryKnifeAnchorState = state
     }
@@ -1199,11 +1213,25 @@ final class AppController: ObservableObject, @unchecked Sendable {
     }
 
     func commitAnchorKnifeCut() {
-        guard let state   = geometryKnifeAnchorState,
-              let pointID2 = state.pointID2,
-              let point2   = state.point2,
-              var document = geometryEditorDocument
+        guard let state    = geometryKnifeAnchorState,
+              let pointID2  = state.pointID2,
+              let point2    = state.point2,
+              let polygonID2 = state.polygonID2
         else { return }
+
+        if polygonID2 == state.polygonID {
+            commitAnchorKnifeSamePolygon(state: state, pointID2: pointID2, point2: point2)
+        } else {
+            commitAnchorKnifeCrossPolygon(state: state, point2: point2)
+        }
+    }
+
+    // MARK: same-polygon path — topological split, no new anchor points
+
+    private func commitAnchorKnifeSamePolygon(
+        state: GeometryKnifeAnchorState, pointID2: EditableGeometryID, point2: Vector2D
+    ) {
+        guard var document = geometryEditorDocument else { return }
 
         guard let layerIdx = document.layers.firstIndex(where: { $0.id == state.layerID }),
               let polyIdx  = document.layers[layerIdx].polygons.firstIndex(where: { $0.id == state.polygonID })
@@ -1213,10 +1241,9 @@ final class AppController: ObservableObject, @unchecked Sendable {
             return
         }
 
-        let polygon  = document.layers[layerIdx].polygons[polyIdx]
-        let allSegs  = orderedEditorSegments(for: polygon)
+        let polygon = document.layers[layerIdx].polygons[polyIdx]
+        let allSegs = orderedEditorSegments(for: polygon)
 
-        // Find the segment that STARTS at each selected anchor.
         guard let segIdx1 = polygon.segments.firstIndex(where: { $0.startAnchorID == state.pointID1 }),
               let segIdx2 = polygon.segments.firstIndex(where: { $0.startAnchorID == pointID2 })
         else {
@@ -1225,21 +1252,13 @@ final class AppController: ObservableObject, @unchecked Sendable {
             return
         }
 
-        // Construct fake intersections at t=0 (exact vertex positions).
         let int1 = GeometryKnifeIntersection(segmentIndex: segIdx1, t: 0, point: state.point1)
         let int2 = GeometryKnifeIntersection(segmentIndex: segIdx2, t: 0, point: point2)
 
-        // Closing segments (the cut edge shared between the two pieces).
-        // Piece 1 traverses anchor1→anchor2 via existing polygon edges; its closing segment
-        // runs back from anchor2 to anchor1.
-        // Piece 2 traverses anchor2→anchor1 via existing polygon edges; its closing segment
-        // runs forward from anchor1 to anchor2.
         let closing2to1: [Vector2D]
         let closing1to2: [Vector2D]
 
         if geometryEditorTool == .curvedKnife, let cp1 = state.cp1, let cp2 = state.cp2 {
-            // User-defined bezier from point1→point2: [point1, cp1, cp2, point2]
-            // Reverse (point2→point1): [point2, cp2, cp1, point1]
             closing2to1 = [point2, cp2, cp1, state.point1]
             closing1to2 = [state.point1, cp1, cp2, point2]
         } else {
@@ -1251,16 +1270,13 @@ final class AppController: ObservableObject, @unchecked Sendable {
 
         var piece1Segs = pathSegmentsBetween(segments: allSegs, from: int1, to: int2, wraps: true)
         piece1Segs.append(closing2to1)
-
         var piece2Segs = pathSegmentsBetween(segments: allSegs, from: int2, to: int1, wraps: true)
         piece2Segs.append(closing1to2)
 
         guard let piece1 = editableClosedPolygon(name: "\(polygon.name) 1",
-                                                  segments: piece1Segs,
-                                                  isVisible: polygon.isVisible),
+                                                  segments: piece1Segs, isVisible: polygon.isVisible),
               let piece2 = editableClosedPolygon(name: "\(polygon.name) 2",
-                                                  segments: piece2Segs,
-                                                  isVisible: polygon.isVisible)
+                                                  segments: piece2Segs, isVisible: polygon.isVisible)
         else {
             postStatus("Anchor knife: cut did not produce two valid polygons — try Escape and retry")
             cancelGeometryKnifeAnchorState()
@@ -1278,6 +1294,89 @@ final class AppController: ObservableObject, @unchecked Sendable {
             polygonIDs: [piece1.id, piece2.id]
         )
         postStatus("Anchor knife: polygon split at existing vertices")
+        cancelGeometryKnifeAnchorState()
+    }
+
+    // MARK: cross-polygon path — regular knife using anchor positions as line endpoints
+
+    private func commitAnchorKnifeCrossPolygon(state: GeometryKnifeAnchorState, point2: Vector2D) {
+        guard var document = geometryEditorDocument else { return }
+
+        var cutCount         = 0
+        var selectedPolygons = Set<EditableGeometryID>()
+        var selectedCurves   = Set<EditableGeometryID>()
+        let weldSnapshot     = snapshotWeldPoints(in: document)
+
+        for layerIndex in document.layers.indices {
+            guard document.layers[layerIndex].id == state.layerID else { continue }
+            let layer     = document.layers[layerIndex]
+            let panelLayer = geometryEditorLayers.first { $0.id == layer.id }
+            let isVisible  = layer.isVisible && (panelLayer?.isVisible ?? true)
+            let isEditable = layer.isEditable && (panelLayer?.isEditable ?? true)
+            guard isVisible && isEditable else { continue }
+
+            // Polygons
+            var toRemove   = Set<EditableGeometryID>()
+            var replacements: [EditableClosedPolygon] = []
+            for polygon in layer.polygons {
+                guard polygon.isVisible else { continue }
+                let pieces: [EditableClosedPolygon]?
+                if geometryEditorTool == .curvedKnife, let cp1 = state.cp1, let cp2 = state.cp2 {
+                    let seg = [state.point1, cp1, cp2, point2]
+                    pieces = curvedKnifePieces(for: polygon, knifeSeg: seg)
+                } else {
+                    pieces = knifePieces(for: polygon, lineStart: state.point1, lineEnd: point2)
+                }
+                guard let pieces else { continue }
+                toRemove.insert(polygon.id)
+                replacements.append(contentsOf: pieces)
+                selectedPolygons.formUnion(pieces.map(\.id))
+                cutCount += 1
+            }
+            if !toRemove.isEmpty {
+                document.layers[layerIndex].polygons.removeAll { toRemove.contains($0.id) }
+                document.layers[layerIndex].polygons.append(contentsOf: replacements)
+            }
+
+            // Open curves
+            var curvesToRemove   = Set<EditableGeometryID>()
+            var curveReplacements: [EditableOpenCurve] = []
+            for curve in layer.openCurves {
+                guard curve.isVisible else { continue }
+                let pieces: [EditableOpenCurve]?
+                if geometryEditorTool == .curvedKnife, let cp1 = state.cp1, let cp2 = state.cp2 {
+                    let seg = [state.point1, cp1, cp2, point2]
+                    pieces = curvedKnifePieces(for: curve, knifeSeg: seg)
+                } else {
+                    pieces = knifePieces(for: curve, lineStart: state.point1, lineEnd: point2)
+                }
+                guard let pieces else { continue }
+                curvesToRemove.insert(curve.id)
+                curveReplacements.append(contentsOf: pieces)
+                selectedCurves.formUnion(pieces.map(\.id))
+                cutCount += 1
+            }
+            if !curvesToRemove.isEmpty {
+                document.layers[layerIndex].openCurves.removeAll { curvesToRemove.contains($0.id) }
+                document.layers[layerIndex].openCurves.append(contentsOf: curveReplacements)
+            }
+        }
+
+        guard cutCount > 0 else {
+            postStatus("Anchor knife: line did not cross any geometry")
+            cancelGeometryKnifeAnchorState()
+            return
+        }
+
+        recordGeometryEditorUndoSnapshot()
+        restoreWelds(from: weldSnapshot, in: &document)
+        setGeometryEditorDocument(document)
+        geometryEditorSelection = EditableGeometrySelection(
+            layerID:        state.layerID,
+            polygonIDs:     selectedPolygons,
+            openCurveIDs:   selectedCurves
+        )
+        postStatus("Anchor knife: cut \(cutCount) shape(s)")
         cancelGeometryKnifeAnchorState()
     }
 
