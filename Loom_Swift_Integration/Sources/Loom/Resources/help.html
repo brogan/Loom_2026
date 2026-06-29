@@ -848,6 +848,7 @@
     <tbody>
       <tr><td>Base name</td><td>Root name used to derive all generated asset names.</td></tr>
       <tr><td>Primary layer</td><td>The geometry layer used as the visible sprite. This is the layer the sprite will display when no cycle override is active — typically the neutral or rest pose.</td></tr>
+      <tr><td>Subdivision set</td><td>Subdivision parameter set applied to every layer's shape. Choose <strong>(None)</strong> for raw unsubdivided geometry. The same set is used for all states; if you need per-state subdivision, edit the individual shape in the Subdivision inspector after setup.</td></tr>
       <tr><td>Sprite set</td><td>The sprite set the new sprite is added to.</td></tr>
       <tr><td>Renderer set</td><td>A single shared renderer set created for the sprite. All cycle states inherit it by default.</td></tr>
       <tr><td>Mode</td><td>Drawing mode for the renderer (Stroked, Filled, Filled+Stroked, etc.).</td></tr>
@@ -859,7 +860,7 @@
   <p>What Cycle Setup creates:</p>
   <ul>
     <li>A <strong>polygon set</strong> for each layer (so each layer can be addressed independently)</li>
-    <li>A <strong>shape set</strong> for each layer (one shape per set)</li>
+    <li>A <strong>shape set</strong> for each layer (one shape per set, each assigned the chosen subdivision set)</li>
     <li>One <strong>renderer set</strong> shared by the sprite and used as the default for all cycle states</li>
     <li>One <strong>SpriteCycle</strong> with one state per layer, in layer order</li>
     <li>One <strong>sprite</strong> assigned to the primary layer with the cycle already wired</li>
