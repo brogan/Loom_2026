@@ -1732,6 +1732,7 @@
     <tbody>
       <tr><td>Name</td><td>Display name for this layer.</td></tr>
       <tr><td>Visible</td><td>Toggle layer visibility. Hidden layers are not rendered and cost nothing.</td></tr>
+      <tr><td>Lighting</td><td>When on, the theatrical light map is multiplied onto this layer's buffer before compositing. Requires the Lights tab master switch to be enabled and at least one light enabled. Default off.</td></tr>
       <tr><td>Blend Mode</td><td>How this layer is composited onto layers beneath it. See <a href="#layers-blend">Blend Modes</a> below.</td></tr>
       <tr><td>Parallax</td><td>Scales how much of the camera pan is applied to this layer. <strong>0</strong> = fixed to the canvas (does not move when the camera pans — true distant background). <strong>0.5</strong> = half camera speed (midground). <strong>1</strong> = full camera movement (same as unassigned sprites — standard). Values above 1 move faster than the camera (close foreground). Negative values produce counter-motion — the layer moves opposite to the camera direction, a dramatic non-naturalistic effect. Slider range −2 to 3; the float field accepts any value. See <a href="#layers-parallax">Parallax</a> below.</td></tr>
       <tr><td>Opacity</td><td>Overall layer opacity (0–1). Applied on top of any per-sprite or per-renderer opacity. An opacity driver lets you animate the entire layer fading in or out.</td></tr>
@@ -2258,6 +2259,112 @@
   <p>Click <strong>Save</strong> in the compositor toolbar. The algorithm is written back to the subdivision generation's params and immediately used by the live render in the main canvas. Custom algorithms are stored inline in <code>project_config.json</code> alongside all other subdivision parameters and round-trip cleanly through save/load.</p>
 
   <div class="tip"><strong>Tip:</strong> Custom algorithms respect all the same subdivision parameters as built-in types — CP ratios, CP normals, visibility rules, PTW, and PTP all apply. Use CP normals in the main inspector to add curvature to the connectors between your anchor points.</div>
+</section>
+
+<!-- ────────────────────────────────────────────────── -->
+<section id="lights">
+  <h2>Lights Tab</h2>
+  <p>The <strong>Lights</strong> tab provides a simple theatrical lighting system. Lights produce a greyscale (or coloured) light map that is multiplied onto opted-in layers — lit areas show through at full brightness, unlit areas go to black. The system is intentionally non-physical and designed for expressive stage-lighting effects: vignettes, spotlights, area washes, and animated light.</p>
+
+  <h3>Enabling lighting</h3>
+  <p>Lighting has two switches:</p>
+  <ul>
+    <li><strong>Master switch</strong> — the lamp icon in the Lights toolbar. When off, no lighting pass occurs anywhere in the render, regardless of individual light or layer settings. Zero performance cost when disabled.</li>
+    <li><strong>Layer switch</strong> — each layer has a <em>Lighting</em> toggle in the Layers inspector. Only layers with <em>Lighting</em> on receive the light map multiply.</li>
+  </ul>
+  <div class="note">By default all layers have Lighting off and the master switch is off. This means existing projects load with no change to rendering behaviour.</div>
+
+  <h3>Light types</h3>
+  <table>
+    <thead><tr><th>Type</th><th>Shape</th><th>Key use</th></tr></thead>
+    <tbody>
+      <tr><td><strong>Omni</strong></td><td>Radial gradient from a centre point, fading to black at the radius</td><td>General ambient glow, vignette, firelight</td></tr>
+      <tr><td><strong>Spot</strong></td><td>Radial gradient clipped to a directional cone</td><td>Stage spotlight, key light, atmospheric beam</td></tr>
+      <tr><td><strong>Area</strong></td><td>Soft-edged rectangle</td><td>Window light, moon wash, fill panel</td></tr>
+    </tbody>
+  </table>
+
+  <h3>Adding and removing lights</h3>
+  <p>Use the <strong>Omni</strong>, <strong>Spot</strong>, and <strong>Area</strong> buttons in the Lights toolbar to add a light of the corresponding type. Select a light in the list and click <strong>−</strong> to remove it. Drag rows to reorder (order is cosmetic only — all lights composite additively).</p>
+
+  <h3>Light proxies</h3>
+  <p>When the Lights tab is active, each light is drawn as a dashed amber proxy shape in the main canvas view:</p>
+  <ul>
+    <li><strong>Omni</strong> — dashed circle showing the radius.</li>
+    <li><strong>Spot</strong> — dashed cone (inner angle) and a dimmer outer arc (penumbra); an arrow shows direction.</li>
+    <li><strong>Area</strong> — dashed rectangle at position and size.</li>
+  </ul>
+  <p>Click a proxy to select that light and open its inspector. Disabled lights are shown at reduced opacity.</p>
+
+  <h3>Light inspector</h3>
+  <p>Select a light in the list to edit its properties.</p>
+  <table>
+    <thead><tr><th>Field</th><th>All types</th></tr></thead>
+    <tbody>
+      <tr><td>Name</td><td>Display name.</td></tr>
+      <tr><td>Enabled</td><td>Per-light enable switch. Disabled lights cost nothing.</td></tr>
+      <tr><td>Colour</td><td>Light tint. White = pure luminance (no colour shift in lit areas). Coloured = tints lit pixels by this colour via multiply blend.</td></tr>
+      <tr><td>Falloff</td><td>Controls how sharply intensity drops with distance from the light. 1 = linear, 2 = quadratic (default, natural-looking), higher = harder edge.</td></tr>
+      <tr><td>X / Y</td><td>Canvas-normalised position. (0, 0) = canvas centre. ±0.5 = left/right or top/bottom edge. A driver can animate each axis independently.</td></tr>
+      <tr><td>Intensity</td><td>Peak brightness of this light (0–1). A driver can flicker, pulse, or fade the intensity over time.</td></tr>
+    </tbody>
+  </table>
+
+  <h4>Omni and Spot</h4>
+  <table>
+    <thead><tr><th>Field</th><th>Description</th></tr></thead>
+    <tbody>
+      <tr><td>Radius</td><td>Canvas-normalised distance at which this light fades to black. 0.5 = half the canvas width. A driver can animate this.</td></tr>
+    </tbody>
+  </table>
+
+  <h4>Spot only</h4>
+  <table>
+    <thead><tr><th>Field</th><th>Description</th></tr></thead>
+    <tbody>
+      <tr><td>Direction</td><td>Angle the spot faces (radians, 0 = right, π/2 = up). A driver can rotate the beam.</td></tr>
+      <tr><td>Cone °</td><td>Half-angle of the inner cone in radians (shown in degrees). Controls the beam width.</td></tr>
+      <tr><td>Penumbra °</td><td>Extra half-angle of soft transition at the cone edge. 0 = hard edge; larger values give a softer bloom at the border.</td></tr>
+    </tbody>
+  </table>
+
+  <h4>Area only</h4>
+  <table>
+    <thead><tr><th>Field</th><th>Description</th></tr></thead>
+    <tbody>
+      <tr><td>Width / Height</td><td>Canvas-normalised full width and height of the lit rectangle. Drivers animate these independently.</td></tr>
+      <tr><td>Rotation</td><td>Rotation angle of the rectangle (radians). A driver can spin it.</td></tr>
+      <tr><td>Softness</td><td>Width of the soft-edge feather at the rectangle boundary in canvas-normalised units. 0 = hard edge.</td></tr>
+    </tbody>
+  </table>
+
+  <h3>Animating lights with drivers</h3>
+  <p>Every numeric field (position, intensity, radius, direction, cone angle, width, height, rotation) has a collapsible <strong>Driver</strong> section below it. The driver works identically to all other Loom animation drivers — switch from Constant to Noise, Oscillator, Jitter, or Keyframe modes. Example effects:</p>
+  <table>
+    <thead><tr><th>Effect</th><th>Configuration</th></tr></thead>
+    <tbody>
+      <tr><td>Firelight flicker</td><td>Omni, warm orange colour, Noise or Jitter driver on Intensity (amplitude 0.3, period 8 frames)</td></tr>
+      <tr><td>Pulsing spotlight</td><td>Spot, Oscillator driver on Intensity (freq 0.5 Hz, amplitude 0.4)</td></tr>
+      <tr><td>Drifting light</td><td>Omni, Noise driver on X and Y (amplitude 0.05, different seeds)</td></tr>
+      <tr><td>Light fade-in</td><td>Any type, Keyframe driver on Intensity from 0 to 1 over desired frames</td></tr>
+      <tr><td>Sweeping spot</td><td>Spot, Oscillator driver on Direction (base 0, amplitude π/4)</td></tr>
+    </tbody>
+  </table>
+
+  <h3>Theatrical use-case examples</h3>
+  <table>
+    <thead><tr><th>Effect</th><th>Recipe</th></tr></thead>
+    <tbody>
+      <tr><td>Vignette</td><td>One Omni at centre, large radius (0.7), intensity 1.0, white. Layer: receive lighting on. The radial falloff darkens the corners while the centre stays bright.</td></tr>
+      <tr><td>Silhouette</td><td>One Omni at centre, large radius, very low intensity (0.05). Subject layer does NOT receive lighting; background layer does. Background goes near-black; subjects appear as bright silhouettes against it.</td></tr>
+      <tr><td>Stage spotlight</td><td>One Spot, pointing down (direction = −π/2), medium cone angle (π/8), moderate penumbra. Lit layer = stage floor/background. Subject layer left unlit — appears to catch the light naturally because the background darkens around them.</td></tr>
+      <tr><td>Moonlight</td><td>One Area light (wide, shallow: width 2.0, height 0.08), cool blue-white tint, at top of canvas. Intensity driver: Constant 0.75.</td></tr>
+      <tr><td>Stage wash</td><td>Three Area lights: warm amber centre, cool blue left, cool blue right. Composite additively — they mix in the overlap zone.</td></tr>
+    </tbody>
+  </table>
+
+  <h3>Performance</h3>
+  <p>When the master switch is off, the lighting pass is completely skipped — zero overhead. When on, the engine generates one CoreGraphics light map per frame (using gradient drawing) and applies a multiply composite per lit layer. For static lights (constant drivers, no animation), the light map is cached and reused on every subsequent frame at near-zero cost. For animated lights the map is recomputed each frame; for typical theatre rigs (2–6 lights, 1–2 lit layers) this adds well under 5 ms per frame.</p>
 </section>
 
 <!-- ────────────────────────────────────────────────── -->

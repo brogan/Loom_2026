@@ -44,6 +44,15 @@ struct LayersInspector: View {
                         .scaleEffect(0.75)
                 }
 
+                // Lighting
+                InspectorField("Lighting") {
+                    Toggle("", isOn: bindBool(idx, \.receivesLighting))
+                        .labelsHidden()
+                        .toggleStyle(.switch)
+                        .scaleEffect(0.75)
+                }
+                .loomHelp("When on, the lighting pass (light map multiply) is applied to this layer. Requires at least one light enabled in the Lights tab.")
+
                 // Blend mode
                 InspectorField("Blend Mode") {
                     Picker("", selection: bindBlendMode(idx)) {

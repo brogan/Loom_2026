@@ -70,6 +70,13 @@ struct InspectorPanel: View {
             } else {
                 placeholderText("Select a layer.")
             }
+        case .lights:
+            if controller.selectedLightIndex != nil {
+                LightsInspector()
+                    .environmentObject(controller)
+            } else {
+                placeholderText("Select a light.")
+            }
         case .rendering:
             if controller.selectedRendererIndex != nil {
                 RenderingInspector()

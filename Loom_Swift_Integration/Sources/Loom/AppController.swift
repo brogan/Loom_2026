@@ -249,6 +249,7 @@ final class AppController: ObservableObject, @unchecked Sendable {
     @Published var showScrubBar:                  Bool                 = false
     @Published var selectedLayerIndex:            Int?    = nil
     @Published var selectedCycleIndex:            Int?    = nil
+    @Published var selectedLightIndex:            Int?    = nil
     @Published var showingCycleEditor:            Bool    = false
     @Published var selectedRendererIndex:         Int?    = nil
     @Published var selectedRendererItemIndex:     Int?    = nil   // within selected set
@@ -7057,6 +7058,46 @@ final class AppController: ObservableObject, @unchecked Sendable {
         updateProjectConfig { cfg in
             cfg.layers[index].spriteSetNames.removeAll { $0 == setName }
         }
+    }
+
+    // MARK: - Lighting CRUD
+
+    func updateLightingConfig(_ transform: (inout LightingConfig) -> Void) {
+        updateProjectConfig { cfg in transform(&cfg.lightingConfig) }
+        if let lc = projectConfig?.lightingConfig {
+            engine?.updateLightingConfig(lc)
+        }
+    }
+
+    func addLight(type: LightType) {
+        let existing = projectConfig?.lightingConfig.lights.map { $0.name } ?? []
+        var name: String
+        var count = 1
+        repeat {
+            name = "\(type.displayName) \(count)"
+            count += 1
+        } while existing.contains(name)
+        let light = LoomLight(name: name, type: type)
+        updateLightingConfig { cfg in cfg.lights.append(light) }
+        selectedLightIndex = (projectConfig?.lightingConfig.lights.count ?? 1) - 1
+    }
+
+    func removeLight(at index: Int) {
+        guard let cfg = projectConfig,
+              cfg.lightingConfig.lights.indices.contains(index) else { return }
+        updateLightingConfig { cfg in cfg.lights.remove(at: index) }
+        let count = projectConfig?.lightingConfig.lights.count ?? 0
+        selectedLightIndex = count == 0 ? nil : min(index, count - 1)
+    }
+
+    func duplicateLight(at index: Int) {
+        guard let cfg = projectConfig,
+              cfg.lightingConfig.lights.indices.contains(index) else { return }
+        var copy = cfg.lightingConfig.lights[index]
+        copy.id   = UUID()
+        copy.name = copy.name + " copy"
+        updateLightingConfig { cfg in cfg.lights.insert(copy, at: index + 1) }
+        selectedLightIndex = index + 1
     }
 
     // MARK: - Cycle CRUD

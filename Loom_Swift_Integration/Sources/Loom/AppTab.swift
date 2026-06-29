@@ -7,6 +7,7 @@ enum AppTab: String, CaseIterable, Hashable {
     case sprites     = "Sprites"
     case cycles      = "Cycles"
     case layers      = "Layers"
+    case lights      = "Lights"
     case rendering   = "Rendering"
 
     var label: String { rawValue }
@@ -19,6 +20,7 @@ enum AppTab: String, CaseIterable, Hashable {
         case .sprites:     return "square.stack.3d.up"   // unused — icon() handles sprites
         case .cycles:      return "arrow.2.circlepath"
         case .layers:      return "square.3.layers.3d"
+        case .lights:      return "lightbulb"
         case .rendering:   return "paintbrush"
         }
     }

@@ -215,6 +215,9 @@ struct ContentView: View {
         case .layers:
             LayersTabView()
                 .environmentObject(controller)
+        case .lights:
+            LightsTabView()
+                .environmentObject(controller)
         case .rendering:
             RenderingTabView()
         }
@@ -280,6 +283,13 @@ struct ContentView: View {
                 .modifier(LoomHoverHelp(subdivisionPreviewMode ? "Switch to wireframe editor" : "Switch to live preview"))
                 .padding(8)
                 .colorScheme(.dark)
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+        case .lights:
+            ZStack {
+                liveCanvas
+                LightProxyOverlay()
+                    .environmentObject(controller)
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         default:
