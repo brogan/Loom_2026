@@ -20,7 +20,7 @@ enum AppTab: String, CaseIterable, Hashable {
         case .sprites:     return "square.stack.3d.up"   // unused — icon() handles sprites
         case .cycles:      return "arrow.2.circlepath"
         case .layers:      return "square.3.layers.3d"
-        case .lights:      return "lightbulb"
+        case .lights:      return "lightbulb"   // fallback only; icon() overrides
         case .rendering:   return "paintbrush"
         }
     }
@@ -31,6 +31,9 @@ enum AppTab: String, CaseIterable, Hashable {
         case .sprites:
             RocketSpriteIcon()
                 .frame(width: 16, height: 15)
+        case .lights:
+            TheatreSpotIcon()
+                .frame(width: 16, height: 15)
         default:
             Image(systemName: systemImage)
                 .font(.system(size: 11))
@@ -38,6 +41,38 @@ enum AppTab: String, CaseIterable, Hashable {
     }
 
     var hasListPanel: Bool { true }
+}
+
+// MARK: - Theatre spotlight icon for the Lights tab
+
+struct TheatreSpotIcon: View {
+    var body: some View {
+        GeometryReader { proxy in
+            let w = proxy.size.width
+            let h = proxy.size.height
+            Path { p in
+                // Lamp body — circle representing the housing/lens, upper-left area
+                p.addEllipse(in: CGRect(
+                    x: w * 0.02, y: h * 0.18,
+                    width: w * 0.55, height: h * 0.58
+                ))
+                // Mount arm — diagonal from top of body to upper-right (the truss connection)
+                p.move(to:    CGPoint(x: w * 0.32, y: h * 0.18))
+                p.addLine(to: CGPoint(x: w * 0.72, y: h * 0.02))
+                // Short crossbar at top of arm (the pipe/clamp)
+                p.move(to:    CGPoint(x: w * 0.60, y: h * 0.02))
+                p.addLine(to: CGPoint(x: w * 0.84, y: h * 0.02))
+                // Upper beam ray — from right edge of circle going upper-right
+                p.move(to:    CGPoint(x: w * 0.55, y: h * 0.30))
+                p.addLine(to: CGPoint(x: w * 0.98, y: h * 0.02))
+                // Lower beam ray — from right edge going lower-right
+                p.move(to:    CGPoint(x: w * 0.55, y: h * 0.64))
+                p.addLine(to: CGPoint(x: w * 0.98, y: h * 0.92))
+            }
+            .stroke(.primary, style: StrokeStyle(
+                lineWidth: 1.25, lineCap: .round, lineJoin: .round))
+        }
+    }
 }
 
 // MARK: - Rocket icon for the Sprites tab
