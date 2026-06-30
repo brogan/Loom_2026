@@ -814,7 +814,9 @@ struct SpriteWireframeView: View {
         // Fall back to placeholder sprites (no engine instance)
         for sprite in cfg.spriteConfig.library.allSprites.reversed() {
             guard instanceMap[sprite.name] == nil else { continue }
-            let centre = parallaxAdjustedScreen(sprite.position, depth: sprite.depth, rect: rect)
+            let worldPos = wireWorlds[sprite.name].map { Vector2D(x: $0.posX, y: $0.posY) }
+                        ?? sprite.position
+            let centre = parallaxAdjustedScreen(worldPos, depth: sprite.depth, rect: rect)
             let hitRect = CGRect(x: centre.x - 14, y: centre.y - 14, width: 28, height: 28)
             if hitRect.contains(location) {
                 controller.selectedSpriteID = sprite.name
@@ -846,7 +848,9 @@ struct SpriteWireframeView: View {
             screenPoints = instance.basePolygons.flatMap { $0.points }
                 .map { transformPointWithWorld($0, world: world, depth: sprite.depth, rect: rect) }
         } else {
-            let centre = positionToScreen(resolvedSprite.position, rect: rect)
+            let worldPos = world.map { Vector2D(x: $0.posX, y: $0.posY) }
+                        ?? resolvedSprite.position
+            let centre = parallaxAdjustedScreen(worldPos, depth: sprite.depth, rect: rect)
             let pad: CGFloat = 12
             screenPoints = [
                 CGPoint(x: centre.x - pad, y: centre.y - pad),
