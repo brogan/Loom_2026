@@ -22,6 +22,7 @@ enum GeometryEditorTool: String {
     case displacementExtrude = "Extrude (Displacement)"
     case scaleExtrude = "Extrude (Scale)"
     case curvedKnife = "Curved Knife"
+    case deform      = "Deform"
 
     /// True only for tools that create geometry from nothing.
     var isCreateMode: Bool {
@@ -37,12 +38,25 @@ enum GeometryEditorTool: String {
     var isEditMode: Bool {
         switch self {
         case .points, .edges, .openCurves, .polygons,
-             .knife, .curvedKnife, .meshExtend, .displacementExtrude, .scaleExtrude, .pressureTrace:
+             .knife, .curvedKnife, .meshExtend, .displacementExtrude, .scaleExtrude, .pressureTrace,
+             .deform:
             return true
         default:
             return false
         }
     }
+}
+
+enum DeformFalloff: String, CaseIterable {
+    case linear = "Linear"
+    case smooth = "Smooth"
+    case strong = "Strong"
+}
+
+enum DeformOperation: String, CaseIterable {
+    case rotate = "Rotate"
+    case scale  = "Scale"
+    case push   = "Push"
 }
 
 struct GeometryMeshExtendDraft: Equatable {
@@ -232,6 +246,17 @@ final class AppController: ObservableObject, @unchecked Sendable {
     @Published var geometryEditorAnchorOnlyEdit:       Bool = false
     @Published var geometryEditorControlPointOnlyEdit: Bool = false
     @Published var geometryEditorAutoWeld:        Bool = true
+
+    // MARK: - Deform tool
+    @Published var deformCenter:    Vector2D?       = nil
+    @Published var deformRadius:    Double          = 0.15
+    @Published var deformFalloff:   DeformFalloff   = .smooth
+    @Published var deformOperation: DeformOperation = .rotate
+    @Published var deformAngle:     Double          = 15.0
+    @Published var deformScale:     Double          = 20.0
+    @Published var deformPushX:     Double          = 0.05
+    @Published var deformPushY:     Double          = 0.0
+    @Published var deformIntensity: Double          = 1.0
     @Published var geometryEditorWeldTolerance:   Double = 0.5
     @Published var geometryEditorAutoWeldSegmentIDs: Set<EditableGeometryID> = []
     @Published var selectedGeometryEditorLayerID: UUID?   = nil
@@ -1043,6 +1068,84 @@ final class AppController: ObservableObject, @unchecked Sendable {
         cancelGeometryMeshExtendDraft()
         cancelGeometryKnifeLine()
         cancelGeometryCurvedKnifeLine()
+    }
+
+    // MARK: - Deform tool
+
+    func startDeformTool() {
+        geometryEditorTool = .deform
+        deformCenter = nil
+        postStatus("Deform: click canvas to set centre, then apply in the inspector")
+    }
+
+    func setDeformCenter(_ center: Vector2D) {
+        deformCenter = center
+    }
+
+    func applyDeform() {
+        guard let center = deformCenter,
+              var document = geometryEditorDocument,
+              let layerID = geometryEditorSelection.layerID,
+              let layerIndex = document.layers.firstIndex(where: { $0.id == layerID }),
+              layerCanEdit(layerID)
+        else { return }
+
+        recordGeometryEditorUndoSnapshot()
+
+        let r = max(deformRadius, 1e-9)
+
+        func falloffWeight(_ p: Vector2D) -> Double {
+            let dx = p.x - center.x, dy = p.y - center.y
+            let dist = sqrt(dx*dx + dy*dy)
+            guard dist < r else { return 0 }
+            let t = dist / r
+            let w: Double
+            switch deformFalloff {
+            case .linear: w = 1 - t
+            case .smooth: w = 1 - t*t*(3 - 2*t)
+            case .strong: w = (1 - t)*(1 - t)
+            }
+            return w * deformIntensity
+        }
+
+        func deform(_ p: Vector2D) -> Vector2D {
+            let w = falloffWeight(p)
+            guard w > 0 else { return p }
+            let dx = p.x - center.x, dy = p.y - center.y
+            switch deformOperation {
+            case .rotate:
+                let a = deformAngle * .pi / 180.0 * w
+                let ca = cos(a), sa = sin(a)
+                return Vector2D(x: center.x + dx*ca - dy*sa,
+                                y: center.y + dx*sa + dy*ca)
+            case .scale:
+                let f = 1.0 + deformScale * 0.01 * w
+                return Vector2D(x: center.x + dx*f, y: center.y + dy*f)
+            case .push:
+                return Vector2D(x: p.x + deformPushX * w,
+                                y: p.y + deformPushY * w)
+            }
+        }
+
+        for pi in document.layers[layerIndex].polygons.indices {
+            for pti in document.layers[layerIndex].polygons[pi].points.indices {
+                document.layers[layerIndex].polygons[pi].points[pti].position =
+                    deform(document.layers[layerIndex].polygons[pi].points[pti].position)
+            }
+        }
+        for ci in document.layers[layerIndex].openCurves.indices {
+            for pti in document.layers[layerIndex].openCurves[ci].points.indices {
+                document.layers[layerIndex].openCurves[ci].points[pti].position =
+                    deform(document.layers[layerIndex].openCurves[ci].points[pti].position)
+            }
+        }
+        for pti in document.layers[layerIndex].points.indices {
+            document.layers[layerIndex].points[pti].position =
+                deform(document.layers[layerIndex].points[pti].position)
+        }
+
+        setGeometryEditorDocument(document)
+        postStatus("Deform applied")
     }
 
     func beginGeometryCurvedKnifeLine(at point: Vector2D) {

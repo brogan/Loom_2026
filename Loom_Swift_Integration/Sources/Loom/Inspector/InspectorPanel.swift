@@ -520,6 +520,7 @@ private struct GeometryEditorShellInspector: View {
     @State private var weldCollapsed = false
     @State private var multiplyCollapsed = false
     @State private var transformCollapsed = false
+    @State private var deformCollapsed = false
     @State private var viewCollapsed = false
     @State private var parametricCollapsed = false
     @State private var scaleAxis = "XY"
@@ -846,6 +847,147 @@ private struct GeometryEditorShellInspector: View {
                     )
                     .disabled(!controller.canTransformSelectedGeometry)
                 }
+            }
+
+            InspectorSection("Deform", isCollapsed: $deformCollapsed) {
+                // Operation
+                InspectorField("Operation") {
+                    Picker("", selection: Binding(
+                        get: { controller.deformOperation },
+                        set: { controller.deformOperation = $0 }
+                    )) {
+                        ForEach(DeformOperation.allCases, id: \.self) { op in
+                            Text(op.rawValue).tag(op)
+                        }
+                    }
+                    .pickerStyle(.segmented)
+                    .labelsHidden()
+                }
+
+                // Centre indicator
+                InspectorField("Centre") {
+                    if let c = controller.deformCenter {
+                        Text(String(format: "%.3f, %.3f", c.x, c.y))
+                            .font(.system(size: 11, design: .monospaced))
+                            .foregroundStyle(.secondary)
+                    } else {
+                        Text("Click canvas to set")
+                            .font(.system(size: 11))
+                            .foregroundStyle(.tertiary)
+                    }
+                }
+
+                // Radius
+                InspectorField("Radius") {
+                    HStack(spacing: 6) {
+                        Slider(
+                            value: Binding(
+                                get: { controller.deformRadius },
+                                set: { controller.deformRadius = $0 }
+                            ),
+                            in: 0.01...1.0
+                        )
+                        Text(String(format: "%.2f", controller.deformRadius))
+                            .font(.system(size: 11, design: .monospaced))
+                            .foregroundStyle(.secondary)
+                            .frame(width: 38, alignment: .trailing)
+                    }
+                }
+
+                // Falloff
+                InspectorField("Falloff") {
+                    Picker("", selection: Binding(
+                        get: { controller.deformFalloff },
+                        set: { controller.deformFalloff = $0 }
+                    )) {
+                        ForEach(DeformFalloff.allCases, id: \.self) { f in
+                            Text(f.rawValue).tag(f)
+                        }
+                    }
+                    .pickerStyle(.segmented)
+                    .labelsHidden()
+                }
+
+                // Intensity
+                InspectorField("Intensity") {
+                    HStack(spacing: 6) {
+                        Slider(
+                            value: Binding(
+                                get: { controller.deformIntensity },
+                                set: { controller.deformIntensity = $0 }
+                            ),
+                            in: 0.0...2.0
+                        )
+                        Text(String(format: "%.2f", controller.deformIntensity))
+                            .font(.system(size: 11, design: .monospaced))
+                            .foregroundStyle(.secondary)
+                            .frame(width: 38, alignment: .trailing)
+                    }
+                }
+
+                // Operation-specific fields
+                switch controller.deformOperation {
+                case .rotate:
+                    InspectorField("Angle °") {
+                        FloatEntryField(
+                            value: Binding(
+                                get: { controller.deformAngle },
+                                set: { controller.deformAngle = $0 }
+                            ),
+                            width: 62,
+                            fractionDigits: 1,
+                            help: "Rotation angle in degrees applied at full weight at the centre"
+                        )
+                    }
+                case .scale:
+                    InspectorField("Amount %") {
+                        FloatEntryField(
+                            value: Binding(
+                                get: { controller.deformScale },
+                                set: { controller.deformScale = $0 }
+                            ),
+                            width: 62,
+                            fractionDigits: 1,
+                            help: "Scale amount as percentage: positive expands, negative contracts"
+                        )
+                    }
+                case .push:
+                    InspectorField("Push X") {
+                        FloatEntryField(
+                            value: Binding(
+                                get: { controller.deformPushX },
+                                set: { controller.deformPushX = $0 }
+                            ),
+                            width: 62,
+                            fractionDigits: 3,
+                            help: "Horizontal displacement at full weight"
+                        )
+                    }
+                    InspectorField("Push Y") {
+                        FloatEntryField(
+                            value: Binding(
+                                get: { controller.deformPushY },
+                                set: { controller.deformPushY = $0 }
+                            ),
+                            width: 62,
+                            fractionDigits: 3,
+                            help: "Vertical displacement at full weight"
+                        )
+                    }
+                }
+
+                // Apply button
+                HStack {
+                    Spacer()
+                    Button("Apply Deform") {
+                        controller.applyDeform()
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .controlSize(.small)
+                    .disabled(controller.deformCenter == nil)
+                    Spacer()
+                }
+                .padding(.top, 4)
             }
 
             InspectorSection("View", isCollapsed: $viewCollapsed) {

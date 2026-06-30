@@ -958,6 +958,14 @@ private struct GeometryEditorMainShell: View {
                     ControlHandleIcon()
                 } action: { controller.toggleControlPointOnlyEdit() }
 
+                toolbarIconButton(
+                    help: "Deform: click canvas to place influence centre, then apply radial falloff deformation via the inspector",
+                    disabled: morphLocked,
+                    selected: controller.geometryEditorTool == .deform
+                ) {
+                    Image(systemName: "wand.and.rays").font(.system(size: 13))
+                } action: { controller.startDeformTool() }
+
                 Divider().frame(height: 16)
 
                 // Clipboard group
@@ -1480,6 +1488,9 @@ private struct EditableGeometryCanvas: View {
                                 controller.beginGeometryExtrudeDrag(at: unproject(value.startLocation, canvasSize: canvasSize))
                             }
                             controller.updateGeometryExtrudeDrag(to: point)
+
+                        case .deform:
+                            break   // onEnded sets the centre; no drag behaviour needed
                         }
                     }
                     .onEnded { value in
@@ -1648,6 +1659,9 @@ private struct EditableGeometryCanvas: View {
                         case .displacementExtrude, .scaleExtrude:
                             controller.updateGeometryExtrudeDrag(to: unproject(value.location, canvasSize: canvasSize))
                             controller.finishGeometryExtrude()
+
+                        case .deform:
+                            controller.setDeformCenter(unproject(value.location, canvasSize: canvasSize))
                         }
                     }
             )
@@ -1761,7 +1775,37 @@ private struct EditableGeometryCanvas: View {
         drawCurvedKnifeLine(ctx: ctx, project: projectPoint)
         drawKnifeAnchorState(ctx: ctx, project: projectPoint)
         drawExtrudePreview(ctx: ctx, project: projectPoint)
+        drawDeformOverlay(ctx: ctx, project: projectPoint)
         drawRubberBand(ctx: ctx)
+    }
+
+    private func drawDeformOverlay(ctx: GraphicsContext, project: (Vector2D) -> CGPoint) {
+        guard controller.geometryEditorTool == .deform,
+              let center = controller.deformCenter else { return }
+        let cp = project(center)
+        // Convert radius from world units to canvas pixels via a tangent point
+        let rp = project(Vector2D(x: center.x + controller.deformRadius, y: center.y))
+        let radiusPx = abs(rp.x - cp.x)
+
+        // Dashed influence circle
+        var circle = Path()
+        circle.addEllipse(in: CGRect(x: cp.x - radiusPx, y: cp.y - radiusPx,
+                                     width: radiusPx * 2, height: radiusPx * 2))
+        ctx.stroke(circle, with: .color(Color.accentColor.opacity(0.65)),
+                   style: StrokeStyle(lineWidth: 1.5, dash: [6, 4]))
+
+        // Crosshair
+        let arm: CGFloat = 9
+        for (dx, dy): (CGFloat, CGFloat) in [(-arm, 0), (arm, 0), (0, -arm), (0, arm)] {
+            var line = Path()
+            line.move(to: CGPoint(x: cp.x - dx * 0.3, y: cp.y - dy * 0.3))
+            line.addLine(to: CGPoint(x: cp.x + dx, y: cp.y + dy))
+            ctx.stroke(line, with: .color(Color.accentColor), lineWidth: 1.5)
+        }
+
+        // Centre dot
+        ctx.fill(Path(ellipseIn: CGRect(x: cp.x - 3, y: cp.y - 3, width: 6, height: 6)),
+                 with: .color(Color.accentColor))
     }
 
     private func drawReferenceImage(ctx: GraphicsContext, project: (Vector2D) -> CGPoint) {
