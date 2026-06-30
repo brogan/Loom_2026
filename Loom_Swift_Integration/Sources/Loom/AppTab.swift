@@ -53,9 +53,8 @@ struct TheatreSpotIcon: View {
             let w = proxy.size.width
             let h = proxy.size.height
             Path { p in
-                // Open D-shape: rounded housing on the left, opening faces right.
-                // In SwiftUI's Y-down coordinate system, clockwise: true renders as
-                // counterclockwise on screen, so the arc swings left of the opening.
+                // Closed housing — D-shape: arc swings left (clockwise:true = CCW on
+                // screen in SwiftUI's Y-down system), closeSubpath draws the right face.
                 p.move(to: CGPoint(x: w * 0.44, y: h * 0.12))
                 p.addArc(
                     center:     CGPoint(x: w * 0.44, y: h * 0.50),
@@ -64,14 +63,20 @@ struct TheatreSpotIcon: View {
                     endAngle:   .radians(.pi / 2),
                     clockwise:  true
                 )
-                // 4 horizontal beam lines radiating right from the housing opening
+                p.closeSubpath()   // straight line from arc bottom back to arc top
+
+                // 4 beam lines angled ~15° downward (tan 15° ≈ 0.268)
+                let dx = w * 0.40
+                let dy = dx * 0.268
                 for i in 0..<4 {
-                    let y = CGFloat(h * (0.24 + Double(i) * 0.162))
-                    p.move(to:    CGPoint(x: w * 0.57, y: y))
-                    p.addLine(to: CGPoint(x: w * 0.97, y: y))
+                    let y0 = h * (0.26 + CGFloat(i) * 0.150)
+                    p.move(to:    CGPoint(x: w * 0.57, y: y0))
+                    p.addLine(to: CGPoint(x: w * 0.57 + dx, y: y0 + dy))
                 }
             }
-            .stroke(.primary, style: StrokeStyle(
+            // No explicit colour — inherits .foregroundStyle so unselected tabs
+            // appear secondary-grey, matching the surrounding SF Symbol icons.
+            .stroke(style: StrokeStyle(
                 lineWidth: 1.0, lineCap: .round, lineJoin: .round))
         }
     }
