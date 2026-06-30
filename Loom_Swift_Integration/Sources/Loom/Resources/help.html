@@ -1045,6 +1045,20 @@
     <li>The all-visible-layers scope toggle does not apply to anchor-point cuts — the operation always affects only the layer that owns the selected anchors.</li>
   </ul>
 
+  <h4 id="extrusion-rendering">Extrusion and rendering</h4>
+  <p>The two extrusion tools (<strong>Displacement extrude</strong> and <strong>Scale extrude</strong>) build three-dimensional box-like structures by stitching new quad faces between the source geometry and a displaced or scaled copy. Each face of the resulting solid — the top surface, the front panel, the side panels — is stored as a separate polygon in the geometry layer.</p>
+  <p>This multi-face structure has an important rendering implication. When a renderer such as <strong>Basic fill</strong> processes the layer, it fills each polygon independently. Where two faces share an edge, their fill paths meet but are composited separately: sub-pixel anti-aliasing from each polygon bleeds across the boundary from both sides, producing a faint seam line at every internal edge. Diagonal triangulation seams are also visible where the renderer has split a quad face into two triangles. These artefacts are intrinsic to the geometry — they are not a renderer setting and cannot be eliminated by adjusting fill parameters.</p>
+  <div class="note"><strong>Why the same fill looks clean on a P2P shape.</strong> A polygon drawn with the Point-by-Point tool is a single closed path. One fill operation covers the whole shape with no internal boundaries, so there are no compositing seams to reveal.</div>
+  <h5 id="extrusion-scaffold">Using extrusion as a construction scaffold</h5>
+  <p>Extrusion is well suited to a two-stage workflow where it serves as a spatial reasoning aid rather than final render geometry:</p>
+  <ol>
+    <li>Build your three-dimensional structure — a box, a wedge, a stepped form — using the extrusion tools in one geometry file. Use perspective rectangles and extrude downward or outward to establish correct proportions and foreshortening. Do not worry about face seams at this stage; this file is never assigned to a renderer.</li>
+    <li>Create a separate geometry file for the final shapes. In the <strong>View</strong> section of its inspector, load the extrusion file as a <a href="#geometry-reference">geometry reference overlay</a> and set a low opacity (0.3–0.4). The extruded structure appears as a faint blue wireframe aligned in the same normalised coordinate space.</li>
+    <li>Trace each visible face as a single closed P2P polygon drawn directly over the reference. A front face becomes one polygon; the top surface becomes another; a visible side panel becomes a third. Each polygon is a clean, seamless shape with no internal edges.</li>
+    <li>Assign different renderers or fill colours to each traced polygon to represent the distinct light-facing planes of the solid — lighter for the top, mid-tone for the front, darker for the side.</li>
+  </ol>
+  <p>The extrusion file remains as a non-rendering scaffold. If you later need to adjust the structure — changing the angle of the perspective face, for example — you edit the scaffold geometry, reload it as the reference in the P2P file, and retrace only the affected shapes.</p>
+
   <h4>Transform controls</h4>
   <table class="control-table">
     <thead><tr><th>Control</th><th>Description</th></tr></thead>
@@ -1069,6 +1083,7 @@
       <tr><td><span class="icon-key">⊞</span>Canvas frame</td><td>Overlay the project canvas proportions as an amber guide rectangle. The rectangle is fitted inside the editor's ±0.52 square to preserve the correct aspect ratio. A dimension label (e.g. <em>1920 × 1080</em>) appears at the top-left corner. Use this as a placement reference when designing geometry intended to fill or align to the final render frame — for backgrounds, full-bleed shapes, or stamp point layouts.</td></tr>
       <tr><td><span class="icon-key">⊙</span>Controls</td><td>Show or hide Bézier control points.</td></tr>
       <tr><td><span class="icon-key">▧</span>Reference image</td><td>Load a greyed-out background image for tracing or mesh construction. Adjust opacity, toggle visibility, or clear it. Reference images are never rendered.</td></tr>
+      <tr id="geometry-reference"><td><span class="icon-key">⊡</span>Reference geometry</td><td>Load another geometry file from the project as a faint blue wireframe overlay. Select the file from the dropdown, toggle visibility with the eye icon, and adjust opacity with the slider. The reference aligns in the same normalised coordinate space as the active geometry. Useful for tracing P2P shapes over an <a href="#extrusion-scaffold">extruded scaffold</a> or for aligning geometry in one file to an anchor structure in another. Reference geometry is never rendered.</td></tr>
     </tbody>
   </table>
   <p>Snap operations always use the finest internal grid spacing, even when the visible grid is set to Quadrants or Standard.</p>
