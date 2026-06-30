@@ -292,6 +292,11 @@
   <a class="nav-link nav-sub" href="#rendering-brush">Brushes &amp; Stamps</a>
   <a class="nav-link nav-sub" href="#rendering-drivers">Renderer Drivers &amp; Blur</a>
   <a class="nav-link nav-sub" href="#rendering-color-drivers">Colour Blend Modes</a>
+  <a class="nav-link" href="#lights">Lights</a>
+  <a class="nav-link nav-sub" href="#lights-types">Light Types</a>
+  <a class="nav-link nav-sub" href="#lights-inspector">Inspector</a>
+  <a class="nav-link nav-sub" href="#lights-layer-scope">Layer Scoping</a>
+  <a class="nav-link nav-sub" href="#lights-recipes">Lighting Recipes</a>
 
   <div class="nav-section">Animation</div>
   <a class="nav-link" href="#animation">Drivers &amp; Keyframes</a>
@@ -389,6 +394,11 @@
   <div class="toc-entry sub"><a href="#rendering-brush">Brushes &amp; Stamps</a><span class="toc-fill"></span></div>
   <div class="toc-entry sub"><a href="#rendering-drivers">Renderer Drivers &amp; Blur</a><span class="toc-fill"></span></div>
   <div class="toc-entry sub"><a href="#rendering-color-drivers">Colour Blend Modes</a><span class="toc-fill"></span></div>
+  <div class="toc-entry"><a href="#lights">Lights</a><span class="toc-fill"></span></div>
+  <div class="toc-entry sub"><a href="#lights-types">Light Types</a><span class="toc-fill"></span></div>
+  <div class="toc-entry sub"><a href="#lights-inspector">Inspector</a><span class="toc-fill"></span></div>
+  <div class="toc-entry sub"><a href="#lights-layer-scope">Layer Scoping</a><span class="toc-fill"></span></div>
+  <div class="toc-entry sub"><a href="#lights-recipes">Lighting Recipes</a><span class="toc-fill"></span></div>
 
   <div class="toc-group">Animation</div>
   <div class="toc-entry"><a href="#animation">Drivers &amp; Keyframes</a><span class="toc-fill"></span></div>
@@ -2289,7 +2299,7 @@
   </ul>
   <div class="note">By default all layers have Lighting off and the master switch is off. This means existing projects load with no change to rendering behaviour.</div>
 
-  <h3>Light types</h3>
+  <h3 id="lights-types">Light types</h3>
   <table>
     <thead><tr><th>Type</th><th>Shape</th><th>Key use</th></tr></thead>
     <tbody>
@@ -2311,7 +2321,7 @@
   </ul>
   <p>Click a proxy to select that light and open its inspector. Disabled lights are shown at reduced opacity.</p>
 
-  <h3>Light inspector</h3>
+  <h3 id="lights-inspector">Light inspector</h3>
   <p>Select a light in the list to edit its properties.</p>
   <table>
     <thead><tr><th>Field</th><th>All types</th></tr></thead>
@@ -2366,15 +2376,94 @@
     </tbody>
   </table>
 
-  <h3>Theatrical use-case examples</h3>
+  <h3 id="lights-layer-scope">Layer scoping</h3>
+  <p>By default every light affects all layers that have <strong>Lighting</strong> enabled. You can restrict a light to a specific subset of layers so that, for example, a nighttime ambient on the foreground does not flatten an interior scene on a background layer that has its own lamp.</p>
+  <p>Each light has a collapsible <strong>Layers</strong> section at the bottom of its inspector. It lists every project layer with a toggle switch:</p>
+  <ul>
+    <li>When all layers are toggled on (the default), the field stores an empty list and the light affects every lit layer — identical to the previous behaviour.</li>
+    <li>Toggling a layer off removes it from the light's scope. The engine renders a separate light map per layer, containing only the lights assigned to it, so each layer receives its own independent lighting.</li>
+    <li>If you retoggle all layers back on, the list resets to empty (the "all layers" state), recovering the cached-map performance benefit.</li>
+  </ul>
+  <div class="tip"><strong>Multi-layer scene example.</strong> A two-layer scene has a dark night exterior (foreground) and a warm lamp-lit interior (background). Add one Omni for the night ambient — scope it to the foreground layer only. Add a second small Omni at the lamp position — scope it to the background layer only. Each layer receives its own light map; neither light bleeds into the other's space.</div>
+
+  <h3 id="lights-recipes">Lighting recipes</h3>
+  <p>All values use canvas-normalised units where 0.5 = half the canvas width. Intensity is 0–1. Falloff 2 (quadratic) is the default and suits most cases; raise it for a harder edge, lower it for a broader soft wash. Colours are described as tints — white preserves source colours exactly.</p>
+  <div class="note"><strong>Start with intensity lower than you expect.</strong> The multiply blend is non-linear: an intensity of 0.8 already produces a visibly dark scene. Most expressive lighting sits between 0.05 and 0.6.</div>
+
+  <h4>Ambient and environmental effects</h4>
   <table>
-    <thead><tr><th>Effect</th><th>Recipe</th></tr></thead>
+    <thead><tr><th>Effect</th><th>Setup</th></tr></thead>
     <tbody>
-      <tr><td>Vignette</td><td>One Omni at centre, large radius (0.7), intensity 1.0, white. Layer: receive lighting on. The radial falloff darkens the corners while the centre stays bright.</td></tr>
-      <tr><td>Silhouette</td><td>One Omni at centre, large radius, very low intensity (0.05). Subject layer does NOT receive lighting; background layer does. Background goes near-black; subjects appear as bright silhouettes against it.</td></tr>
-      <tr><td>Stage spotlight</td><td>One Spot, pointing down (direction = −π/2), medium cone angle (π/8), moderate penumbra. Lit layer = stage floor/background. Subject layer left unlit — appears to catch the light naturally because the background darkens around them.</td></tr>
-      <tr><td>Moonlight</td><td>One Area light (wide, shallow: width 2.0, height 0.08), cool blue-white tint, at top of canvas. Intensity driver: Constant 0.75.</td></tr>
-      <tr><td>Stage wash</td><td>Three Area lights: warm amber centre, cool blue left, cool blue right. Composite additively — they mix in the overlap zone.</td></tr>
+      <tr>
+        <td><strong>Vignette</strong></td>
+        <td>Omni · centre (0, 0) · radius 0.75 · intensity 1.0 · white · falloff 2. The radial gradient brightens the centre while corners darken naturally. Increase radius beyond 0.75 for a subtler, wider vignette.</td>
+      </tr>
+      <tr>
+        <td><strong>Night exterior</strong></td>
+        <td>Omni · centre (0, 0) · radius 1.2 · intensity 0.12 · cool blue-white tint · falloff 1 (linear). The very large radius and linear falloff create a near-uniform dark wash with a gentle brightening towards the centre, as if lit by a distant moon. Layer: exterior layer only (scope via the Layers inspector section).</td>
+      </tr>
+      <tr>
+        <td><strong>Overcast day</strong></td>
+        <td>Area · centre (0, 0.2) · width 2.0 · height 2.0 · intensity 0.85 · white · softness 0.0. A large area light covering the entire canvas produces a flat, even illumination. Raise intensity to 0.95+ for a bright overexposed look.</td>
+      </tr>
+      <tr>
+        <td><strong>Silhouette</strong></td>
+        <td>Omni · centre (0, 0) · radius 1.0 · intensity 0.06 · white. Apply lighting to the <em>background</em> only. The background goes near-black while unlit subject layers appear as bright silhouettes against it.</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <h4>Interior and practical lights</h4>
+  <table>
+    <thead><tr><th>Effect</th><th>Setup</th></tr></thead>
+    <tbody>
+      <tr>
+        <td><strong>Lamp halo / table lamp</strong></td>
+        <td>Omni · placed at lamp position · radius 0.25 · intensity 0.65 · warm amber tint · falloff 2. Scope to the interior layer only. The small radius keeps the glow contained to the immediate surround of the lamp. For a stronger effect raise intensity to 0.8 or expand radius to 0.35.</td>
+      </tr>
+      <tr>
+        <td><strong>Candlelight</strong></td>
+        <td>Omni · at candle position · radius 0.12 · intensity 0.75 · warm orange tint · falloff 2. Add a Jitter or Noise driver on Intensity (amplitude 0.25, period 4–6 frames) and a Noise driver on X and Y (amplitude 0.01, different seeds) to create the characteristic drift and flicker.</td>
+      </tr>
+      <tr>
+        <td><strong>Torch / firelight</strong></td>
+        <td>Omni · radius 0.20 · intensity 0.80 · deep orange tint · falloff 2. Noise driver on Intensity (amplitude 0.35, period 5 frames). Noise driver on X and Y (amplitude 0.02 each, period 6 frames, different seeds). The combination of position drift and intensity flicker reads as open flame.</td>
+      </tr>
+      <tr>
+        <td><strong>Window daylight</strong></td>
+        <td>Area · positioned at left or right edge · width 0.06 · height 0.5 · cool white · intensity 0.70 · softness 0.06 · rotation 0. A tall narrow area light against one edge suggests light entering through a window frame. Reduce softness to 0 for hard window bars; raise to 0.12+ for soft net-curtain diffusion.</td>
+      </tr>
+      <tr>
+        <td><strong>Neon / screen glow</strong></td>
+        <td>Omni · at the light source position · radius 0.08 · intensity 0.90 · saturated tint (e.g. cyan or magenta) · falloff 1.5. The small radius and high intensity create a tight coloured halo. For a TV or monitor, use Area with width matching the screen proportion, softness 0.02, and a cool blue-white tint.</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <h4>Stage and theatrical effects</h4>
+  <table>
+    <thead><tr><th>Effect</th><th>Setup</th></tr></thead>
+    <tbody>
+      <tr>
+        <td><strong>Stage spotlight</strong></td>
+        <td>Spot · direction −π/2 (pointing straight down) · cone angle π/8 (22.5°) · penumbra π/12 (15°) · intensity 0.90 · white. Apply lighting to the stage floor / background layer. Leave the subject layer unlit — it appears to sit within the spot because the background darkens around it.</td>
+      </tr>
+      <tr>
+        <td><strong>Follow spot</strong></td>
+        <td>As above, but add an Oscillator or Keyframe driver on Direction to sweep the beam. Alternatively, keyframe the X / Y position to track a moving subject manually.</td>
+      </tr>
+      <tr>
+        <td><strong>Moonlight wash</strong></td>
+        <td>Area · centred at top of canvas (0, 0.45) · width 2.0 · height 0.10 · cool blue-white tint · intensity 0.72 · softness 0.04. A wide shallow band from above suggests moonlight falling across the scene. Lower intensity to 0.45 for a dimmer, more atmospheric result.</td>
+      </tr>
+      <tr>
+        <td><strong>Three-point stage wash</strong></td>
+        <td>Three Area lights composited additively. Centre: warm amber, width 1.0, height 1.2, intensity 0.55. Left: cool blue, width 0.5, height 1.2, position (−0.4, 0), intensity 0.35. Right: cool blue, same settings, position (0.4, 0). The warm and cool tones mix in overlap zones producing naturalistic colour variation.</td>
+      </tr>
+      <tr>
+        <td><strong>Nighttime exterior + lit interior (two layers)</strong></td>
+        <td>Layer 1 (exterior, foreground): Omni · radius 1.2 · intensity 0.12 · cool blue · falloff 1 · scoped to foreground layer only. Layer 2 (interior, background): Omni at lamp position · radius 0.28 · intensity 0.65 · warm amber · falloff 2 · scoped to background layer only. Use the <strong>Layers</strong> section of each light's inspector to assign scope. Neither light bleeds across layer boundaries.</td>
+      </tr>
     </tbody>
   </table>
 
