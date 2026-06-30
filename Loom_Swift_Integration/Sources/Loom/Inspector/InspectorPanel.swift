@@ -929,6 +929,45 @@ private struct GeometryEditorShellInspector: View {
                     }
                     Spacer()
                 }
+                iconRow {
+                    let sources = controller.referenceGeometrySources
+                    let hasRef  = controller.geometryEditorReferenceGeometryKey != nil
+                    Picker("", selection: Binding(
+                        get: { controller.geometryEditorReferenceGeometryKey ?? "" },
+                        set: { controller.setReferenceGeometryKey($0.isEmpty ? nil : $0) }
+                    )) {
+                        Text("— geometry ref —").tag("")
+                        ForEach(sources, id: \.key) { src in
+                            Text(src.name).tag(src.key)
+                        }
+                    }
+                    .labelsHidden()
+                    .frame(maxWidth: .infinity)
+                    .help("Reference geometry: overlay another geometry file as a guide")
+                    .modifier(LoomHoverHelp("Reference geometry"))
+                    iconButton(
+                        help: "Show or hide reference geometry",
+                        disabled: !hasRef,
+                        selected: controller.geometryEditorShowsReferenceGeometry
+                    ) {
+                        Image(systemName: "square.on.square").font(.system(size: 15))
+                    } action: {
+                        controller.geometryEditorShowsReferenceGeometry.toggle()
+                    }
+                    Slider(value: $controller.geometryEditorReferenceGeometryOpacity, in: 0...1)
+                        .frame(width: 58)
+                        .disabled(!hasRef)
+                        .help("Reference geometry opacity")
+                        .modifier(LoomHoverHelp("Reference geometry opacity"))
+                    iconButton(
+                        help: "Clear reference geometry",
+                        disabled: !hasRef
+                    ) {
+                        Image(systemName: "xmark.circle").font(.system(size: 15))
+                    } action: {
+                        controller.clearReferenceGeometry()
+                    }
+                }
                 HStack(spacing: 7) {
                     Picker("", selection: $controller.geometryEditorGridDetail) {
                         ForEach(GeometryEditorGridDetail.allCases) { detail in

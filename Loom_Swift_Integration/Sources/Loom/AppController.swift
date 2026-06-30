@@ -220,6 +220,10 @@ final class AppController: ObservableObject, @unchecked Sendable {
     @Published var geometryEditorReferenceImageURL: URL? = nil
     @Published var geometryEditorShowsReferenceImage: Bool = true
     @Published var geometryEditorReferenceImageOpacity: Double = 0.34
+    @Published var geometryEditorReferenceGeometryKey: String? = nil
+    @Published var geometryEditorShowsReferenceGeometry: Bool = true
+    @Published var geometryEditorReferenceGeometryOpacity: Double = 0.35
+    @Published var geometryEditorReferencePolygons: [Polygon2D] = []
     @Published var geometryEditorLayers:          [GeometryEditorLayer] = [GeometryEditorLayer(name: "Layer 1")] { didSet { refreshGeometryEditorSaveState() } }
     @Published var geometryEditorAnchorOnlyEdit:       Bool = false
     @Published var geometryEditorControlPointOnlyEdit: Bool = false
@@ -4155,6 +4159,81 @@ final class AppController: ObservableObject, @unchecked Sendable {
         geometryEditorReferenceImage = nil
         geometryEditorReferenceImageURL = nil
         postStatus("Cleared reference image")
+    }
+
+    // MARK: - Reference geometry (geometry-file overlay in the editor)
+
+    /// All geometry sources available as reference overlays, sorted by name.
+    var referenceGeometrySources: [(key: String, name: String)] {
+        guard let cfg = projectConfig else { return [] }
+        var sources: [(key: String, name: String)] = []
+        for def in cfg.polygonConfig.library.polygonSets {
+            let k = def.regularParams != nil ? "regularPolygons/\(def.name)" : "polygonSets/\(def.name)"
+            sources.append((key: k, name: def.name))
+        }
+        for def in cfg.curveConfig.library.curveSets {
+            sources.append((key: "curveSets/\(def.name)", name: def.name))
+        }
+        for def in cfg.pointConfig.library.pointSets {
+            sources.append((key: "pointSets/\(def.name)", name: def.name))
+        }
+        return sources.sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
+    }
+
+    func setReferenceGeometryKey(_ key: String?) {
+        geometryEditorReferenceGeometryKey = key
+        guard let key else { geometryEditorReferencePolygons = []; return }
+        do {
+            geometryEditorReferencePolygons = try loadPolygons(forGeometryKey: key)
+            geometryEditorShowsReferenceGeometry = true
+            postStatus("Loaded reference geometry")
+        } catch {
+            geometryEditorReferencePolygons = []
+        }
+    }
+
+    func clearReferenceGeometry() {
+        geometryEditorReferenceGeometryKey = nil
+        geometryEditorReferencePolygons = []
+        postStatus("Cleared reference geometry")
+    }
+
+    private func loadPolygons(forGeometryKey key: String) throws -> [Polygon2D] {
+        guard let projURL = projectURL, let cfg = projectConfig else { return [] }
+        let parts = key.split(separator: "/", maxSplits: 1)
+        guard parts.count == 2 else { return [] }
+        let folder = String(parts[0])
+        let name   = String(parts[1])
+        switch folder {
+        case "polygonSets":
+            guard let def = cfg.polygonConfig.library.polygonSets.first(where: { $0.name == name })
+            else { return [] }
+            if let rp = def.regularParams { return [RegularPolygonGenerator.generate(params: rp)] }
+            guard !def.filename.isEmpty else { return [] }
+            let dir = (def.folder == "polygonSet" || def.folder.isEmpty) ? "polygonSets" : def.folder
+            let url = projURL.appendingPathComponent(dir).appendingPathComponent(def.filename)
+            if def.filename.lowercased().hasSuffix(".json") {
+                return try EditableGeometryJSONLoader.load(url: url).runtimePolygons(
+                    targetLayerID: def.editableLayerID, targetLayerName: def.editableLayerName)
+            }
+            return try XMLPolygonLoader.load(url: url)
+        case "regularPolygons":
+            guard let def = cfg.polygonConfig.library.polygonSets.first(where: { $0.name == name }),
+                  let rp = def.regularParams else { return [] }
+            return [RegularPolygonGenerator.generate(params: rp)]
+        case "curveSets":
+            guard let def = cfg.curveConfig.library.curveSets.first(where: { $0.name == name })
+            else { return [] }
+            let url = projURL.appendingPathComponent(def.folder).appendingPathComponent(def.filename)
+            return try XMLPolygonLoader.loadOpenCurveSet(url: url)
+        case "pointSets":
+            guard let def = cfg.pointConfig.library.pointSets.first(where: { $0.name == name })
+            else { return [] }
+            let url = projURL.appendingPathComponent(def.folder).appendingPathComponent(def.filename)
+            return try XMLPolygonLoader.loadPointSet(url: url)
+        default:
+            return []
+        }
     }
 
     func centreGeometryEditorViewOnSelectionOrLayer() {

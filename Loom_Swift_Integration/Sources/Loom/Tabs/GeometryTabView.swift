@@ -1720,6 +1720,7 @@ private struct EditableGeometryCanvas: View {
         ctx.fill(Path(CGRect(origin: .zero, size: size)),
                  with: .color(Color(red: 0.105, green: 0.108, blue: 0.12)))
         drawReferenceImage(ctx: ctx, project: projectPoint)
+        drawReferenceGeometry(ctx: ctx, project: projectPoint)
         drawGrid(ctx: ctx, size: size, project: projectPoint)
         drawCanvasFrame(ctx: ctx, project: projectPoint)
 
@@ -1799,6 +1800,49 @@ private struct EditableGeometryCanvas: View {
         imageContext.opacity = max(0, min(1, controller.geometryEditorReferenceImageOpacity))
         imageContext.draw(Image(nsImage: image), in: rect)
         imageContext.fill(Path(bounds), with: .color(Color.white.opacity(0.18)))
+    }
+
+    private func drawReferenceGeometry(ctx: GraphicsContext, project: (Vector2D) -> CGPoint) {
+        guard controller.geometryEditorShowsReferenceGeometry,
+              !controller.geometryEditorReferencePolygons.isEmpty
+        else { return }
+        var refCtx = ctx
+        refCtx.opacity = max(0, min(1, controller.geometryEditorReferenceGeometryOpacity))
+        let color = Color(red: 0.55, green: 0.72, blue: 1.0)
+        for polygon in controller.geometryEditorReferencePolygons {
+            switch polygon.type {
+            case .spline:
+                guard polygon.points.count >= 4 else { continue }
+                var path = Path()
+                let pts = polygon.points.map { project($0) }
+                path.move(to: pts[0])
+                for i in 0..<(pts.count / 4) {
+                    let b = i * 4
+                    path.addCurve(to: pts[b + 3], control1: pts[b + 1], control2: pts[b + 2])
+                }
+                path.closeSubpath()
+                refCtx.stroke(path, with: .color(color), lineWidth: 1.0)
+            case .openSpline:
+                guard polygon.points.count >= 4 else { continue }
+                var path = Path()
+                let pts = polygon.points.map { project($0) }
+                path.move(to: pts[0])
+                for i in 0..<(pts.count / 4) {
+                    let b = i * 4
+                    path.addCurve(to: pts[b + 3], control1: pts[b + 1], control2: pts[b + 2])
+                }
+                refCtx.stroke(path, with: .color(color), lineWidth: 1.0)
+            case .point:
+                for pt in polygon.points.map({ project($0) }) {
+                    refCtx.stroke(
+                        Path(ellipseIn: CGRect(x: pt.x - 2.5, y: pt.y - 2.5, width: 5, height: 5)),
+                        with: .color(color), lineWidth: 0.8
+                    )
+                }
+            default:
+                break
+            }
+        }
     }
 
     private func drawGrid(ctx: GraphicsContext, size: CGSize, project: (Vector2D) -> CGPoint) {
