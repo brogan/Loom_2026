@@ -104,6 +104,7 @@ struct SpritesTabView: View {
                         Image(systemName: "xmark.circle.fill")
                             .font(.system(size: 11))
                             .foregroundStyle(.secondary)
+                            .iconHitArea()
                     }
                     .buttonStyle(.plain)
                 }
@@ -244,6 +245,8 @@ struct SpritesTabView: View {
                     .font(.system(size: 9, weight: .semibold))
                     .foregroundStyle(.secondary)
                     .frame(width: 14)
+                    .frame(minHeight: 22)
+                    .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
 
@@ -268,6 +271,8 @@ struct SpritesTabView: View {
                         Text("\(hiddenCount)").font(.system(size: 9, design: .monospaced))
                     }
                     .foregroundStyle(Color.orange.opacity(0.8))
+                    .frame(minHeight: 22)
+                    .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
                 .help("Restore \(hiddenCount) hidden sprite\(hiddenCount == 1 ? "" : "s")")
@@ -278,6 +283,7 @@ struct SpritesTabView: View {
                     }
                 } label: {
                     Image(systemName: "eye").font(.system(size: 9)).foregroundStyle(.tertiary)
+                        .iconHitArea()
                 }
                 .buttonStyle(.plain)
                 .help("Hide \(hidableCount) disabled sprite\(hidableCount == 1 ? "" : "s")")

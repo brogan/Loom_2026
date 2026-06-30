@@ -30,6 +30,7 @@ struct LightsTabView: View {
                 Image(systemName: isEnabled ? "lightbulb.fill" : "lightbulb")
                     .font(.system(size: 12))
                     .foregroundStyle(isEnabled ? Color.yellow : Color.secondary)
+                    .iconHitArea()
             }
             .buttonStyle(.plain)
             .modifier(LoomHoverHelp(isEnabled ? "Lighting enabled — click to disable" : "Lighting disabled — click to enable"))
@@ -60,6 +61,7 @@ struct LightsTabView: View {
             } label: {
                 Image(systemName: "minus")
                     .font(.system(size: 12))
+                    .iconHitArea()
             }
             .buttonStyle(.plain)
             .disabled(controller.selectedLightIndex == nil)
@@ -102,6 +104,7 @@ struct LightsTabView: View {
                 Image(systemName: light.isEnabled ? "lightbulb.fill" : "lightbulb")
                     .font(.system(size: 11))
                     .foregroundStyle(light.isEnabled ? Color.yellow : Color.secondary)
+                    .iconHitArea()
             }
             .buttonStyle(.plain)
 

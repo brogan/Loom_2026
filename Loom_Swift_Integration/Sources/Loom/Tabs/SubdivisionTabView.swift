@@ -120,6 +120,8 @@ struct SubdivisionTabView: View {
                         Text("\(hiddenCount)").font(.system(size: 9, design: .monospaced))
                     }
                     .foregroundStyle(Color.orange.opacity(0.8))
+                    .frame(minHeight: 22)
+                    .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
                 .padding(.trailing, 8)
@@ -130,6 +132,7 @@ struct SubdivisionTabView: View {
                     for s in sprites where !s.enabled { hiddenSubdivSprites.insert(subdivSpriteKey(setName, s.name)) }
                 } label: {
                     Image(systemName: "eye").font(.system(size: 9)).foregroundStyle(.tertiary)
+                        .iconHitArea()
                 }
                 .buttonStyle(.plain)
                 .padding(.trailing, 8)
@@ -265,6 +268,8 @@ struct SubdivisionTabView: View {
                     .font(.system(size: 9, weight: .semibold))
                     .foregroundStyle(.secondary)
                     .frame(width: 14)
+                    .frame(minHeight: 22)
+                    .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
 
@@ -289,6 +294,8 @@ struct SubdivisionTabView: View {
                         Text("\(hiddenCount)").font(.system(size: 9, design: .monospaced))
                     }
                     .foregroundStyle(Color.orange.opacity(0.8))
+                    .frame(minHeight: 22)
+                    .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
                 .help("Restore \(hiddenCount) hidden param\(hiddenCount == 1 ? "" : "s")")
@@ -299,6 +306,7 @@ struct SubdivisionTabView: View {
                     }
                 } label: {
                     Image(systemName: "eye").font(.system(size: 9)).foregroundStyle(.tertiary)
+                        .iconHitArea()
                 }
                 .buttonStyle(.plain)
                 .help("Hide \(hidableCount) disabled param\(hidableCount == 1 ? "" : "s")")

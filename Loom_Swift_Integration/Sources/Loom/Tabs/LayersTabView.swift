@@ -27,6 +27,7 @@ struct LayersTabView: View {
             } label: {
                 Image(systemName: "plus")
                     .font(.system(size: 12))
+                    .iconHitArea()
             }
             .buttonStyle(.plain)
             .help("Add layer")
@@ -39,6 +40,7 @@ struct LayersTabView: View {
             } label: {
                 Image(systemName: "minus")
                     .font(.system(size: 12))
+                    .iconHitArea()
             }
             .buttonStyle(.plain)
             .disabled(controller.selectedLayerIndex == nil)
@@ -83,6 +85,8 @@ struct LayersTabView: View {
                     .font(.system(size: 11))
                     .foregroundStyle(layer.isVisible ? Color.primary : Color.secondary.opacity(0.5))
                     .frame(width: 18)
+                    .frame(minHeight: 22)
+                    .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
 

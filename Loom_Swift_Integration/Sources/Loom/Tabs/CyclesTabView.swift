@@ -43,7 +43,7 @@ struct CyclesTabView: View {
                 .foregroundStyle(.secondary)
             Spacer()
             Button { controller.addCycle() } label: {
-                Image(systemName: "plus").font(.system(size: 12))
+                Image(systemName: "plus").font(.system(size: 12)).iconHitArea()
             }
             .buttonStyle(.plain)
             .help("Add cycle")
@@ -54,7 +54,7 @@ struct CyclesTabView: View {
                     controller.duplicateCycle(at: idx)
                 }
             } label: {
-                Image(systemName: "plus.square.on.square").font(.system(size: 11))
+                Image(systemName: "plus.square.on.square").font(.system(size: 11)).iconHitArea()
             }
             .buttonStyle(.plain)
             .disabled(controller.selectedCycleIndex == nil)
@@ -66,7 +66,7 @@ struct CyclesTabView: View {
                     controller.removeCycle(at: idx)
                 }
             } label: {
-                Image(systemName: "minus").font(.system(size: 12))
+                Image(systemName: "minus").font(.system(size: 12)).iconHitArea()
             }
             .buttonStyle(.plain)
             .disabled(controller.selectedCycleIndex == nil)
@@ -131,6 +131,7 @@ struct CyclesTabView: View {
                 } label: {
                     Image(systemName: "pencil")
                         .font(.system(size: 10))
+                        .iconHitArea()
                 }
                 .buttonStyle(.plain)
                 .foregroundStyle(.secondary)

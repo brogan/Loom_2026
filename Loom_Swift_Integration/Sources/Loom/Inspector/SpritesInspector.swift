@@ -887,6 +887,8 @@ private struct DriverSectionsView: View {
                         Text("\(collapsed)").font(.system(size: 10))
                     }
                     .foregroundStyle(.secondary)
+                    .frame(minHeight: 22)
+                    .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
                 .loomHelp("\(collapsed) driver section\(collapsed == 1 ? "" : "s") collapsed. Click to expand all.")
@@ -900,6 +902,7 @@ private struct DriverSectionsView: View {
                     Image(systemName: "eye")
                         .font(.system(size: 10))
                         .foregroundStyle(.secondary)
+                        .iconHitArea()
                 }
                 .buttonStyle(.plain)
                 .loomHelp("Collapse all driver sections that are disabled and have no keyframes.")

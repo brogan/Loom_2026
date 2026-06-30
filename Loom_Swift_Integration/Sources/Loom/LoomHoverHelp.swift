@@ -29,4 +29,11 @@ extension View {
     func loomHelp(_ text: String) -> some View {
         modifier(LoomHoverHelp(text))
     }
+
+    /// Expands the tappable area of a small icon to a comfortable minimum hit target.
+    /// Apply inside the button label, after any font/color modifiers.
+    func iconHitArea(_ side: CGFloat = 22) -> some View {
+        self.frame(minWidth: side, minHeight: side)
+            .contentShape(Rectangle())
+    }
 }
