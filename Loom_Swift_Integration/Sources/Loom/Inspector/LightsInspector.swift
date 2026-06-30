@@ -5,9 +5,10 @@ struct LightsInspector: View {
 
     @EnvironmentObject private var controller: AppController
 
-    @State private var posCollapsed      = false
+    @State private var posCollapsed       = false
     @State private var intensityCollapsed = false
-    @State private var shapeCollapsed    = false
+    @State private var shapeCollapsed     = false
+    @State private var layersCollapsed    = false
     @State private var posXDrvCollapsed  = true
     @State private var posYDrvCollapsed  = true
     @State private var intDrvCollapsed   = true
@@ -104,6 +105,11 @@ struct LightsInspector: View {
                 case .area:
                     areaFields(idx: idx)
                 }
+            }
+
+            // MARK: Layer scope
+            InspectorSection("Layers", isCollapsed: $layersCollapsed) {
+                layerScopeFields(idx: idx, light: light)
             }
         })
     }
@@ -230,6 +236,50 @@ struct LightsInspector: View {
                 width: 44, fractionDigits: 3
             )
         }
+    }
+
+    // MARK: - Layer scope fields
+
+    @ViewBuilder
+    private func layerScopeFields(idx: Int, light: LoomLight) -> some View {
+        let layers = controller.projectConfig?.layers ?? []
+        if layers.isEmpty {
+            Text("No layers defined")
+                .font(.system(size: 11))
+                .foregroundStyle(.secondary)
+                .padding(.vertical, 4)
+        } else {
+            ForEach(layers) { layer in
+                InspectorField(layer.name) {
+                    Toggle("", isOn: layerToggleBinding(lightIdx: idx, layerID: layer.id))
+                        .labelsHidden()
+                        .toggleStyle(.switch)
+                        .scaleEffect(0.75)
+                }
+            }
+        }
+    }
+
+    private func layerToggleBinding(lightIdx: Int, layerID: UUID) -> Binding<Bool> {
+        let ctl = controller
+        return Binding(
+            get: {
+                guard let light = ctl.projectConfig?.lightingConfig.lights[safe: lightIdx]
+                else { return true }
+                return light.affectedLayerIDs.isEmpty || light.affectedLayerIDs.contains(layerID)
+            },
+            set: { newOn in
+                let allLayerIDs = (ctl.projectConfig?.layers ?? []).map { $0.id }
+                ctl.updateLightingConfig { cfg in
+                    guard cfg.lights.indices.contains(lightIdx) else { return }
+                    var ids = Set(cfg.lights[lightIdx].affectedLayerIDs)
+                    if ids.isEmpty { ids = Set(allLayerIDs) }   // expand "all" before mutating
+                    if newOn { ids.insert(layerID) } else { ids.remove(layerID) }
+                    if ids.count >= allLayerIDs.count { ids = [] }  // collapse back to "all"
+                    cfg.lights[lightIdx].affectedLayerIDs = Array(ids)
+                }
+            }
+        )
     }
 
     // MARK: - Colour swatch
