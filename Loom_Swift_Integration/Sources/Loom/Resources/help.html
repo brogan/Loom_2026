@@ -297,6 +297,11 @@
   <a class="nav-link nav-sub" href="#lights-inspector">Inspector</a>
   <a class="nav-link nav-sub" href="#lights-layer-scope">Layer Scoping</a>
   <a class="nav-link nav-sub" href="#lights-recipes">Lighting Recipes</a>
+  <a class="nav-link" href="#audio">Audio</a>
+  <a class="nav-link nav-sub" href="#audio-import">Importing</a>
+  <a class="nav-link nav-sub" href="#audio-waveform">Waveform Display</a>
+  <a class="nav-link nav-sub" href="#audio-markers">Markers</a>
+  <a class="nav-link nav-sub" href="#audio-workflow">Timing Workflow</a>
 
   <div class="nav-section">Animation</div>
   <a class="nav-link" href="#animation">Drivers &amp; Keyframes</a>
@@ -399,6 +404,11 @@
   <div class="toc-entry sub"><a href="#lights-inspector">Inspector</a><span class="toc-fill"></span></div>
   <div class="toc-entry sub"><a href="#lights-layer-scope">Layer Scoping</a><span class="toc-fill"></span></div>
   <div class="toc-entry sub"><a href="#lights-recipes">Lighting Recipes</a><span class="toc-fill"></span></div>
+  <div class="toc-entry"><a href="#audio">Audio</a><span class="toc-fill"></span></div>
+  <div class="toc-entry sub"><a href="#audio-import">Importing</a><span class="toc-fill"></span></div>
+  <div class="toc-entry sub"><a href="#audio-waveform">Waveform Display</a><span class="toc-fill"></span></div>
+  <div class="toc-entry sub"><a href="#audio-markers">Markers</a><span class="toc-fill"></span></div>
+  <div class="toc-entry sub"><a href="#audio-workflow">Timing Workflow</a><span class="toc-fill"></span></div>
 
   <div class="toc-group">Animation</div>
   <div class="toc-entry"><a href="#animation">Drivers &amp; Keyframes</a><span class="toc-fill"></span></div>
@@ -2469,6 +2479,73 @@
 
   <h3>Performance</h3>
   <p>When the master switch is off, the lighting pass is completely skipped — zero overhead. When on, the engine generates one CoreGraphics light map per frame (using gradient drawing) and applies a multiply composite per lit layer. For static lights (constant drivers, no animation), the light map is cached and reused on every subsequent frame at near-zero cost. For animated lights the map is recomputed each frame; for typical theatre rigs (2–6 lights, 1–2 lit layers) this adds well under 5 ms per frame.</p>
+</section>
+
+<!-- ────────────────────────────────────────────────── -->
+<section id="audio">
+  <h2>Audio Tab</h2>
+  <p>The Audio tab is a timing reference tool, not a playback synchronisation engine. The animation does not run in lock-step with the audio; instead you use the audio to listen, orient yourself in the piece, drop markers at meaningful moments, and then place or adjust keyframes at those frame positions. This separation keeps the audio workflow lightweight — you can move through a sequence at your own pace and only cross-reference the animation when you are ready.</p>
+
+  <div class="note">Audio is stored in a project subfolder (<code>audio/</code>) alongside your geometry and sprite files, so the whole project remains self-contained and portable.</div>
+
+  <h3 id="audio-import">Importing audio</h3>
+  <p>Click the download icon in the Audio tab toolbar to open the file picker. Supported formats are WAV, AIFF, MP3, M4A, CAF, FLAC, and AAC — anything AVFoundation can decode on macOS. The selected file is copied into the project's <code>audio/</code> subfolder (created automatically on first import) and the amplitude envelope is computed immediately in the background.</p>
+  <p>To swap the audio file, import again — the new file replaces the old one. To remove audio entirely, click the <strong>−</strong> button in the toolbar; this clears the waveform, stops playback, and removes the reference from the project (the copied file remains on disk in <code>audio/</code>).</p>
+
+  <h3 id="audio-waveform">Waveform display</h3>
+  <p>The main panel shows a full-width amplitude envelope for the entire file. The envelope is pre-computed once at import time — Loom reads all samples, divides them into 2000 equal time buckets, takes the peak amplitude per bucket, and normalises so the loudest point fills the display. This gives a stable, consistent picture of the audio's shape regardless of the file's absolute level.</p>
+  <p>The display is fixed to the full file duration; there is no zoom or horizontal scroll. This is intentional — the envelope is a navigation aid for recognising where sounds fall in time, not an editing surface.</p>
+  <ul>
+    <li><strong>Playhead</strong> — white vertical line with a small triangle handle at the top. Moves in real time during playback.</li>
+    <li><strong>Markers</strong> — orange vertical lines with short labels. Position corresponds to a frame number.</li>
+    <li><strong>Time scale</strong> — tick marks along the bottom edge at regular intervals (interval chosen automatically from the file duration).</li>
+    <li><strong>Click to seek</strong> — click anywhere on the waveform to move the playhead to that position.</li>
+  </ul>
+
+  <h3 id="audio-markers">Markers</h3>
+  <p>Markers record a named frame position in the audio. Use them to tag dialogue cues, musical beats, sound effects, or any other moment you want to reference when placing keyframes.</p>
+
+  <h4>Dropping a marker</h4>
+  <p>Press <strong>⌘M</strong>, or click the <em>Drop Marker</em> button in the left panel, to place a marker at the current playhead position. The marker's initial label is the timecode at the moment of dropping (e.g. <code>0:04</code>). Markers are kept sorted by frame at all times.</p>
+
+  <h4>Repositioning a marker</h4>
+  <p>Hold <strong>Shift</strong> and drag on or near a marker's orange tick in the waveform view. The marker snaps to your pointer within a 12-point grab radius. While dragging, the marker turns yellow and displays a circle handle. A marker cannot be dragged past its immediate neighbour in either direction — there is always at least a one-frame gap between adjacent markers.</p>
+
+  <h4>Renaming a marker</h4>
+  <p>Double-click the marker label in the left-panel list to edit it. Press Return to confirm.</p>
+
+  <h4>Notes</h4>
+  <p>Click the <strong>pen icon</strong> in the Markers heading to show or hide a notes field on every marker row. Each notes field accepts up to three lines of free text — useful for a fragment of dialogue, a description of the corresponding action, or a reminder about which sprite or driver to key. Notes are hidden by default to keep the list compact.</p>
+
+  <h4>Jumping to a marker</h4>
+  <p>Click the <strong>orange pin icon</strong> on any marker row in the left panel to seek the audio playhead to that marker's time position.</p>
+
+  <h4>Removing a marker</h4>
+  <p>Click the <strong>×</strong> button on the right side of the marker row.</p>
+
+  <h3 id="audio-workflow">Timing workflow</h3>
+  <p>A typical session using audio for timing:</p>
+  <ol>
+    <li>Import your audio file. Let the waveform compute (usually under a second for a short clip).</li>
+    <li>Play through the audio once using the <strong>Play</strong> button. Listen for the moments that should drive key poses or actions — dialogue starts, beats, impacts.</li>
+    <li>Play again and press <strong>⌘M</strong> at each moment you want to mark. Don't worry about precision — you can shift-drag markers on the waveform afterwards to fine-tune them.</li>
+    <li>Rename each marker to describe the action it corresponds to: <em>word "and"</em>, <em>foot lands</em>, <em>door opens</em>.</li>
+    <li>Note the frame numbers shown under each marker label. Switch to the Timeline and place keyframes at those frames.</li>
+    <li>Refer back to the audio at any time by switching to the Audio tab and clicking a marker's pin to jump to its position.</li>
+  </ol>
+
+  <div class="tip">The frame number shown for each marker is calculated from the audio position and the project's <strong>Target FPS</strong> (set in the Global tab). If you change the target frame rate, existing marker frame numbers will no longer correspond to the same audio position — re-drop or reposition them after any FPS change.</div>
+
+  <h4>Transport controls</h4>
+  <table>
+    <tr><th>Control</th><th>Action</th></tr>
+    <tr><td>Play / Pause</td><td>Start or pause audio playback from the current position.</td></tr>
+    <tr><td>Stop</td><td>Pause and return the playhead to the beginning.</td></tr>
+    <tr><td>Seek slider</td><td>Drag to scrub to any position.</td></tr>
+    <tr><td>Click on waveform</td><td>Seek to that time position.</td></tr>
+    <tr><td>⌘M</td><td>Drop a marker at the current playhead position.</td></tr>
+    <tr><td>Shift-drag on waveform</td><td>Reposition the nearest marker (within 12 pt).</td></tr>
+  </table>
 </section>
 
 <!-- ────────────────────────────────────────────────── -->
