@@ -8,6 +8,7 @@ enum AppTab: String, CaseIterable, Hashable {
     case cycles      = "Cycles"
     case layers      = "Layers"
     case lights      = "Lights"
+    case audio       = "Audio"
     case rendering   = "Rendering"
 
     var label: String { rawValue }
@@ -21,6 +22,7 @@ enum AppTab: String, CaseIterable, Hashable {
         case .cycles:      return "arrow.2.circlepath"
         case .layers:      return "square.3.layers.3d"
         case .lights:      return "lightbulb"   // fallback only; icon() overrides
+        case .audio:       return "waveform"
         case .rendering:   return "paintbrush"
         }
     }

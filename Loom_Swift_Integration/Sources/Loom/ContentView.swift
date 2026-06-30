@@ -218,6 +218,10 @@ struct ContentView: View {
         case .lights:
             LightsTabView()
                 .environmentObject(controller)
+        case .audio:
+            AudioTabView()
+                .environmentObject(controller)
+                .environmentObject(controller.audioController)
         case .rendering:
             RenderingTabView()
         }
@@ -292,6 +296,11 @@ struct ContentView: View {
                     .environmentObject(controller)
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
+        case .audio:
+            AudioWaveformView()
+                .environmentObject(controller)
+                .environmentObject(controller.audioController)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
         default:
             liveCanvas
         }

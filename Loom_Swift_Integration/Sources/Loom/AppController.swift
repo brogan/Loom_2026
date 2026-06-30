@@ -162,6 +162,10 @@ enum GeometryEditorSaveState: Equatable {
 @MainActor
 final class AppController: ObservableObject, @unchecked Sendable {
 
+    // MARK: - Audio
+
+    let audioController = AudioController()
+
     // MARK: - Published: engine + project
 
     @Published private(set) var engine:             Engine?
@@ -6522,6 +6526,7 @@ final class AppController: ObservableObject, @unchecked Sendable {
         addToRecent(projectDirectory)
         startSentinelTimer()
         clearSelections()
+        Task { @MainActor in audioController.projectOpened(projectDirectory) }
     }
 
     /// Insert or replace a single image in the engine's live sprite-image cache.
