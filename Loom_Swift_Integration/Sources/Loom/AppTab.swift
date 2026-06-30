@@ -52,32 +52,26 @@ struct TheatreSpotIcon: View {
         GeometryReader { proxy in
             let w = proxy.size.width
             let h = proxy.size.height
-            ZStack {
-                // Filled: vertical stem + circular lamp body
-                Path { p in
-                    p.addRoundedRect(
-                        in: CGRect(x: w * 0.22, y: 0,
-                                   width: w * 0.22, height: h * 0.44),
-                        cornerSize: CGSize(width: w * 0.11, height: w * 0.11)
-                    )
-                    p.addEllipse(in: CGRect(
-                        x: w * 0.04, y: h * 0.38,
-                        width: w * 0.46, height: h * 0.46
-                    ))
+            Path { p in
+                // Open D-shape: rounded housing on the left, opening faces right.
+                // Based on headlight reference but mirrored: housing left, beam right.
+                p.move(to: CGPoint(x: w * 0.46, y: h * 0.12))
+                p.addArc(
+                    center:     CGPoint(x: w * 0.46, y: h * 0.50),
+                    radius:     h * 0.38,
+                    startAngle: .radians(-.pi / 2),
+                    endAngle:   .radians(.pi / 2),
+                    clockwise:  false          // counterclockwise = swings around the left
+                )
+                // 4 horizontal beam lines radiating right from the opening
+                for i in 0..<4 {
+                    let y = CGFloat(h * (0.24 + Double(i) * 0.162))
+                    p.move(to:    CGPoint(x: w * 0.56, y: y))
+                    p.addLine(to: CGPoint(x: w * 0.97, y: y))
                 }
-                .fill(.primary)
-                // Stroked: open-faced reflector housing — back wall + two diverging edges
-                Path { p in
-                    p.move(to:    CGPoint(x: w * 0.52, y: h * 0.30))
-                    p.addLine(to: CGPoint(x: w * 0.52, y: h * 0.80))
-                    p.move(to:    CGPoint(x: w * 0.52, y: h * 0.30))
-                    p.addLine(to: CGPoint(x: w * 0.97, y: h * 0.08))
-                    p.move(to:    CGPoint(x: w * 0.52, y: h * 0.80))
-                    p.addLine(to: CGPoint(x: w * 0.97, y: h * 0.94))
-                }
-                .stroke(.primary, style: StrokeStyle(
-                    lineWidth: 1.5, lineCap: .round, lineJoin: .round))
             }
+            .stroke(.primary, style: StrokeStyle(
+                lineWidth: 1.25, lineCap: .round, lineJoin: .round))
         }
     }
 }
