@@ -6,6 +6,7 @@ struct AudioTabView: View {
     @EnvironmentObject private var audio: AudioController
     @State private var renamingID: UUID?  = nil
     @State private var renameText: String = ""
+    @State private var showNotes: Bool    = false
 
     private var fps: Double {
         controller.projectConfig?.globalConfig.targetFPS ?? 30
@@ -154,7 +155,7 @@ struct AudioTabView: View {
 
     private var markersSection: some View {
         VStack(spacing: 0) {
-            HStack {
+            HStack(spacing: 6) {
                 Text("Markers")
                     .font(.system(size: 11, weight: .semibold))
                     .foregroundStyle(.secondary)
@@ -164,6 +165,15 @@ struct AudioTabView: View {
                         .font(.system(size: 10, design: .monospaced))
                         .foregroundStyle(.tertiary)
                 }
+                Button { showNotes.toggle() } label: {
+                    Image(systemName: "pencil")
+                        .font(.system(size: 10))
+                        .rotationEffect(.degrees(-15))
+                        .iconHitArea()
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(showNotes ? Color.accentColor : Color.secondary)
+                .modifier(LoomHoverHelp(showNotes ? "Hide notes" : "Show notes"))
             }
             .padding(.horizontal, 12)
             .padding(.vertical, 5)
@@ -190,54 +200,75 @@ struct AudioTabView: View {
     }
 
     private func markerRow(_ marker: AudioMarker) -> some View {
-        HStack(spacing: 6) {
-            Button {
-                audio.seek(to: Double(marker.frame) / fps)
-            } label: {
-                Image(systemName: "mappin")
-                    .font(.system(size: 10))
-                    .foregroundStyle(Color.accentColor)
-                    .iconHitArea()
-            }
-            .buttonStyle(.plain)
-
-            VStack(alignment: .leading, spacing: 2) {
-                if renamingID == marker.id {
-                    TextField("Label", text: $renameText)
-                        .textFieldStyle(.plain)
-                        .font(.system(size: 11))
-                        .onSubmit {
-                            audio.updateMarkerLabel(id: marker.id, label: renameText)
-                            renamingID = nil
-                        }
-                } else {
-                    Text(marker.label.isEmpty ? "Marker" : marker.label)
-                        .font(.system(size: 11))
-                        .lineLimit(1)
-                        .onTapGesture(count: 2) {
-                            renameText = marker.label
-                            renamingID = marker.id
-                        }
+        VStack(alignment: .leading, spacing: 0) {
+            HStack(spacing: 6) {
+                Button {
+                    audio.seek(to: Double(marker.frame) / fps)
+                } label: {
+                    Image(systemName: "mappin")
+                        .font(.system(size: 10))
+                        .foregroundStyle(Color.accentColor)
+                        .iconHitArea()
                 }
-                Text("f\(marker.frame)  ·  \(formatTimecode(Double(marker.frame) / fps, fps: fps))")
-                    .font(.system(size: 9, design: .monospaced))
-                    .foregroundStyle(.secondary)
-            }
-            Spacer()
+                .buttonStyle(.plain)
 
-            Button {
-                audio.removeMarker(id: marker.id)
-            } label: {
-                Image(systemName: "xmark")
-                    .font(.system(size: 9))
-                    .iconHitArea()
+                VStack(alignment: .leading, spacing: 2) {
+                    if renamingID == marker.id {
+                        TextField("Label", text: $renameText)
+                            .textFieldStyle(.plain)
+                            .font(.system(size: 11))
+                            .onSubmit {
+                                audio.updateMarkerLabel(id: marker.id, label: renameText)
+                                renamingID = nil
+                            }
+                    } else {
+                        Text(marker.label.isEmpty ? "Marker" : marker.label)
+                            .font(.system(size: 11))
+                            .lineLimit(1)
+                            .onTapGesture(count: 2) {
+                                renameText = marker.label
+                                renamingID = marker.id
+                            }
+                    }
+                    Text("f\(marker.frame)  ·  \(formatTimecode(Double(marker.frame) / fps, fps: fps))")
+                        .font(.system(size: 9, design: .monospaced))
+                        .foregroundStyle(.secondary)
+                }
+                Spacer()
+
+                Button {
+                    audio.removeMarker(id: marker.id)
+                } label: {
+                    Image(systemName: "xmark")
+                        .font(.system(size: 9))
+                        .iconHitArea()
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(.secondary)
             }
-            .buttonStyle(.plain)
-            .foregroundStyle(.secondary)
+
+            if showNotes {
+                TextField("Notes…", text: noteBinding(for: marker.id), axis: .vertical)
+                    .textFieldStyle(.plain)
+                    .font(.system(size: 10))
+                    .foregroundStyle(.primary.opacity(0.75))
+                    .lineLimit(1...3)
+                    .padding(.leading, 28)
+                    .padding(.trailing, 28)
+                    .padding(.top, 3)
+                    .padding(.bottom, 4)
+            }
         }
         .padding(.horizontal, 10)
         .padding(.vertical, 6)
         .contentShape(Rectangle())
+    }
+
+    private func noteBinding(for id: UUID) -> Binding<String> {
+        Binding(
+            get: { audio.markers.first(where: { $0.id == id })?.notes ?? "" },
+            set: { audio.updateMarkerNotes(id: id, notes: $0) }
+        )
     }
 
     // MARK: - Helpers

@@ -4,10 +4,24 @@ import SwiftUI
 
 // MARK: - Data model
 
-public struct AudioMarker: Codable, Identifiable {
-    public var id: UUID = UUID()
+public struct AudioMarker: Identifiable {
+    public var id: UUID    = UUID()
     public var frame: Int
     public var label: String = ""
+    public var notes: String = ""
+
+    public init(frame: Int) { self.frame = frame }
+}
+
+extension AudioMarker: Codable {
+    private enum CodingKeys: String, CodingKey { case id, frame, label, notes }
+    public init(from decoder: Decoder) throws {
+        let c  = try decoder.container(keyedBy: CodingKeys.self)
+        id     = try c.decodeIfPresent(UUID.self,   forKey: .id)    ?? UUID()
+        frame  = try c.decode(Int.self,              forKey: .frame)
+        label  = try c.decodeIfPresent(String.self,  forKey: .label) ?? ""
+        notes  = try c.decodeIfPresent(String.self,  forKey: .notes) ?? ""
+    }
 }
 
 private struct AudioState: Codable {
@@ -121,6 +135,21 @@ final class AudioController: ObservableObject {
     func updateMarkerLabel(id: UUID, label: String) {
         guard let idx = markers.firstIndex(where: { $0.id == id }) else { return }
         markers[idx].label = label
+        saveState()
+    }
+
+    func updateMarkerNotes(id: UUID, notes: String) {
+        guard let idx = markers.firstIndex(where: { $0.id == id }) else { return }
+        markers[idx].notes = notes
+        saveState()
+    }
+
+    // Move marker to a new frame, constrained between its neighbours (1-frame gap).
+    func moveMarker(id: UUID, toFrame target: Int) {
+        guard let idx = markers.firstIndex(where: { $0.id == id }) else { return }
+        let minFrame = idx > 0 ? markers[idx - 1].frame + 1 : 0
+        let maxFrame = idx < markers.count - 1 ? markers[idx + 1].frame - 1 : Int.max
+        markers[idx].frame = max(minFrame, min(maxFrame, target))
         saveState()
     }
 

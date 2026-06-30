@@ -4,6 +4,8 @@ struct AudioWaveformView: View {
     @EnvironmentObject private var audio: AudioController
     @EnvironmentObject private var controller: AppController
 
+    @State private var draggingMarkerID: UUID? = nil
+
     private var fps: Double {
         controller.projectConfig?.globalConfig.targetFPS ?? 30
     }
@@ -60,11 +62,41 @@ struct AudioWaveformView: View {
             .gesture(
                 DragGesture(minimumDistance: 0)
                     .onChanged { v in
-                        let frac = v.location.x / geo.size.width
-                        audio.seek(to: frac * audio.duration)
+                        if NSEvent.modifierFlags.contains(.shift) {
+                            // First movement: latch onto the nearest marker
+                            if draggingMarkerID == nil {
+                                draggingMarkerID = nearestMarker(
+                                    to: v.startLocation.x, width: geo.size.width)
+                            }
+                            if let mid = draggingMarkerID {
+                                let frac  = v.location.x / geo.size.width
+                                let frame = Int((frac * audio.duration * fps).rounded())
+                                audio.moveMarker(id: mid, toFrame: frame)
+                            }
+                        } else {
+                            draggingMarkerID = nil
+                            let frac = v.location.x / geo.size.width
+                            audio.seek(to: frac * audio.duration)
+                        }
                     }
+                    .onEnded { _ in draggingMarkerID = nil }
             )
         }
+    }
+
+    // Find the marker whose waveform tick is within 12 pt of the given x position.
+    private func nearestMarker(to x: CGFloat, width: CGFloat) -> UUID? {
+        guard audio.duration > 0 else { return nil }
+        let threshold: CGFloat = 12
+        var best: (UUID, CGFloat)? = nil
+        for marker in audio.markers {
+            let mx   = CGFloat(Double(marker.frame) / fps / audio.duration) * width
+            let dist = abs(mx - x)
+            if dist < threshold, best == nil || dist < best!.1 {
+                best = (marker.id, dist)
+            }
+        }
+        return best?.0
     }
 
     // MARK: - Drawing
@@ -101,22 +133,29 @@ struct AudioWaveformView: View {
     private func drawMarkers(ctx: GraphicsContext, size: CGSize) {
         guard audio.duration > 0 else { return }
         for marker in audio.markers {
-            let frac = (Double(marker.frame) / fps) / audio.duration
-            let x    = CGFloat(frac) * size.width
+            let frac      = (Double(marker.frame) / fps) / audio.duration
+            let x         = CGFloat(frac) * size.width
+            let isDragging = marker.id == draggingMarkerID
+            let color     = isDragging ? Color.yellow : Color.orange
+            let lineWidth: CGFloat = isDragging ? 2.5 : 1.5
 
             var tick = Path()
             tick.move(to:    CGPoint(x: x, y: 0))
             tick.addLine(to: CGPoint(x: x, y: size.height))
-            ctx.stroke(tick, with: .color(Color.orange.opacity(0.8)), lineWidth: 1.5)
+            ctx.stroke(tick, with: .color(color.opacity(isDragging ? 1.0 : 0.8)), lineWidth: lineWidth)
 
-            // Label
-            let label    = marker.label.isEmpty ? "f\(marker.frame)" : marker.label
-            let textSize = CGSize(width: 80, height: 14)
-            let textOrigin = CGPoint(x: min(x + 3, size.width - textSize.width - 2), y: 4)
+            // Small circle handle at top when dragging for affordance
+            if isDragging {
+                let handleRect = CGRect(x: x - 5, y: 0, width: 10, height: 10)
+                ctx.fill(Path(ellipseIn: handleRect), with: .color(color))
+            }
+
+            let label      = marker.label.isEmpty ? "f\(marker.frame)" : marker.label
+            let textOrigin = CGPoint(x: min(x + 3, size.width - 82), y: isDragging ? 12 : 4)
             ctx.draw(
                 Text(label)
-                    .font(.system(size: 9, weight: .medium))
-                    .foregroundStyle(Color.orange),
+                    .font(.system(size: 9, weight: isDragging ? .semibold : .medium))
+                    .foregroundStyle(color),
                 at: textOrigin,
                 anchor: .topLeading
             )
