@@ -79,8 +79,9 @@ public struct SpriteScene: @unchecked Sendable {
     /// Theatrical lighting configuration. Synced from `ProjectConfig.lightingConfig`.
     var lightingConfig: LightingConfig = LightingConfig()
 
-    /// Cached light map.  Recomputed when config or elapsed frame changes.
-    private var lightMapCache: (config: LightingConfig, elapsed: Double, image: CGImage)?
+    /// Per-layer cached light maps.  Keyed by layer ID; recomputed when the full
+    /// lighting config or the elapsed frame changes for that layer's entry.
+    private var lightMapCache: [UUID: (config: LightingConfig, elapsed: Double, image: CGImage)] = [:]
 
     /// Named sprite cycles keyed by name for O(1) lookup during render.
     private let allCycles: [String: SpriteCycle]
@@ -753,7 +754,8 @@ public struct SpriteScene: @unchecked Sendable {
                                    using: &rng)
                 }
                 if shouldLight {
-                    applyLightMap(to: offscreen, canvasSize: viewTransform.canvasSize,
+                    applyLightMap(to: offscreen, layerID: layer.id,
+                                  canvasSize: viewTransform.canvasSize,
                                   elapsedFrames: elapsedFrames)
                 }
                 applyLayerComposite(from: offscreen, blurRadius: blurRadius, opacity: opacity,
@@ -787,7 +789,8 @@ public struct SpriteScene: @unchecked Sendable {
                     temp.concatenate(temp.ctm.inverted())
                     temp.draw(img, in: CGRect(origin: .zero, size: viewTransform.canvasSize))
                     temp.restoreGState()
-                    applyLightMap(to: temp, canvasSize: viewTransform.canvasSize,
+                    applyLightMap(to: temp, layerID: layer.id,
+                                  canvasSize: viewTransform.canvasSize,
                                   elapsedFrames: elapsedFrames)
                     applyLayerComposite(from: temp, blurRadius: blurRadius, opacity: opacity,
                                         blendMode: layer.blendMode, into: context,
@@ -835,7 +838,8 @@ public struct SpriteScene: @unchecked Sendable {
                     temp.concatenate(temp.ctm.inverted())
                     temp.draw(img, in: CGRect(origin: .zero, size: viewTransform.canvasSize))
                     temp.restoreGState()
-                    applyLightMap(to: temp, canvasSize: viewTransform.canvasSize,
+                    applyLightMap(to: temp, layerID: layer.id,
+                                  canvasSize: viewTransform.canvasSize,
                                   elapsedFrames: elapsedFrames)
                     applyLayerComposite(from: temp, blurRadius: blurRadius, opacity: opacity,
                                         blendMode: layer.blendMode, into: context,
@@ -851,38 +855,47 @@ public struct SpriteScene: @unchecked Sendable {
 
     // MARK: - Layer buffer invalidation
 
-    /// Clears the cached light map. Call on seek so the map is recomputed at the new frame.
+    /// Clears all cached light maps. Call on seek so maps are recomputed at the new frame.
     mutating func invalidateLightMap() {
-        lightMapCache = nil
+        lightMapCache = [:]
     }
 
     // MARK: - Light map helpers
 
     private mutating func getOrComputeLightMap(
+        layerID: UUID,
         canvasSize: CGSize,
         elapsedFrames: Double
     ) -> CGImage? {
-        if let cached = lightMapCache,
+        if let cached = lightMapCache[layerID],
            cached.config == lightingConfig,
            cached.elapsed == elapsedFrames {
             return cached.image
         }
+        // Build a config containing only lights that affect this layer.
+        // A light with an empty affectedLayerIDs list affects every layer.
+        let eligible = lightingConfig.lights.filter {
+            $0.isEnabled && ($0.affectedLayerIDs.isEmpty || $0.affectedLayerIDs.contains(layerID))
+        }
+        guard !eligible.isEmpty else { return nil }
+        let filteredConfig = LightingConfig(isEnabled: true, lights: eligible)
         guard let img = LightMapRenderer.render(
-            config: lightingConfig,
+            config: filteredConfig,
             canvasSize: canvasSize,
             elapsedFrames: elapsedFrames,
             targetFPS: targetFPS
         ) else { return nil }
-        lightMapCache = (config: lightingConfig, elapsed: elapsedFrames, image: img)
+        lightMapCache[layerID] = (config: lightingConfig, elapsed: elapsedFrames, image: img)
         return img
     }
 
     private mutating func applyLightMap(
         to ctx: CGContext,
+        layerID: UUID,
         canvasSize: CGSize,
         elapsedFrames: Double
     ) {
-        guard let map = getOrComputeLightMap(canvasSize: canvasSize, elapsedFrames: elapsedFrames)
+        guard let map = getOrComputeLightMap(layerID: layerID, canvasSize: canvasSize, elapsedFrames: elapsedFrames)
         else { return }
         // Snapshot the layer so we can clip the multiply to pixels that already
         // have content.  CGBlendMode.multiply computes
