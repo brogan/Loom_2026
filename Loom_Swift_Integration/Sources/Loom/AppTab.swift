@@ -54,24 +54,25 @@ struct TheatreSpotIcon: View {
             let h = proxy.size.height
             Path { p in
                 // Open D-shape: rounded housing on the left, opening faces right.
-                // Based on headlight reference but mirrored: housing left, beam right.
-                p.move(to: CGPoint(x: w * 0.46, y: h * 0.12))
+                // In SwiftUI's Y-down coordinate system, clockwise: true renders as
+                // counterclockwise on screen, so the arc swings left of the opening.
+                p.move(to: CGPoint(x: w * 0.44, y: h * 0.12))
                 p.addArc(
-                    center:     CGPoint(x: w * 0.46, y: h * 0.50),
+                    center:     CGPoint(x: w * 0.44, y: h * 0.50),
                     radius:     h * 0.38,
                     startAngle: .radians(-.pi / 2),
                     endAngle:   .radians(.pi / 2),
-                    clockwise:  false          // counterclockwise = swings around the left
+                    clockwise:  true
                 )
-                // 4 horizontal beam lines radiating right from the opening
+                // 4 horizontal beam lines radiating right from the housing opening
                 for i in 0..<4 {
                     let y = CGFloat(h * (0.24 + Double(i) * 0.162))
-                    p.move(to:    CGPoint(x: w * 0.56, y: y))
+                    p.move(to:    CGPoint(x: w * 0.57, y: y))
                     p.addLine(to: CGPoint(x: w * 0.97, y: y))
                 }
             }
             .stroke(.primary, style: StrokeStyle(
-                lineWidth: 1.25, lineCap: .round, lineJoin: .round))
+                lineWidth: 1.0, lineCap: .round, lineJoin: .round))
         }
     }
 }
