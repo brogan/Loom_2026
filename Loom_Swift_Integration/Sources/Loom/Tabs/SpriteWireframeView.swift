@@ -575,15 +575,30 @@ struct SpriteWireframeView: View {
         var scaleX, scaleY:     Double  // combined world scale (without ×2)
     }
 
-    /// Build WireWorld for every sprite in declaration order so children can
-    /// look up their parent's already-resolved world.
+    /// Build WireWorld for every sprite, resolving each sprite's parent before
+    /// itself so cross-set parent chains (grandparent in set 2, child in set 1)
+    /// are handled correctly regardless of declaration order.
     private func buildWireWorlds(sprites: [SpriteDef]) -> [String: WireWorld] {
-        var worlds: [String: WireWorld] = [:]
-        for sprite in sprites {
+        let spriteMap = Dictionary(sprites.map { ($0.name, $0) },
+                                   uniquingKeysWith: { a, _ in a })
+        var worlds:     [String: WireWorld] = [:]
+        var inProgress: Set<String>         = []   // cycle guard
+
+        func resolve(_ sprite: SpriteDef) {
+            guard worlds[sprite.name] == nil,
+                  !inProgress.contains(sprite.name) else { return }
+            inProgress.insert(sprite.name)
+            // Ensure parent is resolved first, whatever set it lives in.
+            if let pName = sprite.parentName, let pSprite = spriteMap[pName] {
+                resolve(pSprite)
+            }
             let eff    = resolvedDef(sprite)
             let parent = sprite.parentName.flatMap { worlds[$0] }
             worlds[sprite.name] = computeWireWorld(raw: sprite, eff: eff, parent: parent)
+            inProgress.remove(sprite.name)
         }
+
+        for sprite in sprites { resolve(sprite) }
         return worlds
     }
 
