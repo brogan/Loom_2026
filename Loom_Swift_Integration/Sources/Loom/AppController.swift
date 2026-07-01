@@ -1108,10 +1108,10 @@ final class AppController: ObservableObject, @unchecked Sendable {
     func resetToDeformOrigin() {
         guard let snap = deformOriginSnapshot,
               var document = geometryEditorDocument,
-              let layerID = selectedGeometryEditorLayerID,
-              let idx = document.layers.firstIndex(where: { $0.id == layerID }) else { return }
+              let idx = document.layers.firstIndex(where: { $0.id == snap.id }) else { return }
         recordGeometryEditorUndoSnapshot()
         document.layers[idx] = snap
+        selectedGeometryEditorLayerID = snap.id
         setGeometryEditorDocument(document)
         deformPreviewSnapshot = nil
         postStatus("Deform reset to origin")
@@ -6485,7 +6485,7 @@ final class AppController: ObservableObject, @unchecked Sendable {
     }
 
     private func applyLayerPanelState(to document: inout EditableGeometryDocument) {
-        let panelState = Dictionary(uniqueKeysWithValues: geometryEditorLayers.map { ($0.id, $0) })
+        let panelState = Dictionary(geometryEditorLayers.map { ($0.id, $0) }, uniquingKeysWith: { _, last in last })
         var updatedLayers = document.layers.map { layer in
             guard let state = panelState[layer.id] else { return layer }
             var updated = layer
@@ -6494,7 +6494,7 @@ final class AppController: ObservableObject, @unchecked Sendable {
             updated.isEditable = state.isEditable
             return updated
         }
-        let panelOrder = Dictionary(uniqueKeysWithValues: geometryEditorLayers.enumerated().map { ($0.element.id, $0.offset) })
+        let panelOrder = Dictionary(geometryEditorLayers.enumerated().map { ($0.element.id, $0.offset) }, uniquingKeysWith: { _, last in last })
         updatedLayers.sort {
             (panelOrder[$0.id] ?? Int.max) < (panelOrder[$1.id] ?? Int.max)
         }
