@@ -920,6 +920,27 @@ private struct GeometryEditorShellInspector: View {
                 }
                 .modifier(LoomHoverHelp("Invert falloff: maximum effect at the radius edge, zero at the centre — useful for deforming tips rather than roots"))
 
+                // Sector constraint
+                InspectorField("Sector") {
+                    HStack(spacing: 8) {
+                        Toggle("", isOn: Binding(
+                            get: { controller.deformSectorEnabled },
+                            set: { controller.deformSectorEnabled = $0 }
+                        ))
+                        .labelsHidden()
+                        .toggleStyle(.switch)
+                        .controlSize(.mini)
+                        if controller.deformSectorEnabled {
+                            Text(String(format: "%.0f° – %.0f°",
+                                        controller.deformSectorStartAngle,
+                                        controller.deformSectorEndAngle))
+                                .font(.system(size: 10, design: .monospaced))
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                }
+                .modifier(LoomHoverHelp("Restrict deformation to a wedge sector. Drag the two white circle handles on the canvas to set the arc boundaries; the shaded region is excluded."))
+
                 // Intensity
                 InspectorField("Intensity") {
                     HStack(spacing: 6) {

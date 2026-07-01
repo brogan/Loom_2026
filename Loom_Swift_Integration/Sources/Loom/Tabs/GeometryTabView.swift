@@ -1125,7 +1125,7 @@ private struct EditableGeometryCanvas: View {
     @State private var deformDragStartAngle   = 0.0
     private let weldedEdgeColor = Color(red: 0.72, green: 0.22, blue: 1.0)
     private let weldedAnchorColor = Color(red: 0.95, green: 0.58, blue: 1.0)
-    private enum DeformDragHandle { case none, centre, radius, operation }
+    private enum DeformDragHandle { case none, centre, radius, operation, sectorStart, sectorEnd }
 
     var body: some View {
         GeometryReader { proxy in
@@ -1544,6 +1544,16 @@ private struct EditableGeometryCanvas: View {
                                     controller.deformPushY = currentWorld.y - deformDragStartWorld.y
                                     controller.applyDeformFromPreviewSnapshot()
                                 }
+                            case .sectorStart:
+                                if let c = controller.deformCenter {
+                                    let dx = currentWorld.x - c.x, dy = currentWorld.y - c.y
+                                    controller.deformSectorStartAngle = atan2(dy, dx) * 180.0 / .pi
+                                }
+                            case .sectorEnd:
+                                if let c = controller.deformCenter {
+                                    let dx = currentWorld.x - c.x, dy = currentWorld.y - c.y
+                                    controller.deformSectorEndAngle = atan2(dy, dx) * 180.0 / .pi
+                                }
                             }
                         }
                     }
@@ -1889,6 +1899,42 @@ private struct EditableGeometryCanvas: View {
             Text(opGlyph).font(.system(size: 8, weight: .bold)).foregroundStyle(Color.black.opacity(0.75)),
             at: op, anchor: .center
         )
+
+        // Sector constraint overlay
+        if controller.deformSectorEnabled {
+            let sStartRad = controller.deformSectorStartAngle * .pi / 180
+            let sEndRad   = controller.deformSectorEndAngle   * .pi / 180
+            let ssp = project(Vector2D(x: center.x + controller.deformRadius * cos(sStartRad),
+                                       y: center.y + controller.deformRadius * sin(sStartRad)))
+            let sep = project(Vector2D(x: center.x + controller.deformRadius * cos(sEndRad),
+                                       y: center.y + controller.deformRadius * sin(sEndRad)))
+
+            // Excluded region: CW arc on screen (clockwise:false) from screenStart to screenEnd
+            // Screen angle = -(world angle), so screenStart = -sStartDeg, screenEnd = -sEndDeg
+            var excluded = Path()
+            excluded.move(to: cp)
+            excluded.addArc(center: cp, radius: radiusPx,
+                            startAngle: .degrees(-controller.deformSectorStartAngle),
+                            endAngle:   .degrees(-controller.deformSectorEndAngle),
+                            clockwise: false)   // CW on screen covers the excluded arc
+            excluded.closeSubpath()
+            ctx.fill(excluded, with: .color(Color.black.opacity(0.38)))
+
+            // Boundary radial lines
+            for pt in [ssp, sep] {
+                var line = Path(); line.move(to: cp); line.addLine(to: pt)
+                ctx.stroke(line, with: .color(Color.white.opacity(0.55)),
+                           style: StrokeStyle(lineWidth: 1.5, dash: [4, 3]))
+            }
+
+            // Sector handles — outlined circles (distinct from filled centre/operation handles)
+            for pt in [ssp, sep] {
+                ctx.fill(Path(ellipseIn: CGRect(x: pt.x - 5, y: pt.y - 5, width: 10, height: 10)),
+                         with: .color(Color.white.opacity(0.35)))
+                ctx.stroke(Path(ellipseIn: CGRect(x: pt.x - 5, y: pt.y - 5, width: 10, height: 10)),
+                           with: .color(Color.white.opacity(0.9)), lineWidth: 2)
+            }
+        }
     }
 
     // Draw before/after reference layers as tinted ghost outlines.
@@ -2934,13 +2980,24 @@ private struct EditableGeometryCanvas: View {
         )
     }
 
-    // Hit-test the three deform handles; returns which one contains the screen point.
+    // Hit-test the deform handles; returns which one contains the screen point.
     private func hitTestDeformHandle(at pt: CGPoint, canvasSize: CGFloat) -> DeformDragHandle {
         guard let center = controller.deformCenter else { return .none }
         let cp = projectToScreen(center, canvasSize: canvasSize)
         let rp = projectToScreen(Vector2D(x: center.x + controller.deformRadius, y: center.y), canvasSize: canvasSize)
         let op = projectToScreen(Vector2D(x: center.x, y: center.y + controller.deformRadius), canvasSize: canvasSize)
         let hit: CGFloat = 12
+        // Check sector handles first when visible (they sit on the perimeter)
+        if controller.deformSectorEnabled {
+            let sStartRad = controller.deformSectorStartAngle * .pi / 180
+            let sEndRad   = controller.deformSectorEndAngle   * .pi / 180
+            let ssp = projectToScreen(Vector2D(x: center.x + controller.deformRadius * cos(sStartRad),
+                                               y: center.y + controller.deformRadius * sin(sStartRad)), canvasSize: canvasSize)
+            let sep = projectToScreen(Vector2D(x: center.x + controller.deformRadius * cos(sEndRad),
+                                               y: center.y + controller.deformRadius * sin(sEndRad)), canvasSize: canvasSize)
+            if hypot(pt.x - ssp.x, pt.y - ssp.y) < hit { return .sectorStart }
+            if hypot(pt.x - sep.x, pt.y - sep.y) < hit { return .sectorEnd }
+        }
         if hypot(pt.x - op.x, pt.y - op.y) < hit { return .operation }
         if hypot(pt.x - rp.x, pt.y - rp.y) < hit { return .radius }
         if hypot(pt.x - cp.x, pt.y - cp.y) < hit { return .centre }

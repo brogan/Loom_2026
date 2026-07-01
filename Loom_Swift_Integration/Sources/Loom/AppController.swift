@@ -257,7 +257,10 @@ final class AppController: ObservableObject, @unchecked Sendable {
     @Published var deformPushX:         Double          = 0.05
     @Published var deformPushY:         Double          = 0.0
     @Published var deformIntensity:     Double          = 1.0
-    @Published var deformInvertFalloff: Bool            = false
+    @Published var deformInvertFalloff:     Bool            = false
+    @Published var deformSectorEnabled:   Bool            = false
+    @Published var deformSectorStartAngle: Double         = -90   // degrees, world convention (Y-up)
+    @Published var deformSectorEndAngle:   Double         = 90    // CCW from start to end = included region
     @Published var deformBeforeLayerID: UUID?           = nil
     @Published var deformAfterLayerID:  UUID?           = nil
     @Published var deformHasOrigin:     Bool            = false
@@ -1155,10 +1158,24 @@ final class AppController: ObservableObject, @unchecked Sendable {
     private func applyDeformMath(to layer: inout EditableGeometryLayer, center: Vector2D) {
         let r = max(deformRadius, 1e-9)
 
+        // Returns true if the world-space angle (radians) falls inside the CCW sector.
+        func inSector(_ angle: Double) -> Bool {
+            guard deformSectorEnabled else { return true }
+            let s = deformSectorStartAngle * .pi / 180
+            let e = deformSectorEndAngle   * .pi / 180
+            func norm(_ a: Double) -> Double {
+                let v = a.truncatingRemainder(dividingBy: 2 * .pi)
+                return v < 0 ? v + 2 * .pi : v
+            }
+            let a = norm(angle), sn = norm(s), en = norm(e)
+            return sn <= en ? (a >= sn && a <= en) : (a >= sn || a <= en)
+        }
+
         func falloffWeight(_ p: Vector2D) -> Double {
             let dx = p.x - center.x, dy = p.y - center.y
             let dist = sqrt(dx*dx + dy*dy)
             guard dist < r else { return 0 }
+            if deformSectorEnabled && dist > 1e-9 && !inSector(atan2(dy, dx)) { return 0 }
             let t = dist / r
             let w: Double
             switch deformFalloff {
