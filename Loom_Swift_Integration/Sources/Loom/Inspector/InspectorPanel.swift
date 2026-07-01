@@ -908,6 +908,18 @@ private struct GeometryEditorShellInspector: View {
                     .labelsHidden()
                 }
 
+                // Invert falloff
+                InspectorField("Invert") {
+                    Toggle("", isOn: Binding(
+                        get: { controller.deformInvertFalloff },
+                        set: { controller.deformInvertFalloff = $0 }
+                    ))
+                    .labelsHidden()
+                    .toggleStyle(.switch)
+                    .controlSize(.mini)
+                }
+                .modifier(LoomHoverHelp("Invert falloff: maximum effect at the radius edge, zero at the centre — useful for deforming tips rather than roots"))
+
                 // Intensity
                 InspectorField("Intensity") {
                     HStack(spacing: 6) {

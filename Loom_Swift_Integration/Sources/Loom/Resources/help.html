@@ -1306,6 +1306,7 @@
       <tr><td><strong>Centre</strong></td><td>Read-only display of the current influence centre in canvas coordinates. Click empty canvas to place or move it.</td></tr>
       <tr><td><strong>Radius</strong></td><td>Size of the influence zone (0.01–1.0 canvas units). Drag the white square handle on canvas, or use the slider.</td></tr>
       <tr><td><strong>Falloff</strong></td><td><strong>Linear</strong> — influence decreases evenly from centre to edge. <strong>Smooth</strong> (default) — smoothstep curve; gradual at the edges, strong near the centre. <strong>Strong</strong> — quadratic drop-off; maximum effect tightly concentrated at the centre.</td></tr>
+      <tr><td><strong>Invert</strong></td><td>Reverses the falloff curve so that points at the outer edge of the radius receive maximum effect and points at the centre receive none. Useful when the centre marks an anchor (e.g. the tail root) and you want maximum deformation at the tips.</td></tr>
       <tr><td><strong>Intensity</strong></td><td>Global multiplier on the deformation strength (0.0–2.0). At 1.0 the drag result is applied as-is. Lower values build up a deformation gradually across multiple passes; higher values amplify each drag.</td></tr>
       <tr><td><strong>Angle °</strong> (Rotate)</td><td>Rotation angle in degrees; set automatically by handle drag or enter a value manually before pressing Apply.</td></tr>
       <tr><td><strong>Amount %</strong> (Scale)</td><td>Scale percentage; positive expands, negative contracts. Set automatically by handle drag or enter manually.</td></tr>
@@ -1346,12 +1347,12 @@
       Drag the <strong>white square handle</strong> (right edge of the circle) outward until the dashed circle encompasses all the tail geometry but leaves most of the body outside. A radius of roughly <code>0.20–0.30</code> is typical. The body points just inside the edge of the zone will flex slightly — this is intentional and creates a natural join.
     </li>
     <li>
-      <strong>Set the operation to Rotate.</strong>
-      In the inspector, set <strong>Operation</strong> to <em>Rotate</em> and <strong>Falloff</strong> to <em>Smooth</em>. The top handle turns yellow.
+      <strong>Set the operation to Rotate and enable Invert.</strong>
+      In the inspector, set <strong>Operation</strong> to <em>Rotate</em>, <strong>Falloff</strong> to <em>Smooth</em>, and turn <strong>Invert</strong> on. With the centre at the tail root and the radius covering the whole tail, Invert ensures the tail tip rotates the most while the root barely moves — exactly how a real tail flexes. The top handle turns yellow.
     </li>
     <li>
       <strong>Drag the yellow operation handle to swing the tail.</strong>
-      Drag the yellow circle at the top of the influence zone clockwise (downward and to the right). The tail geometry deforms live as you drag. Aim for roughly a quarter-turn of the handle — the <strong>Angle °</strong> field shows the current value. When the tail looks like a natural downswing (around −20° to −30°), release. The deformation commits as one undo step.
+      Drag the yellow circle at the top of the influence zone clockwise (downward and to the right). The tail geometry deforms live as you drag — with Invert on you will see the tip sweep more than the base. The <strong>Angle °</strong> field shows the current value. When the tail looks like a natural downswing (around −20° to −30°), release. The deformation commits as one undo step.
     </li>
     <li>
       <strong>Refine if needed.</strong>

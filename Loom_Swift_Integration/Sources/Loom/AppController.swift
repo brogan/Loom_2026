@@ -257,6 +257,7 @@ final class AppController: ObservableObject, @unchecked Sendable {
     @Published var deformPushX:         Double          = 0.05
     @Published var deformPushY:         Double          = 0.0
     @Published var deformIntensity:     Double          = 1.0
+    @Published var deformInvertFalloff: Bool            = false
     @Published var deformBeforeLayerID: UUID?           = nil
     @Published var deformAfterLayerID:  UUID?           = nil
     @Published var deformHasOrigin:     Bool            = false
@@ -1165,7 +1166,7 @@ final class AppController: ObservableObject, @unchecked Sendable {
             case .smooth: w = 1 - t*t*(3 - 2*t)
             case .strong: w = (1 - t)*(1 - t)
             }
-            return w * deformIntensity
+            return (deformInvertFalloff ? 1 - w : w) * deformIntensity
         }
 
         func deform(_ p: Vector2D) -> Vector2D {
