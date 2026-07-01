@@ -521,6 +521,10 @@ private struct GeometryEditorShellInspector: View {
     @State private var multiplyCollapsed = false
     @State private var transformCollapsed = false
     @State private var deformCollapsed = false
+    @State private var showSavePointSetPopover = false
+    @State private var newPointSetName = ""
+    @State private var editingPointSetID: UUID? = nil
+    @State private var editingPointSetName = ""
     @State private var viewCollapsed = false
     @State private var parametricCollapsed = false
     @State private var scaleAxis = "XY"
@@ -940,6 +944,118 @@ private struct GeometryEditorShellInspector: View {
                     }
                 }
                 .modifier(LoomHoverHelp("Restrict deformation to a wedge sector. Drag the two white circle handles on the canvas to set the arc boundaries; the shaded region is excluded."))
+
+                // Named point set filter
+                let pointSets = controller.deformPointSets
+                InspectorField("Point Set") {
+                    HStack(spacing: 4) {
+                        Picker("", selection: Binding(
+                            get: { controller.activeDeformPointSetID },
+                            set: { controller.activeDeformPointSetID = $0 }
+                        )) {
+                            Text("None").tag(UUID?.none)
+                            ForEach(pointSets) { set in
+                                Text(set.name).tag(UUID?.some(set.id))
+                            }
+                        }
+                        .labelsHidden()
+                        .frame(maxWidth: .infinity)
+
+                        // Save current selection as a new set
+                        Button {
+                            newPointSetName = "Set \(pointSets.count + 1)"
+                            showSavePointSetPopover = true
+                        } label: {
+                            Image(systemName: "plus")
+                        }
+                        .buttonStyle(.borderless)
+                        .help("Save current point selection as a named set")
+                        .popover(isPresented: $showSavePointSetPopover, arrowEdge: .bottom) {
+                            VStack(alignment: .leading, spacing: 10) {
+                                Text("Save Point Set")
+                                    .font(.headline)
+                                TextField("Name", text: $newPointSetName)
+                                    .textFieldStyle(.roundedBorder)
+                                    .frame(width: 180)
+                                    .onSubmit {
+                                        controller.saveSelectionAsDeformPointSet(name: newPointSetName)
+                                        showSavePointSetPopover = false
+                                    }
+                                HStack {
+                                    Button("Cancel") { showSavePointSetPopover = false }
+                                    Spacer()
+                                    Button("Save") {
+                                        controller.saveSelectionAsDeformPointSet(name: newPointSetName)
+                                        showSavePointSetPopover = false
+                                    }
+                                    .disabled(newPointSetName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                                    .buttonStyle(.borderedProminent)
+                                    .controlSize(.small)
+                                }
+                            }
+                            .padding(14)
+                            .frame(width: 218)
+                        }
+
+                        // Rename active set
+                        if let activeID = controller.activeDeformPointSetID,
+                           pointSets.contains(where: { $0.id == activeID }) {
+                            Button {
+                                if let set = pointSets.first(where: { $0.id == activeID }) {
+                                    editingPointSetID = activeID
+                                    editingPointSetName = set.name
+                                }
+                            } label: {
+                                Image(systemName: "pencil")
+                            }
+                            .buttonStyle(.borderless)
+                            .help("Rename this point set")
+                            .popover(isPresented: Binding(
+                                get: { editingPointSetID != nil },
+                                set: { if !$0 { editingPointSetID = nil } }
+                            ), arrowEdge: .bottom) {
+                                VStack(alignment: .leading, spacing: 10) {
+                                    Text("Rename Point Set")
+                                        .font(.headline)
+                                    TextField("Name", text: $editingPointSetName)
+                                        .textFieldStyle(.roundedBorder)
+                                        .frame(width: 180)
+                                        .onSubmit {
+                                            if let id = editingPointSetID {
+                                                controller.renameDeformPointSet(id: id, name: editingPointSetName)
+                                            }
+                                            editingPointSetID = nil
+                                        }
+                                    HStack {
+                                        Button("Cancel") { editingPointSetID = nil }
+                                        Spacer()
+                                        Button("Rename") {
+                                            if let id = editingPointSetID {
+                                                controller.renameDeformPointSet(id: id, name: editingPointSetName)
+                                            }
+                                            editingPointSetID = nil
+                                        }
+                                        .disabled(editingPointSetName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                                        .buttonStyle(.borderedProminent)
+                                        .controlSize(.small)
+                                    }
+                                }
+                                .padding(14)
+                                .frame(width: 218)
+                            }
+
+                            // Delete active set
+                            Button {
+                                controller.deleteDeformPointSet(id: activeID)
+                            } label: {
+                                Image(systemName: "trash")
+                            }
+                            .buttonStyle(.borderless)
+                            .help("Delete this point set")
+                        }
+                    }
+                }
+                .modifier(LoomHoverHelp("Filter deformation to a named set of points. Select points, press +, name the set. Switch between sets via the dropdown. Works across topologically identical layers (morph lock)."))
 
                 // Intensity
                 InspectorField("Intensity") {

@@ -264,6 +264,7 @@ final class AppController: ObservableObject, @unchecked Sendable {
     @Published var deformBeforeLayerID: UUID?           = nil
     @Published var deformAfterLayerID:  UUID?           = nil
     @Published var deformHasOrigin:     Bool            = false
+    @Published var activeDeformPointSetID: UUID?        = nil
     private var deformOriginSnapshot:   EditableGeometryLayer? = nil
     private var deformPreviewSnapshot:  EditableGeometryLayer? = nil
     @Published var geometryEditorWeldTolerance:   Double = 0.5
@@ -1205,21 +1206,118 @@ final class AppController: ObservableObject, @unchecked Sendable {
             }
         }
 
+        // Resolve named point-set filter for this layer (nil = no filter, all points affected)
+        let pointSetFilter: Set<UUID>? = {
+            guard let setID = activeDeformPointSetID,
+                  let set = geometryEditorDocument?.namedPointSets.first(where: { $0.id == setID })
+            else { return nil }
+            return resolveDeformPointSet(set, in: layer)
+        }()
+
         for pi in layer.polygons.indices {
             for pti in layer.polygons[pi].points.indices {
-                layer.polygons[pi].points[pti].position =
-                    deform(layer.polygons[pi].points[pti].position)
+                let pt = layer.polygons[pi].points[pti]
+                if let filter = pointSetFilter, !filter.contains(pt.id) { continue }
+                layer.polygons[pi].points[pti].position = deform(pt.position)
             }
         }
         for ci in layer.openCurves.indices {
             for pti in layer.openCurves[ci].points.indices {
-                layer.openCurves[ci].points[pti].position =
-                    deform(layer.openCurves[ci].points[pti].position)
+                let pt = layer.openCurves[ci].points[pti]
+                if let filter = pointSetFilter, !filter.contains(pt.id) { continue }
+                layer.openCurves[ci].points[pti].position = deform(pt.position)
             }
         }
         for pti in layer.points.indices {
+            if let filter = pointSetFilter, !filter.contains(layer.points[pti].id) { continue }
             layer.points[pti].position = deform(layer.points[pti].position)
         }
+    }
+
+    // MARK: - Named point sets
+
+    var deformPointSets: [GeometryNamedPointSet] {
+        geometryEditorDocument?.namedPointSets ?? []
+    }
+
+    /// Converts structural entries (polygon/curve/standalone index + point index) into
+    /// the actual point UUIDs for a given layer. Safe against out-of-bounds indices.
+    func resolveDeformPointSet(_ set: GeometryNamedPointSet, in layer: EditableGeometryLayer) -> Set<UUID> {
+        var ids = Set<UUID>()
+        for entry in set.entries {
+            switch entry.kind {
+            case .polygon:
+                guard entry.containerIndex < layer.polygons.count else { continue }
+                let pts = layer.polygons[entry.containerIndex].points
+                guard entry.pointIndex < pts.count else { continue }
+                ids.insert(pts[entry.pointIndex].id)
+            case .openCurve:
+                guard entry.containerIndex < layer.openCurves.count else { continue }
+                let pts = layer.openCurves[entry.containerIndex].points
+                guard entry.pointIndex < pts.count else { continue }
+                ids.insert(pts[entry.pointIndex].id)
+            case .standalone:
+                guard entry.pointIndex < layer.points.count else { continue }
+                ids.insert(layer.points[entry.pointIndex].id)
+            }
+        }
+        return ids
+    }
+
+    /// Saves the current point selection in the active layer as a new named point set.
+    func saveSelectionAsDeformPointSet(name: String) {
+        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty,
+              var document = geometryEditorDocument,
+              let layerID = selectedGeometryEditorLayerID,
+              let layer = document.layers.first(where: { $0.id == layerID }) else { return }
+
+        let selectedIDs = geometryEditorSelection.pointIDs
+        guard !selectedIDs.isEmpty else {
+            postStatus("Select points first, then save as a point set")
+            return
+        }
+
+        var entries: [GeometryPointSetEntry] = []
+        for (pi, polygon) in layer.polygons.enumerated() {
+            for (pti, point) in polygon.points.enumerated() where selectedIDs.contains(point.id) {
+                entries.append(GeometryPointSetEntry(kind: .polygon, containerIndex: pi, pointIndex: pti))
+            }
+        }
+        for (ci, curve) in layer.openCurves.enumerated() {
+            for (pti, point) in curve.points.enumerated() where selectedIDs.contains(point.id) {
+                entries.append(GeometryPointSetEntry(kind: .openCurve, containerIndex: ci, pointIndex: pti))
+            }
+        }
+        for (pti, point) in layer.points.enumerated() where selectedIDs.contains(point.id) {
+            entries.append(GeometryPointSetEntry(kind: .standalone, containerIndex: 0, pointIndex: pti))
+        }
+
+        guard !entries.isEmpty else { return }
+
+        let newSet = GeometryNamedPointSet(name: trimmed, entries: entries)
+        recordGeometryEditorUndoSnapshot()
+        document.namedPointSets.append(newSet)
+        setGeometryEditorDocument(document)
+        activeDeformPointSetID = newSet.id
+        postStatus("Saved point set \"\(trimmed)\" (\(entries.count) points)")
+    }
+
+    func deleteDeformPointSet(id: UUID) {
+        guard var document = geometryEditorDocument else { return }
+        document.namedPointSets.removeAll(where: { $0.id == id })
+        if activeDeformPointSetID == id { activeDeformPointSetID = nil }
+        recordGeometryEditorUndoSnapshot()
+        setGeometryEditorDocument(document)
+        postStatus("Deleted point set")
+    }
+
+    func renameDeformPointSet(id: UUID, name: String) {
+        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty, var document = geometryEditorDocument,
+              let idx = document.namedPointSets.firstIndex(where: { $0.id == id }) else { return }
+        document.namedPointSets[idx].name = trimmed
+        setGeometryEditorDocument(document)
     }
 
     func beginGeometryCurvedKnifeLine(at point: Vector2D) {

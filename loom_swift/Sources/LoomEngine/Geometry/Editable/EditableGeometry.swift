@@ -1185,25 +1185,63 @@ public struct EditableGeometrySelection: Codable, Equatable, Sendable {
     public static let empty = EditableGeometrySelection()
 }
 
+// MARK: - Named point sets
+
+/// A reference to a single control point by structural position (topology-stable across morph layers).
+public struct GeometryPointSetEntry: Codable, Equatable, Hashable, Sendable {
+    public enum Kind: String, Codable, Sendable {
+        case polygon, openCurve, standalone
+    }
+    public var kind: Kind
+    /// Polygon or open-curve index within the layer; 0 for standalone.
+    public var containerIndex: Int
+    /// Point index within the polygon or curve; standalone point index for `.standalone`.
+    public var pointIndex: Int
+
+    public init(kind: Kind, containerIndex: Int, pointIndex: Int) {
+        self.kind = kind
+        self.containerIndex = containerIndex
+        self.pointIndex = pointIndex
+    }
+}
+
+/// A named, saved selection of control points identified by structural position.
+public struct GeometryNamedPointSet: Identifiable, Codable, Equatable, Sendable {
+    public var id: UUID
+    public var name: String
+    public var entries: [GeometryPointSetEntry]
+
+    public init(id: UUID = UUID(), name: String, entries: [GeometryPointSetEntry] = []) {
+        self.id = id
+        self.name = name
+        self.entries = entries
+    }
+}
+
+// MARK: - Document
+
 public struct EditableGeometryDocument: Codable, Equatable, Identifiable, Sendable {
     public var id: EditableGeometryID
     public var name: String
     public var layers: [EditableGeometryLayer]
     public var activeLayerID: EditableGeometryID?
     public var weldGroups: [EditableWeldGroup]
+    public var namedPointSets: [GeometryNamedPointSet]
 
     public init(
         id: EditableGeometryID = EditableGeometryID(),
         name: String,
         layers: [EditableGeometryLayer] = [],
         activeLayerID: EditableGeometryID? = nil,
-        weldGroups: [EditableWeldGroup] = []
+        weldGroups: [EditableWeldGroup] = [],
+        namedPointSets: [GeometryNamedPointSet] = []
     ) {
         self.id = id
         self.name = name
         self.layers = layers
         self.activeLayerID = activeLayerID ?? layers.first?.id
         self.weldGroups = weldGroups.filter { $0.pointIDs.count > 1 }
+        self.namedPointSets = namedPointSets
     }
 
     private enum CodingKeys: String, CodingKey {
@@ -1212,6 +1250,7 @@ public struct EditableGeometryDocument: Codable, Equatable, Identifiable, Sendab
         case layers
         case activeLayerID
         case weldGroups
+        case namedPointSets
     }
 
     public init(from decoder: Decoder) throws {
@@ -1221,6 +1260,7 @@ public struct EditableGeometryDocument: Codable, Equatable, Identifiable, Sendab
         layers = try container.decodeIfPresent([EditableGeometryLayer].self, forKey: .layers) ?? []
         activeLayerID = try container.decodeIfPresent(EditableGeometryID.self, forKey: .activeLayerID) ?? layers.first?.id
         weldGroups = try container.decodeIfPresent([EditableWeldGroup].self, forKey: .weldGroups) ?? []
+        namedPointSets = try container.decodeIfPresent([GeometryNamedPointSet].self, forKey: .namedPointSets) ?? []
         pruneWeldGroups()
     }
 
