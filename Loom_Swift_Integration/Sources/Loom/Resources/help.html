@@ -1257,92 +1257,123 @@
 
   <!-- ─── Deform Tool ─── -->
   <h3 id="geometry-deform">Deform Tool</h3>
-  <p>The <strong>Deform</strong> tool applies radial falloff deformation to all geometry points within a configurable influence zone. It is designed for creating organic shape changes — pulling a tail into a new position, bulging a body, or subtly squashing a limb — without selecting and transforming individual points.</p>
+  <p>The <strong>Deform</strong> tool applies radial falloff deformation to all geometry points within a configurable influence zone. It is designed for creating organic shape changes — swinging a tail, bulging a body, nudging a limb — without selecting and transforming individual points.</p>
 
-  <p>Unlike the Transform section, which operates on explicitly selected points, the Deform tool works by proximity: every point within the radius of influence is moved proportionally, with those closest to the centre affected most strongly. Points outside the radius are untouched.</p>
+  <p>Unlike the Transform section, which acts on explicitly selected points, the Deform tool works by proximity: every point within the radius of influence is moved proportionally, with those closest to the centre affected most strongly. The tool is primarily <strong>interactive</strong>: you drag handles directly on the canvas to see the deformation live and commit each drag as a discrete undo step.</p>
 
-  <h4>How the tool works</h4>
-  <ol class="steps">
-    <li><strong>Activate the tool</strong> — click the Deform icon (<em>wand.and.rays</em>) in the geometry editor toolbar. The status bar confirms the tool is active.</li>
-    <li><strong>Place the influence centre</strong> — click anywhere on the canvas. A dashed circle and crosshair appear showing the centre and radius. You can click again at any time to reposition the centre.</li>
-    <li><strong>Configure the Deform inspector section</strong> — adjust Operation, Radius, Falloff, Intensity, and any operation-specific parameters.</li>
-    <li><strong>Apply</strong> — click <strong>Apply Deform</strong>. The deformation is applied to every point in the active layer that falls within the radius. The operation is fully undoable.</li>
-    <li><strong>Repeat or refine</strong> — Apply can be called multiple times with the same or different parameters. Each call adds to the previous result.</li>
-  </ol>
+  <h4>Canvas handles</h4>
+  <p>Once a centre is placed, three handles appear on the influence circle. Each has a distinct appearance and purpose:</p>
+  <table>
+    <thead><tr><th>Handle</th><th>Appearance</th><th>What it does</th></tr></thead>
+    <tbody>
+      <tr><td><strong>Centre</strong></td><td>Filled accent-coloured dot with crosshair</td><td>Drag to reposition the entire influence zone. No geometry is changed — only the zone moves.</td></tr>
+      <tr><td><strong>Radius</strong></td><td>White square on the right edge of the circle</td><td>Drag outward to expand the influence radius; drag inward to shrink it. The dashed circle resizes live. No geometry is changed.</td></tr>
+      <tr><td><strong>Operation</strong></td><td>Coloured circle at the top of the circle — yellow (Rotate), cyan (Scale), or orange (Push)</td><td>Drag to apply the current operation live. Geometry deforms as you move the mouse. Releasing the mouse commits the result as a single undo step.</td></tr>
+    </tbody>
+  </table>
 
-  <div class="note"><strong>Note:</strong> The Deform tool acts on the <em>active layer</em> only. If you want to deform only part of a multi-layer geometry set, target the correct layer before placing the centre.</div>
+  <div class="tip"><strong>Tip:</strong> Click on empty canvas (not on a handle) to move the influence centre to a new position. The operation handle colour changes automatically when you switch operations in the inspector.</div>
+
+  <h4>How dragging the operation handle works</h4>
+  <table>
+    <thead><tr><th>Operation</th><th>Drag behaviour</th></tr></thead>
+    <tbody>
+      <tr><td><strong>Rotate</strong></td><td>The angle is determined by how far you sweep the handle around the centre. Dragging clockwise rotates clockwise; counter-clockwise rotates counter-clockwise. The <strong>Angle °</strong> field updates live to show the current value.</td></tr>
+      <tr><td><strong>Scale</strong></td><td>Drag the handle away from the centre to expand points outward; drag toward the centre to contract them inward. The percentage change is proportional to how far you move relative to the starting radius. The <strong>Amount %</strong> field updates live.</td></tr>
+      <tr><td><strong>Push</strong></td><td>Drag in any direction. The direction and distance of the drag become the push vector applied to all points in the zone. <strong>Push X</strong> and <strong>Push Y</strong> update live.</td></tr>
+    </tbody>
+  </table>
+
+  <p>Each drag of the operation handle is one undo step. The snapshot is taken at the moment you start dragging, so <kbd>⌘Z</kbd> after release will always undo exactly the last drag — no matter how far or in what direction you moved.</p>
+
+  <h4>Reset to Base and Apply</h4>
+  <p>The first time you drag the operation handle (or press <strong>Apply</strong>), Loom automatically snapshots the layer state as the <em>deform origin</em>. The <strong>Reset to Base</strong> button in the inspector restores the layer to this snapshot at any time, with a full undo entry. This lets you freely experiment with multiple drag passes and return to the clean starting state if the result isn't working.</p>
+  <p>The <strong>Apply</strong> button remains available for numerical entry: type a precise angle, scale, or push value in the relevant field, then click Apply to commit it as an undo step.</p>
+
+  <h4>Reference layer overlays</h4>
+  <p>The <strong>Before</strong> and <strong>After</strong> pickers in the Deform inspector let you designate any existing layer as a ghost reference overlay while you are working:</p>
+  <ul>
+    <li><strong>Before</strong> — shows the chosen layer as a <span style="color:#7aaeff">blue</span> outline. Useful for comparing your current edit against the original base geometry.</li>
+    <li><strong>After</strong> — shows the chosen layer as an <span style="color:#ffaa55">orange</span> outline. Useful for targeting a known destination state while deforming toward it.</li>
+  </ul>
+  <p>Both overlays are drawn at reduced opacity and do not affect rendering or export. They are only visible while the Deform tool is active. Set either picker to <em>None</em> to hide the overlay.</p>
 
   <h4>Inspector parameters</h4>
   <table>
     <thead><tr><th>Parameter</th><th>Description</th></tr></thead>
     <tbody>
-      <tr><td><strong>Operation</strong></td><td>The type of deformation to apply. <strong>Rotate</strong> spins points around the centre. <strong>Scale</strong> pushes or pulls points radially from the centre. <strong>Push</strong> translates all affected points by a fixed vector.</td></tr>
-      <tr><td><strong>Centre</strong></td><td>Displays the canvas coordinates of the placed influence centre. Shows a prompt until a centre has been set by clicking the canvas.</td></tr>
-      <tr><td><strong>Radius</strong></td><td>The size of the influence zone in Loom canvas units (0.01–1.0). Points outside this radius are completely unaffected.</td></tr>
-      <tr><td><strong>Falloff</strong></td><td>Controls how influence diminishes from the centre outward. <strong>Linear</strong> decreases evenly. <strong>Smooth</strong> (default) uses a smoothstep curve — gradual at the edges, stronger near the centre — for the most natural look. <strong>Strong</strong> concentrates maximum influence tightly at the centre with a steep drop-off toward the edge.</td></tr>
-      <tr><td><strong>Intensity</strong></td><td>A global multiplier on the deformation effect (0.0–2.0). Values above 1.0 amplify the operation beyond its nominal amount. Use values below 1.0 to build up a deformation gradually across several Apply presses.</td></tr>
-      <tr><td><strong>Angle °</strong> (Rotate)</td><td>Degrees of rotation at full weight (at the centre). Positive values rotate counter-clockwise.</td></tr>
-      <tr><td><strong>Amount %</strong> (Scale)</td><td>Percentage to scale from the centre. Positive values expand; negative values contract.</td></tr>
-      <tr><td><strong>Push X / Push Y</strong> (Push)</td><td>Canvas-unit offset applied at full weight. Fractional values are appropriate for organic nudges; large values will move distant points less dramatically.</td></tr>
+      <tr><td><strong>Operation</strong></td><td>Selects the deformation type. Also changes the colour of the operation handle on canvas: yellow = Rotate, cyan = Scale, orange = Push.</td></tr>
+      <tr><td><strong>Centre</strong></td><td>Read-only display of the current influence centre in canvas coordinates. Click empty canvas to place or move it.</td></tr>
+      <tr><td><strong>Radius</strong></td><td>Size of the influence zone (0.01–1.0 canvas units). Drag the white square handle on canvas, or use the slider.</td></tr>
+      <tr><td><strong>Falloff</strong></td><td><strong>Linear</strong> — influence decreases evenly from centre to edge. <strong>Smooth</strong> (default) — smoothstep curve; gradual at the edges, strong near the centre. <strong>Strong</strong> — quadratic drop-off; maximum effect tightly concentrated at the centre.</td></tr>
+      <tr><td><strong>Intensity</strong></td><td>Global multiplier on the deformation strength (0.0–2.0). At 1.0 the drag result is applied as-is. Lower values build up a deformation gradually across multiple passes; higher values amplify each drag.</td></tr>
+      <tr><td><strong>Angle °</strong> (Rotate)</td><td>Rotation angle in degrees; set automatically by handle drag or enter a value manually before pressing Apply.</td></tr>
+      <tr><td><strong>Amount %</strong> (Scale)</td><td>Scale percentage; positive expands, negative contracts. Set automatically by handle drag or enter manually.</td></tr>
+      <tr><td><strong>Push X / Push Y</strong> (Push)</td><td>Displacement vector in canvas units. Set automatically by handle drag or enter manually.</td></tr>
+      <tr><td><strong>Before / After</strong></td><td>Choose layers to display as ghost outlines for visual reference while deforming. Set to <em>None</em> to hide.</td></tr>
+      <tr><td><strong>Reset to Base</strong></td><td>Restores the layer to its state when the Deform tool was first used in this session. Adds an undo entry. Disabled until at least one deformation has been applied.</td></tr>
+      <tr><td><strong>Apply</strong></td><td>Commits the current inspector values as a deformation. Use for precise numerical input; handle dragging is usually more intuitive.</td></tr>
     </tbody>
   </table>
 
-  <h4>Tips for morph target work</h4>
-  <ul>
-    <li>Copy the base layer to a new morph target layer before deforming. This preserves the original and gives you a clean before/after pair for the animation system.</li>
-    <li>Use a large radius with <strong>Smooth</strong> falloff for broad, organic shape changes. Tighten the radius and switch to <strong>Strong</strong> falloff for localised detail adjustments.</li>
-    <li>Stack multiple Apply presses at low Intensity (0.3–0.5) rather than one press at Intensity 1.0 — this gives you finer control over the cumulative result and each step is independently undoable.</li>
-    <li>After a Rotate pass, use a second Push pass with a small Y offset to shift the deformed region slightly, exaggerating the sense of movement.</li>
-  </ul>
+  <div class="note"><strong>Note:</strong> The Deform tool acts on the <em>active layer</em> only. To deform a specific part of a multi-layer set, make the target layer active before placing the centre. The operation handle deforms and commits in one gesture; the centre and radius handles only reposition the zone without touching geometry.</div>
 
   <!-- ─── Fish Tail Walkthrough ─── -->
   <h3 id="geometry-deform-walkthrough">Walkthrough: deforming a fish tail</h3>
-  <p>This step-by-step example shows how to use the Deform tool to create a morph target that represents the tail of a fish swung to one side — the kind of shape you'd use as one extreme of a looping swim cycle.</p>
+  <p>This step-by-step example shows how to use the Deform tool's interactive handles to create a morph target representing the tail of a fish swung to one side — one extreme of a looping swim cycle.</p>
 
-  <p><strong>Assumptions:</strong> you have a fish geometry set on a layer named <em>Base</em> with a body polygon and a tail region. The fish is roughly centred on the canvas, with the tail pointing to the right.</p>
+  <p><strong>Assumptions:</strong> you have a fish geometry set on a layer named <em>Base</em> containing a body polygon and a tail region. The fish is roughly centred on the canvas with the tail pointing to the right.</p>
 
   <ol class="steps">
     <li>
       <strong>Duplicate the base layer.</strong>
-      In the Layers panel, duplicate the <em>Base</em> layer and rename the copy <em>Tail Left</em>. This will become the morph target. Make <em>Tail Left</em> the active layer — the Deform tool operates on the active layer only.
+      In the Layers panel, duplicate <em>Base</em> and rename the copy <em>Tail Left</em>. Make <em>Tail Left</em> the active layer. This is the morph target you will shape; the original <em>Base</em> layer remains untouched.
     </li>
     <li>
       <strong>Activate the Deform tool.</strong>
-      Click the <em>wand.and.rays</em> icon in the geometry editor toolbar. The status bar shows "Deform tool active — click canvas to set centre."
+      Click the <em>wand.and.rays</em> icon in the geometry editor toolbar.
+    </li>
+    <li>
+      <strong>Set the Base layer as the Before reference.</strong>
+      In the Deform inspector, set the <strong>Before</strong> picker to <em>Base</em>. A blue ghost outline of the original fish appears on canvas. This gives you a visual anchor so you can see how far the tail has moved as you work.
     </li>
     <li>
       <strong>Place the influence centre at the tail root.</strong>
-      Click at the point where the tail meets the body — roughly where you want the hinge of the swing to be. A dashed circle and crosshair appear. The exact position is displayed in the <strong>Centre</strong> field in the Deform inspector section.
+      Click the canvas at the point where the tail joins the body — the hinge of the swing. A dashed circle and three handles appear.
     </li>
     <li>
-      <strong>Set the radius to cover the tail.</strong>
-      Adjust the <strong>Radius</strong> slider until the dashed circle encompasses all the tail geometry but excludes as much of the body as possible. A value around <code>0.20–0.30</code> is typical for a fish that fills roughly half the canvas. The body points just inside the radius will be gently pulled along — this is intentional and produces a natural flexing look at the join.
+      <strong>Resize the radius to cover the tail.</strong>
+      Drag the <strong>white square handle</strong> (right edge of the circle) outward until the dashed circle encompasses all the tail geometry but leaves most of the body outside. A radius of roughly <code>0.20–0.30</code> is typical. The body points just inside the edge of the zone will flex slightly — this is intentional and creates a natural join.
     </li>
     <li>
-      <strong>Choose Rotate and set the angle.</strong>
-      Set <strong>Operation</strong> to <em>Rotate</em>. Set <strong>Falloff</strong> to <em>Smooth</em>. Set <strong>Angle °</strong> to something like <code>−25</code> for a downward swing (negative = clockwise on canvas). Leave <strong>Intensity</strong> at <code>1.0</code> for the first pass.
+      <strong>Set the operation to Rotate.</strong>
+      In the inspector, set <strong>Operation</strong> to <em>Rotate</em> and <strong>Falloff</strong> to <em>Smooth</em>. The top handle turns yellow.
     </li>
     <li>
-      <strong>Apply and inspect.</strong>
-      Click <strong>Apply Deform</strong>. The tail swings down. Examine the result: if the motion looks too stiff or the join to the body is pinched, undo (<kbd>⌘Z</kbd>) and adjust — try a slightly larger radius, or lower the Intensity to <code>0.6</code> and apply twice.
+      <strong>Drag the yellow operation handle to swing the tail.</strong>
+      Drag the yellow circle at the top of the influence zone clockwise (downward and to the right). The tail geometry deforms live as you drag. Aim for roughly a quarter-turn of the handle — the <strong>Angle °</strong> field shows the current value. When the tail looks like a natural downswing (around −20° to −30°), release. The deformation commits as one undo step.
     </li>
     <li>
-      <strong>Optionally add a Push pass to exaggerate the tip.</strong>
-      With the same centre, switch <strong>Operation</strong> to <em>Push</em>. Tighten the <strong>Radius</strong> so only the outermost tail points are covered. Set <strong>Push Y</strong> to a small negative value (e.g. <code>−0.02</code>) and <strong>Push X</strong> to a small positive value (e.g. <code>0.01</code>). Apply. This nudges the very tip of the tail outward and downward, giving the fin a slight trailing arc that looks more fluid.
+      <strong>Refine if needed.</strong>
+      If the result looks too rigid at the body join, press <kbd>⌘Z</kbd> to undo, then try a slightly larger radius and drag again. If the geometry looks good but the swing is too extreme, undo and use a smaller drag. Each attempt is a single undo step so iteration is fast.
+    </li>
+    <li>
+      <strong>Add a Push pass to curve the fin tip.</strong>
+      Drag the <strong>white square handle</strong> inward to tighten the radius so only the outermost fin points are covered. Switch <strong>Operation</strong> to <em>Push</em> in the inspector — the top handle turns orange. Drag the orange handle downward and slightly rightward (in the direction the tail is curling). This nudges the very tip of the tail in a trailing arc, making the movement feel more fluid. Release to commit.
     </li>
     <li>
       <strong>Create the opposite extreme.</strong>
-      Duplicate the <em>Base</em> layer again, name it <em>Tail Right</em>, and repeat steps 2–6 with a positive angle (e.g. <code>+25</code>) to swing the tail up. You now have three geometry states: <em>Base</em>, <em>Tail Left</em>, and <em>Tail Right</em>.
+      Duplicate <em>Base</em> again, name it <em>Tail Right</em>, make it the active layer, and repeat steps 4–9 dragging the yellow handle counter-clockwise (upswing, around +20° to +30°). You now have three geometry states: <em>Base</em>, <em>Tail Left</em>, and <em>Tail Right</em>.
     </li>
     <li>
       <strong>Wire into a morph cycle.</strong>
-      In the Sprites inspector, assign these three layers as morph targets with appropriate in-weights and out-weights to create a smooth swim oscillation. The Deform tool has done the hard geometry work; the morph system handles the blending.
+      In the Sprites inspector, assign the three layers as morph targets with appropriate in-weights and out-weights to create a smooth swim oscillation. The Deform tool has done the geometry work; the morph system handles the blending at render time.
     </li>
   </ol>
 
-  <div class="tip"><strong>Tip:</strong> For a more lively tail, repeat this process at two different radii — a larger one that captures the whole tail section, and a smaller one centred on just the fin tip. Applying a smaller second rotation to the tip-only zone mimics the way a real fish tail flexes more at the extremity than at the root.</div>
+  <div class="tip"><strong>Tip:</strong> For a more lively tail, run a second Rotate pass at a tighter radius centred further along the tail — away from the body join. This adds a secondary flex at the fin tip independent of the main swing, mimicking how a real fish tail bends more at the extremity than at the root. Each pass is its own undo step so you can back out either independently.</div>
 
-  <div class="note"><strong>Note:</strong> The Deform tool affects all point types — anchors and both control handles. This preserves curve continuity across the deformation so subdivision output remains smooth, even on heavily deformed shapes.</div>
+  <div class="note"><strong>Note:</strong> The Deform tool affects all point types — anchors and both control handles. This preserves Bézier curve continuity across the deformation so subdivision output stays smooth even on heavily deformed shapes.</div>
 
 </section>
 
