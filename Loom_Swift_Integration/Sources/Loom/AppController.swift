@@ -1085,7 +1085,7 @@ final class AppController: ObservableObject, @unchecked Sendable {
     func applyDeform() {
         guard let center = deformCenter,
               var document = geometryEditorDocument,
-              let layerID = geometryEditorSelection.layerID,
+              let layerID = selectedGeometryEditorLayerID,
               let layerIndex = document.layers.firstIndex(where: { $0.id == layerID }),
               layerCanEdit(layerID)
         else { return }
