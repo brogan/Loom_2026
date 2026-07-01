@@ -1240,6 +1240,18 @@ final class AppController: ObservableObject, @unchecked Sendable {
         geometryEditorDocument?.namedPointSets ?? []
     }
 
+    /// Point UUIDs for the active named set in the currently selected layer, or nil if no set is active.
+    /// Re-computed whenever the document, selection, or active set changes.
+    var resolvedActiveDeformPointSetIDs: Set<UUID>? {
+        guard let setID = activeDeformPointSetID,
+              let layerID = selectedGeometryEditorLayerID,
+              let doc = geometryEditorDocument,
+              let layer = doc.layers.first(where: { $0.id == layerID }),
+              let set = doc.namedPointSets.first(where: { $0.id == setID })
+        else { return nil }
+        return resolveDeformPointSet(set, in: layer)
+    }
+
     /// Converts structural entries (polygon/curve/standalone index + point index) into
     /// the actual point UUIDs for a given layer. Safe against out-of-bounds indices.
     func resolveDeformPointSet(_ set: GeometryNamedPointSet, in layer: EditableGeometryLayer) -> Set<UUID> {

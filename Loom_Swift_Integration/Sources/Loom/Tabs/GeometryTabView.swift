@@ -1844,8 +1844,38 @@ private struct EditableGeometryCanvas: View {
         drawKnifeAnchorState(ctx: ctx, project: projectPoint)
         drawExtrudePreview(ctx: ctx, project: projectPoint)
         drawDeformReferenceLayers(ctx: ctx, project: projectPoint)
+        drawDeformPointSetHighlight(ctx: ctx, project: projectPoint)
         drawDeformOverlay(ctx: ctx, project: projectPoint)
         drawRubberBand(ctx: ctx)
+    }
+
+    // Draws gold rings around every point that belongs to the active named point set.
+    private func drawDeformPointSetHighlight(ctx: GraphicsContext, project: (Vector2D) -> CGPoint) {
+        guard controller.geometryEditorTool == .deform,
+              let setIDs = controller.resolvedActiveDeformPointSetIDs,
+              let layerID = controller.selectedGeometryEditorLayerID,
+              let doc = controller.geometryEditorDocument,
+              let layer = doc.layers.first(where: { $0.id == layerID }) else { return }
+
+        let gold = Color(red: 1.0, green: 0.82, blue: 0.0)
+
+        func ring(at pos: Vector2D, id: UUID) {
+            guard setIDs.contains(id) else { return }
+            let p = project(pos)
+            let r: CGFloat = 7
+            ctx.fill(Path(ellipseIn: CGRect(x: p.x - r, y: p.y - r, width: r * 2, height: r * 2)),
+                     with: .color(gold.opacity(0.18)))
+            ctx.stroke(Path(ellipseIn: CGRect(x: p.x - r, y: p.y - r, width: r * 2, height: r * 2)),
+                       with: .color(gold.opacity(0.9)), lineWidth: 1.5)
+        }
+
+        for polygon in layer.polygons {
+            for pt in polygon.points { ring(at: pt.position, id: pt.id) }
+        }
+        for curve in layer.openCurves {
+            for pt in curve.points { ring(at: pt.position, id: pt.id) }
+        }
+        for pt in layer.points { ring(at: pt.position, id: pt.id) }
     }
 
     private func drawDeformOverlay(ctx: GraphicsContext, project: (Vector2D) -> CGPoint) {

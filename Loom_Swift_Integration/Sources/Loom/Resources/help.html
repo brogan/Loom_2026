@@ -1298,6 +1298,31 @@
   </ul>
   <p>Both overlays are drawn at reduced opacity and do not affect rendering or export. They are only visible while the Deform tool is active. Set either picker to <em>None</em> to hide the overlay.</p>
 
+  <h4>Named point sets</h4>
+  <p>For complex geometry — tentacles, wings, multi-limb rigs — the radial zone and sector arc may not precisely isolate the points you need. <strong>Named point sets</strong> let you save any selection of control points under a name and recall it instantly from a dropdown, so the same carefully chosen subset is ready the moment you need it across a session and across layers.</p>
+
+  <p><strong>Creating a set:</strong></p>
+  <ol class="steps">
+    <li>Switch to the <strong>Points</strong> tool and select the exact control points you want in the set.</li>
+    <li>Switch back to the <strong>Deform</strong> tool.</li>
+    <li>In the <strong>Point Set</strong> row of the inspector, click the <strong>+</strong> button. A small popover appears asking for a name.</li>
+    <li>Type a descriptive name (e.g. <em>Tip Points</em>, <em>Base Ring</em>) and press <strong>Save</strong> or hit Return. The set is saved into the geometry file and the dropdown switches to it immediately.</li>
+  </ol>
+
+  <p><strong>Using a set:</strong> choose it from the <strong>Point Set</strong> dropdown. The chosen set's members are highlighted with <strong>gold rings</strong> on canvas so you can immediately confirm which points will move. Only those points are affected by subsequent deformation — the radial zone and sector still define how much each included point moves, but points outside the set are completely skipped regardless of their position.</p>
+
+  <p>Set <strong>Point Set</strong> back to <em>None</em> to return to normal (all-points) behaviour.</p>
+
+  <p><strong>Managing sets:</strong> while a set is active, two extra buttons appear next to the dropdown:</p>
+  <ul>
+    <li><strong>Pencil</strong> — rename the active set.</li>
+    <li><strong>Trash</strong> — delete it permanently (undo-able).</li>
+  </ul>
+
+  <p><strong>Cross-layer use (morph lock):</strong> point sets are stored by <em>structural position</em> — polygon index and point index within that polygon — rather than by per-layer UUID. This means a set defined in <em>Layer A</em> automatically selects the <em>corresponding</em> points in <em>Layer B</em>, <em>Layer C</em>, and so on, as long as all layers share the same topology (the same number of polygons with the same number of points each). Morph-target layers created by duplication always satisfy this condition. Switch the active layer, select the same set from the dropdown, and deform — the structurally identical points in the new layer are targeted.</p>
+
+  <div class="tip"><strong>Tip:</strong> You can combine a named point set with the Sector and Invert constraints. For example, on a tentacle rig you might define a <em>Sucker Row</em> point set, enable Sector to restrict influence to the bottom arc, and use Invert so the tip suckers bend more than the base ones — all in one deform pass.</div>
+
   <h4>Inspector parameters</h4>
   <table>
     <thead><tr><th>Parameter</th><th>Description</th></tr></thead>
@@ -1308,6 +1333,7 @@
       <tr><td><strong>Falloff</strong></td><td><strong>Linear</strong> — influence decreases evenly from centre to edge. <strong>Smooth</strong> (default) — smoothstep curve; gradual at the edges, strong near the centre. <strong>Strong</strong> — quadratic drop-off; maximum effect tightly concentrated at the centre.</td></tr>
       <tr><td><strong>Invert</strong></td><td>Reverses the falloff curve so that points at the outer edge of the radius receive maximum effect and points at the centre receive none. Useful when the centre marks an anchor (e.g. the tail root) and you want maximum deformation at the tips.</td></tr>
       <tr><td><strong>Sector</strong></td><td>Restricts deformation to a wedge-shaped arc of the influence circle. When enabled, two white-outlined circle handles appear on the circle perimeter — drag them around the circumference to set the sector boundaries. The excluded region is shown as a dark semi-opaque overlay. Only points whose angle from the centre falls within the arc (counter-clockwise from the start handle to the end handle) are affected. The current arc range is shown in degrees next to the toggle.</td></tr>
+      <tr><td><strong>Point Set</strong></td><td>Dropdown listing all saved named point sets. Choose a set to restrict deformation to only those points — their gold rings appear on canvas as confirmation. Click <strong>+</strong> to save the current point selection as a new named set. The pencil and trash icons (visible when a set is active) rename or delete it. Set to <em>None</em> to deform all points within the zone. Point sets cross layers when topology matches — ideal for morph-target workflows.</td></tr>
       <tr><td><strong>Intensity</strong></td><td>Global multiplier on the deformation strength (0.0–2.0). At 1.0 the drag result is applied as-is. Lower values build up a deformation gradually across multiple passes; higher values amplify each drag.</td></tr>
       <tr><td><strong>Angle °</strong> (Rotate)</td><td>Rotation angle in degrees; set automatically by handle drag or enter a value manually before pressing Apply.</td></tr>
       <tr><td><strong>Amount %</strong> (Scale)</td><td>Scale percentage; positive expands, negative contracts. Set automatically by handle drag or enter manually.</td></tr>
