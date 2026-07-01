@@ -1117,8 +1117,15 @@ private struct EditableGeometryCanvas: View {
     @State private var activeSelectionCanvasDrag = false
     @State private var activeClickOnlySelection = false
     @State private var isAnchorKnifeClick = false
+    // Deform handle drag state
+    @State private var deformActiveDragHandle = DeformDragHandle.none
+    @State private var deformDragStartCentre  = Vector2D.zero
+    @State private var deformDragStartRadius  = 0.0
+    @State private var deformDragStartWorld   = Vector2D.zero
+    @State private var deformDragStartAngle   = 0.0
     private let weldedEdgeColor = Color(red: 0.72, green: 0.22, blue: 1.0)
     private let weldedAnchorColor = Color(red: 0.95, green: 0.58, blue: 1.0)
+    private enum DeformDragHandle { case none, centre, radius, operation }
 
     var body: some View {
         GeometryReader { proxy in
@@ -1490,7 +1497,54 @@ private struct EditableGeometryCanvas: View {
                             controller.updateGeometryExtrudeDrag(to: point)
 
                         case .deform:
-                            break   // onEnded sets the centre; no drag behaviour needed
+                            let currentWorld = unproject(value.location, canvasSize: canvasSize)
+                            // Latch handle on first movement
+                            if deformActiveDragHandle == .none {
+                                deformActiveDragHandle = hitTestDeformHandle(at: value.startLocation, canvasSize: canvasSize)
+                                deformDragStartWorld  = unproject(value.startLocation, canvasSize: canvasSize)
+                                deformDragStartCentre = controller.deformCenter ?? .zero
+                                deformDragStartRadius = controller.deformRadius
+                                if deformActiveDragHandle == .operation {
+                                    if let c = controller.deformCenter {
+                                        let dx = deformDragStartWorld.x - c.x
+                                        let dy = deformDragStartWorld.y - c.y
+                                        deformDragStartAngle = atan2(dy, dx)
+                                    }
+                                    controller.beginDeformHandleDrag()
+                                }
+                            }
+                            switch deformActiveDragHandle {
+                            case .none: break
+                            case .centre:
+                                controller.deformCenter = Vector2D(
+                                    x: deformDragStartCentre.x + currentWorld.x - deformDragStartWorld.x,
+                                    y: deformDragStartCentre.y + currentWorld.y - deformDragStartWorld.y
+                                )
+                            case .radius:
+                                if let c = controller.deformCenter {
+                                    let dx = currentWorld.x - c.x, dy = currentWorld.y - c.y
+                                    controller.deformRadius = max(0.01, sqrt(dx*dx + dy*dy))
+                                }
+                            case .operation:
+                                guard let c = controller.deformCenter else { break }
+                                switch controller.deformOperation {
+                                case .rotate:
+                                    let dx = currentWorld.x - c.x, dy = currentWorld.y - c.y
+                                    controller.deformAngle = (atan2(dy, dx) - deformDragStartAngle) * 180.0 / .pi
+                                    controller.applyDeformFromPreviewSnapshot()
+                                case .scale:
+                                    let sdx = deformDragStartWorld.x - c.x, sdy = deformDragStartWorld.y - c.y
+                                    let startD = sqrt(sdx*sdx + sdy*sdy)
+                                    let cdx = currentWorld.x - c.x, cdy = currentWorld.y - c.y
+                                    let curD = sqrt(cdx*cdx + cdy*cdy)
+                                    controller.deformScale = startD > 0.0001 ? (curD - startD) / startD * 100.0 : 0
+                                    controller.applyDeformFromPreviewSnapshot()
+                                case .push:
+                                    controller.deformPushX = currentWorld.x - deformDragStartWorld.x
+                                    controller.deformPushY = currentWorld.y - deformDragStartWorld.y
+                                    controller.applyDeformFromPreviewSnapshot()
+                                }
+                            }
                         }
                     }
                     .onEnded { value in
@@ -1661,7 +1715,11 @@ private struct EditableGeometryCanvas: View {
                             controller.finishGeometryExtrude()
 
                         case .deform:
-                            controller.setDeformCenter(unproject(value.location, canvasSize: canvasSize))
+                            if deformActiveDragHandle == .none {
+                                // Simple click with no handle grabbed — place/move the centre
+                                controller.setDeformCenter(unproject(value.location, canvasSize: canvasSize))
+                            }
+                            deformActiveDragHandle = .none
                         }
                     }
             )
@@ -1775,6 +1833,7 @@ private struct EditableGeometryCanvas: View {
         drawCurvedKnifeLine(ctx: ctx, project: projectPoint)
         drawKnifeAnchorState(ctx: ctx, project: projectPoint)
         drawExtrudePreview(ctx: ctx, project: projectPoint)
+        drawDeformReferenceLayers(ctx: ctx, project: projectPoint)
         drawDeformOverlay(ctx: ctx, project: projectPoint)
         drawRubberBand(ctx: ctx)
     }
@@ -1783,8 +1842,8 @@ private struct EditableGeometryCanvas: View {
         guard controller.geometryEditorTool == .deform,
               let center = controller.deformCenter else { return }
         let cp = project(center)
-        // Convert radius from world units to canvas pixels via a tangent point
         let rp = project(Vector2D(x: center.x + controller.deformRadius, y: center.y))
+        let op = project(Vector2D(x: center.x, y: center.y + controller.deformRadius))
         let radiusPx = abs(rp.x - cp.x)
 
         // Dashed influence circle
@@ -1794,18 +1853,81 @@ private struct EditableGeometryCanvas: View {
         ctx.stroke(circle, with: .color(Color.accentColor.opacity(0.65)),
                    style: StrokeStyle(lineWidth: 1.5, dash: [6, 4]))
 
-        // Crosshair
+        // Crosshair arms from centre handle outward
         let arm: CGFloat = 9
         for (dx, dy): (CGFloat, CGFloat) in [(-arm, 0), (arm, 0), (0, -arm), (0, arm)] {
             var line = Path()
-            line.move(to: CGPoint(x: cp.x - dx * 0.3, y: cp.y - dy * 0.3))
+            line.move(to: CGPoint(x: cp.x - dx * 0.4, y: cp.y - dy * 0.4))
             line.addLine(to: CGPoint(x: cp.x + dx, y: cp.y + dy))
             ctx.stroke(line, with: .color(Color.accentColor), lineWidth: 1.5)
         }
 
-        // Centre dot
-        ctx.fill(Path(ellipseIn: CGRect(x: cp.x - 3, y: cp.y - 3, width: 6, height: 6)),
+        // Centre handle — filled accent circle (drag to move zone)
+        ctx.fill(Path(ellipseIn: CGRect(x: cp.x - 5, y: cp.y - 5, width: 10, height: 10)),
                  with: .color(Color.accentColor))
+
+        // Radius handle — white square at right of circle (drag to resize)
+        let rsz: CGFloat = 8
+        ctx.fill(Path(CGRect(x: rp.x - rsz/2, y: rp.y - rsz/2, width: rsz, height: rsz)),
+                 with: .color(.white.opacity(0.88)))
+        ctx.stroke(Path(CGRect(x: rp.x - rsz/2, y: rp.y - rsz/2, width: rsz, height: rsz)),
+                   with: .color(Color.accentColor.opacity(0.85)), lineWidth: 1)
+
+        // Operation handle — coloured circle at top of circle (drag to deform)
+        let opColor: Color
+        let opGlyph: String
+        switch controller.deformOperation {
+        case .rotate: opColor = Color(red: 1.0, green: 0.82, blue: 0.0);   opGlyph = "↻"
+        case .scale:  opColor = Color(red: 0.0, green: 0.88, blue: 0.72);  opGlyph = "⇔"
+        case .push:   opColor = Color(red: 1.0, green: 0.52, blue: 0.18);  opGlyph = "→"
+        }
+        ctx.fill(Path(ellipseIn: CGRect(x: op.x - 7, y: op.y - 7, width: 14, height: 14)),
+                 with: .color(opColor))
+        ctx.stroke(Path(ellipseIn: CGRect(x: op.x - 7, y: op.y - 7, width: 14, height: 14)),
+                   with: .color(Color.white.opacity(0.5)), lineWidth: 1)
+        ctx.draw(
+            Text(opGlyph).font(.system(size: 8, weight: .bold)).foregroundStyle(Color.black.opacity(0.75)),
+            at: op, anchor: .center
+        )
+    }
+
+    // Draw before/after reference layers as tinted ghost outlines.
+    private func drawDeformReferenceLayers(ctx: GraphicsContext, project: (Vector2D) -> CGPoint) {
+        guard controller.geometryEditorTool == .deform,
+              let document = controller.geometryEditorDocument else { return }
+        let refs: [(UUID?, Color)] = [
+            (controller.deformBeforeLayerID, Color(red: 0.45, green: 0.65, blue: 1.0)),
+            (controller.deformAfterLayerID,  Color(red: 1.0,  green: 0.65, blue: 0.35))
+        ]
+        for (layerID, tint) in refs {
+            guard let layerID,
+                  let layer = document.layers.first(where: { $0.id == layerID }) else { continue }
+            var refCtx = ctx
+            refCtx.opacity = 0.38
+            for polygon in layer.polygons where polygon.isVisible {
+                let pm = Dictionary(uniqueKeysWithValues: polygon.points.map { ($0.id, $0.position) })
+                var path = Path(); var moved = false
+                for seg in polygon.segments {
+                    guard let a0 = pm[seg.startAnchorID], let c0 = pm[seg.controlOutID],
+                          let c1 = pm[seg.controlInID],   let a1 = pm[seg.endAnchorID] else { continue }
+                    if !moved { path.move(to: project(a0)); moved = true }
+                    path.addCurve(to: project(a1), control1: project(c0), control2: project(c1))
+                }
+                path.closeSubpath()
+                refCtx.stroke(path, with: .color(tint), lineWidth: 1.2)
+            }
+            for curve in layer.openCurves where curve.isVisible {
+                let pm = Dictionary(uniqueKeysWithValues: curve.points.map { ($0.id, $0.position) })
+                var path = Path(); var moved = false
+                for seg in curve.segments {
+                    guard let a0 = pm[seg.startAnchorID], let c0 = pm[seg.controlOutID],
+                          let c1 = pm[seg.controlInID],   let a1 = pm[seg.endAnchorID] else { continue }
+                    if !moved { path.move(to: project(a0)); moved = true }
+                    path.addCurve(to: project(a1), control1: project(c0), control2: project(c1))
+                }
+                refCtx.stroke(path, with: .color(tint), lineWidth: 1.2)
+            }
+        }
     }
 
     private func drawReferenceImage(ctx: GraphicsContext, project: (Vector2D) -> CGPoint) {
@@ -2801,6 +2923,28 @@ private struct EditableGeometryCanvas: View {
 
     private func viewTransform(canvasSize: CGFloat) -> (scale: CGFloat, origin: CGPoint) {
         viewTransform(size: CGSize(width: canvasSize, height: canvasSize))
+    }
+
+    // Project a world-space Vector2D to screen-space CGPoint (inverse of unproject).
+    private func projectToScreen(_ v: Vector2D, canvasSize: CGFloat) -> CGPoint {
+        let (scale, origin) = viewTransform(canvasSize: canvasSize)
+        return CGPoint(
+            x: origin.x + CGFloat(v.x + 0.52) * 1000 * scale,
+            y: origin.y + CGFloat(0.52 - v.y)  * 1000 * scale
+        )
+    }
+
+    // Hit-test the three deform handles; returns which one contains the screen point.
+    private func hitTestDeformHandle(at pt: CGPoint, canvasSize: CGFloat) -> DeformDragHandle {
+        guard let center = controller.deformCenter else { return .none }
+        let cp = projectToScreen(center, canvasSize: canvasSize)
+        let rp = projectToScreen(Vector2D(x: center.x + controller.deformRadius, y: center.y), canvasSize: canvasSize)
+        let op = projectToScreen(Vector2D(x: center.x, y: center.y + controller.deformRadius), canvasSize: canvasSize)
+        let hit: CGFloat = 12
+        if hypot(pt.x - op.x, pt.y - op.y) < hit { return .operation }
+        if hypot(pt.x - rp.x, pt.y - rp.y) < hit { return .radius }
+        if hypot(pt.x - cp.x, pt.y - cp.y) < hit { return .centre }
+        return .none
     }
 
     private func unproject(_ point: CGPoint, canvasSize: CGFloat) -> Vector2D {

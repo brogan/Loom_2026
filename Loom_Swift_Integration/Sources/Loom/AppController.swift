@@ -248,15 +248,20 @@ final class AppController: ObservableObject, @unchecked Sendable {
     @Published var geometryEditorAutoWeld:        Bool = true
 
     // MARK: - Deform tool
-    @Published var deformCenter:    Vector2D?       = nil
-    @Published var deformRadius:    Double          = 0.15
-    @Published var deformFalloff:   DeformFalloff   = .smooth
-    @Published var deformOperation: DeformOperation = .rotate
-    @Published var deformAngle:     Double          = 15.0
-    @Published var deformScale:     Double          = 20.0
-    @Published var deformPushX:     Double          = 0.05
-    @Published var deformPushY:     Double          = 0.0
-    @Published var deformIntensity: Double          = 1.0
+    @Published var deformCenter:        Vector2D?       = nil
+    @Published var deformRadius:        Double          = 0.15
+    @Published var deformFalloff:       DeformFalloff   = .smooth
+    @Published var deformOperation:     DeformOperation = .rotate
+    @Published var deformAngle:         Double          = 15.0
+    @Published var deformScale:         Double          = 20.0
+    @Published var deformPushX:         Double          = 0.05
+    @Published var deformPushY:         Double          = 0.0
+    @Published var deformIntensity:     Double          = 1.0
+    @Published var deformBeforeLayerID: UUID?           = nil
+    @Published var deformAfterLayerID:  UUID?           = nil
+    @Published var deformHasOrigin:     Bool            = false
+    private var deformOriginSnapshot:   EditableGeometryLayer? = nil
+    private var deformPreviewSnapshot:  EditableGeometryLayer? = nil
     @Published var geometryEditorWeldTolerance:   Double = 0.5
     @Published var geometryEditorAutoWeldSegmentIDs: Set<EditableGeometryID> = []
     @Published var selectedGeometryEditorLayerID: UUID?   = nil
@@ -1075,11 +1080,61 @@ final class AppController: ObservableObject, @unchecked Sendable {
     func startDeformTool() {
         geometryEditorTool = .deform
         deformCenter = nil
-        postStatus("Deform: click canvas to set centre, then apply in the inspector")
+        deformHasOrigin = false
+        deformOriginSnapshot = nil
+        deformPreviewSnapshot = nil
+        postStatus("Deform: click canvas to set centre, drag handles to deform interactively")
     }
 
     func setDeformCenter(_ center: Vector2D) {
         deformCenter = center
+    }
+
+    // Capture the layer state when the tool first becomes active (or after reset).
+    // Idempotent — won't overwrite an existing origin snapshot.
+    func captureDeformOriginIfNeeded() {
+        guard !deformHasOrigin,
+              let layerID = selectedGeometryEditorLayerID,
+              let document = geometryEditorDocument,
+              let layer = document.layers.first(where: { $0.id == layerID }) else { return }
+        deformOriginSnapshot = layer
+        deformHasOrigin = true
+    }
+
+    func resetToDeformOrigin() {
+        guard let snap = deformOriginSnapshot,
+              var document = geometryEditorDocument,
+              let layerID = selectedGeometryEditorLayerID,
+              let idx = document.layers.firstIndex(where: { $0.id == layerID }) else { return }
+        recordGeometryEditorUndoSnapshot()
+        document.layers[idx] = snap
+        setGeometryEditorDocument(document)
+        deformPreviewSnapshot = nil
+        postStatus("Deform reset to origin")
+    }
+
+    // Called when an operation handle drag begins.
+    // Records an undo snapshot and takes a preview snapshot of the layer
+    // so each drag frame can apply from a clean base.
+    func beginDeformHandleDrag() {
+        guard let layerID = selectedGeometryEditorLayerID,
+              let document = geometryEditorDocument,
+              let layer = document.layers.first(where: { $0.id == layerID }) else { return }
+        captureDeformOriginIfNeeded()
+        deformPreviewSnapshot = layer
+        recordGeometryEditorUndoSnapshot()
+    }
+
+    // Apply current deform params from the preview snapshot (live, no extra undo recording).
+    func applyDeformFromPreviewSnapshot() {
+        guard let snap = deformPreviewSnapshot,
+              let center = deformCenter,
+              var document = geometryEditorDocument,
+              let layerID = selectedGeometryEditorLayerID,
+              let layerIndex = document.layers.firstIndex(where: { $0.id == layerID }) else { return }
+        document.layers[layerIndex] = snap
+        applyDeformMath(to: &document.layers[layerIndex], center: center)
+        geometryEditorDocument = document
     }
 
     func applyDeform() {
@@ -1089,9 +1144,14 @@ final class AppController: ObservableObject, @unchecked Sendable {
               let layerIndex = document.layers.firstIndex(where: { $0.id == layerID }),
               layerCanEdit(layerID)
         else { return }
-
+        captureDeformOriginIfNeeded()
         recordGeometryEditorUndoSnapshot()
+        applyDeformMath(to: &document.layers[layerIndex], center: center)
+        setGeometryEditorDocument(document)
+        postStatus("Deform applied")
+    }
 
+    private func applyDeformMath(to layer: inout EditableGeometryLayer, center: Vector2D) {
         let r = max(deformRadius, 1e-9)
 
         func falloffWeight(_ p: Vector2D) -> Double {
@@ -1127,25 +1187,21 @@ final class AppController: ObservableObject, @unchecked Sendable {
             }
         }
 
-        for pi in document.layers[layerIndex].polygons.indices {
-            for pti in document.layers[layerIndex].polygons[pi].points.indices {
-                document.layers[layerIndex].polygons[pi].points[pti].position =
-                    deform(document.layers[layerIndex].polygons[pi].points[pti].position)
+        for pi in layer.polygons.indices {
+            for pti in layer.polygons[pi].points.indices {
+                layer.polygons[pi].points[pti].position =
+                    deform(layer.polygons[pi].points[pti].position)
             }
         }
-        for ci in document.layers[layerIndex].openCurves.indices {
-            for pti in document.layers[layerIndex].openCurves[ci].points.indices {
-                document.layers[layerIndex].openCurves[ci].points[pti].position =
-                    deform(document.layers[layerIndex].openCurves[ci].points[pti].position)
+        for ci in layer.openCurves.indices {
+            for pti in layer.openCurves[ci].points.indices {
+                layer.openCurves[ci].points[pti].position =
+                    deform(layer.openCurves[ci].points[pti].position)
             }
         }
-        for pti in document.layers[layerIndex].points.indices {
-            document.layers[layerIndex].points[pti].position =
-                deform(document.layers[layerIndex].points[pti].position)
+        for pti in layer.points.indices {
+            layer.points[pti].position = deform(layer.points[pti].position)
         }
-
-        setGeometryEditorDocument(document)
-        postStatus("Deform applied")
     }
 
     func beginGeometryCurvedKnifeLine(at point: Vector2D) {

@@ -936,7 +936,7 @@ private struct GeometryEditorShellInspector: View {
                             ),
                             width: 62,
                             fractionDigits: 1,
-                            help: "Rotation angle in degrees applied at full weight at the centre"
+                            help: "Rotation angle in degrees; also updated live by dragging the yellow handle"
                         )
                     }
                 case .scale:
@@ -948,7 +948,7 @@ private struct GeometryEditorShellInspector: View {
                             ),
                             width: 62,
                             fractionDigits: 1,
-                            help: "Scale amount as percentage: positive expands, negative contracts"
+                            help: "Scale amount as percentage; also updated live by dragging the cyan handle"
                         )
                     }
                 case .push:
@@ -960,7 +960,7 @@ private struct GeometryEditorShellInspector: View {
                             ),
                             width: 62,
                             fractionDigits: 3,
-                            help: "Horizontal displacement at full weight"
+                            help: "Horizontal displacement; also updated live by dragging the orange handle"
                         )
                     }
                     InspectorField("Push Y") {
@@ -971,21 +971,60 @@ private struct GeometryEditorShellInspector: View {
                             ),
                             width: 62,
                             fractionDigits: 3,
-                            help: "Vertical displacement at full weight"
+                            help: "Vertical displacement; also updated live by dragging the orange handle"
                         )
                     }
                 }
 
-                // Apply button
-                HStack {
+                // Reference layers (before / after ghost overlays)
+                let layerOptions = controller.geometryEditorLayers
+                InspectorField("Before") {
+                    Picker("", selection: Binding(
+                        get: { controller.deformBeforeLayerID },
+                        set: { controller.deformBeforeLayerID = $0 }
+                    )) {
+                        Text("None").tag(UUID?.none)
+                        ForEach(layerOptions) { layer in
+                            Text(layer.name).tag(Optional(layer.id))
+                        }
+                    }
+                    .labelsHidden()
+                }
+                .modifier(LoomHoverHelp("Show this layer as a blue ghost overlay while deforming"))
+
+                InspectorField("After") {
+                    Picker("", selection: Binding(
+                        get: { controller.deformAfterLayerID },
+                        set: { controller.deformAfterLayerID = $0 }
+                    )) {
+                        Text("None").tag(UUID?.none)
+                        ForEach(layerOptions) { layer in
+                            Text(layer.name).tag(Optional(layer.id))
+                        }
+                    }
+                    .labelsHidden()
+                }
+                .modifier(LoomHoverHelp("Show this layer as an orange ghost overlay while deforming"))
+
+                // Apply / Reset row
+                HStack(spacing: 8) {
+                    Button("Reset to Base") {
+                        controller.resetToDeformOrigin()
+                    }
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
+                    .disabled(!controller.deformHasOrigin)
+                    .modifier(LoomHoverHelp("Undo all deformations back to the state when the Deform tool was first activated"))
+
                     Spacer()
-                    Button("Apply Deform") {
+
+                    Button("Apply") {
                         controller.applyDeform()
                     }
                     .buttonStyle(.borderedProminent)
                     .controlSize(.small)
                     .disabled(controller.deformCenter == nil)
-                    Spacer()
+                    .modifier(LoomHoverHelp("Apply current deform parameters as a new undo step"))
                 }
                 .padding(.top, 4)
             }
