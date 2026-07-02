@@ -257,16 +257,19 @@ struct SpriteWireframeView: View {
     // MARK: - Types
 
     enum HandleID: Equatable {
-        case tl, t, tr, l, r, bl, b, br, interior
+        case tl, t, tr, l, r, bl, b, br, interior, pivot
         var isRotate: Bool { self == .tr || self == .bl }
     }
 
     struct LiveTransform {
         var posX, posY, scaleX, scaleY, rotation: Double
+        var pivotOffsetX, pivotOffsetY: Double
         init(_ d: SpriteDef) {
             posX = d.position.x; posY = d.position.y
             scaleX = d.scale.x;  scaleY = d.scale.y
             rotation = d.rotation
+            pivotOffsetX = d.pivotOffset.x
+            pivotOffsetY = d.pivotOffset.y
         }
     }
 
@@ -408,6 +411,11 @@ struct SpriteWireframeView: View {
                     if !allPts.isEmpty {
                         drawBBoxAndHandles(ctx: ctx, screenPoints: allPts)
                     }
+                    let resolved = resolvedDef(sprite)
+                    drawPivotHandle(ctx: ctx, at: parallaxAdjustedScreen(
+                        Vector2D(x: world.posX + resolved.pivotOffset.x,
+                                 y: world.posY + resolved.pivotOffset.y),
+                        depth: sprite.depth, rect: rect))
                 }
             } else {
                 // Placeholder cross for sprites with no engine instance
@@ -422,11 +430,29 @@ struct SpriteWireframeView: View {
                         CGPoint(x: centre.x + pad, y: centre.y + pad),
                         CGPoint(x: centre.x - pad, y: centre.y + pad)
                     ])
+                    let resolved = resolvedDef(sprite)
+                    drawPivotHandle(ctx: ctx, at: parallaxAdjustedScreen(
+                        Vector2D(x: world.posX + resolved.pivotOffset.x,
+                                 y: world.posY + resolved.pivotOffset.y),
+                        depth: sprite.depth, rect: rect))
                 }
             }
         }
     }
 
+
+    private func drawPivotHandle(ctx: GraphicsContext, at pos: CGPoint) {
+        let r: CGFloat = 6, arm: CGFloat = 11
+        let color = Color(red: 1.0, green: 0.58, blue: 0.1)
+        var cross = Path()
+        cross.move(to: CGPoint(x: pos.x - arm, y: pos.y))
+        cross.addLine(to: CGPoint(x: pos.x + arm, y: pos.y))
+        cross.move(to: CGPoint(x: pos.x, y: pos.y - arm))
+        cross.addLine(to: CGPoint(x: pos.x, y: pos.y + arm))
+        ctx.stroke(cross, with: .color(color), lineWidth: 1.5)
+        ctx.stroke(Path(ellipseIn: CGRect(x: pos.x - r, y: pos.y - r, width: r * 2, height: r * 2)),
+                   with: .color(color), lineWidth: 1.5)
+    }
 
     private func drawPlaceholder(ctx: GraphicsContext, centre: CGPoint, color: Color) {
         let s: CGFloat = 9
@@ -714,6 +740,8 @@ struct SpriteWireframeView: View {
             d.position.x = live.posX;  d.position.y = live.posY
             d.scale.x    = live.scaleX; d.scale.y   = live.scaleY
             d.rotation   = live.rotation
+            d.pivotOffset.x = live.pivotOffsetX
+            d.pivotOffset.y = live.pivotOffsetY
             return d
         }
 
@@ -842,6 +870,20 @@ struct SpriteWireframeView: View {
         let wireWorlds     = buildWireWorlds(sprites: sprites)
         let world          = wireWorlds[spriteID]
 
+        // Pivot handle hit-test (highest priority — before bbox handles)
+        let pivotWorldPt = Vector2D(
+            x: (world?.posX ?? resolvedSprite.position.x) + resolvedSprite.pivotOffset.x,
+            y: (world?.posY ?? resolvedSprite.position.y) + resolvedSprite.pivotOffset.y
+        )
+        let pivotScrPt = parallaxAdjustedScreen(pivotWorldPt, depth: resolvedSprite.depth, rect: rect)
+        if hypot(startLoc.x - pivotScrPt.x, startLoc.y - pivotScrPt.y) <= 10 {
+            activeDragHandle = .pivot
+            dragStartPos     = startLoc
+            dragStartDef     = resolvedSprite
+            liveTransform    = LiveTransform(resolvedSprite)
+            return
+        }
+
         // Compute screen bbox from engine geometry or placeholder
         var screenPoints: [CGPoint]
         if let instance = instanceMap[spriteID], let world = world {
@@ -935,6 +977,12 @@ struct SpriteWireframeView: View {
             let a1 = atan2(centreScreen.y - currentLoc.y, currentLoc.x - centreScreen.x)
             let delta = (a1 - a0) * 180.0 / .pi
             live.rotation = (startDef.rotation + delta).truncatingRemainder(dividingBy: 360)
+
+        case .pivot:
+            let dx = (currW.x - startW.x) * 100.0
+            let dy = (currW.y - startW.y) * 100.0
+            live.pivotOffsetX = startDef.pivotOffset.x + dx
+            live.pivotOffsetY = startDef.pivotOffset.y + dy
         }
 
         liveTransform = live
@@ -954,6 +1002,15 @@ struct SpriteWireframeView: View {
               let cfg      = controller.projectConfig,
               let (si, pi) = spriteLocation(named: spriteID, in: cfg)
         else { return }
+
+        // Pivot drag: always writes to base def, independent of KF mode.
+        if activeDragHandle == .pivot {
+            controller.updateProjectConfig { config in
+                config.spriteConfig.library.spriteSets[si].sprites[pi].pivotOffset.x = live.pivotOffsetX
+                config.spriteConfig.library.spriteSets[si].sprites[pi].pivotOffset.y = live.pivotOffsetY
+            }
+            return
+        }
 
         // Timeline driver KF mode: write the drag result back to the selected driver keyframe.
         if let tkf = activeTimelineKF {

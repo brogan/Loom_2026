@@ -2616,31 +2616,15 @@ private struct QuickSetupSection: View {
             Divider().padding(.vertical, 4)
             pipelinePhaseHeader(.subdivision)
             InspectorField("Subdivision set") {
-                Picker("", selection: $qsSubdivSetName) {
-                    ForEach(subdivisionSetOptions, id: \.self) { name in
-                        Text(name).tag(name)
-                    }
-                }
-                .labelsHidden()
-                .pickerStyle(.menu)
-                    .font(.system(size: 11))
-                    .frame(maxWidth: .infinity)
+                comboField($qsSubdivSetName, options: subdivisionSetOptions)
             }
-            .loomHelp("Subdivision parameter set applied to the generated shape. Choose None for raw unsubdivided geometry.")
+            .loomHelp("Subdivision parameter set applied to the generated shape. Type a new name or use the chevron to pick an existing set. Type or choose 'None' for raw unsubdivided geometry.")
             Divider().padding(.vertical, 4)
             pipelinePhaseHeader(.sprites)
             InspectorField("Sprite set") {
-                Picker("", selection: $qsSpriteSetName) {
-                    ForEach(spriteSetOptions, id: \.self) { name in
-                        Text(name).tag(name)
-                    }
-                }
-                .labelsHidden()
-                .pickerStyle(.menu)
-                    .font(.system(size: 11))
-                    .frame(maxWidth: .infinity)
+                comboField($qsSpriteSetName, options: spriteSetOptions)
             }
-            .loomHelp("Sprite set that will contain the new sprite. Pick an existing set to add to it, or type a new name to create one.")
+            .loomHelp("Sprite set that will contain the new sprite. Type a new name or use the chevron to pick an existing set.")
             InspectorField("Sprite") {
                 TextField("", text: $qsSpriteName)
                     .textFieldStyle(.squareBorder)
@@ -2651,40 +2635,37 @@ private struct QuickSetupSection: View {
             Divider().padding(.vertical, 4)
             pipelinePhaseHeader(.rendering)
             InspectorField("Renderer set") {
-                Picker("", selection: $qsRendererSetName) {
-                    ForEach(rendererSetOptions, id: \.self) { name in
-                        Text(name).tag(name)
-                    }
-                }
-                .labelsHidden()
-                .pickerStyle(.menu)
-                    .font(.system(size: 11))
-                    .frame(maxWidth: .infinity)
+                comboField($qsRendererSetName, options: rendererSetOptions)
             }
-            .loomHelp("Renderer set assigned to the new sprite. Pick an existing set to add to it, or type a new name to create one.")
+            .loomHelp("Renderer set assigned to the new sprite. Type a new name or use the chevron to pick an existing set.")
             InspectorField("Renderer") {
-                Picker("", selection: $qsRendererName) {
-                    ForEach(rendererOptions, id: \.self) { name in
-                        Text(name).tag(name)
-                    }
-                }
-                .labelsHidden()
-                .pickerStyle(.menu)
-                    .font(.system(size: 11))
-                    .frame(maxWidth: .infinity)
+                comboField($qsRendererName, options: rendererOptions)
             }
-            .loomHelp("Name of the renderer to create within the renderer set.")
-            InspectorField("Mode") {
-                Picker("", selection: $qsRendererMode) {
-                    ForEach(RendererMode.allCases, id: \.self) { m in
-                        Text(m.displayName).tag(m)
-                    }
+            .loomHelp("Renderer name. Type a new name or use the chevron to pick an existing renderer. Existing renderers keep their current definition.")
+            if rendererAlreadyExists {
+                HStack(spacing: 5) {
+                    Image(systemName: "checkmark.circle.fill")
+                        .font(.system(size: 10))
+                        .foregroundStyle(Color.green)
+                    Text("Existing renderer — definition unchanged")
+                        .font(.system(size: 10))
+                        .foregroundStyle(Color.secondary)
                 }
-                .labelsHidden()
-                    .font(.system(size: 11))
-                    .frame(maxWidth: .infinity)
+                .padding(.horizontal, 12)
+                .padding(.vertical, 3)
+            } else {
+                InspectorField("Mode") {
+                    Picker("", selection: $qsRendererMode) {
+                        ForEach(RendererMode.allCases, id: \.self) { m in
+                            Text(m.displayName).tag(m)
+                        }
+                    }
+                    .labelsHidden()
+                        .font(.system(size: 11))
+                        .frame(maxWidth: .infinity)
+                }
+                .loomHelp("Drawing mode for the new renderer — Stroked (outline), Filled (solid), Filled+Stroked (both), Points (dot cloud), Brushed (stamps along path), Stamped (images at points).")
             }
-            .loomHelp("Drawing mode for the new renderer — Stroked (outline), Filled (solid), Filled+Stroked (both), Points (dot cloud), Brushed (stamps along path), Stamped (images at points).")
             Divider().padding(.vertical, 4)
             HStack(spacing: 6) {
                 let n = controller.projectConfig.map { gatherPipelines(geoName: geoName, cfg: $0).count } ?? 0
@@ -2747,6 +2728,32 @@ private struct QuickSetupSection: View {
         .padding(.horizontal, 12)
         .padding(.top, 2)
         .padding(.bottom, 1)
+    }
+
+    /// Editable text field with a chevron menu for quick-selecting from existing names.
+    private func comboField(_ text: Binding<String>, options: [String]) -> some View {
+        HStack(spacing: 0) {
+            TextField("", text: text)
+                .textFieldStyle(.squareBorder)
+                .font(.system(size: 11))
+            if !options.isEmpty {
+                Menu {
+                    ForEach(options, id: \.self) { opt in
+                        Button(opt) { text.wrappedValue = opt }
+                    }
+                } label: {
+                    Image(systemName: "chevron.down")
+                        .font(.system(size: 9, weight: .semibold))
+                        .frame(width: 20, height: 20)
+                        .background(Color(white: 0.22))
+                        .clipShape(RoundedRectangle(cornerRadius: 3))
+                        .foregroundStyle(Color.secondary)
+                }
+                .menuStyle(.borderlessButton)
+                .frame(width: 20)
+            }
+        }
+        .frame(maxWidth: .infinity)
     }
 
     private func actionButton(_ label: String, action: @escaping () -> Void) -> some View {
@@ -2860,18 +2867,13 @@ private struct QuickSetupSection: View {
                 rendererSetIndex = cfg.renderingConfig.library.rendererSets.count - 1
             }
 
-            let renderer = Renderer(
-                name: rendererName,
-                mode: rendererMode,
-                strokeWidth: 1.0,
-                strokeColor: .black,
-                fillColor: LoomColor(r: 220, g: 220, b: 220)
-            )
-            if let rendererIndex = cfg.renderingConfig.library.rendererSets[rendererSetIndex].renderers
-                .firstIndex(where: { $0.name == rendererName }) {
-                cfg.renderingConfig.library.rendererSets[rendererSetIndex].renderers[rendererIndex] = renderer
-            } else {
-                cfg.renderingConfig.library.rendererSets[rendererSetIndex].renderers.append(renderer)
+            if !cfg.renderingConfig.library.rendererSets[rendererSetIndex].renderers
+                .contains(where: { $0.name == rendererName }) {
+                cfg.renderingConfig.library.rendererSets[rendererSetIndex].renderers.append(
+                    Renderer(name: rendererName, mode: rendererMode,
+                             strokeWidth: 1.0, strokeColor: .black,
+                             fillColor: LoomColor(r: 220, g: 220, b: 220))
+                )
             }
 
             let sprite = SpriteDef(
@@ -3015,6 +3017,16 @@ private struct QuickSetupSection: View {
     private var recommendedRendererName: String { baseStem }
     private var recommendedQuickSetupRendererMode: RendererMode {
         sourceIsCleanParametricRegularPolygon ? .stroked : qsRendererMode
+    }
+
+    private var rendererAlreadyExists: Bool {
+        let setName = clean(qsRendererSetName)
+        let rName   = clean(qsRendererName)
+        guard !setName.isEmpty, !rName.isEmpty else { return false }
+        return controller.projectConfig?.renderingConfig.library.rendererSets
+            .first(where: { $0.name == setName })?
+            .renderers
+            .contains(where: { $0.name == rName }) ?? false
     }
 
     private var layerOptions: [QuickSetupLayerOption] {

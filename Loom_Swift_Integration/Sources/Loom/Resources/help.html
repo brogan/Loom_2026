@@ -870,10 +870,10 @@
   <h3>Quick setup</h3>
   <p>Quick setup creates a working pipeline from a geometry source without requiring separate dialogs for every hidden shape and shape-set object. Shape sets and shapes still exist internally, but the user-facing workflow concentrates on geometry, subdivision, sprites, render sets, and renderers.</p>
   <ul>
-    <li>Suggested names are generated automatically using concise suffixes: <code>SubSet</code>, <code>SprtSet</code>, <code>RenSet</code>, and <code>Ren</code>.</li>
-    <li>Subdivision, sprite, renderer set, and renderer fields are dropdowns. You can accept the suggested name or choose an existing item in the project.</li>
-    <li>If the geometry is not subdividable, the subdivision field shows <strong>None</strong>. Polygonal geometry can also be deliberately assigned <strong>None</strong> when subdivision is not wanted.</li>
-    <li>Make Pipeline creates the necessary behind-the-scenes links but leaves you in the current tab. A visual status signal confirms that the pipeline has been built.</li>
+    <li>Suggested names are generated automatically from the geometry name. All name fields are <strong>editable</strong> — type directly to override the suggestion, or click the <strong>⌄</strong> chevron beside each field to pick from items that already exist in the project.</li>
+    <li>If the geometry is not subdividable the subdivision field shows <strong>None</strong>. Polygonal geometry can also be deliberately assigned <strong>None</strong> when subdivision is not wanted.</li>
+    <li><strong>Existing renderers are preserved.</strong> When the renderer set and renderer name you enter already exist in the project, a green badge reads <em>Existing renderer — definition unchanged</em> and the Mode picker is hidden. Make Pipeline wires the sprite to that renderer without touching its colours, stroke width, or any other setting. This lets you share a carefully designed renderer across multiple sprites without accidental resets.</li>
+    <li>Make Pipeline creates the necessary behind-the-scenes links but leaves you in the current tab. A visual status badge confirms whether the pipeline exists.</li>
   </ul>
 
   <h3 id="geometry-cycle-setup">Cycle setup</h3>
@@ -1797,12 +1797,15 @@
   <p><strong>Pivot X / Pivot Y</strong> appear in the <strong>Transform</strong> section of the sprite inspector, between Rotation and Depth. The values are in the same world-coordinate units as Position. Rotation (from animation drivers, keyframes, or cycle pose overrides) is applied around <code>position + pivot</code> rather than <code>position</code>.</p>
 
   <h4>Setting a pivot</h4>
+  <p>The pivot can be placed interactively on the canvas or entered numerically in the inspector.</p>
+  <p><strong>Canvas drag (recommended).</strong> When a sprite is selected in the Sprites tab wireframe view, an orange crosshair-circle marker appears at its current pivot position (default: the sprite's centre when the pivot is at zero). Drag the marker to any point on the canvas to reposition the pivot; the view updates live. Release to commit. The marker is always drawn on top of the wireframe so it remains visible regardless of the sprite's geometry.</p>
   <ol class="steps">
-    <li>Select the sprite in the <strong>Sprites tab</strong> and open the inspector.</li>
-    <li>In the <strong>Transform</strong> section, find the <strong>Pivot</strong> row. Both X and Y default to 0.</li>
-    <li>Set <strong>Pivot Y</strong> to the distance from the sprite's geometric centre to the joint — positive Y moves the pivot upward (in Loom's Y-up world convention). For example, if the sprite's artwork has its knee joint 15 units above the sprite's origin, enter 15 in Pivot Y.</li>
-    <li>Test by giving the sprite a rotation value. It should now arc around the joint instead of the origin.</li>
+    <li>Select the sprite in the <strong>Sprites tab</strong> wireframe view.</li>
+    <li>Locate the orange crosshair marker on the canvas.</li>
+    <li>Click and drag it to the joint — knee, shoulder, hip, or any rotation point.</li>
+    <li>Test by giving the sprite a non-zero Rotation value. It should now arc around the joint.</li>
   </ol>
+  <p><strong>Numeric entry.</strong> The <strong>Pivot</strong> row in the inspector's Transform section also accepts direct values in world units. The canvas marker and the inspector fields stay in sync.</p>
 
   <div class="note"><strong>Pivot X / Y are in world units, not pixels.</strong> The same unit system as Position: 100 units = half the canvas width. A pivot of (0, 15) moves the rotation centre 15 world units upward, which is 15% of canvas half-height. For a 1080×1080 canvas, 100 units = 540 px, so 15 units ≈ 81 px.</div>
 
