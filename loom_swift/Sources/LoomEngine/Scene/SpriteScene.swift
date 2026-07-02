@@ -1436,6 +1436,32 @@ public struct SpriteScene: @unchecked Sendable {
 
         let needsOffscreen = cycleLayers.count > 1
 
+        // ── Pose override interpolation ───────────────────────────────────────
+        // If either the outgoing or incoming cycle state defines a pose override
+        // for this sprite, compute a blended pose for the current transition
+        // progress and apply it to every layer instance before rendering.
+        // This keeps geometry cross-fades intact while smoothly moving the rig.
+        let blendedPose: SpritePoseOverride? = {
+            let outIdx  = cycleLayers[0].stateIndex
+            let inIdx   = cycleLayers.count > 1 ? cycleLayers[1].stateIndex : outIdx
+            let t       = cycleLayers.count > 1 ? cycleLayers[1].alpha : 0.0
+            let name    = instance.def.name
+            let outPose = outIdx < cycle.states.count ? cycle.states[outIdx].poseOverrides[name] : nil
+            let inPose  = inIdx  < cycle.states.count ? cycle.states[inIdx].poseOverrides[name]  : nil
+            guard outPose != nil || inPose != nil else { return nil }
+            // Use the sprite's base def values as the identity pose when a state has no override.
+            let base    = SpritePoseOverride(position: instance.def.position,
+                                             rotation: instance.def.rotation,
+                                             scale:    instance.def.scale)
+            let from    = outPose ?? base
+            let to      = inPose  ?? base
+            return SpritePoseOverride(
+                position: Vector2D.lerp(from.position, to.position, t: t),
+                rotation: lerpAngle(from.rotation, to.rotation, t: t),
+                scale:    Vector2D.lerp(from.scale,    to.scale,    t: t)
+            )
+        }()
+
         for layer in cycleLayers {
             // Image cycle state: bypass polygon pipeline entirely.
             // The `continue` is unconditional once svgFilename is set — we never fall
@@ -1446,6 +1472,11 @@ public struct SpriteScene: @unchecked Sendable {
                let svgFile = cycle.states[layer.stateIndex].svgFilename {
                 if !svgFile.isEmpty, let nsImage = svgImages[svgFile] {
                     var svgInstance = instance
+                    if let pose = blendedPose {
+                        svgInstance.def.position = pose.position
+                        svgInstance.def.rotation = pose.rotation
+                        svgInstance.def.scale    = pose.scale
+                    }
                     if needsOffscreen {
                         guard let offscreen = makeOffscreenContext(size: viewTransform.canvasSize) else { continue }
                         svgInstance.state.transform.opacity = 1.0
@@ -1480,6 +1511,13 @@ public struct SpriteScene: @unchecked Sendable {
             if layer.stateIndex < instance.cycleStateRendererSets.count,
                let overrideSet = instance.cycleStateRendererSets[layer.stateIndex] {
                 layerInstance.rendererSet = overrideSet
+            }
+            // Apply blended pose (same interpolated value for both outgoing and incoming
+            // layer instances so geometry cross-fades composite at the interpolated position).
+            if let pose = blendedPose {
+                layerInstance.def.position = pose.position
+                layerInstance.def.rotation = pose.rotation
+                layerInstance.def.scale    = pose.scale
             }
 
             if needsOffscreen {
@@ -1800,6 +1838,18 @@ public struct SpriteScene: @unchecked Sendable {
             let n      = step % period
             return n < count ? n : period - n
         }
+    }
+
+    // MARK: - Pose interpolation helpers
+
+    /// Interpolates between two angles (degrees) taking the shortest arc.
+    /// Wraps the delta into (−180, 180] before applying, preventing 350° → 10° from
+    /// spinning backwards through 340°.
+    private func lerpAngle(_ a: Double, _ b: Double, t: Double) -> Double {
+        var delta = b - a
+        while delta >  180 { delta -= 360 }
+        while delta < -180 { delta += 360 }
+        return a + delta * t
     }
 
     // MARK: - Renderer-set helpers
