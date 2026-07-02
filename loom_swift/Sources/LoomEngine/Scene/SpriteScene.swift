@@ -1576,8 +1576,24 @@ public struct SpriteScene: @unchecked Sendable {
         let screenH = CGFloat(sy * geometryBasis * viewTransform.zoom)
         guard screenW > 0, screenH > 0 else { return }
 
+        // Pivot: the image body rotates around position + pivotOffset; compute effective centre.
+        let pivotPxX = def.pivotOffset.x / 100.0 * hw
+        let pivotPxY = def.pivotOffset.y / 100.0 * hh
+        let effectiveTxPx: Double
+        let effectiveTyPx: Double
+        if pivotPxX != 0 || pivotPxY != 0 {
+            let rotR = rotDeg * .pi / 180.0
+            let cosR = cos(rotR), sinR = sin(rotR)
+            let relX = -pivotPxX, relY = -pivotPxY
+            effectiveTxPx = txPx + pivotPxX + relX * cosR - relY * sinR
+            effectiveTyPx = tyPx + pivotPxY + relX * sinR + relY * cosR
+        } else {
+            effectiveTxPx = txPx
+            effectiveTyPx = tyPx
+        }
+
         // Screen centre position (camera rotation and pan already baked into viewTransform).
-        let centre = viewTransform.worldToScreen(Vector2D(x: txPx, y: tyPx))
+        let centre = viewTransform.worldToScreen(Vector2D(x: effectiveTxPx, y: effectiveTyPx))
 
         // Total rotation: sprite + camera (CCW positive in Y-up / screen CCW).
         let rotRad = CGFloat((rotDeg + viewTransform.rotation) * .pi / 180.0)
@@ -1741,13 +1757,26 @@ public struct SpriteScene: @unchecked Sendable {
         let cosR   = cos(rotRad)
         let sinR   = sin(rotRad)
 
+        // Pivot offset: rotate around position + pivotOffset rather than position.
+        // Express pivot in geometry space (same space as the scaled, pre-translated points).
+        let pivotGX = def.pivotOffset.x / 100.0 * hw / geometryBasis
+        let pivotGY = def.pivotOffset.y / 100.0 * hh / geometryBasis
+        let hasPivot = (pivotGX != 0 || pivotGY != 0) && rotRad != 0
+
         let pts = polygon.points.map { pt -> Vector2D in
             var wx = pt.x * sx
             var wy = pt.y * sy
             if rotRad != 0 {
-                let rx = wx * cosR - wy * sinR
-                let ry = wx * sinR + wy * cosR
-                wx = rx; wy = ry
+                if hasPivot {
+                    wx -= pivotGX; wy -= pivotGY
+                    let rx = wx * cosR - wy * sinR
+                    let ry = wx * sinR + wy * cosR
+                    wx = rx + pivotGX; wy = ry + pivotGY
+                } else {
+                    let rx = wx * cosR - wy * sinR
+                    let ry = wx * sinR + wy * cosR
+                    wx = rx; wy = ry
+                }
             }
             return Vector2D(x: wx * geometryBasis + txPx,
                             y: wy * geometryBasis + tyPx)

@@ -96,6 +96,14 @@ public struct SpriteDef: Codable, Sendable {
     /// When set, the cycle drives shape/renderer selection and overrides shapeSequence.
     public var cycleName: String?
 
+    // MARK: Pivot
+
+    /// Rotation pivot offset in world units (same coordinate space as `position`).
+    /// Rotation is applied around `position + pivotOffset` rather than `position`.
+    /// A value of (0, 0.15) rotates the sprite around a point 0.15 units above its origin —
+    /// useful for a limb whose joint is above its geometry centre.
+    public var pivotOffset: Vector2D = .zero
+
     public init(
         name: String               = "",
         enabled: Bool              = true,
@@ -115,7 +123,8 @@ public struct SpriteDef: Codable, Sendable {
         morphTargetNames: [String] = [],
         depth: Double              = 0,
         svgFilename: String?       = nil,
-        cycleName: String?         = nil
+        cycleName: String?         = nil,
+        pivotOffset: Vector2D      = .zero
     ) {
         self.name = name; self.enabled = enabled
         self.shapeSetName = shapeSetName
@@ -132,6 +141,7 @@ public struct SpriteDef: Codable, Sendable {
         self.depth            = depth
         self.svgFilename      = svgFilename
         self.cycleName        = cycleName
+        self.pivotOffset      = pivotOffset
     }
 
     // Custom decoder: decodeIfPresent for all fields so existing projects
@@ -157,6 +167,7 @@ public struct SpriteDef: Codable, Sendable {
         depth             = try c.decodeIfPresent(Double.self,            forKey: .depth)             ?? 0
         svgFilename       = try c.decodeIfPresent(String.self,           forKey: .svgFilename)
         cycleName         = try c.decodeIfPresent(String.self,           forKey: .cycleName)
+        pivotOffset       = try c.decodeIfPresent(Vector2D.self,         forKey: .pivotOffset)       ?? .zero
     }
 }
 

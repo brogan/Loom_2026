@@ -18,6 +18,35 @@ public enum SpriteCycleLoopMode: String, Codable, CaseIterable, Sendable {
     }
 }
 
+// MARK: - SpritePoseOverride
+
+/// An absolute world-space transform for one sprite within a cycle state.
+/// Replaces the sprite's `def.position`, `def.rotation`, and `def.scale` for that state;
+/// animation drivers (keyframe, noise, etc.) still apply on top as deltas.
+public struct SpritePoseOverride: Codable, Equatable, Sendable {
+    /// Absolute world-space position (same units as `SpriteDef.position`).
+    public var position: Vector2D
+    /// Absolute rotation in degrees.
+    public var rotation: Double
+    /// Absolute per-axis scale multiplier.
+    public var scale:    Vector2D
+
+    public init(position: Vector2D = .zero,
+                rotation: Double   = 0,
+                scale:    Vector2D = Vector2D(x: 1, y: 1)) {
+        self.position = position
+        self.rotation = rotation
+        self.scale    = scale
+    }
+
+    public init(from decoder: Decoder) throws {
+        let c    = try decoder.container(keyedBy: CodingKeys.self)
+        position = try c.decodeIfPresent(Vector2D.self, forKey: .position) ?? .zero
+        rotation = try c.decodeIfPresent(Double.self,   forKey: .rotation) ?? 0
+        scale    = try c.decodeIfPresent(Vector2D.self, forKey: .scale)    ?? Vector2D(x: 1, y: 1)
+    }
+}
+
 // MARK: - SpriteCycleState
 
 /// One frame-state in a SpriteCycle — defines which geometry and renderer to show,
@@ -47,6 +76,12 @@ public struct SpriteCycleState: Codable, Equatable, Sendable {
     public var scaleX:           Double  // multiplicative
     public var scaleY:           Double  // multiplicative
 
+    /// Per-sprite absolute pose overrides for this state, keyed by sprite name.
+    /// When a sprite's name appears here its def.position/rotation/scale are replaced
+    /// by these values for the duration of the state (animation drivers still apply on top).
+    /// Empty = no pose overrides; all sprites use their base def transforms.
+    public var poseOverrides:    [String: SpritePoseOverride]
+
     public init(
         shapeSetName:     String     = "",
         shapeName:        String     = "",
@@ -60,7 +95,8 @@ public struct SpriteCycleState: Codable, Equatable, Sendable {
         offsetY:          Double     = 0,
         rotation:         Double     = 0,
         scaleX:           Double     = 1,
-        scaleY:           Double     = 1
+        scaleY:           Double     = 1,
+        poseOverrides:    [String: SpritePoseOverride] = [:]
     ) {
         self.shapeSetName     = shapeSetName
         self.shapeName        = shapeName
@@ -75,6 +111,7 @@ public struct SpriteCycleState: Codable, Equatable, Sendable {
         self.rotation         = rotation
         self.scaleX           = scaleX
         self.scaleY           = scaleY
+        self.poseOverrides    = poseOverrides
     }
 
     public init(from decoder: Decoder) throws {
@@ -92,6 +129,8 @@ public struct SpriteCycleState: Codable, Equatable, Sendable {
         rotation         = try c.decodeIfPresent(Double.self,     forKey: .rotation)         ?? 0
         scaleX           = try c.decodeIfPresent(Double.self,     forKey: .scaleX)           ?? 1
         scaleY           = try c.decodeIfPresent(Double.self,     forKey: .scaleY)           ?? 1
+        poseOverrides    = try c.decodeIfPresent([String: SpritePoseOverride].self,
+                                                 forKey: .poseOverrides)                     ?? [:]
     }
 }
 

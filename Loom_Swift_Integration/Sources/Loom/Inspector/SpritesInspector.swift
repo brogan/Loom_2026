@@ -216,6 +216,10 @@ struct SpritesInspector: View {
                 Text("°").font(.system(size: 11)).foregroundStyle(.secondary)
             }
             .loomHelp("Rotation in degrees, clockwise. Applied around the sprite's anchor point.")
+            vec2Field("Pivot",
+                      xBind: bindS(si, pi, \.pivotOffset.x),
+                      yBind: bindS(si, pi, \.pivotOffset.y))
+            .loomHelp("Rotation pivot offset in world units relative to the sprite's position. Rotation is applied around position + pivot. Use this to rotate a limb around its joint (e.g. set Y to the distance from the sprite origin to the knee).")
             InspectorField("Depth") {
                 FloatEntryField(value: bindS(setIdx, spriteIdx, \.depth), width: 65, fractionDigits: 1)
                 Text("0=focal").font(.system(size: 10)).foregroundStyle(.tertiary)
@@ -227,15 +231,16 @@ struct SpritesInspector: View {
                         guard si < cfg.spriteConfig.library.spriteSets.count,
                               pi < cfg.spriteConfig.library.spriteSets[si].sprites.count
                         else { return }
-                        cfg.spriteConfig.library.spriteSets[si].sprites[pi].position = .zero
-                        cfg.spriteConfig.library.spriteSets[si].sprites[pi].scale    = Vector2D(x: 1, y: 1)
-                        cfg.spriteConfig.library.spriteSets[si].sprites[pi].rotation = 0
+                        cfg.spriteConfig.library.spriteSets[si].sprites[pi].position    = .zero
+                        cfg.spriteConfig.library.spriteSets[si].sprites[pi].scale       = Vector2D(x: 1, y: 1)
+                        cfg.spriteConfig.library.spriteSets[si].sprites[pi].rotation    = 0
+                        cfg.spriteConfig.library.spriteSets[si].sprites[pi].pivotOffset = .zero
                     }
                 }
                 .font(.system(size: 11))
                 .buttonStyle(.bordered)
             }
-            .loomHelp("Reset position to (0,0), scale to (1,1), and rotation to 0°.")
+            .loomHelp("Reset position to (0,0), scale to (1,1), rotation to 0°, and pivot to (0,0).")
         }
     }
 
