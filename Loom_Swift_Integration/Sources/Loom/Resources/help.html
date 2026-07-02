@@ -268,6 +268,10 @@
   <a class="nav-link nav-sub" href="#sprites-depth">Depth &amp; Parallax</a>
   <a class="nav-link nav-sub" href="#sprites-svg">Image Sprites</a>
   <a class="nav-link nav-sub" href="#sprites-variant-images">Variant Images</a>
+  <a class="nav-link" href="#scenes">Scenes</a>
+  <a class="nav-link nav-sub" href="#scenes-what">What a Scene Contains</a>
+  <a class="nav-link nav-sub" href="#scenes-create">Creating &amp; Switching</a>
+  <a class="nav-link nav-sub" href="#scenes-manage">Managing Scenes</a>
   <a class="nav-link" href="#cycles">Cycles</a>
   <a class="nav-link nav-sub" href="#cycles-states">States &amp; Transitions</a>
   <a class="nav-link nav-sub" href="#cycles-svg">Image States</a>
@@ -377,6 +381,10 @@
   <div class="toc-entry sub"><a href="#sprites-depth">Depth &amp; Parallax</a><span class="toc-fill"></span></div>
   <div class="toc-entry sub"><a href="#sprites-svg">Image Sprites</a><span class="toc-fill"></span></div>
   <div class="toc-entry sub"><a href="#sprites-variant-images">Per-Variant Images</a><span class="toc-fill"></span></div>
+  <div class="toc-entry"><a href="#scenes">Scenes</a><span class="toc-fill"></span></div>
+  <div class="toc-entry sub"><a href="#scenes-what">What a Scene Contains</a><span class="toc-fill"></span></div>
+  <div class="toc-entry sub"><a href="#scenes-create">Creating &amp; Switching</a><span class="toc-fill"></span></div>
+  <div class="toc-entry sub"><a href="#scenes-manage">Managing Scenes</a><span class="toc-fill"></span></div>
   <div class="toc-entry"><a href="#cycles">Cycles</a><span class="toc-fill"></span></div>
   <div class="toc-entry sub"><a href="#cycles-states">States &amp; Transitions</a><span class="toc-fill"></span></div>
   <div class="toc-entry sub"><a href="#cycles-svg">Image States</a><span class="toc-fill"></span></div>
@@ -540,7 +548,7 @@
   <ol class="steps">
     <li>Create or open a project. The project folder holds geometry files, brushes, stamps, image sprites, and <code>project_config.json</code>.</li>
     <li><strong>Geometry path:</strong> In the <strong>Geometry</strong> tab, draw or import polygon, open-curve, and point geometry. In the <strong>Subdivision</strong> tab, define parameter sets and assign them to sprites. In the <strong>Rendering</strong> tab, create renderer sets and assign them to sprites. <strong>Image path:</strong> Place SVG, PNG, or other image files in <code>svgs/sprites/</code> and assign them directly to sprites in the inspector — no subdivision or renderer set required.</li>
-    <li>In the <strong>Sprites</strong> tab, create sprite instances. Set position, scale, and rotation. Establish parent–child hierarchies for rigged setups.</li>
+    <li>In the <strong>Sprites</strong> tab, create sprite instances. Set position, scale, and rotation. Establish parent–child hierarchies for rigged setups. Use the <strong>Scenes panel</strong> at the bottom of the Sprites tab to create multiple scenes if the project needs several distinct animations sharing the same assets.</li>
     <li>In the <strong>Layers</strong> tab, organise sprite sets into compositing layers — each with its own parallax factor, blur radius, opacity, and blend mode. A background layer at parallax 0 stays fixed while the camera pans; a foreground layer at parallax 1.2 moves faster, creating depth. Blur simulates depth-of-field. If you need no depth separation, leave layers empty — all sprites render in a single flat pass by default.</li>
     <li>In the <strong>Cycles</strong> tab, define SpriteCycles for walk cycles, expression sequences, or any multi-state animation. Assign cycles to sprites in the Sprites inspector.</li>
     <li>Add animation via the <strong>Sprites inspector</strong> or the <strong>Timeline</strong>. Keyframe drivers handle transforms, morph, opacity, active subdivision set, renderer set, and active cycle. Procedural drivers (noise, oscillator, jitter) are available on any numeric lane.</li>
@@ -1778,6 +1786,54 @@
   </ul>
 
   <div class="tip"><strong>Combining with the Cycle driver.</strong> Per-variant images work independently of the cycle driver. If both are active on the same sprite, the cycle driver takes priority for the cycle path; the shape driver handles variant image switching on a completely separate index track. Both compose naturally.</div>
+
+</section>
+
+<!-- ────────────────────────────────────────────────── -->
+<section id="scenes">
+  <h2>Scenes</h2>
+  <p>A project can contain multiple <strong>scenes</strong>. Scenes let one project hold several distinct animations — an opening sequence, a main loop, a title card — while sharing the same pool of geometry, subdivision rules, renderer sets, layers, and SpriteCycles. Each scene carries its own independent <em>timeline</em>: duration, timeline markers, and all sprite animation data (positions, keyframes, drivers).</p>
+
+  <p>The <strong>Scenes panel</strong> lives at the bottom of the left column in the Sprites tab, below the sprite list and toolbar. It is collapsible — click the chevron header to hide it when you need more vertical space for the sprite list.</p>
+
+  <h3 id="scenes-what">What a scene contains</h3>
+  <p>Every scene stores its own copy of:</p>
+  <ul>
+    <li><strong>Timeline duration</strong> — frame count and any named timeline markers.</li>
+    <li><strong>All sprite animation</strong> — positions, scales, rotations, and every driver lane (keyframe, noise, oscillator, jitter) for every sprite in every set.</li>
+    <li><strong>Canvas and global settings</strong> — frame rate, background colour, border, camera view angle, and related options that are typically set once but can differ per scene if needed.</li>
+  </ul>
+  <p>The following are <strong>shared across all scenes</strong> and edited once for the whole project:</p>
+  <ul>
+    <li>Geometry files, subdivision sets, and renderer sets.</li>
+    <li>Sprite definitions (names, enabled state, geometry/renderer assignments, hierarchy).</li>
+    <li>SpriteCycles.</li>
+    <li>Compositing layers (parallax, blur, blend mode, opacity).</li>
+    <li>Lighting configuration.</li>
+  </ul>
+  <div class="note"><strong>Practical implication:</strong> if you add a new sprite in the Sprites tab or change a renderer in the Rendering tab, that change applies to every scene. If you adjust a sprite's animation driver in the Timeline, that change applies only to the currently active scene.</div>
+
+  <h3 id="scenes-create">Creating and switching scenes</h3>
+  <p>The Scenes panel shows the list of scenes for the open project. The active scene is highlighted and its name is shown in bold.</p>
+
+  <p><strong>To add a scene:</strong></p>
+  <ol class="steps">
+    <li>Click the <strong>+</strong> button in the Scenes panel header.</li>
+    <li>Type a name for the new scene in the alert (e.g. <em>Main Loop</em>, <em>Intro</em>, <em>Outro</em>). The name is pre-filled with the next available default name.</li>
+    <li>Click <strong>Add</strong>. The new scene starts as a copy of the currently active scene's timeline and sprite animation, giving you a useful starting point to modify.</li>
+  </ol>
+
+  <p><strong>To switch scenes:</strong> click any scene row in the Scenes panel. The timeline, all sprite positions, and all animation drivers immediately update to reflect that scene. Rendering and playback always operate on the active scene.</p>
+
+  <h3 id="scenes-manage">Managing scenes</h3>
+
+  <p><strong>Rename:</strong> double-click a scene name in the Scenes panel. An alert appears pre-filled with the current name — edit it and press <strong>Rename</strong>.</p>
+
+  <p><strong>Delete:</strong> click the <strong>−</strong> button on a scene row. The button is disabled when only one scene exists (a project must always have at least one). Deletion is undoable.</p>
+
+  <p><strong>Reorder:</strong> drag a scene row up or down in the Scenes panel list. Scene order affects nothing about playback or rendering — it is purely for your own organisation.</p>
+
+  <div class="tip"><strong>Workflow suggestion.</strong> For a multi-part animation — introduction, main action, credits — keep all parts in one project so they share geometry and rendering assets. Create one scene per part. Render each scene independently using the current scene's duration, then composite the resulting image sequences in your video editor. Switching scenes is instant and the project file stays compact.</div>
 
 </section>
 
