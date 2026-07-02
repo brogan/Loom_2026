@@ -268,12 +268,14 @@
   <a class="nav-link nav-sub" href="#sprites-depth">Depth &amp; Parallax</a>
   <a class="nav-link nav-sub" href="#sprites-svg">Image Sprites</a>
   <a class="nav-link nav-sub" href="#sprites-variant-images">Variant Images</a>
+  <a class="nav-link nav-sub" href="#sprites-pivot">Pivot Offset</a>
   <a class="nav-link" href="#scenes">Scenes</a>
   <a class="nav-link nav-sub" href="#scenes-what">What a Scene Contains</a>
   <a class="nav-link nav-sub" href="#scenes-create">Creating &amp; Switching</a>
   <a class="nav-link nav-sub" href="#scenes-manage">Managing Scenes</a>
   <a class="nav-link" href="#cycles">Cycles</a>
   <a class="nav-link nav-sub" href="#cycles-states">States &amp; Transitions</a>
+  <a class="nav-link nav-sub" href="#cycles-poses">Pose Overrides</a>
   <a class="nav-link nav-sub" href="#cycles-svg">Image States</a>
   <a class="nav-link nav-sub" href="#cycles-loop">Loop Modes</a>
   <a class="nav-link nav-sub" href="#cycles-assign">Assigning Cycles</a>
@@ -381,12 +383,14 @@
   <div class="toc-entry sub"><a href="#sprites-depth">Depth &amp; Parallax</a><span class="toc-fill"></span></div>
   <div class="toc-entry sub"><a href="#sprites-svg">Image Sprites</a><span class="toc-fill"></span></div>
   <div class="toc-entry sub"><a href="#sprites-variant-images">Per-Variant Images</a><span class="toc-fill"></span></div>
+  <div class="toc-entry sub"><a href="#sprites-pivot">Pivot Offset</a><span class="toc-fill"></span></div>
   <div class="toc-entry"><a href="#scenes">Scenes</a><span class="toc-fill"></span></div>
   <div class="toc-entry sub"><a href="#scenes-what">What a Scene Contains</a><span class="toc-fill"></span></div>
   <div class="toc-entry sub"><a href="#scenes-create">Creating &amp; Switching</a><span class="toc-fill"></span></div>
   <div class="toc-entry sub"><a href="#scenes-manage">Managing Scenes</a><span class="toc-fill"></span></div>
   <div class="toc-entry"><a href="#cycles">Cycles</a><span class="toc-fill"></span></div>
   <div class="toc-entry sub"><a href="#cycles-states">States &amp; Transitions</a><span class="toc-fill"></span></div>
+  <div class="toc-entry sub"><a href="#cycles-poses">Pose Overrides</a><span class="toc-fill"></span></div>
   <div class="toc-entry sub"><a href="#cycles-svg">Image States</a><span class="toc-fill"></span></div>
   <div class="toc-entry sub"><a href="#cycles-loop">Loop Modes</a><span class="toc-fill"></span></div>
   <div class="toc-entry sub"><a href="#cycles-assign">Creating &amp; Assigning Cycles</a><span class="toc-fill"></span></div>
@@ -1573,7 +1577,7 @@
     <thead><tr><th>Section</th><th>Contents</th></tr></thead>
     <tbody>
       <tr><td>Sprite</td><td>Name, renderer set, subdivision set, and SVG sprite picker (when <code>svgs/sprites/</code> contains files — see <a href="#sprites-svg">SVG Sprites</a>)</td></tr>
-      <tr><td>Transform</td><td>X/Y position, X/Y scale, rotation in degrees, depth (see below)</td></tr>
+      <tr><td>Transform</td><td>X/Y position, X/Y scale, rotation in degrees, pivot X/Y offset, depth (see below and <a href="#sprites-pivot">Pivot Offset</a>)</td></tr>
       <tr><td>Animation</td><td>Six per-property animation drivers: position, scale, rotation, morph, shape index, and opacity. Each driver section header shows a <strong>keyframe indicator</strong> (circle — green when keyframes exist) and an <strong>enabled checkbox</strong>. A batch eye above all six sections collapses unused driver panels at once. See <a href="#animation-lane-controls">Driver enabled state and lane visibility</a> and <a href="#animation">Animation</a>.</td></tr>
       <tr><td>Hierarchy</td><td>Parent selector, P/R/S inherit toggles</td></tr>
     </tbody>
@@ -1787,6 +1791,27 @@
 
   <div class="tip"><strong>Combining with the Cycle driver.</strong> Per-variant images work independently of the cycle driver. If both are active on the same sprite, the cycle driver takes priority for the cycle path; the shape driver handles variant image switching on a completely separate index track. Both compose naturally.</div>
 
+  <h3 id="sprites-pivot">Pivot Offset</h3>
+  <p>By default, rotation is applied around a sprite's <strong>position</strong> — the point you set in the Position row. For many animation tasks that is the right centre: a spinning coin, a wobbling plant. But for rigged characters, each limb needs to rotate around its <em>joint</em>, not its geometric centre. A lower leg should pivot at the knee, an upper arm at the shoulder. The <strong>Pivot</strong> field makes this possible without changing where the sprite is positioned in the world.</p>
+
+  <p><strong>Pivot X / Pivot Y</strong> appear in the <strong>Transform</strong> section of the sprite inspector, between Rotation and Depth. The values are in the same world-coordinate units as Position. Rotation (from animation drivers, keyframes, or cycle pose overrides) is applied around <code>position + pivot</code> rather than <code>position</code>.</p>
+
+  <h4>Setting a pivot</h4>
+  <ol class="steps">
+    <li>Select the sprite in the <strong>Sprites tab</strong> and open the inspector.</li>
+    <li>In the <strong>Transform</strong> section, find the <strong>Pivot</strong> row. Both X and Y default to 0.</li>
+    <li>Set <strong>Pivot Y</strong> to the distance from the sprite's geometric centre to the joint — positive Y moves the pivot upward (in Loom's Y-up world convention). For example, if the sprite's artwork has its knee joint 15 units above the sprite's origin, enter 15 in Pivot Y.</li>
+    <li>Test by giving the sprite a rotation value. It should now arc around the joint instead of the origin.</li>
+  </ol>
+
+  <div class="note"><strong>Pivot X / Y are in world units, not pixels.</strong> The same unit system as Position: 100 units = half the canvas width. A pivot of (0, 15) moves the rotation centre 15 world units upward, which is 15% of canvas half-height. For a 1080×1080 canvas, 100 units = 540 px, so 15 units ≈ 81 px.</div>
+
+  <p><strong>Pivot and hierarchy.</strong> For a rigged character with parent–child sprites, set the pivot on each child individually. The child's rotation is always applied around <code>child.position + child.pivot</code> in local space, before the parent's transform is composed on top. This means pivots work correctly at any depth in the hierarchy.</p>
+
+  <p><strong>Reset Transform</strong> clears Pivot X and Y back to (0, 0) along with Position, Scale, and Rotation.</p>
+
+  <div class="tip"><strong>Workflow for a simple two-joint limb.</strong> Place the upper leg sprite with Pivot Y at the hip offset, and the lower leg as a child of the upper leg with Pivot Y at the knee offset. Rotating the upper leg at the hip rotates the whole limb; rotating the lower leg at the knee bends it independently. Add pose overrides in your SpriteCycle (see <a href="#cycles-poses">Pose Overrides</a>) to define each step of the walk.</div>
+
 </section>
 
 <!-- ────────────────────────────────────────────────── -->
@@ -1864,6 +1889,26 @@
   <p>The total cycle length shown in the Cycles tab is the sum of all states' hold + transition frames, adjusted for the active loop mode.</p>
 
   <div class="note"><strong>Hard cuts and offscreen compositing.</strong> Hard-cut states (Trans frames = 0) are rendered directly into the main context with zero additional cost. Cross-fade transitions use an offscreen CGContext per layer and alpha-composite the result, so they carry a per-frame memory and GPU cost proportional to canvas size. Use transitions deliberately rather than by default.</div>
+
+  <h3 id="cycles-poses">Pose Overrides</h3>
+  <p>Each cycle state can carry a set of <strong>pose overrides</strong> — absolute world-space transforms (position, rotation, scale) for any number of sprites in the project. When a pose override is defined for a sprite in the active cycle state, it replaces that sprite's base <strong>def</strong> values (set in the Sprites inspector) for the duration of the state. Animation drivers (keyframes, noise, oscillators) still apply on top of the overridden values as usual, so secondary motion layers over a posed rig just work.</p>
+
+  <p>This is the mechanism for building rigged walk cycles in the Cycle editor: each state in the cycle defines a <em>pose</em> — where every limb is — rather than just swapping a geometry file. Combined with pivot offsets (see <a href="#sprites-pivot">Pivot Offset</a>), limb rotations happen around the correct joints.</p>
+
+  <h4>How interpolation works during transitions</h4>
+  <p>When a cycle is in a cross-fade transition between two states at progress <em>t</em> (0 = fully outgoing, 1 = fully incoming), Loom computes a <strong>blended pose</strong> for each sprite:</p>
+  <ul>
+    <li><strong>Both states have a pose override for this sprite</strong> — position and scale lerp component-wise; rotation uses short-path interpolation (the delta is wrapped to ±180° before applying, preventing a limb from spinning the long way around a full revolution).</li>
+    <li><strong>Only the outgoing state has an override</strong> — the sprite interpolates from the overridden values back toward its base def values.</li>
+    <li><strong>Only the incoming state has an override</strong> — the sprite interpolates from its base def values toward the overridden values.</li>
+    <li><strong>Neither state has an override</strong> — the sprite is unaffected; it uses its base def values throughout.</li>
+  </ul>
+  <p>The blended pose is applied to <em>both</em> the outgoing and incoming geometry layer instances before they are rendered and composited. This means geometry cross-fades (shape/renderer transitions) and pose interpolation compose cleanly: the limb moves smoothly through the transition period while the geometry simultaneously blends.</p>
+
+  <h4>Pose overrides vs. state registration offsets</h4>
+  <p>Each cycle state also has <strong>Offset X / Y</strong>, <strong>Rotation</strong>, and <strong>Scale X / Y</strong> fields that are <em>additive</em> on top of the sprite's base transform. These are a quick way to nudge a single sprite's position or angle for one state without defining a full pose. Pose overrides are <em>absolute</em> replacements and cover any number of sprites, making them the right tool for full-rig poses. Both can be used simultaneously: the absolute pose override is applied first, then the additive state offset is applied on top.</p>
+
+  <div class="tip"><strong>Pose editor UI.</strong> A dedicated numeric pose editor inside the Cycle editor — listing every sprite with position, rotation, and scale fields per state — is the planned next step. In the current release the pose data model and interpolation engine are in place; pose values can be authored directly in <code>project_config.json</code> under each cycle state's <code>poseOverrides</code> dictionary (keyed by sprite name) while the editor UI is under development.</div>
 
   <h3 id="cycles-svg">Image states</h3>
   <p>Each cycle state has a <strong>Source</strong> toggle at the top of its expanded detail panel: <strong>Loom</strong> (the default) or <strong>Image</strong>. In Image mode the state references an image file — SVG, PNG, JPG, TIFF, or GIF — instead of a Loom polygon and renderer set. The hold frames, transition frames, easing, and loop mode all work identically regardless of source type.</p>
