@@ -10,6 +10,7 @@ struct SpriteCycleEditorView: View {
     @EnvironmentObject private var controller: AppController
     @State private var selectedStateIndex: Int? = nil
     @State private var expandedStateIndices: Set<Int> = []
+    @AppStorage("cycleEditor.showPoseCanvas") private var showPoseCanvas: Bool = true
 
     var body: some View {
         VStack(spacing: 0) {
@@ -32,9 +33,30 @@ struct SpriteCycleEditorView: View {
 
                     Divider()
 
-                    // Right: preview with onion skinning
-                    CyclePreviewPanel(cycle: cycle, selectedStateIndex: $selectedStateIndex)
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    // Right: pose canvas or onion-skin preview
+                    VStack(spacing: 0) {
+                        HStack(spacing: 0) {
+                            Picker("", selection: $showPoseCanvas) {
+                                Text("Pose").tag(true)
+                                Text("Preview").tag(false)
+                            }
+                            .pickerStyle(.segmented)
+                            .frame(width: 120)
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 6)
+                            Spacer()
+                        }
+                        .background(Color(nsColor: .windowBackgroundColor))
+                        Divider()
+                        if showPoseCanvas {
+                            CyclePoseCanvas(cycleIdx: idx, selectedStateIndex: $selectedStateIndex)
+                                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        } else {
+                            CyclePreviewPanel(cycle: cycle, selectedStateIndex: $selectedStateIndex)
+                                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        }
+                    }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
                 }
             } else {
                 emptyCycleMessage
