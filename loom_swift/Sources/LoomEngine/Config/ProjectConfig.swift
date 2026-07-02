@@ -1,3 +1,24 @@
+import Foundation
+
+/// A named scene within a project: its own timeline duration, markers, and sprite animation data.
+/// The shared asset pools (geometry, subdivision, rendering, cycles, layers) remain at the
+/// project level and are the same across all scenes.
+public struct LoomScene: Identifiable, Codable, Sendable {
+    public var id: UUID
+    public var name: String
+    public var globalConfig: GlobalConfig
+    public var spriteConfig: SpriteConfig
+
+    public init(id: UUID = UUID(), name: String,
+                globalConfig: GlobalConfig = .default,
+                spriteConfig: SpriteConfig = SpriteConfig()) {
+        self.id           = id
+        self.name         = name
+        self.globalConfig = globalConfig
+        self.spriteConfig = spriteConfig
+    }
+}
+
 /// All configuration loaded from one `.loom_projects/<ProjectName>` directory.
 ///
 /// `ProjectLoader` produces this struct by reading the nine XML files in
@@ -18,6 +39,11 @@ public struct ProjectConfig: Codable, Sendable {
     public var cycles:            [SpriteCycle]
     /// Theatrical lighting configuration.  Default disabled = zero render overhead.
     public var lightingConfig:    LightingConfig
+    /// Named scenes. Each carries its own timeline (globalConfig) and sprite animation (spriteConfig).
+    /// Empty only transiently — always has at least one entry after decode.
+    public var scenes:            [LoomScene]
+    /// ID of the scene whose globalConfig/spriteConfig are currently loaded into the top-level fields.
+    public var activeSceneID:     UUID?
 
     public init(
         globalConfig: GlobalConfig           = .default,
@@ -31,7 +57,9 @@ public struct ProjectConfig: Codable, Sendable {
         spriteConfig: SpriteConfig           = SpriteConfig(),
         layers: [LoomLayer]                  = [],
         cycles: [SpriteCycle]                = [],
-        lightingConfig: LightingConfig       = LightingConfig()
+        lightingConfig: LightingConfig       = LightingConfig(),
+        scenes: [LoomScene]                  = [],
+        activeSceneID: UUID?                 = nil
     ) {
         self.globalConfig      = globalConfig
         self.shapeConfig       = shapeConfig
@@ -45,6 +73,8 @@ public struct ProjectConfig: Codable, Sendable {
         self.layers            = layers
         self.cycles            = cycles
         self.lightingConfig    = lightingConfig
+        self.scenes            = scenes
+        self.activeSceneID     = activeSceneID
     }
 
     // MARK: - Codable
@@ -52,7 +82,7 @@ public struct ProjectConfig: Codable, Sendable {
     private enum CodingKeys: String, CodingKey {
         case globalConfig, shapeConfig, polygonConfig, curveConfig, ovalConfig
         case pointConfig, subdivisionConfig, renderingConfig, spriteConfig, layers, cycles
-        case lightingConfig
+        case lightingConfig, scenes, activeSceneID
     }
 
     public init(from decoder: Decoder) throws {
@@ -69,5 +99,13 @@ public struct ProjectConfig: Codable, Sendable {
         layers            = try c.decodeIfPresent([LoomLayer].self,    forKey: .layers)         ?? []
         cycles            = try c.decodeIfPresent([SpriteCycle].self,  forKey: .cycles)         ?? []
         lightingConfig    = try c.decodeIfPresent(LightingConfig.self, forKey: .lightingConfig) ?? LightingConfig()
+        scenes            = try c.decodeIfPresent([LoomScene].self,    forKey: .scenes)         ?? []
+        activeSceneID     = try c.decodeIfPresent(UUID.self,           forKey: .activeSceneID)
+        // Migration: legacy project with no scenes — create Scene 1 from the top-level config.
+        if scenes.isEmpty {
+            let defaultScene = LoomScene(name: "Scene 1", globalConfig: globalConfig, spriteConfig: spriteConfig)
+            scenes        = [defaultScene]
+            activeSceneID = defaultScene.id
+        }
     }
 }

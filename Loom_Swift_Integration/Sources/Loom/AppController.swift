@@ -405,8 +405,77 @@ final class AppController: ObservableObject, @unchecked Sendable {
     func updateProjectConfig(_ fn: (inout ProjectConfig) -> Void) {
         guard var config = projectConfig else { return }
         fn(&config)
+        // Keep the active scene's stored copies current so saves are always up to date.
+        if let activeID = config.activeSceneID,
+           let idx = config.scenes.firstIndex(where: { $0.id == activeID }) {
+            config.scenes[idx].globalConfig = config.globalConfig
+            config.scenes[idx].spriteConfig = config.spriteConfig
+        }
         projectConfig = config          // immediate: fires @Published for UI reactivity
         scheduleConfigCommit(config)    // debounced save + reload
+    }
+
+    // MARK: - Scene management
+
+    func addScene(name: String) {
+        guard projectConfig != nil else { return }
+        updateProjectConfig { cfg in
+            // Flush current live state into the active scene before creating a new one.
+            if let activeID = cfg.activeSceneID,
+               let idx = cfg.scenes.firstIndex(where: { $0.id == activeID }) {
+                cfg.scenes[idx].globalConfig = cfg.globalConfig
+                cfg.scenes[idx].spriteConfig = cfg.spriteConfig
+            }
+            let newScene = LoomScene(name: name, globalConfig: cfg.globalConfig, spriteConfig: cfg.spriteConfig)
+            cfg.scenes.append(newScene)
+            cfg.activeSceneID  = newScene.id
+        }
+    }
+
+    func switchScene(to id: UUID) {
+        guard let cfg = projectConfig,
+              let newScene = cfg.scenes.first(where: { $0.id == id }),
+              cfg.activeSceneID != id else { return }
+        updateProjectConfig { cfg in
+            // Save current live state into the outgoing scene.
+            if let activeID = cfg.activeSceneID,
+               let idx = cfg.scenes.firstIndex(where: { $0.id == activeID }) {
+                cfg.scenes[idx].globalConfig = cfg.globalConfig
+                cfg.scenes[idx].spriteConfig = cfg.spriteConfig
+            }
+            cfg.activeSceneID  = id
+            cfg.globalConfig   = newScene.globalConfig
+            cfg.spriteConfig   = newScene.spriteConfig
+        }
+    }
+
+    func deleteScene(id: UUID) {
+        guard let cfg = projectConfig, cfg.scenes.count > 1 else { return }
+        let isActive = cfg.activeSceneID == id
+        updateProjectConfig { cfg in
+            guard let idx = cfg.scenes.firstIndex(where: { $0.id == id }) else { return }
+            cfg.scenes.remove(at: idx)
+            if isActive {
+                let newIdx   = min(idx, cfg.scenes.count - 1)
+                let newScene = cfg.scenes[newIdx]
+                cfg.activeSceneID = newScene.id
+                cfg.globalConfig  = newScene.globalConfig
+                cfg.spriteConfig  = newScene.spriteConfig
+            }
+        }
+    }
+
+    func renameScene(id: UUID, name: String) {
+        updateProjectConfig { cfg in
+            guard let idx = cfg.scenes.firstIndex(where: { $0.id == id }) else { return }
+            cfg.scenes[idx].name = name
+        }
+    }
+
+    func moveScene(from source: IndexSet, to destination: Int) {
+        updateProjectConfig { cfg in
+            cfg.scenes.move(fromOffsets: source, toOffset: destination)
+        }
     }
 
     func updateCustomAlgorithm(_ alg: CustomSubdivisionAlgorithm, setIdx: Int, paramIdx: Int) {

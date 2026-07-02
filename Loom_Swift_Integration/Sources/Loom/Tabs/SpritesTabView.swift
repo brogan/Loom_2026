@@ -72,6 +72,10 @@ struct SpritesTabView: View {
     @State private var renameText          = ""
     @State private var renamingSetIdx:     Int?          = nil
     @State private var renamingSpriteName: String?       = nil
+    @State private var renamingSceneID:    UUID?         = nil
+    @State private var showingNewSceneAlert = false
+    @State private var newSceneName         = ""
+    @State private var sceneSectionExpanded = true
 
     var body: some View {
         VStack(spacing: 0) {
@@ -79,12 +83,21 @@ struct SpritesTabView: View {
             spriteList
             Divider()
             toolbar
+            Divider()
+            sceneSection
         }
         .onAppear { autoExpand() }
         .alert("Rename", isPresented: $showingRenameAlert) {
             TextField("Name", text: $renameText)
             Button("Rename") { commitRename() }
-            Button("Cancel", role: .cancel) { renamingSetIdx = nil; renamingSpriteName = nil }
+            Button("Cancel", role: .cancel) {
+                renamingSetIdx = nil; renamingSpriteName = nil; renamingSceneID = nil
+            }
+        }
+        .alert("New Scene", isPresented: $showingNewSceneAlert) {
+            TextField("Scene name", text: $newSceneName)
+            Button("Add") { commitAddScene() }
+            Button("Cancel", role: .cancel) { newSceneName = "" }
         }
     }
 
@@ -454,6 +467,122 @@ struct SpritesTabView: View {
             .overlay(alignment: .bottom) {
                 if dropTarget == t { insertionLine }
             }
+    }
+
+    // MARK: - Scene section
+
+    private var sceneSection: some View {
+        VStack(spacing: 0) {
+            // Header
+            HStack(spacing: 4) {
+                Button {
+                    withAnimation(.easeInOut(duration: 0.15)) { sceneSectionExpanded.toggle() }
+                } label: {
+                    Image(systemName: sceneSectionExpanded ? "chevron.down" : "chevron.right")
+                        .font(.system(size: 9, weight: .semibold))
+                        .foregroundStyle(.secondary)
+                        .frame(width: 14)
+                        .frame(minHeight: 22)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+
+                Text("SCENES")
+                    .font(.system(size: 10, weight: .semibold))
+                    .foregroundStyle(.secondary)
+
+                Spacer()
+
+                if sceneSectionExpanded {
+                    Button {
+                        let existing = controller.projectConfig?.scenes.map(\.name) ?? []
+                        newSceneName = uniqueName(base: "Scene", existing: existing)
+                        showingNewSceneAlert = true
+                    } label: {
+                        Image(systemName: "plus")
+                            .font(.system(size: 11))
+                            .foregroundStyle(.secondary)
+                            .iconHitArea()
+                    }
+                    .buttonStyle(.plain)
+                    .help("Add scene")
+                    .disabled(controller.projectConfig == nil)
+                }
+            }
+            .padding(.horizontal, 8)
+            .frame(maxWidth: .infinity, minHeight: 24)
+
+            if sceneSectionExpanded {
+                let scenes = controller.projectConfig?.scenes ?? []
+                if scenes.isEmpty {
+                    Text("No scenes")
+                        .font(.caption)
+                        .foregroundStyle(.tertiary)
+                        .frame(maxWidth: .infinity, alignment: .center)
+                        .padding(.vertical, 8)
+                } else {
+                    List {
+                        ForEach(scenes) { scene in
+                            sceneRow(scene: scene)
+                                .listRowInsets(EdgeInsets())
+                                .listRowBackground(Color.clear)
+                                .listRowSeparator(.hidden)
+                        }
+                        .onMove { from, to in controller.moveScene(from: from, to: to) }
+                    }
+                    .listStyle(.plain)
+                    .frame(height: min(CGFloat(scenes.count) * 26 + 2, 130))
+                }
+            }
+        }
+    }
+
+    private func sceneRow(scene: LoomScene) -> some View {
+        let isActive = controller.projectConfig?.activeSceneID == scene.id
+        return HStack(spacing: 5) {
+            Image(systemName: "play.rectangle")
+                .font(.system(size: 9))
+                .foregroundStyle(isActive ? Color.accentColor : Color.clear)
+                .frame(width: 12)
+            Text(scene.name)
+                .font(.system(size: 11, weight: isActive ? .semibold : .regular))
+                .foregroundStyle(isActive ? Color.primary : Color.secondary)
+                .lineLimit(1)
+                .onTapGesture(count: 2) {
+                    renamingSceneID    = scene.id
+                    renamingSetIdx     = nil
+                    renamingSpriteName = nil
+                    renameText         = scene.name
+                    showingRenameAlert = true
+                }
+            Spacer(minLength: 2)
+            Button {
+                controller.deleteScene(id: scene.id)
+            } label: {
+                Image(systemName: "minus")
+                    .font(.system(size: 10))
+                    .foregroundStyle(.secondary)
+                    .iconHitArea()
+            }
+            .buttonStyle(.plain)
+            .disabled((controller.projectConfig?.scenes.count ?? 0) <= 1)
+            .help("Delete scene")
+        }
+        .padding(.horizontal, 8)
+        .frame(maxWidth: .infinity, minHeight: 24, maxHeight: 24, alignment: .leading)
+        .background(isActive ? Color.accentColor.opacity(0.12) : Color.clear)
+        .contentShape(Rectangle())
+        .onTapGesture {
+            guard !isActive else { return }
+            controller.switchScene(to: scene.id)
+        }
+    }
+
+    private func commitAddScene() {
+        let name = newSceneName.trimmingCharacters(in: .whitespaces)
+        newSceneName = ""
+        guard !name.isEmpty else { return }
+        controller.addScene(name: name)
     }
 
     // MARK: - Insertion indicator
@@ -847,8 +976,13 @@ struct SpritesTabView: View {
 
     private func commitRename() {
         let newName = renameText.trimmingCharacters(in: .whitespaces)
-        defer { renamingSetIdx = nil; renamingSpriteName = nil }
+        defer { renamingSetIdx = nil; renamingSpriteName = nil; renamingSceneID = nil }
         guard !newName.isEmpty else { return }
+
+        if let sceneID = renamingSceneID {
+            controller.renameScene(id: sceneID, name: newName)
+            return
+        }
 
         if let idx = renamingSetIdx,
            let cfg = controller.projectConfig,
