@@ -20,6 +20,27 @@ public struct SpriteVariantEntry: Codable, Equatable, Sendable {
     }
 }
 
+/// Clamps a sprite's local rotation to a fixed arc, like a physical joint stop.
+/// Both `minAngle` and `maxAngle` are in degrees (world-space absolute angles).
+/// The clamp applies after animation offsets are added but before hierarchy composition.
+public struct PivotConstraint: Codable, Equatable, Sendable {
+    /// Minimum allowed rotation (degrees). Must be ≤ maxAngle.
+    public var minAngle: Double
+    /// Maximum allowed rotation (degrees). Must be ≥ minAngle.
+    public var maxAngle: Double
+
+    public init(minAngle: Double = -45, maxAngle: Double = 45) {
+        self.minAngle = minAngle
+        self.maxAngle = maxAngle
+    }
+
+    public init(from decoder: Decoder) throws {
+        let c    = try decoder.container(keyedBy: CodingKeys.self)
+        minAngle = try c.decodeIfPresent(Double.self, forKey: .minAngle) ?? -45
+        maxAngle = try c.decodeIfPresent(Double.self, forKey: .maxAngle) ??  45
+    }
+}
+
 /// One sprite definition loaded from `sprites.xml`.
 ///
 /// Describes which shape and renderer set to use, the initial transform, and
@@ -104,6 +125,10 @@ public struct SpriteDef: Codable, Sendable {
     /// useful for a limb whose joint is above its geometry centre.
     public var pivotOffset: Vector2D = .zero
 
+    /// When non-nil, the sprite's local rotation (def.rotation + animation offset) is clamped
+    /// to this range before hierarchy composition, acting like a physical joint stop.
+    public var pivotConstraint: PivotConstraint? = nil
+
     public init(
         name: String               = "",
         enabled: Bool              = true,
@@ -124,7 +149,8 @@ public struct SpriteDef: Codable, Sendable {
         depth: Double              = 0,
         svgFilename: String?       = nil,
         cycleName: String?         = nil,
-        pivotOffset: Vector2D      = .zero
+        pivotOffset: Vector2D      = .zero,
+        pivotConstraint: PivotConstraint? = nil
     ) {
         self.name = name; self.enabled = enabled
         self.shapeSetName = shapeSetName
@@ -142,6 +168,7 @@ public struct SpriteDef: Codable, Sendable {
         self.svgFilename      = svgFilename
         self.cycleName        = cycleName
         self.pivotOffset      = pivotOffset
+        self.pivotConstraint  = pivotConstraint
     }
 
     // Custom decoder: decodeIfPresent for all fields so existing projects
@@ -168,6 +195,7 @@ public struct SpriteDef: Codable, Sendable {
         svgFilename       = try c.decodeIfPresent(String.self,           forKey: .svgFilename)
         cycleName         = try c.decodeIfPresent(String.self,           forKey: .cycleName)
         pivotOffset       = try c.decodeIfPresent(Vector2D.self,         forKey: .pivotOffset)       ?? .zero
+        pivotConstraint   = try c.decodeIfPresent(PivotConstraint.self,  forKey: .pivotConstraint)
     }
 }
 

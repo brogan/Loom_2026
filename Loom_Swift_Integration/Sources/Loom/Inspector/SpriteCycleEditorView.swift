@@ -323,6 +323,8 @@ struct SpriteCycleEditorView: View {
             }
 
             Divider().padding(.horizontal, 12)
+            poseSection(cycleIdx: cycleIdx, stateIdx: stateIdx)
+            Divider().padding(.horizontal, 12)
 
             // Hold frames
             stateDetailRow("Hold frames") {
@@ -412,6 +414,141 @@ struct SpriteCycleEditorView: View {
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 2)
+    }
+
+    // MARK: Pose editor
+
+    private func poseSection(cycleIdx: Int, stateIdx: Int) -> some View {
+        let overrides = controller.projectConfig?.cycles[safe: cycleIdx]?.states[safe: stateIdx]?.poseOverrides ?? [:]
+        let allSpriteNames = controller.projectConfig?.spriteConfig.library.spriteSets
+            .flatMap { $0.sprites }.map { $0.name } ?? []
+        let overriddenNames = Set(overrides.keys)
+        let available = allSpriteNames.filter { !overriddenNames.contains($0) }
+        let sorted = overrides.keys.sorted()
+
+        return VStack(alignment: .leading, spacing: 0) {
+            HStack {
+                Text("POSES")
+                    .font(.system(size: 10, weight: .semibold))
+                    .foregroundStyle(.secondary)
+                    .padding(.leading, 28)
+                Spacer()
+                if !available.isEmpty {
+                    Menu {
+                        ForEach(available, id: \.self) { name in
+                            Button(name) {
+                                addPoseOverride(spriteName: name, cycleIdx: cycleIdx, stateIdx: stateIdx)
+                            }
+                        }
+                    } label: {
+                        Image(systemName: "plus").font(.system(size: 12))
+                    }
+                    .menuStyle(.borderlessButton)
+                    .fixedSize()
+                    .help("Add pose override for a sprite")
+                }
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 4)
+
+            if sorted.isEmpty {
+                Text("No pose overrides")
+                    .font(.system(size: 11))
+                    .foregroundStyle(.tertiary)
+                    .frame(maxWidth: .infinity, alignment: .center)
+                    .padding(.vertical, 6)
+            } else {
+                ForEach(sorted, id: \.self) { name in
+                    poseOverrideRows(cycleIdx: cycleIdx, stateIdx: stateIdx, spriteName: name)
+                }
+            }
+        }
+        .padding(.vertical, 2)
+    }
+
+    private func poseOverrideRows(cycleIdx: Int, stateIdx: Int, spriteName: String) -> some View {
+        VStack(alignment: .leading, spacing: 0) {
+            HStack {
+                Text(spriteName)
+                    .font(.system(size: 11, weight: .medium))
+                    .padding(.leading, 28)
+                Spacer()
+                Button {
+                    removePoseOverride(spriteName: spriteName, cycleIdx: cycleIdx, stateIdx: stateIdx)
+                } label: {
+                    Image(systemName: "xmark").font(.system(size: 9))
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(.secondary)
+                .padding(.trailing, 12)
+            }
+            .padding(.vertical, 2)
+
+            stateDetailRow("Pos") {
+                HStack(spacing: 4) {
+                    Text("X").font(.system(size: 10)).foregroundStyle(.secondary)
+                    FloatEntryField(value: bindPoseDouble(cycleIdx, stateIdx, spriteName, \.position.x), width: 54, fractionDigits: 2)
+                    Text("Y").font(.system(size: 10)).foregroundStyle(.secondary)
+                    FloatEntryField(value: bindPoseDouble(cycleIdx, stateIdx, spriteName, \.position.y), width: 54, fractionDigits: 2)
+                }
+            }
+            stateDetailRow("Rot") {
+                HStack(spacing: 4) {
+                    FloatEntryField(value: bindPoseDouble(cycleIdx, stateIdx, spriteName, \.rotation), width: 65, fractionDigits: 2)
+                    Text("°").font(.system(size: 11)).foregroundStyle(.secondary)
+                }
+            }
+            stateDetailRow("Scale") {
+                HStack(spacing: 4) {
+                    Text("X").font(.system(size: 10)).foregroundStyle(.secondary)
+                    FloatEntryField(value: bindPoseDouble(cycleIdx, stateIdx, spriteName, \.scale.x), width: 54, fractionDigits: 3)
+                    Text("Y").font(.system(size: 10)).foregroundStyle(.secondary)
+                    FloatEntryField(value: bindPoseDouble(cycleIdx, stateIdx, spriteName, \.scale.y), width: 54, fractionDigits: 3)
+                }
+            }
+        }
+        .padding(.bottom, 4)
+    }
+
+    private func bindPoseDouble(_ cycleIdx: Int, _ stateIdx: Int, _ spriteName: String,
+                                 _ kp: WritableKeyPath<SpritePoseOverride, Double>) -> Binding<Double> {
+        Binding(
+            get: {
+                controller.projectConfig?.cycles[safe: cycleIdx]?.states[safe: stateIdx]?
+                    .poseOverrides[spriteName]?[keyPath: kp] ?? 0
+            },
+            set: { v in
+                controller.updateProjectConfig { cfg in
+                    guard cfg.cycles.indices.contains(cycleIdx),
+                          cfg.cycles[cycleIdx].states.indices.contains(stateIdx) else { return }
+                    cfg.cycles[cycleIdx].states[stateIdx].poseOverrides[spriteName]?[keyPath: kp] = v
+                }
+            }
+        )
+    }
+
+    private func addPoseOverride(spriteName: String, cycleIdx: Int, stateIdx: Int) {
+        let baseDef = controller.projectConfig?.spriteConfig.library.spriteSets
+            .flatMap { $0.sprites }
+            .first(where: { $0.name == spriteName })
+        let initialOverride = SpritePoseOverride(
+            position: baseDef?.position ?? .zero,
+            rotation: baseDef?.rotation ?? 0,
+            scale:    baseDef?.scale    ?? Vector2D(x: 1, y: 1)
+        )
+        controller.updateProjectConfig { cfg in
+            guard cfg.cycles.indices.contains(cycleIdx),
+                  cfg.cycles[cycleIdx].states.indices.contains(stateIdx) else { return }
+            cfg.cycles[cycleIdx].states[stateIdx].poseOverrides[spriteName] = initialOverride
+        }
+    }
+
+    private func removePoseOverride(spriteName: String, cycleIdx: Int, stateIdx: Int) {
+        controller.updateProjectConfig { cfg in
+            guard cfg.cycles.indices.contains(cycleIdx),
+                  cfg.cycles[cycleIdx].states.indices.contains(stateIdx) else { return }
+            cfg.cycles[cycleIdx].states[stateIdx].poseOverrides.removeValue(forKey: spriteName)
+        }
     }
 
     // MARK: Empty state

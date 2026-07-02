@@ -1813,6 +1813,20 @@
 
   <p><strong>Reset Transform</strong> clears Pivot X and Y back to (0, 0) along with Position, Scale, and Rotation.</p>
 
+  <h4 id="sprites-pivot-constraint">Rotation arc constraint</h4>
+  <p>A pivot can optionally be locked to a fixed angular range — like a physical joint stop preventing a knee from bending backwards or an elbow from hyper-extending. Enable <strong>Rot range</strong> in the Transform section (a checkbox below the Pivot row) to activate the constraint for the selected sprite.</p>
+  <p>When enabled, two fields appear: <strong>Arc min°</strong> and <strong>Arc max°</strong>. The sprite's total rotation (base rotation plus any animation offset) is clamped to the range <code>[min, max]</code> at render time, before parent hierarchy composition. Animation drivers can freely produce values outside this range — they will simply be clamped, so the sprite appears to hit a hard stop.</p>
+
+  <h5>Editing the arc on the canvas</h5>
+  <p>When a sprite with an active constraint is selected in the Sprites tab wireframe view, a filled arc sector is drawn around the pivot marker showing the allowed rotation range. Two small circles mark the arc endpoints (minimum and maximum angles).</p>
+  <ol class="steps">
+    <li>Select the sprite in the <strong>Sprites tab</strong> wireframe view.</li>
+    <li>Locate the orange pivot crosshair and the arc sector around it.</li>
+    <li>Drag either arc-endpoint circle to set the minimum or maximum angle. The angle is measured from the positive X axis (3 o'clock) in standard mathematical convention (counter-clockwise positive).</li>
+    <li>The inspector fields update live as you drag. Release to commit.</li>
+  </ol>
+  <div class="note"><strong>Min &lt; Max is always enforced.</strong> If you drag a min endpoint past the max (or vice versa), Loom swaps them on commit so the constraint range stays valid.</div>
+
   <div class="tip"><strong>Workflow for a simple two-joint limb.</strong> Place the upper leg sprite with Pivot Y at the hip offset, and the lower leg as a child of the upper leg with Pivot Y at the knee offset. Rotating the upper leg at the hip rotates the whole limb; rotating the lower leg at the knee bends it independently. Add pose overrides in your SpriteCycle (see <a href="#cycles-poses">Pose Overrides</a>) to define each step of the walk.</div>
 
 </section>
@@ -1911,7 +1925,14 @@
   <h4>Pose overrides vs. state registration offsets</h4>
   <p>Each cycle state also has <strong>Offset X / Y</strong>, <strong>Rotation</strong>, and <strong>Scale X / Y</strong> fields that are <em>additive</em> on top of the sprite's base transform. These are a quick way to nudge a single sprite's position or angle for one state without defining a full pose. Pose overrides are <em>absolute</em> replacements and cover any number of sprites, making them the right tool for full-rig poses. Both can be used simultaneously: the absolute pose override is applied first, then the additive state offset is applied on top.</p>
 
-  <div class="tip"><strong>Pose editor UI.</strong> A dedicated numeric pose editor inside the Cycle editor — listing every sprite with position, rotation, and scale fields per state — is the planned next step. In the current release the pose data model and interpolation engine are in place; pose values can be authored directly in <code>project_config.json</code> under each cycle state's <code>poseOverrides</code> dictionary (keyed by sprite name) while the editor UI is under development.</div>
+  <h4 id="cycles-pose-editor">Pose editor</h4>
+  <p>Each expanded cycle state contains a <strong>POSES</strong> section for authoring pose overrides directly in the UI. The section appears between the renderer picker and the hold-frames controls when a state is expanded.</p>
+  <ul>
+    <li><strong>Add a pose override</strong> — click the <strong>+</strong> button next to the POSES header. A menu lists every sprite in the project that does not yet have an override in this state. Select a sprite to add it. The override initialises from the sprite's current base-def values (position, rotation, scale), so it has no visual effect until you change the values.</li>
+    <li><strong>Edit values</strong> — each override shows three rows: <em>Pos</em> (X and Y world-space position), <em>Rot</em> (degrees), and <em>Scale</em> (X and Y multiplier). All fields use <code>FloatEntryField</code>: type a value and press Return or click away to commit.</li>
+    <li><strong>Remove a pose override</strong> — click the <strong>×</strong> button next to the sprite name. The sprite reverts to its base-def values for this state.</li>
+  </ul>
+  <div class="tip"><strong>Typical walk-cycle workflow.</strong> Create one state per step in the walk (contact, down, pass, up, repeat). For each state, add pose overrides for each limb sprite and rotate them around their respective joint pivots — knee, hip, shoulder, elbow. The transitions between states interpolate the poses smoothly.</div>
 
   <h3 id="cycles-svg">Image states</h3>
   <p>Each cycle state has a <strong>Source</strong> toggle at the top of its expanded detail panel: <strong>Loom</strong> (the default) or <strong>Image</strong>. In Image mode the state references an image file — SVG, PNG, JPG, TIFF, or GIF — instead of a Loom polygon and renderer set. The hold frames, transition frames, easing, and loop mode all work identically regardless of source type.</p>

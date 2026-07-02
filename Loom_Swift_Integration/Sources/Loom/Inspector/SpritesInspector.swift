@@ -15,7 +15,7 @@ struct SpritesInspector: View {
         return AnyView(VStack(alignment: .leading, spacing: 0) {
             generalSection(sprite: sprite, setIdx: setIdx, spriteIdx: spriteIdx)
             cycleSection(sprite: sprite, setIdx: setIdx, spriteIdx: spriteIdx)
-            transformSection(setIdx: setIdx, spriteIdx: spriteIdx)
+            transformSection(sprite: sprite, setIdx: setIdx, spriteIdx: spriteIdx)
             animationSection(sprite: sprite, setIdx: setIdx, spriteIdx: spriteIdx)
             if sprite.animation.drivers != nil {
                 DriverSectionsView(setIdx: setIdx, spriteIdx: spriteIdx)
@@ -198,7 +198,7 @@ struct SpritesInspector: View {
 
     // MARK: - Transform
 
-    private func transformSection(setIdx: Int, spriteIdx: Int) -> some View {
+    private func transformSection(sprite: SpriteDef, setIdx: Int, spriteIdx: Int) -> some View {
         let ctl = controller
         let si  = setIdx
         let pi  = spriteIdx
@@ -219,7 +219,52 @@ struct SpritesInspector: View {
             vec2Field("Pivot",
                       xBind: bindS(si, pi, \.pivotOffset.x),
                       yBind: bindS(si, pi, \.pivotOffset.y))
-            .loomHelp("Rotation pivot offset in world units relative to the sprite's position. Rotation is applied around position + pivot. Use this to rotate a limb around its joint (e.g. set Y to the distance from the sprite origin to the knee).")
+            .loomHelp("Rotation pivot offset in world units relative to the sprite's position. Rotation is applied around position + pivot. Drag the orange crosshair on the canvas or enter values here.")
+            let hasConstraint = sprite.pivotConstraint != nil
+            InspectorField("Rot range") {
+                Toggle("", isOn: Binding(
+                    get: { hasConstraint },
+                    set: { on in
+                        ctl.updateProjectConfig { cfg in
+                            guard si < cfg.spriteConfig.library.spriteSets.count,
+                                  pi < cfg.spriteConfig.library.spriteSets[si].sprites.count else { return }
+                            cfg.spriteConfig.library.spriteSets[si].sprites[pi].pivotConstraint =
+                                on ? PivotConstraint(minAngle: sprite.rotation - 45,
+                                                     maxAngle: sprite.rotation + 45) : nil
+                        }
+                    }
+                ))
+                .labelsHidden()
+                .toggleStyle(.checkbox)
+                Text("constrain rotation arc")
+                    .font(.system(size: 10))
+                    .foregroundStyle(.secondary)
+            }
+            .loomHelp("When enabled, the sprite's rotation (including animation) is clamped to the arc between Min and Max. Drag the orange arc endpoints on the canvas to adjust. Mirrors a physical joint stop.")
+            if hasConstraint {
+                InspectorField("Arc min°") {
+                    FloatEntryField(value: Binding(
+                        get: { sprite.pivotConstraint?.minAngle ?? 0 },
+                        set: { v in ctl.updateProjectConfig { cfg in
+                            guard si < cfg.spriteConfig.library.spriteSets.count,
+                                  pi < cfg.spriteConfig.library.spriteSets[si].sprites.count else { return }
+                            cfg.spriteConfig.library.spriteSets[si].sprites[pi].pivotConstraint?.minAngle = v
+                        }}
+                    ), width: 65, fractionDigits: 1)
+                }
+                .loomHelp("Minimum allowed rotation in degrees. The sprite cannot rotate below this value regardless of animation drivers.")
+                InspectorField("Arc max°") {
+                    FloatEntryField(value: Binding(
+                        get: { sprite.pivotConstraint?.maxAngle ?? 0 },
+                        set: { v in ctl.updateProjectConfig { cfg in
+                            guard si < cfg.spriteConfig.library.spriteSets.count,
+                                  pi < cfg.spriteConfig.library.spriteSets[si].sprites.count else { return }
+                            cfg.spriteConfig.library.spriteSets[si].sprites[pi].pivotConstraint?.maxAngle = v
+                        }}
+                    ), width: 65, fractionDigits: 1)
+                }
+                .loomHelp("Maximum allowed rotation in degrees. The sprite cannot rotate above this value regardless of animation drivers.")
+            }
             InspectorField("Depth") {
                 FloatEntryField(value: bindS(setIdx, spriteIdx, \.depth), width: 65, fractionDigits: 1)
                 Text("0=focal").font(.system(size: 10)).foregroundStyle(.tertiary)

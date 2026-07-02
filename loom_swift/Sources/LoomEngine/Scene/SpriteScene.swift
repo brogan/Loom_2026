@@ -1580,6 +1580,7 @@ public struct SpriteScene: @unchecked Sendable {
 
         // Rotation in degrees (CCW positive in world Y-up space).
         var rotDeg = def.rotation + anim.rotation
+        if let c = def.pivotConstraint { rotDeg = max(c.minAngle, min(c.maxAngle, rotDeg)) }
 
         // World position in pixels from canvas centre.
         let localTx = (def.position.x + anim.positionOffset.x) / 100.0 * hw
@@ -1760,6 +1761,7 @@ public struct SpriteScene: @unchecked Sendable {
 
         // Local rotation in degrees.
         var rotDeg = def.rotation + anim.rotation
+        if let c = def.pivotConstraint { rotDeg = max(c.minAngle, min(c.maxAngle, rotDeg)) }
 
         // Local position in pixels (1/100 of canvas half-size per unit).
         let localTx = (def.position.x + anim.positionOffset.x) / 100.0 * hw

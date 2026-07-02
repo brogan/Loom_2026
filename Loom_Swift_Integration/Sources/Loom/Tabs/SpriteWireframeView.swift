@@ -257,19 +257,22 @@ struct SpriteWireframeView: View {
     // MARK: - Types
 
     enum HandleID: Equatable {
-        case tl, t, tr, l, r, bl, b, br, interior, pivot
+        case tl, t, tr, l, r, bl, b, br, interior, pivot, pivotArcMin, pivotArcMax
         var isRotate: Bool { self == .tr || self == .bl }
     }
 
     struct LiveTransform {
         var posX, posY, scaleX, scaleY, rotation: Double
         var pivotOffsetX, pivotOffsetY: Double
+        var constraintMinAngle, constraintMaxAngle: Double?
         init(_ d: SpriteDef) {
             posX = d.position.x; posY = d.position.y
             scaleX = d.scale.x;  scaleY = d.scale.y
             rotation = d.rotation
             pivotOffsetX = d.pivotOffset.x
             pivotOffsetY = d.pivotOffset.y
+            constraintMinAngle = d.pivotConstraint?.minAngle
+            constraintMaxAngle = d.pivotConstraint?.maxAngle
         }
     }
 
@@ -415,7 +418,8 @@ struct SpriteWireframeView: View {
                     drawPivotHandle(ctx: ctx, at: parallaxAdjustedScreen(
                         Vector2D(x: world.posX + resolved.pivotOffset.x,
                                  y: world.posY + resolved.pivotOffset.y),
-                        depth: sprite.depth, rect: rect))
+                        depth: sprite.depth, rect: rect),
+                        constraint: resolved.pivotConstraint)
                 }
             } else {
                 // Placeholder cross for sprites with no engine instance
@@ -434,16 +438,48 @@ struct SpriteWireframeView: View {
                     drawPivotHandle(ctx: ctx, at: parallaxAdjustedScreen(
                         Vector2D(x: world.posX + resolved.pivotOffset.x,
                                  y: world.posY + resolved.pivotOffset.y),
-                        depth: sprite.depth, rect: rect))
+                        depth: sprite.depth, rect: rect),
+                        constraint: resolved.pivotConstraint)
                 }
             }
         }
     }
 
 
-    private func drawPivotHandle(ctx: GraphicsContext, at pos: CGPoint) {
+    private let pivotArcRadius: CGFloat = 24
+
+    private func drawPivotHandle(ctx: GraphicsContext, at pos: CGPoint, constraint: PivotConstraint? = nil) {
         let r: CGFloat = 6, arm: CGFloat = 11
         let color = Color(red: 1.0, green: 0.58, blue: 0.1)
+
+        // Arc sector (drawn first so crosshair is on top)
+        if let c = constraint, c.maxAngle > c.minAngle {
+            let arcR = pivotArcRadius
+            var sector = Path()
+            sector.move(to: pos)
+            let steps = 32
+            for i in 0...steps {
+                let angle = c.minAngle + (c.maxAngle - c.minAngle) * Double(i) / Double(steps)
+                let rad   = CGFloat(angle * .pi / 180.0)
+                let pt    = CGPoint(x: pos.x + arcR * cos(rad), y: pos.y - arcR * sin(rad))
+                i == 0 ? sector.addLine(to: pt) : sector.addLine(to: pt)
+            }
+            sector.closeSubpath()
+            ctx.fill(sector, with: .color(color.opacity(0.18)))
+            ctx.stroke(sector, with: .color(color.opacity(0.55)), lineWidth: 0.8)
+            // Endpoint handle circles at arc limits
+            for angle in [c.minAngle, c.maxAngle] {
+                let rad = CGFloat(angle * .pi / 180.0)
+                let hPt = CGPoint(x: pos.x + arcR * cos(rad), y: pos.y - arcR * sin(rad))
+                let hR: CGFloat = 4.5
+                ctx.fill(Path(ellipseIn: CGRect(x: hPt.x - hR, y: hPt.y - hR, width: hR*2, height: hR*2)),
+                         with: .color(color))
+                ctx.stroke(Path(ellipseIn: CGRect(x: hPt.x - hR, y: hPt.y - hR, width: hR*2, height: hR*2)),
+                           with: .color(Color(white: 0.25)), lineWidth: 0.7)
+            }
+        }
+
+        // Crosshair arms and ring
         var cross = Path()
         cross.move(to: CGPoint(x: pos.x - arm, y: pos.y))
         cross.addLine(to: CGPoint(x: pos.x + arm, y: pos.y))
@@ -452,6 +488,12 @@ struct SpriteWireframeView: View {
         ctx.stroke(cross, with: .color(color), lineWidth: 1.5)
         ctx.stroke(Path(ellipseIn: CGRect(x: pos.x - r, y: pos.y - r, width: r * 2, height: r * 2)),
                    with: .color(color), lineWidth: 1.5)
+    }
+
+    private func arcEndpointScreen(_ pos: CGPoint, angle: Double) -> CGPoint {
+        let rad = CGFloat(angle * .pi / 180.0)
+        return CGPoint(x: pos.x + pivotArcRadius * cos(rad),
+                       y: pos.y - pivotArcRadius * sin(rad))
     }
 
     private func drawPlaceholder(ctx: GraphicsContext, centre: CGPoint, color: Color) {
@@ -742,6 +784,11 @@ struct SpriteWireframeView: View {
             d.rotation   = live.rotation
             d.pivotOffset.x = live.pivotOffsetX
             d.pivotOffset.y = live.pivotOffsetY
+            if let minA = live.constraintMinAngle, let maxA = live.constraintMaxAngle {
+                d.pivotConstraint = PivotConstraint(minAngle: minA, maxAngle: maxA)
+            } else {
+                d.pivotConstraint = nil
+            }
             return d
         }
 
@@ -870,12 +917,30 @@ struct SpriteWireframeView: View {
         let wireWorlds     = buildWireWorlds(sprites: sprites)
         let world          = wireWorlds[spriteID]
 
-        // Pivot handle hit-test (highest priority — before bbox handles)
+        // Pivot screen position (shared by arc and center hit-tests)
         let pivotWorldPt = Vector2D(
             x: (world?.posX ?? resolvedSprite.position.x) + resolvedSprite.pivotOffset.x,
             y: (world?.posY ?? resolvedSprite.position.y) + resolvedSprite.pivotOffset.y
         )
         let pivotScrPt = parallaxAdjustedScreen(pivotWorldPt, depth: resolvedSprite.depth, rect: rect)
+
+        // Arc endpoint handles (take priority when constraint is active)
+        if let c = resolvedSprite.pivotConstraint {
+            let minPt = arcEndpointScreen(pivotScrPt, angle: c.minAngle)
+            let maxPt = arcEndpointScreen(pivotScrPt, angle: c.maxAngle)
+            if hypot(startLoc.x - minPt.x, startLoc.y - minPt.y) <= 8 {
+                activeDragHandle = .pivotArcMin
+                dragStartPos = startLoc; dragStartDef = resolvedSprite
+                liveTransform = LiveTransform(resolvedSprite); return
+            }
+            if hypot(startLoc.x - maxPt.x, startLoc.y - maxPt.y) <= 8 {
+                activeDragHandle = .pivotArcMax
+                dragStartPos = startLoc; dragStartDef = resolvedSprite
+                liveTransform = LiveTransform(resolvedSprite); return
+            }
+        }
+
+        // Pivot center handle
         if hypot(startLoc.x - pivotScrPt.x, startLoc.y - pivotScrPt.y) <= 10 {
             activeDragHandle = .pivot
             dragStartPos     = startLoc
@@ -983,6 +1048,14 @@ struct SpriteWireframeView: View {
             let dy = (currW.y - startW.y) * 100.0
             live.pivotOffsetX = startDef.pivotOffset.x + dx
             live.pivotOffsetY = startDef.pivotOffset.y + dy
+
+        case .pivotArcMin, .pivotArcMax:
+            let pivotPos = Vector2D(x: startDef.position.x + live.pivotOffsetX,
+                                    y: startDef.position.y + live.pivotOffsetY)
+            let piv = parallaxAdjustedScreen(pivotPos, depth: startDef.depth, rect: rect)
+            let angle = atan2(-(currentLoc.y - piv.y), currentLoc.x - piv.x) * 180.0 / .pi
+            if handle == .pivotArcMin { live.constraintMinAngle = angle }
+            else { live.constraintMaxAngle = angle }
         }
 
         liveTransform = live
@@ -1008,6 +1081,18 @@ struct SpriteWireframeView: View {
             controller.updateProjectConfig { config in
                 config.spriteConfig.library.spriteSets[si].sprites[pi].pivotOffset.x = live.pivotOffsetX
                 config.spriteConfig.library.spriteSets[si].sprites[pi].pivotOffset.y = live.pivotOffsetY
+            }
+            return
+        }
+
+        // Arc endpoint drag: update constraint min or max angle.
+        if activeDragHandle == .pivotArcMin || activeDragHandle == .pivotArcMax {
+            if let minA = live.constraintMinAngle, let maxA = live.constraintMaxAngle {
+                let lo = min(minA, maxA), hi = max(minA, maxA)
+                controller.updateProjectConfig { config in
+                    config.spriteConfig.library.spriteSets[si].sprites[pi].pivotConstraint =
+                        PivotConstraint(minAngle: lo, maxAngle: hi)
+                }
             }
             return
         }
