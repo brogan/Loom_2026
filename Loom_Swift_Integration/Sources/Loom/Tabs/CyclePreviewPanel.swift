@@ -15,7 +15,7 @@ struct CyclePreviewPanel: View {
     @State private var playFrame = 0
     @AppStorage("cyclePreview.bgBrightness") private var bgBrightness: Double = 0.08
 
-    private let previewFPS = 12.0
+    private let previewFPS = 24.0
 
     var body: some View {
         VStack(spacing: 0) {
