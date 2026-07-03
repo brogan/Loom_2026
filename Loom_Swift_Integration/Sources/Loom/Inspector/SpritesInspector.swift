@@ -86,8 +86,9 @@ struct SpritesInspector: View {
     // MARK: - Cycle
 
     private func cycleSection(sprite: SpriteDef, setIdx: Int, spriteIdx: Int) -> some View {
-        let cycles = controller.projectConfig?.cycles ?? []
-        let assigned = sprite.cycleName
+        let cycles    = controller.projectConfig?.cycles ?? []
+        let assigned  = sprite.cycleName
+        let inherited = assigned == nil ? inheritedCycleName(for: sprite) : nil
         return InspectorSection("Cycle") {
             InspectorField("Cycle") {
                 Picker("", selection: cycleBinding(setIdx: setIdx, spriteIdx: spriteIdx)) {
@@ -99,7 +100,7 @@ struct SpritesInspector: View {
                 .labelsHidden()
                 .font(.system(size: 12))
                 .frame(maxWidth: 130)
-                if let name = assigned {
+                if let name = assigned ?? inherited {
                     Button("Edit") {
                         if let idx = controller.projectConfig?.cycles.firstIndex(where: { $0.name == name }) {
                             controller.selectedCycleIndex = idx
@@ -112,11 +113,33 @@ struct SpritesInspector: View {
                 }
             }
             .loomHelp("Assign a SpriteCycle to drive this sprite's shape/renderer sequence (walk cycles, image replacement).")
+            if let name = inherited {
+                InspectorField("") {
+                    Text("Inherited: \(name)")
+                        .font(.system(size: 11))
+                        .foregroundColor(.secondary)
+                }
+            }
         }
         .sheet(isPresented: $controller.showingCycleEditor) {
             SpriteCycleEditorView()
                 .environmentObject(controller)
         }
+    }
+
+    private func inheritedCycleName(for sprite: SpriteDef) -> String? {
+        guard let config = controller.projectConfig else { return nil }
+        let allSprites  = config.spriteConfig.library.spriteSets.flatMap(\.sprites)
+        let byName      = Dictionary(allSprites.map { ($0.name, $0) },
+                                     uniquingKeysWith: { first, _ in first })
+        var cur = sprite.parentName
+        while let parentName = cur {
+            guard let parent = byName[parentName] else { break }
+            if parent.shapeSetName.isEmpty && parent.shapeName.isEmpty,
+               let cycle = parent.cycleName { return cycle }
+            cur = parent.parentName
+        }
+        return nil
     }
 
     private func cycleBinding(setIdx: Int, spriteIdx: Int) -> Binding<String?> {
