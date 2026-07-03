@@ -27,8 +27,7 @@ public struct GlobalConfig: Equatable, Codable, Sendable {
     public var subdividing: Bool         = true
     /// Frame rate assumed when interpreting integer `drawCycle` keyframe values.
     /// Keyframe times in XML are frame numbers; dividing by `targetFPS` gives seconds.
-    /// Default 30 matches the typical Scala Loom frame rate.
-    public var targetFPS: Double          = 30.0
+    public var targetFPS: Double          = 24.0
     public var note: String               = ""
     /// Gaussian blur radius applied to each rendered frame, in logical pixels.
     /// Scaled by qualityMultiple at render time so the visual effect is
