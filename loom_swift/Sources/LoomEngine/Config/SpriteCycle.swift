@@ -139,6 +139,16 @@ public struct SpriteCycleState: Codable, Equatable, Sendable {
     }
 }
 
+// MARK: - SpriteLayerRole
+
+/// Per-cycle designation of a sprite as front-plane or back-plane.
+/// Used in CyclePoseCanvas to colour-code bipedal figures in side view.
+/// Absent from the dict = no explicit role (drawn with default colours).
+public enum SpriteLayerRole: String, Codable, Sendable {
+    case front = "front"
+    case back  = "back"
+}
+
 // MARK: - CycleRefLine
 
 /// A reference guide line drawn on the CyclePoseCanvas, stored per-cycle.
@@ -189,20 +199,24 @@ public struct SpriteCycle: Codable, Equatable, Sendable {
     /// the joints that actually change.
     public var baseStateIndex: Int?
     /// Persistent guide lines drawn on the CyclePoseCanvas (ground plane, eye-level, etc.).
-    public var referenceLines: [CycleRefLine]
+    public var referenceLines:   [CycleRefLine]
+    /// Per-sprite front/back plane role for bipedal side-view colour coding.
+    public var spriteLayerRoles: [String: SpriteLayerRole]
 
     public init(
-        name:           String                = "Cycle",
-        loopMode:       SpriteCycleLoopMode   = .loop,
-        states:         [SpriteCycleState]    = [],
-        baseStateIndex: Int?                  = nil,
-        referenceLines: [CycleRefLine]        = []
+        name:             String                       = "Cycle",
+        loopMode:         SpriteCycleLoopMode          = .loop,
+        states:           [SpriteCycleState]           = [],
+        baseStateIndex:   Int?                         = nil,
+        referenceLines:   [CycleRefLine]               = [],
+        spriteLayerRoles: [String: SpriteLayerRole]    = [:]
     ) {
-        self.name           = name
-        self.loopMode       = loopMode
-        self.states         = states
-        self.baseStateIndex = baseStateIndex
-        self.referenceLines = referenceLines
+        self.name             = name
+        self.loopMode         = loopMode
+        self.states           = states
+        self.baseStateIndex   = baseStateIndex
+        self.referenceLines   = referenceLines
+        self.spriteLayerRoles = spriteLayerRoles
     }
 
     // MARK: - Frame counts
@@ -313,6 +327,7 @@ public struct SpriteCycle: Codable, Equatable, Sendable {
         loopMode        = try c.decodeIfPresent(SpriteCycleLoopMode.self, forKey: .loopMode)       ?? .loop
         states          = try c.decodeIfPresent([SpriteCycleState].self,  forKey: .states)         ?? []
         baseStateIndex  = try c.decodeIfPresent(Int.self,                 forKey: .baseStateIndex)
-        referenceLines  = try c.decodeIfPresent([CycleRefLine].self,      forKey: .referenceLines) ?? []
+        referenceLines   = try c.decodeIfPresent([CycleRefLine].self,               forKey: .referenceLines)   ?? []
+        spriteLayerRoles = try c.decodeIfPresent([String: SpriteLayerRole].self,   forKey: .spriteLayerRoles) ?? [:]
     }
 }

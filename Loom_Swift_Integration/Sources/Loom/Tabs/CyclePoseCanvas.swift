@@ -72,6 +72,7 @@ struct CyclePoseCanvas: View {
     private var spriteHierarchyPanel: some View {
         let sprites   = allSprites
         let overrides = currentOverrides
+        let roles     = controller.projectConfig?.cycles[safe: cycleIdx]?.spriteLayerRoles ?? [:]
         let roots     = sprites.filter { $0.parentName == nil }
         return VStack(spacing: 0) {
             Text("SPRITES")
@@ -84,7 +85,7 @@ struct CyclePoseCanvas: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 0) {
                     ForEach(roots, id: \.name) { root in
-                        spriteRow(root, depth: 0, sprites: sprites, overrides: overrides)
+                        spriteRow(root, depth: 0, sprites: sprites, overrides: overrides, roles: roles)
                     }
                 }
                 .padding(.vertical, 2)
@@ -94,16 +95,18 @@ struct CyclePoseCanvas: View {
     }
 
     private func spriteRow(_ sp: SpriteDef, depth: Int, sprites: [SpriteDef],
-                            overrides: [String: SpritePoseOverride]) -> AnyView {
+                            overrides: [String: SpritePoseOverride],
+                            roles: [String: SpriteLayerRole]) -> AnyView {
         let children    = sprites.filter { $0.parentName == sp.name }
         let isSelected  = selectedSpriteName == sp.name
         let hasOverride = overrides[sp.name] != nil
+        let role        = roles[sp.name]
 
-        let dotColor: Color = isSelected
-            ? .orange
-            : hasOverride
-                ? Color(red: 0.25, green: 0.75, blue: 0.40)
-                : Color(NSColor.tertiaryLabelColor)
+        let dotColor: Color = isSelected ? .orange
+            : role == .back  ? Color(red: 0.35, green: 0.60, blue: 1.0)
+            : role == .front ? Color(red: 0.25, green: 0.75, blue: 0.40)
+            : hasOverride    ? Color(red: 0.25, green: 0.75, blue: 0.40)
+            :                  Color(NSColor.tertiaryLabelColor)
 
         return AnyView(
             VStack(alignment: .leading, spacing: 0) {
@@ -129,9 +132,22 @@ struct CyclePoseCanvas: View {
                     .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
+                .contextMenu {
+                    Button { setLayerRole(.front, forSprite: sp.name) } label: {
+                        Label("Front", systemImage: "circle.fill")
+                    }
+                    Button { setLayerRole(.back, forSprite: sp.name) } label: {
+                        Label("Back", systemImage: "circle.fill")
+                    }
+                    if role != nil {
+                        Divider()
+                        Button("Clear role") { clearLayerRole(forSprite: sp.name) }
+                    }
+                }
 
                 ForEach(children, id: \.name) { child in
-                    self.spriteRow(child, depth: depth + 1, sprites: sprites, overrides: overrides)
+                    self.spriteRow(child, depth: depth + 1, sprites: sprites,
+                                   overrides: overrides, roles: roles)
                 }
             }
         )
@@ -202,13 +218,19 @@ struct CyclePoseCanvas: View {
             }
         }
 
+        let roles = controller.projectConfig?.cycles[safe: cycleIdx]?.spriteLayerRoles ?? [:]
+
         for sp in sprites {
             guard let polys = spritePolygons[sp.name] else { continue }
             let isSelected  = sp.name == selectedSpriteName
             let hasPoseOver = overrides[sp.name] != nil
+            let role        = roles[sp.name]
             let color: Color = isSelected ? .orange
-                : hasPoseOver ? Color(red: 0.35, green: 0.88, blue: 0.52) : .white
-            let alpha: Double = isSelected ? 0.90 : hasPoseOver ? 0.72 : 0.30
+                : role == .back  ? Color(red: 0.40, green: 0.65, blue: 1.0)
+                : role == .front ? Color(red: 0.35, green: 0.88, blue: 0.52)
+                : hasPoseOver    ? Color(red: 0.35, green: 0.88, blue: 0.52)
+                : .white
+            let alpha: Double = isSelected ? 0.90 : (hasPoseOver || role != nil) ? 0.72 : 0.28
             let lw: CGFloat   = isSelected ? 1.4  : 0.85
 
             // Position override in /200 geometry space (matches pivot convention)
@@ -234,8 +256,12 @@ struct CyclePoseCanvas: View {
         for sp in sprites {
             let isSelected  = sp.name == selectedSpriteName
             let hasPoseOver = overrides[sp.name] != nil
+            let role        = roles[sp.name]
             let color: Color = isSelected ? .orange
-                : hasPoseOver ? Color(red: 0.35, green: 0.88, blue: 0.52) : .white
+                : role == .back  ? Color(red: 0.40, green: 0.65, blue: 1.0)
+                : role == .front ? Color(red: 0.35, green: 0.88, blue: 0.52)
+                : hasPoseOver    ? Color(red: 0.35, green: 0.88, blue: 0.52)
+                : .white
 
             var wPiv = worldPivot(sp, sprites: sprites, overrides: overrides)
             let posOvr = overrides[sp.name]?.position ?? sp.position
@@ -518,6 +544,20 @@ struct CyclePoseCanvas: View {
     private var currentOverrides: [String: SpritePoseOverride] {
         guard let si = selectedStateIndex else { return [:] }
         return controller.projectConfig?.cycles[safe: cycleIdx]?.states[safe: si]?.poseOverrides ?? [:]
+    }
+
+    private func setLayerRole(_ role: SpriteLayerRole, forSprite name: String) {
+        controller.updateProjectConfig { cfg in
+            guard cfg.cycles.indices.contains(cycleIdx) else { return }
+            cfg.cycles[cycleIdx].spriteLayerRoles[name] = role
+        }
+    }
+
+    private func clearLayerRole(forSprite name: String) {
+        controller.updateProjectConfig { cfg in
+            guard cfg.cycles.indices.contains(cycleIdx) else { return }
+            cfg.cycles[cycleIdx].spriteLayerRoles.removeValue(forKey: name)
+        }
     }
 
     private func ensurePoseOverride(name: String, sprite: SpriteDef, stateIdx: Int) {

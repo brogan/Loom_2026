@@ -552,8 +552,6 @@ struct SpriteCycleEditorView: View {
             }
 
             Divider().padding(.horizontal, 12)
-            poseSection(cycleIdx: cycleIdx, stateIdx: stateIdx)
-            Divider().padding(.horizontal, 12)
 
             // Base state toggle + zero positions
             let isBase = controller.projectConfig?.cycles[safe: cycleIdx]?.baseStateIndex == stateIdx
@@ -613,6 +611,9 @@ struct SpriteCycleEditorView: View {
                         .toggleStyle(.checkbox)
                 }
             }
+
+            Divider().padding(.horizontal, 12)
+            poseSection(cycleIdx: cycleIdx, stateIdx: stateIdx)
         }
         .padding(.top, 4)
     }
