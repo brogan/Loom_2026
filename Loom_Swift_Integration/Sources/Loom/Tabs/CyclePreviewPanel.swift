@@ -256,9 +256,15 @@ struct CyclePreviewPanel: View {
         guard cycle.states.indices.contains(stateIdx) else { return [:] }
         var result: [String: SpritePoseOverride] = [:]
         let stateOvr = cycle.states[stateIdx].poseOverrides
+        // Mirror chainTransformPolygons: fall back to base state overrides before def values
+        // so sparse states don't collapse to the rest pose in the preview.
+        let baseOvr: [String: SpritePoseOverride]? = cycle.baseStateIndex.flatMap { bi in
+            guard bi < cycle.states.count, bi != stateIdx else { return nil }
+            return cycle.states[bi].poseOverrides
+        }
         for sp in sprites {
-            result[sp.name] = stateOvr[sp.name] ?? SpritePoseOverride(
-                position: sp.position, rotation: sp.rotation, scale: sp.scale)
+            let defPose = SpritePoseOverride(position: sp.position, rotation: sp.rotation, scale: sp.scale)
+            result[sp.name] = stateOvr[sp.name] ?? baseOvr?[sp.name] ?? defPose
         }
         return result
     }
@@ -274,10 +280,17 @@ struct CyclePreviewPanel: View {
         let inIdx  = layers[1].stateIndex
         let t      = layers[1].alpha
         var result: [String: SpritePoseOverride] = [:]
+        // Base-state fallback: matches chainTransformPolygons logic so preview is consistent
+        // with the actual render when states use sparse overrides.
+        let baseOvr: [String: SpritePoseOverride]? = cycle.baseStateIndex.flatMap { bi in
+            guard bi < cycle.states.count, bi != outIdx, bi != inIdx else { return nil }
+            return cycle.states[bi].poseOverrides
+        }
         for sp in sprites {
-            let base = SpritePoseOverride(position: sp.position, rotation: sp.rotation, scale: sp.scale)
-            let outOvr = (outIdx < cycle.states.count ? cycle.states[outIdx].poseOverrides[sp.name] : nil) ?? base
-            let inOvr  = (inIdx  < cycle.states.count ? cycle.states[inIdx].poseOverrides[sp.name]  : nil) ?? base
+            let defPose = SpritePoseOverride(position: sp.position, rotation: sp.rotation, scale: sp.scale)
+            let fallback = baseOvr?[sp.name] ?? defPose
+            let outOvr = (outIdx < cycle.states.count ? cycle.states[outIdx].poseOverrides[sp.name] : nil) ?? fallback
+            let inOvr  = (inIdx  < cycle.states.count ? cycle.states[inIdx].poseOverrides[sp.name]  : nil) ?? fallback
             var delta  = inOvr.rotation - outOvr.rotation
             while delta >  180 { delta -= 360 }
             while delta < -180 { delta += 360 }

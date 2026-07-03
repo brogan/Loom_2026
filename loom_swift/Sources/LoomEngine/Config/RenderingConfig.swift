@@ -173,17 +173,89 @@ public struct RendererDrivers: Equatable, Codable, Sendable {
     }
 }
 
+// MARK: - Gradient
+
+public enum GradientType: String, Codable, CaseIterable, Sendable {
+    case linear = "linear"
+    case radial = "radial"
+
+    public var displayName: String {
+        switch self {
+        case .linear: return "Linear"
+        case .radial: return "Radial"
+        }
+    }
+}
+
+/// A single colour stop in a gradient, position in 0…1.
+public struct GradientStop: Equatable, Codable, Sendable {
+    public var color:    LoomColor
+    public var position: Double
+
+    public init(color: LoomColor = .black, position: Double = 0) {
+        self.color = color; self.position = position
+    }
+}
+
+/// Gradient fill configuration attached to a `Renderer`.
+///
+/// Control points (x0/y0, x1/y1) are expressed as fractions of the polygon's
+/// screen-space bounding box: (0,0) = top-left, (1,1) = bottom-right.
+/// For radial gradients `x0/y0` is the centre and `radius` is a fraction of
+/// `max(bbox.width, bbox.height)`.
+public struct GradientConfig: Equatable, Codable, Sendable {
+    public var type:   GradientType
+    public var stops:  [GradientStop]
+    /// Linear start / radial centre — X as fraction of bbox width.
+    public var x0: Double
+    /// Linear start / radial centre — Y as fraction of bbox height.
+    public var y0: Double
+    /// Linear end — X as fraction of bbox width. (Unused for radial.)
+    public var x1: Double
+    /// Linear end — Y as fraction of bbox height. (Unused for radial.)
+    public var y1: Double
+    /// Radial only: radius as fraction of `max(bbox.width, bbox.height)`.
+    public var radius: Double
+
+    public init(
+        type:   GradientType   = .linear,
+        stops:  [GradientStop] = [GradientStop(color: .white, position: 0),
+                                   GradientStop(color: .black, position: 1)],
+        x0: Double = 0.5, y0: Double = 0.0,
+        x1: Double = 0.5, y1: Double = 1.0,
+        radius: Double = 0.5
+    ) {
+        self.type = type; self.stops = stops
+        self.x0 = x0; self.y0 = y0
+        self.x1 = x1; self.y1 = y1
+        self.radius = radius
+    }
+
+    public init(from decoder: Decoder) throws {
+        let c  = try decoder.container(keyedBy: CodingKeys.self)
+        type   = try c.decodeIfPresent(GradientType.self,    forKey: .type)   ?? .linear
+        stops  = try c.decodeIfPresent([GradientStop].self,  forKey: .stops)  ?? []
+        x0     = try c.decodeIfPresent(Double.self, forKey: .x0) ?? 0.5
+        y0     = try c.decodeIfPresent(Double.self, forKey: .y0) ?? 0.0
+        x1     = try c.decodeIfPresent(Double.self, forKey: .x1) ?? 0.5
+        y1     = try c.decodeIfPresent(Double.self, forKey: .y1) ?? 1.0
+        radius = try c.decodeIfPresent(Double.self, forKey: .radius) ?? 0.5
+    }
+}
+
 // MARK: - Renderer mode
 
 /// Rendering output mode for a `Renderer`.
 public enum RendererMode: String, CaseIterable, Codable, Sendable {
-    case points        = "POINTS"
-    case stroked       = "STROKED"
-    case filled        = "FILLED"
-    case filledStroked = "FILLED_STROKED"
-    case brushed       = "BRUSHED"
-    case stenciled     = "STENCILED"
-    case stamped       = "STAMPED"
+    case points               = "POINTS"
+    case stroked              = "STROKED"
+    case filled               = "FILLED"
+    case filledStroked        = "FILLED_STROKED"
+    case gradientFilled       = "GRADIENT_FILLED"
+    case gradientFilledStroked = "GRADIENT_FILLED_STROKED"
+    case brushed              = "BRUSHED"
+    case stenciled            = "STENCILED"
+    case stamped              = "STAMPED"
 }
 
 /// How a `RendererSet` cycles through its renderers.
@@ -227,6 +299,8 @@ public struct Renderer: Equatable, Codable, Sendable {
     public var brushConfig: BrushConfig?
     /// Non-nil when `mode == .stamped` (or `.stenciled`).
     public var stencilConfig: StencilConfig?
+    /// Non-nil when `mode == .gradientFilled` or `.gradientFilledStroked`.
+    public var gradientConfig: GradientConfig?
 
     public init(
         name: String              = "",
@@ -240,8 +314,9 @@ public struct Renderer: Equatable, Codable, Sendable {
         blurRadius: Double        = 0.0,
         changes: RendererChanges  = RendererChanges(),
         drivers: RendererDrivers? = nil,
-        brushConfig: BrushConfig?   = nil,
-        stencilConfig: StencilConfig? = nil
+        brushConfig: BrushConfig?    = nil,
+        stencilConfig: StencilConfig? = nil,
+        gradientConfig: GradientConfig? = nil
     ) {
         self.name = name; self.enabled = enabled; self.mode = mode
         self.strokeWidth = strokeWidth; self.strokeColor = strokeColor
@@ -249,28 +324,31 @@ public struct Renderer: Equatable, Codable, Sendable {
         self.holdLength = holdLength; self.blurRadius = blurRadius
         self.changes = changes; self.drivers = drivers
         self.brushConfig = brushConfig; self.stencilConfig = stencilConfig
+        self.gradientConfig = gradientConfig
     }
 
     private enum CodingKeys: String, CodingKey {
         case name, enabled, mode, strokeWidth, strokeColor, fillColor,
-             pointSize, holdLength, blurRadius, changes, drivers, brushConfig, stencilConfig
+             pointSize, holdLength, blurRadius, changes, drivers,
+             brushConfig, stencilConfig, gradientConfig
     }
 
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
-        name          = try c.decodeIfPresent(String.self,          forKey: .name)         ?? ""
-        enabled       = try c.decodeIfPresent(Bool.self,            forKey: .enabled)      ?? true
-        mode          = try c.decodeIfPresent(RendererMode.self,    forKey: .mode)         ?? .stroked
-        strokeWidth   = try c.decodeIfPresent(Double.self,          forKey: .strokeWidth)  ?? 1.0
-        strokeColor   = try c.decodeIfPresent(LoomColor.self,       forKey: .strokeColor)  ?? .black
-        fillColor     = try c.decodeIfPresent(LoomColor.self,       forKey: .fillColor)    ?? .black
-        pointSize     = try c.decodeIfPresent(Double.self,          forKey: .pointSize)    ?? 2.0
-        holdLength    = try c.decodeIfPresent(Int.self,             forKey: .holdLength)   ?? 1
-        blurRadius    = try c.decodeIfPresent(Double.self,          forKey: .blurRadius)   ?? 0.0
-        changes       = try c.decodeIfPresent(RendererChanges.self, forKey: .changes)      ?? RendererChanges()
-        drivers       = try c.decodeIfPresent(RendererDrivers.self, forKey: .drivers)
-        brushConfig   = try c.decodeIfPresent(BrushConfig.self,     forKey: .brushConfig)
-        stencilConfig = try c.decodeIfPresent(StencilConfig.self,   forKey: .stencilConfig)
+        name           = try c.decodeIfPresent(String.self,           forKey: .name)           ?? ""
+        enabled        = try c.decodeIfPresent(Bool.self,             forKey: .enabled)        ?? true
+        mode           = try c.decodeIfPresent(RendererMode.self,     forKey: .mode)           ?? .stroked
+        strokeWidth    = try c.decodeIfPresent(Double.self,           forKey: .strokeWidth)    ?? 1.0
+        strokeColor    = try c.decodeIfPresent(LoomColor.self,        forKey: .strokeColor)    ?? .black
+        fillColor      = try c.decodeIfPresent(LoomColor.self,        forKey: .fillColor)      ?? .black
+        pointSize      = try c.decodeIfPresent(Double.self,           forKey: .pointSize)      ?? 2.0
+        holdLength     = try c.decodeIfPresent(Int.self,              forKey: .holdLength)     ?? 1
+        blurRadius     = try c.decodeIfPresent(Double.self,           forKey: .blurRadius)     ?? 0.0
+        changes        = try c.decodeIfPresent(RendererChanges.self,  forKey: .changes)        ?? RendererChanges()
+        drivers        = try c.decodeIfPresent(RendererDrivers.self,  forKey: .drivers)
+        brushConfig    = try c.decodeIfPresent(BrushConfig.self,      forKey: .brushConfig)
+        stencilConfig  = try c.decodeIfPresent(StencilConfig.self,    forKey: .stencilConfig)
+        gradientConfig = try c.decodeIfPresent(GradientConfig.self,   forKey: .gradientConfig)
     }
 }
 

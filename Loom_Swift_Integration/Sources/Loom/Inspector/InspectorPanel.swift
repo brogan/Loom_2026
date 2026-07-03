@@ -3682,13 +3682,15 @@ private struct CycleSetupSection: View {
 private extension RendererMode {
     var displayName: String {
         switch self {
-        case .points:        return "Points"
-        case .stroked:       return "Stroked"
-        case .filled:        return "Filled"
-        case .filledStroked: return "Filled+Stroked"
-        case .brushed:       return "Brushed"
-        case .stenciled:     return "Stenciled"
-        case .stamped:       return "Stamped"
+        case .points:               return "Points"
+        case .stroked:              return "Stroked"
+        case .filled:               return "Filled"
+        case .filledStroked:        return "Filled+Stroked"
+        case .gradientFilled:       return "Gradient Filled"
+        case .gradientFilledStroked: return "Gradient Filled+Stroked"
+        case .brushed:              return "Brushed"
+        case .stenciled:            return "Stenciled"
+        case .stamped:              return "Stamped"
         }
     }
 }

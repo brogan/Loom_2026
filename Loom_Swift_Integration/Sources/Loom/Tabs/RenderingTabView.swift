@@ -863,13 +863,15 @@ struct RenderingTabView: View {
 private extension RendererMode {
     var shortLabel: String {
         switch self {
-        case .points:        return "Pts"
-        case .stroked:       return "Str"
-        case .filled:        return "Fill"
-        case .filledStroked: return "Fill+Str"
-        case .brushed:       return "Brush"
-        case .stenciled:     return "Stencil"
-        case .stamped:       return "Stamp"
+        case .points:               return "Pts"
+        case .stroked:              return "Str"
+        case .filled:               return "Fill"
+        case .filledStroked:        return "Fill+Str"
+        case .gradientFilled:       return "Grad"
+        case .gradientFilledStroked: return "Grad+Str"
+        case .brushed:              return "Brush"
+        case .stenciled:            return "Stencil"
+        case .stamped:              return "Stamp"
         }
     }
 }

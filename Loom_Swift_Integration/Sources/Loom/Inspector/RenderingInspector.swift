@@ -19,6 +19,7 @@ struct RenderingInspector: View {
     @State private var brushCollapsed        = false
     @State private var meanderCollapsed      = true
     @State private var stampCollapsed        = false
+    @State private var gradientCollapsed     = false
     @State private var opacityAnimCollapsed  = true
     @State private var fillChangeCollapsed   = true
     @State private var strokeChangeCollapsed = true
@@ -44,6 +45,9 @@ struct RenderingInspector: View {
                 case .stenciled, .stamped:
                     stencilConfigSection(setIdx: setIdx, itemIdx: itemIdx,
                                          cfg: renderer.stencilConfig ?? StencilConfig())
+                case .gradientFilled, .gradientFilledStroked:
+                    gradientConfigSection(setIdx: setIdx, itemIdx: itemIdx,
+                                          cfg: renderer.gradientConfig ?? GradientConfig())
                 default:
                     EmptyView()
                 }
@@ -608,6 +612,103 @@ struct RenderingInspector: View {
         }
     }
 
+    // MARK: - Gradient config section
+
+    @ViewBuilder
+    private func gradientConfigSection(setIdx: Int, itemIdx: Int, cfg: GradientConfig) -> some View {
+        InspectorSection("Gradient", isCollapsed: $gradientCollapsed) {
+            InspectorField("Type") {
+                Picker("", selection: bindGradientKP(setIdx, itemIdx, \.type, fallback: cfg.type)) {
+                    ForEach(GradientType.allCases, id: \.self) { t in
+                        Text(t.displayName).tag(t)
+                    }
+                }
+                .labelsHidden()
+                .frame(maxWidth: 130)
+            }
+            .loomHelp("Linear — straight colour ramp between two control points. Radial — circular ramp from a centre point outward.")
+
+            // Stops
+            VStack(alignment: .leading, spacing: 4) {
+                HStack {
+                    Text("Stops").font(.system(size: 11)).foregroundStyle(.secondary)
+                    Spacer()
+                    Button {
+                        let pos = cfg.stops.last.map { min($0.position + 0.1, 1.0) } ?? 1.0
+                        addGradientStop(setIdx: setIdx, itemIdx: itemIdx,
+                                        stop: GradientStop(color: .white, position: pos))
+                    } label: {
+                        Image(systemName: "plus").font(.system(size: 11))
+                    }
+                    .buttonStyle(.plain)
+                }
+                .padding(.horizontal, 12)
+                .padding(.top, 4)
+
+                ForEach(cfg.stops.indices, id: \.self) { si in
+                    HStack(spacing: 6) {
+                        gradientStopColorPicker(setIdx: setIdx, itemIdx: itemIdx,
+                                                stopIdx: si, stop: cfg.stops[si])
+                        FloatEntryField(value: bindGradientStopPos(setIdx, itemIdx, stopIdx: si,
+                                                                    fallback: cfg.stops[si].position),
+                                        width: 46, fractionDigits: 2)
+                        Button {
+                            removeGradientStop(setIdx: setIdx, itemIdx: itemIdx, stopIdx: si)
+                        } label: {
+                            Image(systemName: "minus.circle").font(.system(size: 11))
+                                .foregroundStyle(.secondary)
+                        }
+                        .buttonStyle(.plain)
+                        .disabled(cfg.stops.count <= 2)
+                    }
+                    .padding(.horizontal, 12)
+                }
+            }
+            .loomHelp("Colour stops define the gradient. Position 0 = start/centre; 1 = end/outer edge. Minimum two stops required.")
+
+            Divider().padding(.horizontal, 12)
+
+            if cfg.type == .linear {
+                InspectorField("Start X") {
+                    FloatEntryField(value: bindGradientKP(setIdx, itemIdx, \.x0, fallback: cfg.x0),
+                                    width: 55, fractionDigits: 2)
+                }
+                .loomHelp("X position of the gradient start point as a fraction of the polygon's bounding box width (0 = left edge, 1 = right edge).")
+                InspectorField("Start Y") {
+                    FloatEntryField(value: bindGradientKP(setIdx, itemIdx, \.y0, fallback: cfg.y0),
+                                    width: 55, fractionDigits: 2)
+                }
+                .loomHelp("Y position of the gradient start point as a fraction of the bounding box height (0 = top, 1 = bottom).")
+                InspectorField("End X") {
+                    FloatEntryField(value: bindGradientKP(setIdx, itemIdx, \.x1, fallback: cfg.x1),
+                                    width: 55, fractionDigits: 2)
+                }
+                .loomHelp("X position of the gradient end point as a fraction of the bounding box width.")
+                InspectorField("End Y") {
+                    FloatEntryField(value: bindGradientKP(setIdx, itemIdx, \.y1, fallback: cfg.y1),
+                                    width: 55, fractionDigits: 2)
+                }
+                .loomHelp("Y position of the gradient end point as a fraction of the bounding box height.")
+            } else {
+                InspectorField("Centre X") {
+                    FloatEntryField(value: bindGradientKP(setIdx, itemIdx, \.x0, fallback: cfg.x0),
+                                    width: 55, fractionDigits: 2)
+                }
+                .loomHelp("X position of the radial gradient centre as a fraction of the bounding box width (0 = left, 1 = right).")
+                InspectorField("Centre Y") {
+                    FloatEntryField(value: bindGradientKP(setIdx, itemIdx, \.y0, fallback: cfg.y0),
+                                    width: 55, fractionDigits: 2)
+                }
+                .loomHelp("Y position of the radial gradient centre as a fraction of the bounding box height (0 = top, 1 = bottom).")
+                InspectorField("Radius") {
+                    FloatEntryField(value: bindGradientKP(setIdx, itemIdx, \.radius, fallback: cfg.radius),
+                                    width: 55, fractionDigits: 2)
+                }
+                .loomHelp("Outer radius of the radial gradient as a fraction of max(bounding box width, height). 0.5 = half the largest dimension.")
+            }
+        }
+    }
+
     // MARK: - Renderer changes section
 
     @ViewBuilder
@@ -814,6 +915,9 @@ struct RenderingInspector: View {
             if mode == .brushed && r.brushConfig == nil   { r.brushConfig   = BrushConfig()   }
             if (mode == .stenciled || mode == .stamped) && r.stencilConfig == nil {
                 r.stencilConfig = StencilConfig()
+            }
+            if (mode == .gradientFilled || mode == .gradientFilledStroked) && r.gradientConfig == nil {
+                r.gradientConfig = GradientConfig()
             }
             cfg.renderingConfig.library.rendererSets[setIdx].renderers[itemIdx] = r
         }
@@ -1096,6 +1200,123 @@ struct RenderingInspector: View {
         )
     }
 
+    // MARK: - Binding helpers: gradient config
+
+    private func bindGradientKP<T>(_ setIdx: Int, _ itemIdx: Int,
+                                    _ kp: WritableKeyPath<GradientConfig, T>,
+                                    fallback: T) -> Binding<T> {
+        let ctl = controller
+        return Binding(
+            get: {
+                ctl.projectConfig?.renderingConfig.library
+                    .rendererSets[safe: setIdx]?.renderers[safe: itemIdx]?
+                    .gradientConfig?[keyPath: kp] ?? fallback
+            },
+            set: { v in
+                ctl.updateProjectConfig { cfg in
+                    guard setIdx < cfg.renderingConfig.library.rendererSets.count,
+                          itemIdx < cfg.renderingConfig.library.rendererSets[setIdx].renderers.count
+                    else { return }
+                    if cfg.renderingConfig.library.rendererSets[setIdx]
+                        .renderers[itemIdx].gradientConfig == nil {
+                        cfg.renderingConfig.library.rendererSets[setIdx]
+                            .renderers[itemIdx].gradientConfig = GradientConfig()
+                    }
+                    cfg.renderingConfig.library.rendererSets[setIdx]
+                        .renderers[itemIdx].gradientConfig![keyPath: kp] = v
+                }
+            }
+        )
+    }
+
+    @ViewBuilder
+    private func gradientStopColorPicker(setIdx: Int, itemIdx: Int,
+                                          stopIdx: Int, stop: GradientStop) -> some View {
+        let ctl = controller
+        let binding = Binding<Color>(
+            get: {
+                Color(red: stop.color.rF, green: stop.color.gF,
+                      blue: stop.color.bF, opacity: stop.color.aF)
+            },
+            set: { newColor in
+                let ns = NSColor(newColor).usingColorSpace(.deviceRGB) ?? NSColor.black
+                let lc = LoomColor(
+                    r: Int(max(0, min(255, (ns.redComponent   * 255 + 0.5).rounded(.down)))),
+                    g: Int(max(0, min(255, (ns.greenComponent * 255 + 0.5).rounded(.down)))),
+                    b: Int(max(0, min(255, (ns.blueComponent  * 255 + 0.5).rounded(.down)))),
+                    a: Int(max(0, min(255, (ns.alphaComponent * 255 + 0.5).rounded(.down))))
+                )
+                ctl.updateProjectConfig { cfg in
+                    guard setIdx < cfg.renderingConfig.library.rendererSets.count,
+                          itemIdx < cfg.renderingConfig.library.rendererSets[setIdx].renderers.count,
+                          cfg.renderingConfig.library.rendererSets[setIdx]
+                              .renderers[itemIdx].gradientConfig != nil,
+                          stopIdx < cfg.renderingConfig.library.rendererSets[setIdx]
+                              .renderers[itemIdx].gradientConfig!.stops.count
+                    else { return }
+                    cfg.renderingConfig.library.rendererSets[setIdx]
+                        .renderers[itemIdx].gradientConfig!.stops[stopIdx].color = lc
+                }
+            }
+        )
+        ColorPicker("", selection: binding, supportsOpacity: true)
+            .labelsHidden()
+            .frame(width: 44, height: 22)
+    }
+
+    private func bindGradientStopPos(_ setIdx: Int, _ itemIdx: Int,
+                                      stopIdx: Int, fallback: Double) -> Binding<Double> {
+        let ctl = controller
+        return Binding(
+            get: {
+                ctl.projectConfig?.renderingConfig.library
+                    .rendererSets[safe: setIdx]?.renderers[safe: itemIdx]?
+                    .gradientConfig?.stops[safe: stopIdx]?.position ?? fallback
+            },
+            set: { v in
+                ctl.updateProjectConfig { cfg in
+                    guard setIdx < cfg.renderingConfig.library.rendererSets.count,
+                          itemIdx < cfg.renderingConfig.library.rendererSets[setIdx].renderers.count,
+                          cfg.renderingConfig.library.rendererSets[setIdx]
+                              .renderers[itemIdx].gradientConfig != nil,
+                          stopIdx < cfg.renderingConfig.library.rendererSets[setIdx]
+                              .renderers[itemIdx].gradientConfig!.stops.count
+                    else { return }
+                    cfg.renderingConfig.library.rendererSets[setIdx]
+                        .renderers[itemIdx].gradientConfig!.stops[stopIdx].position = max(0, min(1, v))
+                }
+            }
+        )
+    }
+
+    private func addGradientStop(setIdx: Int, itemIdx: Int, stop: GradientStop) {
+        controller.updateProjectConfig { cfg in
+            guard setIdx < cfg.renderingConfig.library.rendererSets.count,
+                  itemIdx < cfg.renderingConfig.library.rendererSets[setIdx].renderers.count
+            else { return }
+            if cfg.renderingConfig.library.rendererSets[setIdx]
+                .renderers[itemIdx].gradientConfig == nil {
+                cfg.renderingConfig.library.rendererSets[setIdx]
+                    .renderers[itemIdx].gradientConfig = GradientConfig()
+            }
+            cfg.renderingConfig.library.rendererSets[setIdx]
+                .renderers[itemIdx].gradientConfig!.stops.append(stop)
+        }
+    }
+
+    private func removeGradientStop(setIdx: Int, itemIdx: Int, stopIdx: Int) {
+        controller.updateProjectConfig { cfg in
+            guard setIdx < cfg.renderingConfig.library.rendererSets.count,
+                  itemIdx < cfg.renderingConfig.library.rendererSets[setIdx].renderers.count,
+                  let count = cfg.renderingConfig.library.rendererSets[setIdx]
+                      .renderers[itemIdx].gradientConfig?.stops.count,
+                  count > 2, stopIdx < count
+            else { return }
+            cfg.renderingConfig.library.rendererSets[setIdx]
+                .renderers[itemIdx].gradientConfig!.stops.remove(at: stopIdx)
+        }
+    }
+
     // MARK: - Binding helpers: RendererChanges — fill color
 
     private func bindFillChange<T>(_ setIdx: Int, _ itemIdx: Int,
@@ -1264,13 +1485,15 @@ struct RenderingInspector: View {
 private extension RendererMode {
     var displayName: String {
         switch self {
-        case .points:        return "Points"
-        case .stroked:       return "Stroked"
-        case .filled:        return "Filled"
-        case .filledStroked: return "Filled+Stroked"
-        case .brushed:       return "Brushed"
-        case .stenciled:     return "Stenciled"
-        case .stamped:       return "Stamped"
+        case .points:               return "Points"
+        case .stroked:              return "Stroked"
+        case .filled:               return "Filled"
+        case .filledStroked:        return "Filled+Stroked"
+        case .gradientFilled:       return "Gradient Filled"
+        case .gradientFilledStroked: return "Gradient Filled+Stroked"
+        case .brushed:              return "Brushed"
+        case .stenciled:            return "Stenciled"
+        case .stamped:              return "Stamped"
         }
     }
 }

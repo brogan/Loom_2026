@@ -1161,8 +1161,24 @@ public struct SpriteScene: @unchecked Sendable {
                                   y: cycleScY * animSt.scale.y))
 
             // Translation: cycle pose blend + animation driver (in 2×-geometry-space).
-            let fromPos  = (outPose ?? fallback).position
-            let toPos    = (inPose  ?? fallback).position
+            // Non-root chain elements (sprites with a parent) that have no explicit
+            // poseOverride in either the outgoing or incoming state contribute zero
+            // positional displacement.  Their geometry is already baked at world-space
+            // coordinates; using def.position as the fallback would accumulate one extra
+            // –position/100 offset per hierarchy level, displacing the whole rig.
+            // The root sprite (no parentName) still uses its full fallback position so
+            // the animation driver can move the entire rig.
+            let isChainRoot = sp.def.parentName == nil
+            let hasExplicitPos = outPose != nil || inPose != nil || basePose != nil
+            let fromPos: Vector2D
+            let toPos:   Vector2D
+            if isChainRoot || hasExplicitPos {
+                fromPos = (outPose ?? fallback).position
+                toPos   = (inPose  ?? fallback).position
+            } else {
+                fromPos = .zero
+                toPos   = .zero
+            }
             let cyclePosX = fromPos.x + (toPos.x - fromPos.x) * t
             let cyclePosY = fromPos.y + (toPos.y - fromPos.y) * t
             trans.append(CGPoint(

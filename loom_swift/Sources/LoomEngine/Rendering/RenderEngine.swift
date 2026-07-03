@@ -63,6 +63,24 @@ public enum RenderEngine {
             applyFill(path, renderer: renderer, context: context)
             applyStroke(path, renderer: renderer, context: context,
                         qualityMultiple: qualityMultiple)
+        case .gradientFilled:
+            let path = buildPath(polygon, transform: transform)
+            if let grad = renderer.gradientConfig {
+                applyGradientFill(path, polygon: polygon, gradCfg: grad,
+                                  context: context, transform: transform)
+            } else {
+                applyFill(path, renderer: renderer, context: context)
+            }
+        case .gradientFilledStroked:
+            let path = buildPath(polygon, transform: transform)
+            if let grad = renderer.gradientConfig {
+                applyGradientFill(path, polygon: polygon, gradCfg: grad,
+                                  context: context, transform: transform)
+            } else {
+                applyFill(path, renderer: renderer, context: context)
+            }
+            applyStroke(path, renderer: renderer, context: context,
+                        qualityMultiple: qualityMultiple)
         case .brushed, .stenciled, .stamped:
             break  // Handled upstream in SpriteScene.renderInstance
         }
@@ -174,6 +192,59 @@ public enum RenderEngine {
         context.addPath(path)
         context.setFillColor(renderer.fillColor.cgColor)
         context.fillPath()
+        context.restoreGState()
+    }
+
+    private static func applyGradientFill(
+        _ path: CGPath,
+        polygon: Polygon2D,
+        gradCfg: GradientConfig,
+        context: CGContext,
+        transform: ViewTransform
+    ) {
+        guard gradCfg.stops.count >= 2 else { return }
+
+        let screenPts = polygon.points.map { transform.worldToScreen($0) }
+        guard !screenPts.isEmpty else { return }
+
+        let minX = screenPts.map(\.x).min()!
+        let maxX = screenPts.map(\.x).max()!
+        let minY = screenPts.map(\.y).min()!
+        let maxY = screenPts.map(\.y).max()!
+        let w = max(maxX - minX, 1)
+        let h = max(maxY - minY, 1)
+
+        let cgColors  = gradCfg.stops.map(\.color.cgColor) as CFArray
+        let locations = gradCfg.stops.map { CGFloat($0.position) }
+        guard let gradient = CGGradient(colorsSpace: CGColorSpaceCreateDeviceRGB(),
+                                        colors: cgColors,
+                                        locations: locations) else { return }
+
+        context.saveGState()
+        context.addPath(path)
+        context.clip()
+
+        switch gradCfg.type {
+        case .linear:
+            let start = CGPoint(x: minX + CGFloat(gradCfg.x0) * w,
+                                y: minY + CGFloat(gradCfg.y0) * h)
+            let end   = CGPoint(x: minX + CGFloat(gradCfg.x1) * w,
+                                y: minY + CGFloat(gradCfg.y1) * h)
+            context.drawLinearGradient(gradient, start: start, end: end,
+                                       options: [.drawsBeforeStartLocation,
+                                                 .drawsAfterEndLocation])
+        case .radial:
+            let cx     = minX + CGFloat(gradCfg.x0) * w
+            let cy     = minY + CGFloat(gradCfg.y0) * h
+            let centre = CGPoint(x: cx, y: cy)
+            let r      = CGFloat(gradCfg.radius) * max(w, h)
+            context.drawRadialGradient(gradient,
+                                       startCenter: centre, startRadius: 0,
+                                       endCenter:   centre, endRadius:   r,
+                                       options: [.drawsBeforeStartLocation,
+                                                 .drawsAfterEndLocation])
+        }
+
         context.restoreGState()
     }
 

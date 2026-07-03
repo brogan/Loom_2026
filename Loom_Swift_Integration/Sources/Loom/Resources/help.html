@@ -90,6 +90,8 @@
   .tip { background: var(--accent-soft); border-left: 3px solid var(--accent); padding: 10px 14px; border-radius: 0 4px 4px 0; margin: 12px 0; }
   .tip strong { color: var(--accent); }
   .note { background: var(--surface2); border-left: 3px solid var(--text-dim); padding: 10px 14px; border-radius: 0 4px 4px 0; margin: 12px 0; }
+  .warning { background: #fff3cd; border-left: 3px solid #e6a817; padding: 10px 14px; border-radius: 0 4px 4px 0; margin: 12px 0; }
+  .warning strong { color: #7a5500; }
 
   /* ── Steps ───────────────────────────────────────── */
   .steps { list-style: none; margin-left: 0; counter-reset: step; }
@@ -159,6 +161,8 @@
     .tip { background: #e8f2ff; border-left-color: #0060bf; }
     .tip strong { color: #0060bf; }
     .note { background: #f5f5f5; border-left-color: #888; }
+    .warning { background: #fff8e1; border-left-color: #c8860a; }
+    .warning strong { color: #7a5500; }
     .steps li::before { background: #0060bf; }
     mark { background: #ffe066; color: #000; }
     section { margin-bottom: 24px; }
@@ -1893,8 +1897,8 @@
   <table>
     <thead><tr><th>Field</th><th>Description</th></tr></thead>
     <tbody>
-      <tr><td>Shape Set</td><td>The polygon set to use while this state is active. Must be registered in the project's Geometry tab.</td></tr>
-      <tr><td>Shape</td><td>The specific shape (layer) within that polygon set.</td></tr>
+      <tr><td>Shape Set</td><td>The polygon set to use while this state is active. Must be registered in the project's Geometry tab. <strong>Leave blank for pose-override rig cycles</strong> — see note below.</td></tr>
+      <tr><td>Shape</td><td>The specific shape (layer) within that polygon set. <strong>Leave blank for pose-override rig cycles</strong> — see note below.</td></tr>
       <tr><td>Renderer</td><td>Optional renderer-set override. When set to <strong>Inherit</strong>, the sprite's own renderer set is used.</td></tr>
       <tr><td>Hold frames</td><td>How many frames this state is fully shown before any transition begins. Minimum 1.</td></tr>
       <tr><td>Trans frames</td><td>How many frames to cross-fade into the next state. 0 = hard cut (the default). During a transition Loom renders both states simultaneously — the outgoing state fading out, the incoming state fading in — on separate offscreen contexts composited at complementary alphas.</td></tr>
@@ -1907,10 +1911,14 @@
 
   <div class="note"><strong>Hard cuts and offscreen compositing.</strong> Hard-cut states (Trans frames = 0) are rendered directly into the main context with zero additional cost. Cross-fade transitions use an offscreen CGContext per layer and alpha-composite the result, so they carry a per-frame memory and GPU cost proportional to canvas size. Use transitions deliberately rather than by default.</div>
 
+  <div class="warning"><strong>Shape Set / Shape must be empty for pose-override rig cycles.</strong> When a cycle state has a Shape Set and Shape filled in, every sprite assigned to that cycle loads that polygon as its cycle-state geometry — including the container sprite and every child limb. At render time each sprite draws the full shared mesh independently, each displaced by its own depth in the parent-child hierarchy, producing multiple overlapping copies of the figure at different screen positions.<br><br>For rigged walk cycles and other pose-override animations, leave <strong>Shape Set</strong> and <strong>Shape</strong> blank in every cycle state. Each sprite then falls back to its own base geometry (its individual shape set, set in the Sprites inspector), and the cycle only controls the pose — rotation, scale, and position — via pose overrides. The two approaches are mutually exclusive: use geometry states (Shape Set/Shape filled) for single-sprite image-swap or polygon-swap cycles; use pose overrides (Shape Set/Shape empty) for multi-sprite rigged characters.</div>
+
   <h3 id="cycles-poses">Pose Overrides</h3>
   <p>Each cycle state can carry a set of <strong>pose overrides</strong> — absolute world-space transforms (position, rotation, scale) for any number of sprites in the project. When a pose override is defined for a sprite in the active cycle state, it replaces that sprite's base <strong>def</strong> values (set in the Sprites inspector) for the duration of the state. Animation drivers (keyframes, noise, oscillators) still apply on top of the overridden values as usual, so secondary motion layers over a posed rig just work.</p>
 
   <p>This is the mechanism for building rigged walk cycles in the Cycle editor: each state in the cycle defines a <em>pose</em> — where every limb is — rather than just swapping a geometry file. Combined with pivot offsets (see <a href="#sprites-pivot">Pivot Offset</a>), limb rotations happen around the correct joints.</p>
+
+  <div class="tip"><strong>Keep Shape Set and Shape empty when using pose overrides.</strong> Pose-override cycles and geometry-state cycles are mutually exclusive modes. If a cycle state has a Shape Set filled in, every sprite in the rig renders that shared polygon instead of its own limb geometry, producing duplicate figures at displaced positions. See the warning above in <a href="#cycles-states">States &amp; Transitions</a> for the full explanation.</div>
 
   <h4>How interpolation works during transitions</h4>
   <p>When a cycle is in a cross-fade transition between two states at progress <em>t</em> (0 = fully outgoing, 1 = fully incoming), Loom computes a <strong>blended pose</strong> for each sprite:</p>

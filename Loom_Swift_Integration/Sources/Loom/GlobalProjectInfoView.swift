@@ -258,13 +258,15 @@ struct GlobalProjectInfoView: View {
 private extension RendererMode {
     var label: String {
         switch self {
-        case .points:        return "Points"
-        case .stroked:       return "Stroked"
-        case .filled:        return "Filled"
-        case .filledStroked: return "Filled/stroked"
-        case .brushed:       return "Brushed"
-        case .stenciled:     return "Stenciled"
-        case .stamped:       return "Stamped"
+        case .points:               return "Points"
+        case .stroked:              return "Stroked"
+        case .filled:               return "Filled"
+        case .filledStroked:        return "Filled/stroked"
+        case .gradientFilled:       return "Gradient filled"
+        case .gradientFilledStroked: return "Gradient filled/stroked"
+        case .brushed:              return "Brushed"
+        case .stenciled:            return "Stenciled"
+        case .stamped:              return "Stamped"
         }
     }
 }
