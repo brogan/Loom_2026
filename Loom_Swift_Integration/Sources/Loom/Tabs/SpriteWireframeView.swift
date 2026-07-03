@@ -749,6 +749,9 @@ struct SpriteWireframeView: View {
         var rotDeg:             Double  // animated world rotation (degrees)
         var baseRotDeg:         Double
         var scaleX, scaleY:     Double  // combined world scale (without ×2)
+        /// True when this sprite inherited scale from a container ancestor.
+        /// Propagated down the full hierarchy so grandchildren also carry the container scale.
+        var hasContainerScale:  Bool = false
     }
 
     /// Build WireWorld for every sprite, resolving each sprite's parent before
@@ -768,16 +771,19 @@ struct SpriteWireframeView: View {
             if let pName = sprite.parentName, let pSprite = spriteMap[pName] {
                 resolve(pSprite)
             }
-            let eff    = resolvedDef(sprite)
-            let parent = sprite.parentName.flatMap { worlds[$0] }
-            // A no-geometry parent is a rig container: always propagate its scale
-            // regardless of inheritMask, matching chainTransformPolygons behaviour.
-            let parentDef          = sprite.parentName.flatMap { spriteMap[$0] }
-            let parentIsContainer  = parentDef.map {
+            let eff         = resolvedDef(sprite)
+            let parentWorld = sprite.parentName.flatMap { worlds[$0] }
+            let parentDef   = sprite.parentName.flatMap { spriteMap[$0] }
+            // Force scale inheritance when the immediate parent is a no-geometry container,
+            // OR when any ancestor already has container-inherited scale (hasContainerScale).
+            // This cascades the container's scale through the full descendant hierarchy,
+            // matching chainTransformPolygons which applies the root scale unconditionally.
+            let parentIsContainer = parentDef.map {
                 $0.shapeSetName.isEmpty && $0.shapeName.isEmpty
             } ?? false
-            worlds[sprite.name] = computeWireWorld(raw: sprite, eff: eff, parent: parent,
-                                                    forceInheritScale: parentIsContainer)
+            let forceScale = parentIsContainer || (parentWorld?.hasContainerScale ?? false)
+            worlds[sprite.name] = computeWireWorld(raw: sprite, eff: eff, parent: parentWorld,
+                                                    forceInheritScale: forceScale)
             inProgress.remove(sprite.name)
         }
 
@@ -840,7 +846,8 @@ struct SpriteWireframeView: View {
                          basePosX: basePosX, basePosY: basePosY,
                          storedPosX: raw.position.x, storedPosY: raw.position.y,
                          rotDeg: rotDeg, baseRotDeg: baseRotDeg,
-                         scaleX: scaleX, scaleY: scaleY)
+                         scaleX: scaleX, scaleY: scaleY,
+                         hasContainerScale: forceInheritScale)
     }
 
     private func transformPointWithWorld(_ pt: Vector2D, world: WireWorld,
