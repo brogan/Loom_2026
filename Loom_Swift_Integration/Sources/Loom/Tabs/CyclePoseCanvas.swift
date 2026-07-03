@@ -24,6 +24,7 @@ struct CyclePoseCanvas: View {
     @State private var dragStartScreenLoc: CGPoint = .zero
     @State private var spritePolygons: [String: [Polygon2D]] = [:]
     @State private var gScaleMultiplier: CGFloat = 0.78
+    @AppStorage("cycleEditor.showRefLines") private var showRefLines: Bool = true
 
     private enum DragMode { case none, rotating, translating }
     private let ringRadius:     CGFloat = 44
@@ -170,6 +171,36 @@ struct CyclePoseCanvas: View {
         cross.move(to: CGPoint(x: cx - 6, y: cy)); cross.addLine(to: CGPoint(x: cx + 6, y: cy))
         cross.move(to: CGPoint(x: cx, y: cy - 6)); cross.addLine(to: CGPoint(x: cx, y: cy + 6))
         ctx.stroke(cross, with: .color(.white.opacity(0.07)), lineWidth: 0.5)
+
+        // Reference lines
+        if showRefLines {
+            let refLines = controller.projectConfig?.cycles[safe: cycleIdx]?.referenceLines ?? []
+            for line in refLines {
+                let pos = CGFloat(line.position)
+                var lp = Path()
+                let labelPt: CGPoint
+                switch line.axis {
+                case .horizontal:
+                    let sy = cy - pos * gScale
+                    lp.move(to: CGPoint(x: 0, y: sy))
+                    lp.addLine(to: CGPoint(x: size.width, y: sy))
+                    labelPt = CGPoint(x: 4, y: sy - 12)
+                case .vertical:
+                    let sx = cx + pos * gScale
+                    lp.move(to: CGPoint(x: sx, y: 0))
+                    lp.addLine(to: CGPoint(x: sx, y: size.height))
+                    labelPt = CGPoint(x: sx + 3, y: 4)
+                }
+                ctx.stroke(lp, with: .color(Color.yellow.opacity(0.40)),
+                           style: StrokeStyle(lineWidth: 1.0, dash: [6, 4]))
+                if !line.label.isEmpty {
+                    ctx.draw(Text(line.label)
+                        .font(.system(size: 9))
+                        .foregroundStyle(Color.yellow.opacity(0.60)),
+                        at: labelPt, anchor: .topLeading)
+                }
+            }
+        }
 
         for sp in sprites {
             guard let polys = spritePolygons[sp.name] else { continue }

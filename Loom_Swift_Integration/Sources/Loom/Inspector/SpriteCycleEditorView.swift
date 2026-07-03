@@ -11,6 +11,7 @@ struct SpriteCycleEditorView: View {
     @State private var selectedStateIndex: Int? = nil
     @State private var expandedStateIndices: Set<Int> = []
     @AppStorage("cycleEditor.showPoseCanvas") private var showPoseCanvas: Bool = true
+    @AppStorage("cycleEditor.showRefLines")  private var showRefLines:  Bool = true
     @State private var renamingStateIndex: Int? = nil
     @State private var renameStateText: String = ""
     @FocusState private var renameStateFieldFocused: Bool
@@ -30,6 +31,8 @@ struct SpriteCycleEditorView: View {
                         Divider()
                         ScrollView {
                             stateListSection(cycle: cycle, cycleIdx: idx)
+                            Divider()
+                            refLinesSection(cycle: cycle, cycleIdx: idx)
                         }
                     }
                     .frame(width: 360)
@@ -202,6 +205,128 @@ struct SpriteCycleEditorView: View {
                 }
             }
         }
+    }
+
+    // MARK: Reference lines section
+
+    private func refLinesSection(cycle: SpriteCycle, cycleIdx: Int) -> some View {
+        VStack(alignment: .leading, spacing: 0) {
+            HStack {
+                Text("Ref Lines")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(.secondary)
+                    .padding(.leading, 16)
+
+                Spacer()
+
+                Button {
+                    showRefLines.toggle()
+                } label: {
+                    Image(systemName: showRefLines ? "eye" : "eye.slash")
+                        .font(.system(size: 11))
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(showRefLines ? .secondary : .tertiary)
+                .help(showRefLines ? "Hide reference lines" : "Show reference lines")
+
+                Button {
+                    addRefLine(toCycle: cycleIdx)
+                } label: {
+                    Image(systemName: "plus")
+                        .font(.system(size: 12))
+                }
+                .buttonStyle(.plain)
+                .padding(.trailing, 12)
+                .help("Add reference line")
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 6)
+
+            Divider()
+
+            if cycle.referenceLines.isEmpty {
+                Text("No reference lines. Press + to add.")
+                    .font(.system(size: 11))
+                    .foregroundStyle(.tertiary)
+                    .frame(maxWidth: .infinity, alignment: .center)
+                    .padding(.vertical, 12)
+            } else {
+                ForEach(cycle.referenceLines.indices, id: \.self) { li in
+                    refLineRow(cycle: cycle, cycleIdx: cycleIdx, lineIdx: li)
+                    Divider()
+                }
+            }
+        }
+        .padding(.bottom, 8)
+    }
+
+    private func refLineRow(cycle: SpriteCycle, cycleIdx: Int, lineIdx: Int) -> some View {
+        let line = cycle.referenceLines[lineIdx]
+        return HStack(spacing: 6) {
+            // Axis toggle button
+            Button {
+                controller.updateProjectConfig { cfg in
+                    guard cfg.cycles.indices.contains(cycleIdx),
+                          cfg.cycles[cycleIdx].referenceLines.indices.contains(lineIdx) else { return }
+                    let cur = cfg.cycles[cycleIdx].referenceLines[lineIdx].axis
+                    cfg.cycles[cycleIdx].referenceLines[lineIdx].axis = (cur == .horizontal) ? .vertical : .horizontal
+                }
+            } label: {
+                Text(line.axis == .horizontal ? "H" : "V")
+                    .font(.system(size: 10, weight: .semibold, design: .monospaced))
+                    .foregroundStyle(Color.yellow.opacity(0.85))
+                    .frame(width: 16)
+                    .padding(.vertical, 2)
+                    .padding(.horizontal, 3)
+                    .background(Color.yellow.opacity(0.12))
+                    .clipShape(RoundedRectangle(cornerRadius: 3))
+            }
+            .buttonStyle(.plain)
+            .help("Toggle axis (H = horizontal, V = vertical)")
+
+            // Label
+            TextField("Label", text: Binding(
+                get: { controller.projectConfig?.cycles[safe: cycleIdx]?.referenceLines[safe: lineIdx]?.label ?? "" },
+                set: { v in
+                    controller.updateProjectConfig { cfg in
+                        guard cfg.cycles.indices.contains(cycleIdx),
+                              cfg.cycles[cycleIdx].referenceLines.indices.contains(lineIdx) else { return }
+                        cfg.cycles[cycleIdx].referenceLines[lineIdx].label = v
+                    }
+                }
+            ))
+            .font(.system(size: 11))
+            .textFieldStyle(.plain)
+            .frame(maxWidth: .infinity)
+
+            // Position
+            FloatEntryField(value: Binding(
+                get: { controller.projectConfig?.cycles[safe: cycleIdx]?.referenceLines[safe: lineIdx]?.position ?? 0 },
+                set: { v in
+                    controller.updateProjectConfig { cfg in
+                        guard cfg.cycles.indices.contains(cycleIdx),
+                              cfg.cycles[cycleIdx].referenceLines.indices.contains(lineIdx) else { return }
+                        cfg.cycles[cycleIdx].referenceLines[lineIdx].position = v
+                    }
+                }
+            ), width: 52, fractionDigits: 3)
+
+            // Remove
+            Button {
+                controller.updateProjectConfig { cfg in
+                    guard cfg.cycles.indices.contains(cycleIdx),
+                          cfg.cycles[cycleIdx].referenceLines.indices.contains(lineIdx) else { return }
+                    cfg.cycles[cycleIdx].referenceLines.remove(at: lineIdx)
+                }
+            } label: {
+                Image(systemName: "xmark").font(.system(size: 9))
+            }
+            .buttonStyle(.plain)
+            .foregroundStyle(.secondary)
+            .help("Remove reference line")
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 5)
     }
 
     // MARK: State row
@@ -766,6 +891,13 @@ struct SpriteCycleEditorView: View {
         }
         selectedStateIndex = insertIdx
         expandedStateIndices.insert(insertIdx)
+    }
+
+    private func addRefLine(toCycle cycleIdx: Int) {
+        controller.updateProjectConfig { cfg in
+            guard cfg.cycles.indices.contains(cycleIdx) else { return }
+            cfg.cycles[cycleIdx].referenceLines.append(CycleRefLine())
+        }
     }
 
     private func removeState(at stateIdx: Int, fromCycle cycleIdx: Int) {

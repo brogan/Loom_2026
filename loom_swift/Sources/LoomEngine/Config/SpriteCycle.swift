@@ -139,6 +139,27 @@ public struct SpriteCycleState: Codable, Equatable, Sendable {
     }
 }
 
+// MARK: - CycleRefLine
+
+/// A reference guide line drawn on the CyclePoseCanvas, stored per-cycle.
+/// Position is in canonical polygon space (Knight ≈ ±0.45 units).
+public struct CycleRefLine: Codable, Equatable, Sendable {
+    public enum Axis: String, Codable, CaseIterable, Sendable {
+        case horizontal = "horizontal"
+        case vertical   = "vertical"
+    }
+    public var label:    String
+    public var axis:     Axis
+    /// Coordinate perpendicular to the axis (Y for horizontal, X for vertical).
+    public var position: Double
+
+    public init(label: String = "Ground", axis: Axis = .horizontal, position: Double = 0) {
+        self.label    = label
+        self.axis     = axis
+        self.position = position
+    }
+}
+
 // MARK: - SpriteCycleRenderLayer
 
 /// One draw layer produced by `SpriteCycle.renderLayers(atFrame:)`.
@@ -167,17 +188,21 @@ public struct SpriteCycle: Codable, Equatable, Sendable {
     /// Typical usage: mark the "neutral" state so other states only need to specify
     /// the joints that actually change.
     public var baseStateIndex: Int?
+    /// Persistent guide lines drawn on the CyclePoseCanvas (ground plane, eye-level, etc.).
+    public var referenceLines: [CycleRefLine]
 
     public init(
         name:           String                = "Cycle",
         loopMode:       SpriteCycleLoopMode   = .loop,
         states:         [SpriteCycleState]    = [],
-        baseStateIndex: Int?                  = nil
+        baseStateIndex: Int?                  = nil,
+        referenceLines: [CycleRefLine]        = []
     ) {
         self.name           = name
         self.loopMode       = loopMode
         self.states         = states
         self.baseStateIndex = baseStateIndex
+        self.referenceLines = referenceLines
     }
 
     // MARK: - Frame counts
@@ -288,5 +313,6 @@ public struct SpriteCycle: Codable, Equatable, Sendable {
         loopMode        = try c.decodeIfPresent(SpriteCycleLoopMode.self, forKey: .loopMode)       ?? .loop
         states          = try c.decodeIfPresent([SpriteCycleState].self,  forKey: .states)         ?? []
         baseStateIndex  = try c.decodeIfPresent(Int.self,                 forKey: .baseStateIndex)
+        referenceLines  = try c.decodeIfPresent([CycleRefLine].self,      forKey: .referenceLines) ?? []
     }
 }
