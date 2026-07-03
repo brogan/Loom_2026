@@ -527,7 +527,6 @@ struct SpriteWireframeView: View {
     /// True when the sprite has no geometry — acts as an invisible group root.
     private func isContainerSprite(_ sprite: SpriteDef) -> Bool {
         sprite.shapeSetName.isEmpty && sprite.shapeName.isEmpty
-            && (sprite.cycleName == nil || sprite.cycleName!.isEmpty)
     }
 
     /// Screen-space corner points for a container sprite's bounding box.

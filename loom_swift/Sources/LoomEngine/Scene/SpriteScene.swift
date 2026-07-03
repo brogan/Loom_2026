@@ -1337,8 +1337,7 @@ public struct SpriteScene: @unchecked Sendable {
 
         // ── SpriteCycle: static cycle assignment ──────────────────────────────
         if let cycleName = instance.def.cycleName,
-           let cycle = allCycles[cycleName],
-           !instance.cycleStatePolygons.isEmpty {
+           let cycle = allCycles[cycleName] {
             renderCycleInstance(instance, spriteIndex: spriteIndex, parentWorld: parentWorld,
                                 cycle: cycle, into: context, viewTransform: viewTransform,
                                 brushImages: brushImages, stampImages: stampImages,
@@ -1673,10 +1672,11 @@ public struct SpriteScene: @unchecked Sendable {
                 continue  // always skip polygon pipeline for image-mode states
             }
 #endif
-            guard instance.cycleStatePolygons.indices.contains(layer.stateIndex) else { continue }
-            let layerPolys = instance.cycleStatePolygons[layer.stateIndex]
-            // Empty state polys = pose-only cycle state: keep the sprite's own base geometry
-            // so the rig stays visible while only poseOverrides change between states.
+            // Pose-only cycle states have no shapeSetName so cycleStatePolygons may be
+            // entirely empty or shorter than the state count. Fall back to basePolygons.
+            let layerPolys: [Polygon2D] = instance.cycleStatePolygons.indices.contains(layer.stateIndex)
+                ? instance.cycleStatePolygons[layer.stateIndex]
+                : []
             let effectivePolys = layerPolys.isEmpty ? instance.basePolygons : layerPolys
             guard !effectivePolys.isEmpty else { continue }
 
