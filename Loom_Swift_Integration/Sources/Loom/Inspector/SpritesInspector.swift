@@ -404,12 +404,51 @@ struct SpritesInspector: View {
     // MARK: - Hierarchy section
 
     private func hierarchySection(sprite: SpriteDef, setIdx si: Int, spriteIdx pi: Int) -> some View {
-        let ctl       = controller
-        let allNames  = ctl.projectConfig?.spriteConfig.library.spriteSets
-                            .flatMap { $0.sprites }.map { $0.name } ?? []
+        let ctl        = controller
+        let allNames   = ctl.projectConfig?.spriteConfig.library.spriteSets
+                             .flatMap { $0.sprites }.map { $0.name } ?? []
         let otherNames = allNames.filter { $0 != sprite.name }
+        let isContainer = sprite.shapeSetName.isEmpty && sprite.shapeName.isEmpty
+                          && sprite.cycleName == nil
 
         return InspectorSection("Hierarchy") {
+
+            // ── Container-sprite guide ───────────────────────────────────────
+            // Shown when the selected sprite has no geometry — i.e. it is (or
+            // can act as) a scene-level container for a group of child sprites.
+            if isContainer {
+                VStack(alignment: .leading, spacing: 5) {
+                    Text("Container sprite")
+                        .font(.system(size: 10, weight: .semibold))
+                        .foregroundStyle(Color.accentColor)
+                    Text("""
+                        This sprite has no geometry — it acts as an invisible \
+                        group root. Other sprites set it as their Parent to move, \
+                        rotate, or scale the whole group as one unit.
+
+                        To set up a group:
+                          1. Rename this sprite (✏ toolbar) to something \
+                        meaningful, e.g. "Knight".
+                          2. Select each sprite you want in the group, open its \
+                        Hierarchy section, and set Parent → this sprite's name.
+                          3. Come back here and add Keyframe animation drivers \
+                        (Position X/Y, Rotation, Scale) to animate the whole group.
+                          4. In the Sprites wireframe view (Edit tab), select this \
+                        sprite to see a dashed bounding box covering all its \
+                        children. Drag the interior to translate, drag corner \
+                        handles to scale, drag the yellow corner handles to \
+                        rotate, and drag the orange crosshair to set the \
+                        rotation pivot.
+                        """)
+                        .font(.system(size: 10))
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                .padding(.horizontal, 12)
+                .padding(.vertical, 8)
+            }
+
+            // ── Parent picker ────────────────────────────────────────────────
             InspectorField("Parent") {
                 Picker("", selection: Binding(
                     get: { ctl.projectConfig?.spriteConfig.library
@@ -433,7 +472,8 @@ struct SpritesInspector: View {
                 .labelsHidden()
                 .frame(maxWidth: 130)
             }
-            .loomHelp("Sprite that this sprite is attached to. Position/rotation changes on the parent propagate to children per the Inherit settings.")
+            .loomHelp("Parent sprite — its position, rotation, and scale propagate to this sprite. To group a figure: create a blank sprite (+○), name it, then set that name as Parent on each figure sprite.")
+
             if sprite.parentName != nil {
                 InspectorField("Inherit") {
                     HStack(spacing: 6) {
@@ -445,7 +485,7 @@ struct SpritesInspector: View {
                             .toggleStyle(.checkbox).font(.system(size: 11))
                     }
                 }
-                .loomHelp("Which parent transform components are inherited — Pos (position offset), Rot (rotation), Scale (scale multiplier).")
+                .loomHelp("Which parent transform components this sprite inherits — Pos (position), Rot (rotation), Scale. Uncheck any axis to break that link to the parent.")
             }
         }
     }

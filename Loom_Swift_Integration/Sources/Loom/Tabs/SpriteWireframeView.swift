@@ -421,6 +421,20 @@ struct SpriteWireframeView: View {
                         depth: sprite.depth, rect: rect),
                         constraint: resolved.pivotConstraint)
                 }
+            } else if isContainerSprite(sprite) {
+                // Container sprite: always show the group bounding box, full handles when selected
+                let cPts = containerScreenPoints(sprite, wireWorlds: wireWorlds,
+                                                 allSprites: sprites, rect: rect)
+                drawContainerOutline(ctx: ctx, screenPoints: cPts, isSelected: isSelected)
+                if isSelected {
+                    drawBBoxAndHandles(ctx: ctx, screenPoints: cPts)
+                    let resolved = resolvedDef(sprite)
+                    drawPivotHandle(ctx: ctx, at: parallaxAdjustedScreen(
+                        Vector2D(x: world.posX + resolved.pivotOffset.x,
+                                 y: world.posY + resolved.pivotOffset.y),
+                        depth: sprite.depth, rect: rect),
+                        constraint: resolved.pivotConstraint)
+                }
             } else {
                 // Placeholder cross for sprites with no engine instance
                 let centre = parallaxAdjustedScreen(Vector2D(x: world.posX, y: world.posY),
@@ -504,6 +518,75 @@ struct SpriteWireframeView: View {
         p.move(to: CGPoint(x: centre.x, y: centre.y - s))
         p.addLine(to: CGPoint(x: centre.x, y: centre.y + s))
         ctx.stroke(p, with: .color(color), lineWidth: 1.3)
+    }
+
+    // MARK: - Container sprite helpers
+
+    /// True when the sprite has no geometry — acts as an invisible group root.
+    private func isContainerSprite(_ sprite: SpriteDef) -> Bool {
+        sprite.shapeSetName.isEmpty && sprite.shapeName.isEmpty
+            && (sprite.cycleName == nil || sprite.cycleName!.isEmpty)
+    }
+
+    /// Screen-space corner points for a container sprite's bounding box.
+    /// Derives bounds from the world positions of all direct children; falls back
+    /// to a 30-world-unit square centred on the container if it has no children.
+    private func containerScreenPoints(
+        _ sprite: SpriteDef,
+        wireWorlds: [String: WireWorld],
+        allSprites: [SpriteDef],
+        rect: CGRect
+    ) -> [CGPoint] {
+        let world    = wireWorlds[sprite.name]
+        let centreW  = Vector2D(x: world?.posX ?? sprite.position.x,
+                                y: world?.posY ?? sprite.position.y)
+
+        let children = allSprites.filter { $0.parentName == sprite.name }
+        if children.isEmpty {
+            // Default: 30-world-unit square
+            let h = 30.0
+            return [
+                Vector2D(x: centreW.x - h, y: centreW.y + h),
+                Vector2D(x: centreW.x + h, y: centreW.y + h),
+                Vector2D(x: centreW.x + h, y: centreW.y - h),
+                Vector2D(x: centreW.x - h, y: centreW.y - h),
+            ].map { parallaxAdjustedScreen($0, depth: sprite.depth, rect: rect) }
+        }
+
+        // Union of children's world positions + padding
+        var minX = Double.infinity, maxX = -Double.infinity
+        var minY = Double.infinity, maxY = -Double.infinity
+        for child in children {
+            guard let cw = wireWorlds[child.name] else { continue }
+            minX = min(minX, cw.posX); maxX = max(maxX, cw.posX)
+            minY = min(minY, cw.posY); maxY = max(maxY, cw.posY)
+        }
+        guard minX.isFinite else {
+            return containerScreenPoints(SpriteDef(name: sprite.name), wireWorlds: wireWorlds,
+                                         allSprites: [], rect: rect)
+        }
+        let pad = 18.0
+        return [
+            Vector2D(x: minX - pad, y: maxY + pad),
+            Vector2D(x: maxX + pad, y: maxY + pad),
+            Vector2D(x: maxX + pad, y: minY - pad),
+            Vector2D(x: minX - pad, y: minY - pad),
+        ].map { parallaxAdjustedScreen($0, depth: sprite.depth, rect: rect) }
+    }
+
+    /// Draws the dashed outline of a container sprite (handles are drawn by drawBBoxAndHandles).
+    private func drawContainerOutline(ctx: GraphicsContext, screenPoints: [CGPoint],
+                                      isSelected: Bool) {
+        guard let bb = bbox(screenPoints) else { return }
+        let pad: CGFloat = 5
+        let box = CGRect(x: bb.minX - pad, y: bb.minY - pad,
+                         width: bb.maxX - bb.minX + pad * 2,
+                         height: bb.maxY - bb.minY + pad * 2)
+        let color: Color = isSelected
+            ? Color(red: 0.31, green: 0.78, blue: 0.47).opacity(0.9)
+            : Color(red: 0.45, green: 0.62, blue: 0.95).opacity(0.55)
+        ctx.stroke(Path(box), with: .color(color),
+                   style: StrokeStyle(lineWidth: isSelected ? 1.2 : 0.8, dash: [5, 4]))
     }
 
     // MARK: - Bounding box + 8 handles
@@ -886,16 +969,31 @@ struct SpriteWireframeView: View {
             }
         }
 
-        // Fall back to placeholder sprites (no engine instance)
-        for sprite in cfg.spriteConfig.library.allSprites.reversed() {
+        // Fall back to placeholder/container sprites (no engine instance)
+        for sprite in sprites.reversed() {
             guard instanceMap[sprite.name] == nil else { continue }
-            let worldPos = wireWorlds[sprite.name].map { Vector2D(x: $0.posX, y: $0.posY) }
-                        ?? sprite.position
-            let centre = parallaxAdjustedScreen(worldPos, depth: sprite.depth, rect: rect)
-            let hitRect = CGRect(x: centre.x - 14, y: centre.y - 14, width: 28, height: 28)
-            if hitRect.contains(location) {
-                controller.selectedSpriteID = sprite.name
-                return
+            if isContainerSprite(sprite) {
+                let cPts = containerScreenPoints(sprite, wireWorlds: wireWorlds,
+                                                 allSprites: sprites, rect: rect)
+                if let bb = bbox(cPts) {
+                    let pad: CGFloat = 5
+                    let hitRect = CGRect(x: bb.minX - pad, y: bb.minY - pad,
+                                        width: bb.maxX - bb.minX + pad * 2,
+                                        height: bb.maxY - bb.minY + pad * 2)
+                    if hitRect.contains(location) {
+                        controller.selectedSpriteID = sprite.name
+                        return
+                    }
+                }
+            } else {
+                let worldPos = wireWorlds[sprite.name].map { Vector2D(x: $0.posX, y: $0.posY) }
+                            ?? sprite.position
+                let centre = parallaxAdjustedScreen(worldPos, depth: sprite.depth, rect: rect)
+                let hitRect = CGRect(x: centre.x - 14, y: centre.y - 14, width: 28, height: 28)
+                if hitRect.contains(location) {
+                    controller.selectedSpriteID = sprite.name
+                    return
+                }
             }
         }
 
@@ -949,11 +1047,14 @@ struct SpriteWireframeView: View {
             return
         }
 
-        // Compute screen bbox from engine geometry or placeholder
+        // Compute screen bbox from engine geometry, container bounds, or placeholder
         var screenPoints: [CGPoint]
         if let instance = instanceMap[spriteID], let world = world {
             screenPoints = instance.basePolygons.flatMap { $0.points }
                 .map { transformPointWithWorld($0, world: world, depth: sprite.depth, rect: rect) }
+        } else if isContainerSprite(sprite) {
+            screenPoints = containerScreenPoints(sprite, wireWorlds: wireWorlds,
+                                                 allSprites: sprites, rect: rect)
         } else {
             let worldPos = world.map { Vector2D(x: $0.posX, y: $0.posY) }
                         ?? resolvedSprite.position

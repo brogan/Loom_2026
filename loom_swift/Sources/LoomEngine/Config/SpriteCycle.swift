@@ -52,6 +52,8 @@ public struct SpritePoseOverride: Codable, Equatable, Sendable {
 /// One frame-state in a SpriteCycle — defines which geometry and renderer to show,
 /// for how long, and how to cross-fade into the next state.
 public struct SpriteCycleState: Codable, Equatable, Sendable {
+    /// Optional display label for this state (shown in the editor list).
+    public var name:             String
     /// Shape set (references `shapeConfig.library.shapeSets` by name).
     public var shapeSetName:     String
     /// Shape name within `shapeSetName`.
@@ -83,6 +85,7 @@ public struct SpriteCycleState: Codable, Equatable, Sendable {
     public var poseOverrides:    [String: SpritePoseOverride]
 
     public init(
+        name:             String     = "",
         shapeSetName:     String     = "",
         shapeName:        String     = "",
         rendererSetName:  String?    = nil,
@@ -98,6 +101,7 @@ public struct SpriteCycleState: Codable, Equatable, Sendable {
         scaleY:           Double     = 1,
         poseOverrides:    [String: SpritePoseOverride] = [:]
     ) {
+        self.name             = name
         self.shapeSetName     = shapeSetName
         self.shapeName        = shapeName
         self.rendererSetName  = rendererSetName
@@ -116,6 +120,7 @@ public struct SpriteCycleState: Codable, Equatable, Sendable {
 
     public init(from decoder: Decoder) throws {
         let c            = try decoder.container(keyedBy: CodingKeys.self)
+        name             = try c.decodeIfPresent(String.self,     forKey: .name)             ?? ""
         shapeSetName     = try c.decodeIfPresent(String.self,     forKey: .shapeSetName)     ?? ""
         shapeName        = try c.decodeIfPresent(String.self,     forKey: .shapeName)        ?? ""
         rendererSetName  = try c.decodeIfPresent(String.self,     forKey: .rendererSetName)

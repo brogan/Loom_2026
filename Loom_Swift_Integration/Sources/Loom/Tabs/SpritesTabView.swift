@@ -682,7 +682,7 @@ struct SpritesTabView: View {
 
             Divider().frame(height: 14).padding(.horizontal, 4)
 
-            toolbarButton("plus.circle",                 tooltip: "Add sprite")            { addSprite() }
+            toolbarButton("plus.circle",                 tooltip: "Add sprite — creates a blank entry. Leave Shape Set/Name empty to use it as a container/group root: assign other sprites to it via their Parent picker.")            { addSprite() }
                 .disabled(selectedSetIndex == nil)
             toolbarButton("minus.circle",                tooltip: "Delete sprite")         { deleteSelectedSprite() }
                 .disabled(controller.selectedSpriteID == nil)

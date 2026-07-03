@@ -9,6 +9,8 @@ struct CyclePreviewPanel: View {
 
     @State private var allPolygons: [Int: [Polygon2D]] = [:]
     @State private var allSVGImages: [Int: NSImage] = [:]
+    /// Per-sprite polygons for pose-mode cycles (blank shapeSetName in states).
+    @State private var spritePolygons: [String: [Polygon2D]] = [:]
     @State private var isPlaying = false
     @State private var playFrame = 0
     @AppStorage("cyclePreview.bgBrightness") private var bgBrightness: Double = 0.08
@@ -39,7 +41,7 @@ struct CyclePreviewPanel: View {
             // Canvas
             Canvas { ctx, size in
                 drawBackground(ctx: ctx, size: size)
-                if !allPolygons.isEmpty || !allSVGImages.isEmpty {
+                if !allPolygons.isEmpty || !allSVGImages.isEmpty || !spritePolygons.isEmpty {
                     drawShapes(ctx: ctx, size: size)
                 }
             }
@@ -51,7 +53,7 @@ struct CyclePreviewPanel: View {
                         Text("Add states to preview")
                             .font(.system(size: 11))
                             .foregroundStyle(.secondary)
-                    } else if allPolygons.isEmpty && allSVGImages.isEmpty {
+                    } else if allPolygons.isEmpty && allSVGImages.isEmpty && spritePolygons.isEmpty {
                         Text("No geometry")
                             .font(.system(size: 11))
                             .foregroundStyle(.secondary)
@@ -113,9 +115,13 @@ struct CyclePreviewPanel: View {
         }
         .onAppear {
             loadAllPolygons()
+            loadSpritePolygons()
             syncFrameToSelection()
         }
-        .onChange(of: cycle) { _, _ in loadAllPolygons() }
+        .onChange(of: cycle) { _, _ in
+            loadAllPolygons()
+            loadSpritePolygons()
+        }
         .onChange(of: selectedStateIndex) { _, _ in
             guard !isPlaying else { return }
             syncFrameToSelection()
@@ -172,6 +178,14 @@ struct CyclePreviewPanel: View {
     private func drawShapes(ctx: GraphicsContext, size: CGSize) {
         guard !cycle.states.isEmpty else { return }
         let count = cycle.states.count
+
+        // Sprite-pose mode: cycle states have no geometry, use per-sprite polygons with poses.
+        if allPolygons.isEmpty && allSVGImages.isEmpty && !spritePolygons.isEmpty {
+            drawSpritePose(ctx: ctx, size: size)
+            return
+        }
+
+        // Shape mode: cycle states carry their own geometry (legacy / non-rig cycles).
         let currentIdx = currentStateIndex ?? 0
 
         if count > 1 {
@@ -205,6 +219,153 @@ struct CyclePreviewPanel: View {
                 drawSVGImage(img, ctx: ctx, size: size, alpha: layer.alpha * 0.92)
             }
         }
+    }
+
+    // MARK: Sprite-pose drawing
+
+    /// Draws all sprites with their hierarchically-composed cycle pose for the current playFrame.
+    /// Ghost outlines for the previous and next states are drawn for context.
+    private func drawSpritePose(ctx: GraphicsContext, size: CGSize) {
+        guard !cycle.states.isEmpty else { return }
+        let count    = cycle.states.count
+        let curIdx   = currentStateIndex ?? 0
+        let sprites  = allSpritesList
+
+        // Ghost: previous state
+        if count > 1 {
+            let prevIdx  = (curIdx - 1 + count) % count
+            let overrides = stateOverrides(stateIdx: prevIdx, sprites: sprites)
+            drawPosedSprites(ctx: ctx, size: size, sprites: sprites, overrides: overrides,
+                             color: Color(red: 0.35, green: 0.55, blue: 1.0), alpha: 0.22)
+        }
+        // Ghost: next state
+        if count > 2 {
+            let nextIdx   = (curIdx + 1) % count
+            let overrides = stateOverrides(stateIdx: nextIdx, sprites: sprites)
+            drawPosedSprites(ctx: ctx, size: size, sprites: sprites, overrides: overrides,
+                             color: Color(red: 1.0, green: 0.55, blue: 0.25), alpha: 0.22)
+        }
+        // Current animated pose (blended across transitions)
+        let overrides = blendedOverrides(atFrame: playFrame, sprites: sprites)
+        drawPosedSprites(ctx: ctx, size: size, sprites: sprites, overrides: overrides,
+                         color: Color(red: 0.36, green: 0.82, blue: 0.50), alpha: 0.90)
+    }
+
+    /// Effective overrides for a single static state (no interpolation).
+    private func stateOverrides(stateIdx: Int, sprites: [SpriteDef]) -> [String: SpritePoseOverride] {
+        guard cycle.states.indices.contains(stateIdx) else { return [:] }
+        var result: [String: SpritePoseOverride] = [:]
+        let stateOvr = cycle.states[stateIdx].poseOverrides
+        for sp in sprites {
+            result[sp.name] = stateOvr[sp.name] ?? SpritePoseOverride(
+                position: sp.position, rotation: sp.rotation, scale: sp.scale)
+        }
+        return result
+    }
+
+    /// Pose overrides blended between the outgoing and incoming states for `frame`.
+    private func blendedOverrides(atFrame frame: Int, sprites: [SpriteDef]) -> [String: SpritePoseOverride] {
+        let layers = cycle.renderLayers(atFrame: frame)
+        guard !layers.isEmpty else { return stateOverrides(stateIdx: 0, sprites: sprites) }
+        if layers.count == 1 {
+            return stateOverrides(stateIdx: layers[0].stateIndex, sprites: sprites)
+        }
+        let outIdx = layers[0].stateIndex
+        let inIdx  = layers[1].stateIndex
+        let t      = layers[1].alpha
+        var result: [String: SpritePoseOverride] = [:]
+        for sp in sprites {
+            let base = SpritePoseOverride(position: sp.position, rotation: sp.rotation, scale: sp.scale)
+            let outOvr = (outIdx < cycle.states.count ? cycle.states[outIdx].poseOverrides[sp.name] : nil) ?? base
+            let inOvr  = (inIdx  < cycle.states.count ? cycle.states[inIdx].poseOverrides[sp.name]  : nil) ?? base
+            var delta  = inOvr.rotation - outOvr.rotation
+            while delta >  180 { delta -= 360 }
+            while delta < -180 { delta += 360 }
+            result[sp.name] = SpritePoseOverride(
+                position: Vector2D(x: outOvr.position.x + (inOvr.position.x - outOvr.position.x) * t,
+                                   y: outOvr.position.y + (inOvr.position.y - outOvr.position.y) * t),
+                rotation: outOvr.rotation + delta * t,
+                scale:    Vector2D(x: outOvr.scale.x + (inOvr.scale.x - outOvr.scale.x) * t,
+                                   y: outOvr.scale.y + (inOvr.scale.y - outOvr.scale.y) * t)
+            )
+        }
+        return result
+    }
+
+    private func drawPosedSprites(ctx: GraphicsContext, size: CGSize,
+                                   sprites: [SpriteDef],
+                                   overrides: [String: SpritePoseOverride],
+                                   color: Color, alpha: Double) {
+        let gScale = min(size.width, size.height) * 0.80
+        let cx = size.width / 2, cy = size.height / 2
+
+        for sp in sprites {
+            guard let polys = spritePolygons[sp.name] else { continue }
+            let posOvr   = overrides[sp.name]?.position ?? sp.position
+            let posOffX  = posOvr.x / 200.0
+            let posOffY  = posOvr.y / 200.0
+            for poly in polys where poly.visible {
+                guard !poly.points.isEmpty else { continue }
+                let pts = poly.points.map { p -> CGPoint in
+                    var wpt = poseTransformPoint(CGPoint(x: p.x, y: p.y),
+                                                 sprite: sp, sprites: sprites, overrides: overrides)
+                    wpt.x += posOffX; wpt.y += posOffY
+                    return CGPoint(x: cx + wpt.x * gScale, y: cy - wpt.y * gScale)
+                }
+                ctx.stroke(buildPath(pts, type: poly.type),
+                           with: .color(color.opacity(alpha)), lineWidth: 1.0)
+            }
+        }
+    }
+
+    // MARK: Hierarchy geometry helpers (mirrors CyclePoseCanvas, pivot /200 for 2x-scale match)
+
+    private var allSpritesList: [SpriteDef] {
+        controller.projectConfig?.spriteConfig.library.spriteSets.flatMap { $0.sprites } ?? []
+    }
+
+    private func poseApplyChain(_ point: CGPoint,
+                                 worldPivots: [CGPoint], rotations: [Double]) -> CGPoint {
+        var pt = point
+        for (piv, rot) in zip(worldPivots, rotations) {
+            let rad  = rot * .pi / 180.0
+            let cosR = cos(rad), sinR = sin(rad)
+            let relX = pt.x - piv.x, relY = pt.y - piv.y
+            pt = CGPoint(x: cosR * relX - sinR * relY + piv.x,
+                         y: sinR * relX + cosR * relY + piv.y)
+        }
+        return pt
+    }
+
+    private func poseBuildChain(_ sprite: SpriteDef, sprites: [SpriteDef]) -> [SpriteDef] {
+        var chain: [SpriteDef] = []
+        var cur: SpriteDef? = sprite
+        while let s = cur {
+            chain.insert(s, at: 0)
+            cur = s.parentName.flatMap { n in sprites.first { $0.name == n } }
+        }
+        return chain
+    }
+
+    private func poseBuildWorldPivots(chain: [SpriteDef],
+                                       overrides: [String: SpritePoseOverride]) -> [CGPoint] {
+        var wPivots = [CGPoint]()
+        var rots    = [Double]()
+        for sp in chain {
+            let restPiv = CGPoint(x: sp.pivotOffset.x / 200.0, y: sp.pivotOffset.y / 200.0)
+            let wp = poseApplyChain(restPiv, worldPivots: wPivots, rotations: rots)
+            wPivots.append(wp)
+            rots.append(overrides[sp.name]?.rotation ?? sp.rotation)
+        }
+        return wPivots
+    }
+
+    private func poseTransformPoint(_ p: CGPoint, sprite: SpriteDef, sprites: [SpriteDef],
+                                     overrides: [String: SpritePoseOverride]) -> CGPoint {
+        let chain   = poseBuildChain(sprite, sprites: sprites)
+        let wPivots = poseBuildWorldPivots(chain: chain, overrides: overrides)
+        let rots    = chain.map { overrides[$0.name]?.rotation ?? $0.rotation }
+        return poseApplyChain(p, worldPivots: wPivots, rotations: rots)
     }
 
     private func drawSVGImage(_ nsImage: NSImage, ctx: GraphicsContext, size: CGSize, alpha: Double) {
@@ -393,5 +554,43 @@ struct CyclePreviewPanel: View {
         default:
             return []
         }
+    }
+
+    /// Loads per-sprite polygon geometry for pose-mode cycle rendering.
+    /// Called when cycle states have blank shapeSetName (pose-only cycle).
+    private func loadSpritePolygons() {
+        guard let cfg = controller.projectConfig,
+              let projectURL = controller.projectURL else { return }
+        var result = [String: [Polygon2D]]()
+        for ss in cfg.spriteConfig.library.spriteSets {
+            for sprite in ss.sprites {
+                guard let shapeDef = cfg.shapeConfig.library.shapeSets
+                    .first(where: { $0.name == sprite.shapeSetName })?
+                    .shapes.first(where: { $0.name == sprite.shapeName }),
+                      shapeDef.sourceType == .polygonSet,
+                      !shapeDef.polygonSetName.isEmpty,
+                      let polyDef = cfg.polygonConfig.library.polygonSets
+                          .first(where: { $0.name == shapeDef.polygonSetName })
+                else { continue }
+                let folder = (polyDef.folder == "polygonSet" || polyDef.folder.isEmpty)
+                    ? "polygonSets" : polyDef.folder
+                let url = projectURL
+                    .appendingPathComponent(folder)
+                    .appendingPathComponent(polyDef.filename)
+                guard FileManager.default.fileExists(atPath: url.path) else { continue }
+                if polyDef.filename.lowercased().hasSuffix(".json") {
+                    if let polys = try? EditableGeometryJSONLoader.load(url: url)
+                        .runtimePolygons(targetLayerID: polyDef.editableLayerID,
+                                         targetLayerName: polyDef.editableLayerName) {
+                        result[sprite.name] = polys
+                    }
+                } else {
+                    if let polys = try? XMLPolygonLoader.load(url: url) {
+                        result[sprite.name] = polys
+                    }
+                }
+            }
+        }
+        spritePolygons = result
     }
 }

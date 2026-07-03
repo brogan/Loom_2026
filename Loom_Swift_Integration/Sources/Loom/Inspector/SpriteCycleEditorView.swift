@@ -11,6 +11,9 @@ struct SpriteCycleEditorView: View {
     @State private var selectedStateIndex: Int? = nil
     @State private var expandedStateIndices: Set<Int> = []
     @AppStorage("cycleEditor.showPoseCanvas") private var showPoseCanvas: Bool = true
+    @State private var renamingStateIndex: Int? = nil
+    @State private var renameStateText: String = ""
+    @FocusState private var renameStateFieldFocused: Bool
 
     var body: some View {
         VStack(spacing: 0) {
@@ -147,6 +150,18 @@ struct SpriteCycleEditorView: View {
 
                 Button {
                     if let s = selectedStateIndex {
+                        duplicateState(at: s, inCycle: cycleIdx)
+                    }
+                } label: {
+                    Image(systemName: "plus.square.on.square")
+                        .font(.system(size: 11))
+                }
+                .buttonStyle(.plain)
+                .disabled(selectedStateIndex == nil)
+                .help("Duplicate selected state")
+
+                Button {
+                    if let s = selectedStateIndex {
                         removeState(at: s, fromCycle: cycleIdx)
                     }
                 } label: {
@@ -180,9 +195,11 @@ struct SpriteCycleEditorView: View {
     // MARK: State row
 
     private func stateRow(cycle: SpriteCycle, cycleIdx: Int, stateIdx: Int) -> some View {
-        let state = cycle.states[stateIdx]
+        let state      = cycle.states[stateIdx]
         let isSelected = selectedStateIndex == stateIdx
         let isExpanded = expandedStateIndices.contains(stateIdx)
+        let isRenaming = renamingStateIndex == stateIdx
+        let stateCount = cycle.states.count
 
         return VStack(alignment: .leading, spacing: 0) {
             // Summary row
@@ -192,22 +209,38 @@ struct SpriteCycleEditorView: View {
                     .foregroundStyle(.secondary)
                     .frame(width: 18)
 
-                VStack(alignment: .leading, spacing: 1) {
-                    if let svg = state.svgFilename {
-                        Text(svg.isEmpty ? "No image file" : svg)
-                            .font(.system(size: 12))
-                            .lineLimit(1)
-                        Text("Image sprite")
-                            .font(.system(size: 10))
-                            .foregroundStyle(.tertiary)
-                    } else {
-                        Text(state.shapeName.isEmpty ? "—" : state.shapeName)
-                            .font(.system(size: 12))
-                            .lineLimit(1)
-                        Text(state.shapeSetName.isEmpty ? "no set" : state.shapeSetName)
-                            .font(.system(size: 10))
-                            .foregroundStyle(.tertiary)
-                            .lineLimit(1)
+                // Name / shape info — or inline rename field
+                if isRenaming {
+                    TextField("State name", text: $renameStateText)
+                        .font(.system(size: 12))
+                        .textFieldStyle(.plain)
+                        .focused($renameStateFieldFocused)
+                        .onSubmit { commitStateRename(at: stateIdx, inCycle: cycleIdx) }
+                } else {
+                    VStack(alignment: .leading, spacing: 1) {
+                        if !state.name.isEmpty {
+                            Text(state.name)
+                                .font(.system(size: 12))
+                                .lineLimit(1)
+                            // sub-label: image filename or shape name
+                            if let svg = state.svgFilename {
+                                Text(svg.isEmpty ? "image" : svg)
+                                    .font(.system(size: 10)).foregroundStyle(.tertiary).lineLimit(1)
+                            } else {
+                                Text(state.shapeName.isEmpty ? "—" : state.shapeName)
+                                    .font(.system(size: 10)).foregroundStyle(.tertiary).lineLimit(1)
+                            }
+                        } else if let svg = state.svgFilename {
+                            Text(svg.isEmpty ? "No image file" : svg)
+                                .font(.system(size: 12)).lineLimit(1)
+                            Text("Image sprite")
+                                .font(.system(size: 10)).foregroundStyle(.tertiary)
+                        } else {
+                            Text(state.shapeName.isEmpty ? "—" : state.shapeName)
+                                .font(.system(size: 12)).lineLimit(1)
+                            Text(state.shapeSetName.isEmpty ? "no set" : state.shapeSetName)
+                                .font(.system(size: 10)).foregroundStyle(.tertiary).lineLimit(1)
+                        }
                     }
                 }
 
@@ -222,6 +255,28 @@ struct SpriteCycleEditorView: View {
                         .foregroundStyle(.secondary)
                 }
 
+                // Move up / down
+                Button {
+                    moveState(at: stateIdx, by: -1, inCycle: cycleIdx)
+                } label: {
+                    Image(systemName: "arrow.up").font(.system(size: 9))
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(stateIdx == 0 ? .tertiary : .secondary)
+                .disabled(stateIdx == 0)
+                .help("Move state up")
+
+                Button {
+                    moveState(at: stateIdx, by: 1, inCycle: cycleIdx)
+                } label: {
+                    Image(systemName: "arrow.down").font(.system(size: 9))
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(stateIdx == stateCount - 1 ? .tertiary : .secondary)
+                .disabled(stateIdx == stateCount - 1)
+                .help("Move state down")
+
+                // Expand / collapse
                 Button {
                     if isExpanded {
                         expandedStateIndices.remove(stateIdx)
@@ -239,7 +294,22 @@ struct SpriteCycleEditorView: View {
             .padding(.vertical, 7)
             .background(isSelected ? Color.accentColor.opacity(0.1) : Color.clear)
             .contentShape(Rectangle())
-            .onTapGesture { selectedStateIndex = stateIdx }
+            .onTapGesture(count: 2) {
+                // Commit any in-progress rename on another state first
+                if let r = renamingStateIndex, r != stateIdx {
+                    commitStateRename(at: r, inCycle: cycleIdx)
+                }
+                selectedStateIndex = stateIdx
+                renameStateText = cycle.states[stateIdx].name
+                renamingStateIndex = stateIdx
+                renameStateFieldFocused = true
+            }
+            .onTapGesture {
+                if let r = renamingStateIndex {
+                    commitStateRename(at: r, inCycle: cycleIdx)
+                }
+                selectedStateIndex = stateIdx
+            }
 
             // Expanded detail
             if isExpanded {
@@ -601,6 +671,50 @@ struct SpriteCycleEditorView: View {
         let newIdx = (controller.projectConfig?.cycles[cycleIdx].states.count ?? 1) - 1
         selectedStateIndex = newIdx
         expandedStateIndices.insert(newIdx)
+    }
+
+    private func moveState(at stateIdx: Int, by offset: Int, inCycle cycleIdx: Int) {
+        let newIdx = stateIdx + offset
+        guard let cfg = controller.projectConfig,
+              cfg.cycles.indices.contains(cycleIdx),
+              cfg.cycles[cycleIdx].states.indices.contains(stateIdx),
+              cfg.cycles[cycleIdx].states.indices.contains(newIdx)
+        else { return }
+        controller.updateProjectConfig { cfg in
+            cfg.cycles[cycleIdx].states.swapAt(stateIdx, newIdx)
+        }
+        selectedStateIndex = newIdx
+        // Keep expansion state tracking in sync
+        let wasExpanded = expandedStateIndices.contains(stateIdx)
+        let swapExpanded = expandedStateIndices.contains(newIdx)
+        expandedStateIndices.remove(stateIdx)
+        expandedStateIndices.remove(newIdx)
+        if wasExpanded  { expandedStateIndices.insert(newIdx) }
+        if swapExpanded { expandedStateIndices.insert(stateIdx) }
+    }
+
+    private func commitStateRename(at stateIdx: Int, inCycle cycleIdx: Int) {
+        let trimmed = renameStateText.trimmingCharacters(in: .whitespaces)
+        controller.updateProjectConfig { cfg in
+            guard cfg.cycles.indices.contains(cycleIdx),
+                  cfg.cycles[cycleIdx].states.indices.contains(stateIdx) else { return }
+            cfg.cycles[cycleIdx].states[stateIdx].name = trimmed
+        }
+        renamingStateIndex = nil
+    }
+
+    private func duplicateState(at stateIdx: Int, inCycle cycleIdx: Int) {
+        guard let cfg = controller.projectConfig,
+              cfg.cycles.indices.contains(cycleIdx),
+              cfg.cycles[cycleIdx].states.indices.contains(stateIdx)
+        else { return }
+        let copy = cfg.cycles[cycleIdx].states[stateIdx]
+        let insertIdx = stateIdx + 1
+        controller.updateProjectConfig { cfg in
+            cfg.cycles[cycleIdx].states.insert(copy, at: insertIdx)
+        }
+        selectedStateIndex = insertIdx
+        expandedStateIndices.insert(insertIdx)
     }
 
     private func removeState(at stateIdx: Int, fromCycle cycleIdx: Int) {

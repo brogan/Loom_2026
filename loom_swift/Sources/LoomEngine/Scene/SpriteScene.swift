@@ -644,7 +644,7 @@ public struct SpriteScene: @unchecked Sendable {
 
         // Legacy flat depth-sort path (no layers defined).
         var parentWorlds: [String: ParentWorld] = [:]
-        for instance in instances {
+        for instance in cycleAdjustedInstances(elapsedFrames: elapsedFrames) {
             parentWorlds[instance.def.name] = computeParentWorld(
                 instance, parentWorlds: parentWorlds, canvasSize: viewTransform.canvasSize
             )
@@ -683,8 +683,9 @@ public struct SpriteScene: @unchecked Sendable {
         using rng: inout RNG
     ) {
         // Pre-compute parent worlds once for ALL instances across all layers.
+        // Use cycle-adjusted instances so children inherit animated parent poses.
         var parentWorlds: [String: ParentWorld] = [:]
-        for instance in instances {
+        for instance in cycleAdjustedInstances(elapsedFrames: elapsedFrames) {
             parentWorlds[instance.def.name] = computeParentWorld(
                 instance, parentWorlds: parentWorlds, canvasSize: viewTransform.canvasSize
             )
@@ -1028,6 +1029,149 @@ public struct SpriteScene: @unchecked Sendable {
         var baseRotationDeg: Double
         /// Combined scale (WITHOUT the ×2 coordinate convention).
         var scale:          Vector2D
+    }
+
+    // Returns a copy of `instances` with cycle-blended position/rotation/scale
+    // written into each def, so that computeParentWorld sees the animated
+    // pose for the current frame rather than the static base def values.
+    // Children with no poseOverride of their own will still inherit the correct
+    // parent rotation because the parent's def is updated here.
+    private func cycleAdjustedInstances(elapsedFrames: Double) -> [SpriteInstance] {
+        var adjusted = instances
+        for i in adjusted.indices {
+            let inst = adjusted[i]
+            guard let cycleName = inst.def.cycleName,
+                  let cycle     = allCycles[cycleName] else { continue }
+            let layers = cycle.renderLayers(atFrame: Int(elapsedFrames))
+            guard !layers.isEmpty else { continue }
+            let outIdx  = layers[0].stateIndex
+            let inIdx   = layers.count > 1 ? layers[1].stateIndex : outIdx
+            let t       = layers.count > 1 ? layers[1].alpha : 0.0
+            let name    = inst.def.name
+            let outPose = outIdx < cycle.states.count ? cycle.states[outIdx].poseOverrides[name] : nil
+            let inPose  = inIdx  < cycle.states.count ? cycle.states[inIdx].poseOverrides[name]  : nil
+            guard outPose != nil || inPose != nil else { continue }
+            let base = SpritePoseOverride(position: inst.def.position,
+                                          rotation: inst.def.rotation,
+                                          scale:    inst.def.scale)
+            let from = outPose ?? base
+            let to   = inPose  ?? base
+            adjusted[i].def.position = Vector2D.lerp(from.position, to.position, t: t)
+            adjusted[i].def.rotation = lerpAngle(from.rotation, to.rotation, t: t)
+            adjusted[i].def.scale    = Vector2D.lerp(from.scale,    to.scale,    t: t)
+        }
+        return adjusted
+    }
+
+    // Apply a sequential scale-rotate-translate chain to `pt`.
+    // Each step: scale about pivot, rotate about pivot, translate.
+    // `scales` and `translations` default to identity / zero when shorter than `pivots`.
+    private func cgApplyChain(_ pt: CGPoint, pivots: [CGPoint], rots: [Double],
+                               scales: [CGPoint] = [], translations: [CGPoint] = []) -> CGPoint {
+        var p = pt
+        for i in pivots.indices {
+            let piv = pivots[i]
+            let sc  = i < scales.count       ? scales[i]         : CGPoint(x: 1, y: 1)
+            let tx  = i < translations.count ? translations[i].x : 0.0
+            let ty  = i < translations.count ? translations[i].y : 0.0
+            let rad = rots[i] * .pi / 180.0
+            let c   = cos(rad), s = sin(rad)
+            let rx  = p.x - piv.x, ry = p.y - piv.y
+            p = CGPoint(x: sc.x * (c * rx - s * ry) + piv.x + tx,
+                        y: sc.y * (s * rx + c * ry) + piv.y + ty)
+        }
+        return p
+    }
+
+    /// Pre-transforms polygon points through the full ancestor kinematic chain (SRT per joint)
+    /// so that scale, rotation, and translation from all ancestors — including cycle pose
+    /// overrides AND animation-driver values — propagate correctly down to each child.
+    ///
+    /// This enables a scene-level container sprite (no geometry, just transforms/drivers)
+    /// to move, rotate, and scale the entire figure hierarchy as a unit.
+    ///
+    /// Points are returned in 2×-scaled geometry space; set `def.scale = (0.5, 0.5)` on
+    /// the rendered instance so the built-in 2× factor in `applyTransform` cancels out.
+    private func chainTransformPolygons(
+        _ polys: [Polygon2D],
+        instance: SpriteInstance,
+        cycle: SpriteCycle,
+        elapsedFrames: Double
+    ) -> [Polygon2D] {
+        let layers = cycle.renderLayers(atFrame: Int(elapsedFrames))
+        guard !layers.isEmpty else { return polys }
+        let outIdx = layers[0].stateIndex
+        let inIdx  = layers.count > 1 ? layers[1].stateIndex : outIdx
+        let t      = layers.count > 1 ? layers[1].alpha      : 0.0
+
+        // Build ancestor chain [root, …, self].
+        var chain: [SpriteInstance] = []
+        var cur: SpriteInstance? = instance
+        while let s = cur {
+            chain.insert(s, at: 0)
+            cur = s.def.parentName.flatMap { n in self.instances.first { $0.def.name == n } }
+        }
+
+        // Accumulate per-ancestor world pivot, rotation, scale, translation.
+        // All coordinates are in 2×-geometry-space (pivot = pivotOffset / 100.0).
+        var wPivots: [CGPoint] = []
+        var rots:    [Double]  = []
+        var scales:  [CGPoint] = []
+        var trans:   [CGPoint] = []
+
+        for sp in chain {
+            let restPiv = CGPoint(x: sp.def.pivotOffset.x / 100.0,
+                                  y: sp.def.pivotOffset.y / 100.0)
+            // World pivot inherits all ancestor SRTs.
+            let wPiv = cgApplyChain(restPiv, pivots: wPivots, rots: rots,
+                                    scales: scales, translations: trans)
+            wPivots.append(wPiv)
+
+            let name   = sp.def.name
+            // Current-frame animation-driver state for this sprite.
+            let animSt = self.instances.first { $0.def.name == name }?.state.transform
+                         ?? .identity
+
+            // Rotation: cycle pose blend + animation driver.
+            let outPose = outIdx < cycle.states.count ? cycle.states[outIdx].poseOverrides[name] : nil
+            let inPose  = inIdx  < cycle.states.count ? cycle.states[inIdx].poseOverrides[name]  : nil
+            let cycleRot = lerpAngle(outPose?.rotation ?? sp.def.rotation,
+                                     inPose?.rotation  ?? sp.def.rotation, t: t)
+            rots.append(cycleRot + animSt.rotation)
+
+            // Scale: cycle pose blend × animation driver (per axis).
+            let fromSc  = outPose?.scale ?? sp.def.scale
+            let toSc    = inPose?.scale  ?? sp.def.scale
+            let cycleScX = fromSc.x + (toSc.x - fromSc.x) * t
+            let cycleScY = fromSc.y + (toSc.y - fromSc.y) * t
+            scales.append(CGPoint(x: cycleScX * animSt.scale.x,
+                                  y: cycleScY * animSt.scale.y))
+
+            // Translation: cycle pose blend + animation driver (in 2×-geometry-space).
+            let fromPos  = outPose?.position ?? sp.def.position
+            let toPos    = inPose?.position  ?? sp.def.position
+            let cyclePosX = fromPos.x + (toPos.x - fromPos.x) * t
+            let cyclePosY = fromPos.y + (toPos.y - fromPos.y) * t
+            trans.append(CGPoint(
+                x: (cyclePosX + animSt.positionOffset.x) / 100.0,
+                y: (cyclePosY + animSt.positionOffset.y) / 100.0
+            ))
+        }
+
+        // Apply the full SRT chain to each polygon point.
+        // Points start at 2× base scale (matching applyTransform's convention).
+        return polys.map { poly in
+            let newPts = poly.points.map { pt -> Vector2D in
+                let scaled = CGPoint(x: pt.x * 2.0, y: pt.y * 2.0)
+                let tf     = cgApplyChain(scaled, pivots: wPivots, rots: rots,
+                                          scales: scales, translations: trans)
+                return Vector2D(x: tf.x, y: tf.y)
+            }
+            return Polygon2D(points: newPts, type: poly.type,
+                             pressures: poly.pressures,
+                             pressureProfiles: poly.pressureProfiles,
+                             visible: poly.visible)
+        }
     }
 
     private func computeParentWorld(
@@ -1502,19 +1646,44 @@ public struct SpriteScene: @unchecked Sendable {
 #endif
             guard instance.cycleStatePolygons.indices.contains(layer.stateIndex) else { continue }
             let layerPolys = instance.cycleStatePolygons[layer.stateIndex]
-            guard !layerPolys.isEmpty else { continue }
+            // Empty state polys = pose-only cycle state: keep the sprite's own base geometry
+            // so the rig stays visible while only poseOverrides change between states.
+            let effectivePolys = layerPolys.isEmpty ? instance.basePolygons : layerPolys
+            guard !effectivePolys.isEmpty else { continue }
 
             // Build a modified instance for this layer: override polygons, renderer, cycleName, opacity.
             var layerInstance = instance
             layerInstance.def.cycleName = nil      // prevent recursion
-            layerInstance.basePolygons  = layerPolys
+            layerInstance.basePolygons  = effectivePolys
             if layer.stateIndex < instance.cycleStateRendererSets.count,
                let overrideSet = instance.cycleStateRendererSets[layer.stateIndex] {
                 layerInstance.rendererSet = overrideSet
             }
-            // Apply blended pose (same interpolated value for both outgoing and incoming
-            // layer instances so geometry cross-fades composite at the interpolated position).
-            if let pose = blendedPose {
+            // For baked-geometry rigs (sprites with a pivot offset or a parent), always
+            // pre-transform the polygon using the full kinematic chain so each child
+            // joint rotates around its animated world-space pivot rather than the fixed
+            // rest-pose pivot. This must fire for ALL rig sprites, even those with no
+            // pose override in the current state — without it, children follow parent
+            // rotations via applyTransform's broken single-pivot accumulation.
+            // parentWorld is set to nil so applyTransform does not re-apply the
+            // hierarchy on top of the already-baked polygon.
+            var chainParentWorld: ParentWorld? = parentWorld
+            let isRig = instance.def.pivotOffset != .zero || instance.def.parentName != nil
+            if isRig {
+                layerInstance.basePolygons  = chainTransformPolygons(
+                    effectivePolys, instance: instance, cycle: cycle, elapsedFrames: elapsedFrames)
+                layerInstance.def.rotation    = 0
+                layerInstance.def.pivotOffset = .zero
+                layerInstance.def.position    = .zero
+                // 0.5 × 2.0 = 1.0 in applyTransform, cancelling the built-in 2× scale factor.
+                // Chain already baked def.scale and anim.scale for every ancestor.
+                layerInstance.def.scale                          = Vector2D(x: 0.5, y: 0.5)
+                // Zero out driver values already baked into the chain to prevent double-apply.
+                layerInstance.state.transform.rotation           = 0
+                layerInstance.state.transform.positionOffset     = .zero
+                layerInstance.state.transform.scale              = Vector2D(x: 1, y: 1)
+                chainParentWorld = nil
+            } else if let pose = blendedPose {
                 layerInstance.def.position = pose.position
                 layerInstance.def.rotation = pose.rotation
                 layerInstance.def.scale    = pose.scale
@@ -1524,7 +1693,7 @@ public struct SpriteScene: @unchecked Sendable {
                 // Render layer at full opacity into offscreen, then composite at layer.alpha * spriteOpacity.
                 guard let offscreen = makeOffscreenContext(size: viewTransform.canvasSize) else { continue }
                 layerInstance.state.transform.opacity = 1.0
-                renderInstance(layerInstance, spriteIndex: spriteIndex, parentWorld: parentWorld,
+                renderInstance(layerInstance, spriteIndex: spriteIndex, parentWorld: chainParentWorld,
                                into: offscreen, viewTransform: viewTransform,
                                brushImages: brushImages, stampImages: stampImages,
                                elapsedFrames: elapsedFrames,
@@ -1542,7 +1711,7 @@ public struct SpriteScene: @unchecked Sendable {
             } else {
                 // Hard cut: opacity already correct from the instance.
                 layerInstance.state.transform.opacity = spriteOpacity
-                renderInstance(layerInstance, spriteIndex: spriteIndex, parentWorld: parentWorld,
+                renderInstance(layerInstance, spriteIndex: spriteIndex, parentWorld: chainParentWorld,
                                into: context, viewTransform: viewTransform,
                                brushImages: brushImages, stampImages: stampImages,
                                elapsedFrames: elapsedFrames,

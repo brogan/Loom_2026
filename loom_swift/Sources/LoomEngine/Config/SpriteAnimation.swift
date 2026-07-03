@@ -155,6 +155,34 @@ public struct SpriteAnimation: Equatable, Codable, Sendable {
         self.drivers          = drivers
     }
 
+    // MARK: - Codable (tolerant decoder)
+    //
+    // The synthesised decoder requires every non-optional key to be present.
+    // Older or hand-written JSON (e.g. Python-generated container sprites) may
+    // omit fields that have safe defaults, so we decode manually with fallbacks.
+
+    private enum CodingKeys: String, CodingKey {
+        case enabled, type, loopMode, totalDraws
+        case translationRange, scaleRange, rotationRange
+        case keyframes, morphTargets, morphMin, morphMax, drivers
+    }
+
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        enabled          = try c.decodeIfPresent(Bool.self,            forKey: .enabled)          ?? false
+        type             = try c.decodeIfPresent(AnimationType.self,   forKey: .type)             ?? .random
+        loopMode         = try c.decodeIfPresent(LoopMode.self,        forKey: .loopMode)         ?? .loop
+        totalDraws       = try c.decodeIfPresent(Int.self,             forKey: .totalDraws)       ?? 0
+        translationRange = try c.decodeIfPresent(VectorRange.self,     forKey: .translationRange) ?? .zero
+        scaleRange       = try c.decodeIfPresent(VectorRange.self,     forKey: .scaleRange)       ?? .zero
+        rotationRange    = try c.decodeIfPresent(FloatRange.self,      forKey: .rotationRange)    ?? .zero
+        keyframes        = try c.decodeIfPresent([Keyframe].self,      forKey: .keyframes)        ?? []
+        morphTargets     = try c.decodeIfPresent([MorphTargetRef].self, forKey: .morphTargets)    ?? []
+        morphMin         = try c.decodeIfPresent(Double.self,          forKey: .morphMin)         ?? 0
+        morphMax         = try c.decodeIfPresent(Double.self,          forKey: .morphMax)         ?? 0
+        drivers          = try c.decodeIfPresent(TransformDrivers.self, forKey: .drivers)
+    }
+
     /// Disabled animation with all defaults — used for non-animated sprites.
     public static let disabled = SpriteAnimation()
 }
