@@ -401,7 +401,23 @@ struct SpriteWireframeView: View {
                 : Color(white: 0.45)
             let lineWidth: CGFloat = isSelected ? 1.5 : 0.75
 
-            if let instance = instanceMap[sprite.name] {
+            if isContainerSprite(sprite) {
+                // Container sprite: always show the group bounding box, full handles when selected.
+                // Checked before instanceMap because the engine may create an instance with empty
+                // polygons for container sprites, which would otherwise suppress the bbox drawing.
+                let cPts = containerScreenPoints(sprite, wireWorlds: wireWorlds,
+                                                 allSprites: sprites, rect: rect)
+                drawContainerOutline(ctx: ctx, screenPoints: cPts, isSelected: isSelected)
+                if isSelected {
+                    drawBBoxAndHandles(ctx: ctx, screenPoints: cPts)
+                    let resolved = resolvedDef(sprite)
+                    drawPivotHandle(ctx: ctx, at: parallaxAdjustedScreen(
+                        Vector2D(x: world.posX + resolved.pivotOffset.x,
+                                 y: world.posY + resolved.pivotOffset.y),
+                        depth: sprite.depth, rect: rect),
+                        constraint: resolved.pivotConstraint)
+                }
+            } else if let instance = instanceMap[sprite.name] {
                 for polygon in instance.basePolygons where polygon.visible {
                     let pts = polygon.points.map {
                         transformPointWithWorld($0, world: world, depth: sprite.depth, rect: rect)
@@ -414,20 +430,6 @@ struct SpriteWireframeView: View {
                     if !allPts.isEmpty {
                         drawBBoxAndHandles(ctx: ctx, screenPoints: allPts)
                     }
-                    let resolved = resolvedDef(sprite)
-                    drawPivotHandle(ctx: ctx, at: parallaxAdjustedScreen(
-                        Vector2D(x: world.posX + resolved.pivotOffset.x,
-                                 y: world.posY + resolved.pivotOffset.y),
-                        depth: sprite.depth, rect: rect),
-                        constraint: resolved.pivotConstraint)
-                }
-            } else if isContainerSprite(sprite) {
-                // Container sprite: always show the group bounding box, full handles when selected
-                let cPts = containerScreenPoints(sprite, wireWorlds: wireWorlds,
-                                                 allSprites: sprites, rect: rect)
-                drawContainerOutline(ctx: ctx, screenPoints: cPts, isSelected: isSelected)
-                if isSelected {
-                    drawBBoxAndHandles(ctx: ctx, screenPoints: cPts)
                     let resolved = resolvedDef(sprite)
                     drawPivotHandle(ctx: ctx, at: parallaxAdjustedScreen(
                         Vector2D(x: world.posX + resolved.pivotOffset.x,
@@ -954,9 +956,28 @@ struct SpriteWireframeView: View {
         let sprites     = cfg.spriteConfig.library.allSprites
         let wireWorlds  = buildWireWorlds(sprites: sprites)
 
-        // Try engine-instance sprites first (precise bbox hit)
+        // Container sprites first (checked before engine-instance loop because the engine may
+        // produce an instance with no polygons, causing the bbox hit-test to be skipped).
         for sprite in sprites.reversed() {
-            guard let instance = instanceMap[sprite.name],
+            guard isContainerSprite(sprite) else { continue }
+            let cPts = containerScreenPoints(sprite, wireWorlds: wireWorlds,
+                                             allSprites: sprites, rect: rect)
+            if let bb = bbox(cPts) {
+                let pad: CGFloat = 5
+                let hitRect = CGRect(x: bb.minX - pad, y: bb.minY - pad,
+                                     width: bb.maxX - bb.minX + pad * 2,
+                                     height: bb.maxY - bb.minY + pad * 2)
+                if hitRect.contains(location) {
+                    controller.selectedSpriteID = sprite.name
+                    return
+                }
+            }
+        }
+
+        // Engine-instance sprites (precise polygon bbox hit)
+        for sprite in sprites.reversed() {
+            guard !isContainerSprite(sprite),
+                  let instance = instanceMap[sprite.name],
                   let world = wireWorlds[sprite.name] else { continue }
             let pts = instance.basePolygons.flatMap { $0.points }
                 .map { transformPointWithWorld($0, world: world, depth: sprite.depth, rect: rect) }
@@ -969,31 +990,16 @@ struct SpriteWireframeView: View {
             }
         }
 
-        // Fall back to placeholder/container sprites (no engine instance)
+        // Placeholder sprites (no engine instance, not a container)
         for sprite in sprites.reversed() {
-            guard instanceMap[sprite.name] == nil else { continue }
-            if isContainerSprite(sprite) {
-                let cPts = containerScreenPoints(sprite, wireWorlds: wireWorlds,
-                                                 allSprites: sprites, rect: rect)
-                if let bb = bbox(cPts) {
-                    let pad: CGFloat = 5
-                    let hitRect = CGRect(x: bb.minX - pad, y: bb.minY - pad,
-                                        width: bb.maxX - bb.minX + pad * 2,
-                                        height: bb.maxY - bb.minY + pad * 2)
-                    if hitRect.contains(location) {
-                        controller.selectedSpriteID = sprite.name
-                        return
-                    }
-                }
-            } else {
-                let worldPos = wireWorlds[sprite.name].map { Vector2D(x: $0.posX, y: $0.posY) }
-                            ?? sprite.position
-                let centre = parallaxAdjustedScreen(worldPos, depth: sprite.depth, rect: rect)
-                let hitRect = CGRect(x: centre.x - 14, y: centre.y - 14, width: 28, height: 28)
-                if hitRect.contains(location) {
-                    controller.selectedSpriteID = sprite.name
-                    return
-                }
+            guard !isContainerSprite(sprite), instanceMap[sprite.name] == nil else { continue }
+            let worldPos = wireWorlds[sprite.name].map { Vector2D(x: $0.posX, y: $0.posY) }
+                        ?? sprite.position
+            let centre = parallaxAdjustedScreen(worldPos, depth: sprite.depth, rect: rect)
+            let hitRect = CGRect(x: centre.x - 14, y: centre.y - 14, width: 28, height: 28)
+            if hitRect.contains(location) {
+                controller.selectedSpriteID = sprite.name
+                return
             }
         }
 
@@ -1047,14 +1053,16 @@ struct SpriteWireframeView: View {
             return
         }
 
-        // Compute screen bbox from engine geometry, container bounds, or placeholder
+        // Compute screen bbox from container bounds, engine geometry, or placeholder.
+        // Container check must come first — the engine may produce an instance with empty
+        // polygons for container sprites, which would leave screenPoints empty.
         var screenPoints: [CGPoint]
-        if let instance = instanceMap[spriteID], let world = world {
-            screenPoints = instance.basePolygons.flatMap { $0.points }
-                .map { transformPointWithWorld($0, world: world, depth: sprite.depth, rect: rect) }
-        } else if isContainerSprite(sprite) {
+        if isContainerSprite(sprite) {
             screenPoints = containerScreenPoints(sprite, wireWorlds: wireWorlds,
                                                  allSprites: sprites, rect: rect)
+        } else if let instance = instanceMap[spriteID], let world = world {
+            screenPoints = instance.basePolygons.flatMap { $0.points }
+                .map { transformPointWithWorld($0, world: world, depth: sprite.depth, rect: rect) }
         } else {
             let worldPos = world.map { Vector2D(x: $0.posX, y: $0.posY) }
                         ?? resolvedSprite.position
