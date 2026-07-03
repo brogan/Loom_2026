@@ -770,7 +770,14 @@ struct SpriteWireframeView: View {
             }
             let eff    = resolvedDef(sprite)
             let parent = sprite.parentName.flatMap { worlds[$0] }
-            worlds[sprite.name] = computeWireWorld(raw: sprite, eff: eff, parent: parent)
+            // A no-geometry parent is a rig container: always propagate its scale
+            // regardless of inheritMask, matching chainTransformPolygons behaviour.
+            let parentDef          = sprite.parentName.flatMap { spriteMap[$0] }
+            let parentIsContainer  = parentDef.map {
+                $0.shapeSetName.isEmpty && $0.shapeName.isEmpty
+            } ?? false
+            worlds[sprite.name] = computeWireWorld(raw: sprite, eff: eff, parent: parent,
+                                                    forceInheritScale: parentIsContainer)
             inProgress.remove(sprite.name)
         }
 
@@ -779,7 +786,8 @@ struct SpriteWireframeView: View {
     }
 
     private func computeWireWorld(raw: SpriteDef, eff: SpriteDef,
-                                  parent: WireWorld?) -> WireWorld {
+                                  parent: WireWorld?,
+                                  forceInheritScale: Bool = false) -> WireWorld {
         var posX     = eff.position.x
         var posY     = eff.position.y
         var basePosX = raw.position.x
@@ -791,7 +799,8 @@ struct SpriteWireframeView: View {
 
         if let p = parent {
             let mask = raw.inheritMask
-            if mask.scale {
+            let applyScale = mask.scale || forceInheritScale
+            if applyScale {
                 scaleX *= p.scaleX
                 scaleY *= p.scaleY
             }
@@ -807,7 +816,7 @@ struct SpriteWireframeView: View {
                 // different coordinate space from the child's raw stored position.
                 var relX = posX - p.storedPosX
                 var relY = posY - p.storedPosY
-                if mask.scale {
+                if applyScale {
                     relX *= p.scaleX
                     relY *= p.scaleY
                 }

@@ -432,13 +432,10 @@ struct SpritesInspector: View {
                              .flatMap { $0.sprites }.map { $0.name } ?? []
         let otherNames = allNames.filter { $0 != sprite.name }
         let isContainer = sprite.shapeSetName.isEmpty && sprite.shapeName.isEmpty
-                          && sprite.cycleName == nil
 
         return InspectorSection("Hierarchy") {
 
-            // ── Container-sprite guide ───────────────────────────────────────
-            // Shown when the selected sprite has no geometry — i.e. it is (or
-            // can act as) a scene-level container for a group of child sprites.
+            // ── Container-sprite guide + Reset Rig ──────────────────────────
             if isContainer {
                 VStack(alignment: .leading, spacing: 5) {
                     Text("Container sprite")
@@ -466,6 +463,16 @@ struct SpritesInspector: View {
                         .font(.system(size: 10))
                         .foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
+                    Button("Reset Rig Transforms") {
+                        ctl.updateProjectConfig { cfg in
+                            Self.resetRigTransforms(root: sprite.name,
+                                                    setIdx: si, in: &cfg)
+                        }
+                    }
+                    .font(.system(size: 11))
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
+                    .help("Zero rotation, position, and scale on this container and all its descendants.")
                 }
                 .padding(.horizontal, 12)
                 .padding(.vertical, 8)
@@ -723,6 +730,29 @@ struct SpritesInspector: View {
                                   pivotX: sprites[i].position.x, pivotY: sprites[i].position.y,
                                   from: sprites[i].name, in: &cfg, setIdx: setIdx)
             }
+        }
+    }
+
+    /// Reset rotation/position/scale to identity on the named root sprite and every
+    /// descendant in the same sprite set, restoring a rig to its clean rest state.
+    static func resetRigTransforms(root: String, setIdx: Int, in cfg: inout ProjectConfig) {
+        guard setIdx < cfg.spriteConfig.library.spriteSets.count else { return }
+        let sprites = cfg.spriteConfig.library.spriteSets[setIdx].sprites
+        // Collect the root + all descendants via BFS.
+        var queue   = [root]
+        var visited = Set<String>()
+        while !queue.isEmpty {
+            let name = queue.removeFirst()
+            guard !visited.contains(name) else { continue }
+            visited.insert(name)
+            for i in sprites.indices where sprites[i].parentName == name {
+                queue.append(sprites[i].name)
+            }
+        }
+        for i in sprites.indices where visited.contains(sprites[i].name) {
+            cfg.spriteConfig.library.spriteSets[setIdx].sprites[i].rotation  = 0
+            cfg.spriteConfig.library.spriteSets[setIdx].sprites[i].position  = .zero
+            cfg.spriteConfig.library.spriteSets[setIdx].sprites[i].scale     = Vector2D(x: 1, y: 1)
         }
     }
 }
