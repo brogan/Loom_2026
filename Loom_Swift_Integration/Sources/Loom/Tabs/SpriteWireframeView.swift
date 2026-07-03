@@ -406,7 +406,7 @@ struct SpriteWireframeView: View {
                 // Checked before instanceMap because the engine may create an instance with empty
                 // polygons for container sprites, which would otherwise suppress the bbox drawing.
                 let cPts = containerScreenPoints(sprite, wireWorlds: wireWorlds,
-                                                 allSprites: sprites, rect: rect)
+                                                 allSprites: sprites, instanceMap: instanceMap, rect: rect)
                 drawContainerOutline(ctx: ctx, screenPoints: cPts, isSelected: isSelected)
                 if isSelected {
                     drawBBoxAndHandles(ctx: ctx, screenPoints: cPts)
@@ -530,21 +530,31 @@ struct SpriteWireframeView: View {
     }
 
     /// Screen-space corner points for a container sprite's bounding box.
-    /// Derives bounds from the world positions of all direct children; falls back
-    /// to a 30-world-unit square centred on the container if it has no children.
+    /// Derives bounds from the polygon extents of all descendants (not just direct
+    /// children) using the instance map. Falls back to wireWorld positions when no
+    /// polygon data is available, and to a 30-unit placeholder when the rig is empty.
     private func containerScreenPoints(
         _ sprite: SpriteDef,
         wireWorlds: [String: WireWorld],
         allSprites: [SpriteDef],
+        instanceMap: [String: SpriteInstance],
         rect: CGRect
     ) -> [CGPoint] {
-        let world    = wireWorlds[sprite.name]
-        let centreW  = Vector2D(x: world?.posX ?? sprite.position.x,
+        let world   = wireWorlds[sprite.name]
+        let centreW = Vector2D(x: world?.posX ?? sprite.position.x,
                                 y: world?.posY ?? sprite.position.y)
 
-        let children = allSprites.filter { $0.parentName == sprite.name }
-        if children.isEmpty {
-            // Default: 30-world-unit square
+        // Collect all descendants recursively (full sub-tree, not just direct children).
+        var descendants: [SpriteDef] = []
+        func collect(parentName: String) {
+            for sp in allSprites where sp.parentName == parentName {
+                descendants.append(sp)
+                collect(parentName: sp.name)
+            }
+        }
+        collect(parentName: sprite.name)
+
+        guard !descendants.isEmpty else {
             let h = 30.0
             return [
                 Vector2D(x: centreW.x - h, y: centreW.y + h),
@@ -554,17 +564,31 @@ struct SpriteWireframeView: View {
             ].map { parallaxAdjustedScreen($0, depth: sprite.depth, rect: rect) }
         }
 
-        // Union of children's world positions + padding
+        // Primary: union of all descendants' polygon screen points.
+        var polyScreenPts: [CGPoint] = []
+        for desc in descendants {
+            guard let dw = wireWorlds[desc.name],
+                  let inst = instanceMap[desc.name] else { continue }
+            for poly in inst.basePolygons where poly.visible {
+                for pt in poly.points {
+                    polyScreenPts.append(
+                        transformPointWithWorld(pt, world: dw, depth: desc.depth, rect: rect))
+                }
+            }
+        }
+        if !polyScreenPts.isEmpty { return polyScreenPts }
+
+        // Fallback: union of descendant wireWorld positions + padding.
         var minX = Double.infinity, maxX = -Double.infinity
         var minY = Double.infinity, maxY = -Double.infinity
-        for child in children {
-            guard let cw = wireWorlds[child.name] else { continue }
+        for desc in descendants {
+            guard let cw = wireWorlds[desc.name] else { continue }
             minX = min(minX, cw.posX); maxX = max(maxX, cw.posX)
             minY = min(minY, cw.posY); maxY = max(maxY, cw.posY)
         }
         guard minX.isFinite else {
             return containerScreenPoints(SpriteDef(name: sprite.name), wireWorlds: wireWorlds,
-                                         allSprites: [], rect: rect)
+                                         allSprites: [], instanceMap: instanceMap, rect: rect)
         }
         let pad = 18.0
         return [
@@ -960,7 +984,7 @@ struct SpriteWireframeView: View {
         for sprite in sprites.reversed() {
             guard isContainerSprite(sprite) else { continue }
             let cPts = containerScreenPoints(sprite, wireWorlds: wireWorlds,
-                                             allSprites: sprites, rect: rect)
+                                             allSprites: sprites, instanceMap: instanceMap, rect: rect)
             if let bb = bbox(cPts) {
                 let pad: CGFloat = 5
                 let hitRect = CGRect(x: bb.minX - pad, y: bb.minY - pad,
@@ -1058,7 +1082,7 @@ struct SpriteWireframeView: View {
         var screenPoints: [CGPoint]
         if isContainerSprite(sprite) {
             screenPoints = containerScreenPoints(sprite, wireWorlds: wireWorlds,
-                                                 allSprites: sprites, rect: rect)
+                                                 allSprites: sprites, instanceMap: instanceMap, rect: rect)
         } else if let instance = instanceMap[spriteID], let world = world {
             screenPoints = instance.basePolygons.flatMap { $0.points }
                 .map { transformPointWithWorld($0, world: world, depth: sprite.depth, rect: rect) }
@@ -1263,16 +1287,24 @@ struct SpriteWireframeView: View {
             return
         }
 
-        // Default: write back to sprite base params and propagate to children
-        let oldPosX = cfg.spriteConfig.library.spriteSets[si].sprites[pi].position.x
-        let oldPosY = cfg.spriteConfig.library.spriteSets[si].sprites[pi].position.y
-        let oldRot  = cfg.spriteConfig.library.spriteSets[si].sprites[pi].rotation
+        // Default: write back to sprite base params and propagate to children.
+        // Container sprites (no geometry, drive a rig) must NOT propagate: the
+        // rendering chain (chainTransformPolygons) already applies the container's
+        // position and rotation to all descendants at render time. Writing deltas
+        // directly into children corrupts their stored rest-pose data and causes
+        // double-transform on the next frame.
+        let draggedSprite = cfg.spriteConfig.library.spriteSets[si].sprites[pi]
+        let isContainer   = draggedSprite.shapeSetName.isEmpty && draggedSprite.shapeName.isEmpty
+        let oldPosX = draggedSprite.position.x
+        let oldPosY = draggedSprite.position.y
+        let oldRot  = draggedSprite.rotation
         controller.updateProjectConfig { config in
             config.spriteConfig.library.spriteSets[si].sprites[pi].position.x = live.posX
             config.spriteConfig.library.spriteSets[si].sprites[pi].position.y = live.posY
             config.spriteConfig.library.spriteSets[si].sprites[pi].scale.x    = live.scaleX
             config.spriteConfig.library.spriteSets[si].sprites[pi].scale.y    = live.scaleY
             config.spriteConfig.library.spriteSets[si].sprites[pi].rotation   = live.rotation
+            guard !isContainer else { return }
             let dx = live.posX - oldPosX
             let dy = live.posY - oldPosY
             if dx != 0 || dy != 0 {
