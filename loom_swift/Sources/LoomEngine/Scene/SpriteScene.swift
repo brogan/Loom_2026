@@ -1132,24 +1132,37 @@ public struct SpriteScene: @unchecked Sendable {
             let animSt = self.instances.first { $0.def.name == name }?.state.transform
                          ?? .identity
 
+            // Base-state fallback: when a state has no override for this sprite, use the
+            // designated base state's override rather than def.rotation/position/scale = 0.
+            // This lets sparse states (e.g. "left leg forward") only specify joints that
+            // actually change, with everything else inheriting from the neutral base state.
+            let basePose: SpritePoseOverride? = cycle.baseStateIndex.flatMap { bi in
+                guard bi < cycle.states.count, bi != outIdx, bi != inIdx else { return nil }
+                return cycle.states[bi].poseOverrides[name]
+            }
+            let defPose = SpritePoseOverride(position: sp.def.position,
+                                             rotation: sp.def.rotation,
+                                             scale:    sp.def.scale)
+
             // Rotation: cycle pose blend + animation driver.
             let outPose = outIdx < cycle.states.count ? cycle.states[outIdx].poseOverrides[name] : nil
             let inPose  = inIdx  < cycle.states.count ? cycle.states[inIdx].poseOverrides[name]  : nil
-            let cycleRot = lerpAngle(outPose?.rotation ?? sp.def.rotation,
-                                     inPose?.rotation  ?? sp.def.rotation, t: t)
+            let fallback = basePose ?? defPose
+            let cycleRot = lerpAngle((outPose ?? fallback).rotation,
+                                     (inPose  ?? fallback).rotation, t: t)
             rots.append(cycleRot + animSt.rotation)
 
             // Scale: cycle pose blend × animation driver (per axis).
-            let fromSc  = outPose?.scale ?? sp.def.scale
-            let toSc    = inPose?.scale  ?? sp.def.scale
+            let fromSc  = (outPose ?? fallback).scale
+            let toSc    = (inPose  ?? fallback).scale
             let cycleScX = fromSc.x + (toSc.x - fromSc.x) * t
             let cycleScY = fromSc.y + (toSc.y - fromSc.y) * t
             scales.append(CGPoint(x: cycleScX * animSt.scale.x,
                                   y: cycleScY * animSt.scale.y))
 
             // Translation: cycle pose blend + animation driver (in 2×-geometry-space).
-            let fromPos  = outPose?.position ?? sp.def.position
-            let toPos    = inPose?.position  ?? sp.def.position
+            let fromPos  = (outPose ?? fallback).position
+            let toPos    = (inPose  ?? fallback).position
             let cyclePosX = fromPos.x + (toPos.x - fromPos.x) * t
             let cyclePosY = fromPos.y + (toPos.y - fromPos.y) * t
             trans.append(CGPoint(

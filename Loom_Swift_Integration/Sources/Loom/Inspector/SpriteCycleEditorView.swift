@@ -138,7 +138,19 @@ struct SpriteCycleEditorView: View {
                     .font(.system(size: 11, weight: .semibold))
                     .foregroundStyle(.secondary)
                     .padding(.leading, 16)
+
+                if cycle.baseStateIndex != nil {
+                    Text("Base: \(cycle.baseStateIndex! + 1)")
+                        .font(.system(size: 10))
+                        .foregroundStyle(Color.accentColor)
+                        .padding(.horizontal, 5)
+                        .padding(.vertical, 2)
+                        .background(Color.accentColor.opacity(0.12))
+                        .clipShape(RoundedRectangle(cornerRadius: 3))
+                }
+
                 Spacer()
+
                 Button {
                     addState(toCycle: cycleIdx)
                 } label: {
@@ -418,6 +430,35 @@ struct SpriteCycleEditorView: View {
             poseSection(cycleIdx: cycleIdx, stateIdx: stateIdx)
             Divider().padding(.horizontal, 12)
 
+            // Base state toggle + zero positions
+            let isBase = controller.projectConfig?.cycles[safe: cycleIdx]?.baseStateIndex == stateIdx
+            stateDetailRow("Base state") {
+                HStack(spacing: 10) {
+                    Toggle("", isOn: Binding(
+                        get: { isBase },
+                        set: { on in
+                            controller.updateProjectConfig { cfg in
+                                guard cfg.cycles.indices.contains(cycleIdx) else { return }
+                                cfg.cycles[cycleIdx].baseStateIndex = on ? stateIdx : nil
+                            }
+                        }
+                    ))
+                    .toggleStyle(.checkbox)
+                    .labelsHidden()
+
+                    Button("Zero positions") {
+                        zeroPositions(inState: stateIdx, cycle: cycleIdx)
+                    }
+                    .buttonStyle(.plain)
+                    .font(.system(size: 11))
+                    .foregroundStyle(Color.accentColor)
+                    .help("Reset all pose-override positions to (0, 0) in this state — for baked rigs, position should stay at zero and only rotation should change")
+                }
+            }
+            .loomHelp("Mark this state as the Base State — any sprite without an override in other states will use this state's pose values instead of its default rest rotation. Useful for neutral/idle states so sparse states only need to specify what actually changes.")
+
+            Divider().padding(.horizontal, 12)
+
             // Hold frames
             stateDetailRow("Hold frames") {
                 IntStepperField(value: bindStateInt(cycleIdx, stateIdx, \.holdFrames), min: 1, max: 999)
@@ -671,6 +712,16 @@ struct SpriteCycleEditorView: View {
         let newIdx = (controller.projectConfig?.cycles[cycleIdx].states.count ?? 1) - 1
         selectedStateIndex = newIdx
         expandedStateIndices.insert(newIdx)
+    }
+
+    private func zeroPositions(inState stateIdx: Int, cycle cycleIdx: Int) {
+        controller.updateProjectConfig { cfg in
+            guard cfg.cycles.indices.contains(cycleIdx),
+                  cfg.cycles[cycleIdx].states.indices.contains(stateIdx) else { return }
+            for key in cfg.cycles[cycleIdx].states[stateIdx].poseOverrides.keys {
+                cfg.cycles[cycleIdx].states[stateIdx].poseOverrides[key]?.position = .zero
+            }
+        }
     }
 
     private func moveState(at stateIdx: Int, by offset: Int, inCycle cycleIdx: Int) {

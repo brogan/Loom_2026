@@ -159,18 +159,25 @@ public struct SpriteCycleRenderLayer: Sendable {
 /// via `SpriteDef.cycleName`; when set it overrides the sprite's `shapeSetName`
 /// and any legacy `shapeSequence` cycling.
 public struct SpriteCycle: Codable, Equatable, Sendable {
-    public var name:     String
-    public var loopMode: SpriteCycleLoopMode
-    public var states:   [SpriteCycleState]
+    public var name:           String
+    public var loopMode:       SpriteCycleLoopMode
+    public var states:         [SpriteCycleState]
+    /// Index of the state used as the fallback pose for any sprite not overridden in
+    /// another state.  `nil` means fall back to `def.rotation / def.position / def.scale`.
+    /// Typical usage: mark the "neutral" state so other states only need to specify
+    /// the joints that actually change.
+    public var baseStateIndex: Int?
 
     public init(
-        name:     String                = "Cycle",
-        loopMode: SpriteCycleLoopMode   = .loop,
-        states:   [SpriteCycleState]    = []
+        name:           String                = "Cycle",
+        loopMode:       SpriteCycleLoopMode   = .loop,
+        states:         [SpriteCycleState]    = [],
+        baseStateIndex: Int?                  = nil
     ) {
-        self.name     = name
-        self.loopMode = loopMode
-        self.states   = states
+        self.name           = name
+        self.loopMode       = loopMode
+        self.states         = states
+        self.baseStateIndex = baseStateIndex
     }
 
     // MARK: - Frame counts
@@ -276,9 +283,10 @@ public struct SpriteCycle: Codable, Equatable, Sendable {
     // MARK: - Codable
 
     public init(from decoder: Decoder) throws {
-        let c    = try decoder.container(keyedBy: CodingKeys.self)
-        name     = try c.decodeIfPresent(String.self,              forKey: .name)     ?? "Cycle"
-        loopMode = try c.decodeIfPresent(SpriteCycleLoopMode.self, forKey: .loopMode) ?? .loop
-        states   = try c.decodeIfPresent([SpriteCycleState].self,  forKey: .states)   ?? []
+        let c           = try decoder.container(keyedBy: CodingKeys.self)
+        name            = try c.decodeIfPresent(String.self,              forKey: .name)           ?? "Cycle"
+        loopMode        = try c.decodeIfPresent(SpriteCycleLoopMode.self, forKey: .loopMode)       ?? .loop
+        states          = try c.decodeIfPresent([SpriteCycleState].self,  forKey: .states)         ?? []
+        baseStateIndex  = try c.decodeIfPresent(Int.self,                 forKey: .baseStateIndex)
     }
 }
