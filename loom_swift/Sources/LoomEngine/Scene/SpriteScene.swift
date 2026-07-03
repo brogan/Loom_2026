@@ -124,6 +124,29 @@ public struct SpriteScene: @unchecked Sendable {
                 result.append(instance)
             }
         }
+        // ── Propagate container cycle to descendants ─────────────────────────
+        // A no-geometry sprite (no shapeSetName/shapeName) with a cycleName is
+        // a rig root. Walk each sprite's parent chain; if an ancestor is such a
+        // container, inherit its cycle so only the root needs cycleName set.
+        let nameToIdx: [String: Int] = Dictionary(
+            result.enumerated().map { ($0.element.def.name, $0.offset) },
+            uniquingKeysWith: { first, _ in first }
+        )
+        for i in result.indices {
+            guard result[i].def.cycleName == nil else { continue }
+            var cur = result[i].def.parentName
+            while let parentName = cur {
+                guard let pi = nameToIdx[parentName] else { break }
+                let parent = result[pi]
+                if parent.def.shapeSetName.isEmpty && parent.def.shapeName.isEmpty,
+                   let inherited = parent.def.cycleName {
+                    result[i].def.cycleName = inherited
+                    break
+                }
+                cur = parent.def.parentName
+            }
+        }
+
         self.instances        = result
         self.qualityMultiple  = max(1, config.globalConfig.qualityMultiple)
         self.scaleImage       = config.globalConfig.scaleImage
