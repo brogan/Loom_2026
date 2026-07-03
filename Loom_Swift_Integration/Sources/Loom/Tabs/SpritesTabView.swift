@@ -775,21 +775,38 @@ struct SpritesTabView: View {
     }
 
     private func dropSprite(named name: String, beforeSetIdx targetSetIdx: Int, spriteIdx targetSpriteIdx: Int) -> Bool {
-        guard let (fromSetIdx, fromSpriteIdx) = location(ofSprite: name),
+        guard let (fromSetIdx, _) = location(ofSprite: name),
               let sets = controller.projectConfig?.spriteConfig.library.spriteSets,
               targetSetIdx < sets.count
         else { return false }
-        if fromSetIdx == targetSetIdx,
-           targetSpriteIdx == fromSpriteIdx || targetSpriteIdx == fromSpriteIdx + 1 { return false }
+
+        let srcSprites    = sets[fromSetIdx].sprites
+        let groupNames    = subtreeNames(of: name, in: srcSprites)
+        let groupIndices  = srcSprites.indices.filter { groupNames.contains(srcSprites[$0].name) }
+        guard !groupIndices.isEmpty else { return false }
+
+        // No-op for single sprite: target is immediately before or after it
+        if groupIndices.count == 1 {
+            let fi = groupIndices[0]
+            if fromSetIdx == targetSetIdx,
+               targetSpriteIdx == fi || targetSpriteIdx == fi + 1 { return false }
+        }
 
         let targetSetName = sets[targetSetIdx].name
         controller.updateProjectConfig { cfg in
-            let sprite = cfg.spriteConfig.library.spriteSets[fromSetIdx].sprites.remove(at: fromSpriteIdx)
-            var insertIdx = targetSpriteIdx
-            if fromSetIdx == targetSetIdx && fromSpriteIdx < targetSpriteIdx { insertIdx -= 1 }
-            let count = cfg.spriteConfig.library.spriteSets[targetSetIdx].sprites.count
-            cfg.spriteConfig.library.spriteSets[targetSetIdx].sprites
-                .insert(sprite, at: max(0, min(insertIdx, count)))
+            var src = cfg.spriteConfig.library.spriteSets[fromSetIdx].sprites
+            let group = groupIndices.map { src[$0] }
+            for idx in groupIndices.reversed() { src.remove(at: idx) }
+            cfg.spriteConfig.library.spriteSets[fromSetIdx].sprites = src
+
+            var dst = cfg.spriteConfig.library.spriteSets[targetSetIdx].sprites
+            let removedBefore = fromSetIdx == targetSetIdx
+                ? groupIndices.filter { $0 < targetSpriteIdx }.count : 0
+            let insertIdx = max(0, min(targetSpriteIdx - removedBefore, dst.count))
+            for (offset, sprite) in group.enumerated() {
+                dst.insert(sprite, at: insertIdx + offset)
+            }
+            cfg.spriteConfig.library.spriteSets[targetSetIdx].sprites = dst
         }
         let newSets = controller.projectConfig?.spriteConfig.library.spriteSets ?? []
         selectedSetIndex = newSets.firstIndex(where: { $0.name == targetSetName })
@@ -799,17 +816,26 @@ struct SpritesTabView: View {
     }
 
     private func dropSprite(named name: String, ontoSetIdx targetSetIdx: Int) -> Bool {
-        guard let (fromSetIdx, fromSpriteIdx) = location(ofSprite: name),
+        guard let (fromSetIdx, _) = location(ofSprite: name),
               let sets = controller.projectConfig?.spriteConfig.library.spriteSets,
               targetSetIdx < sets.count
         else { return false }
-        let targetCount = sets[targetSetIdx].sprites.count
-        if fromSetIdx == targetSetIdx, targetCount > 0, fromSpriteIdx == targetCount - 1 { return false }
+
+        let srcSprites   = sets[fromSetIdx].sprites
+        let groupNames   = subtreeNames(of: name, in: srcSprites)
+        let groupIndices = srcSprites.indices.filter { groupNames.contains(srcSprites[$0].name) }
+        guard !groupIndices.isEmpty else { return false }
+
+        // No-op: same set and group is already at the tail
+        if fromSetIdx == targetSetIdx, groupIndices.last == srcSprites.count - 1 { return false }
 
         let targetSetName = sets[targetSetIdx].name
         controller.updateProjectConfig { cfg in
-            let sprite = cfg.spriteConfig.library.spriteSets[fromSetIdx].sprites.remove(at: fromSpriteIdx)
-            cfg.spriteConfig.library.spriteSets[targetSetIdx].sprites.append(sprite)
+            var src = cfg.spriteConfig.library.spriteSets[fromSetIdx].sprites
+            let group = groupIndices.map { src[$0] }
+            for idx in groupIndices.reversed() { src.remove(at: idx) }
+            cfg.spriteConfig.library.spriteSets[fromSetIdx].sprites = src
+            cfg.spriteConfig.library.spriteSets[targetSetIdx].sprites.append(contentsOf: group)
         }
         let newSets = controller.projectConfig?.spriteConfig.library.spriteSets ?? []
         selectedSetIndex = newSets.firstIndex(where: { $0.name == targetSetName })
@@ -1012,6 +1038,16 @@ struct SpritesTabView: View {
     // MARK: - Helpers
 
     private func spriteKey(_ setName: String, _ spriteName: String) -> String { "\(setName)\t\(spriteName)" }
+
+    private func subtreeNames(of name: String, in sprites: [SpriteDef]) -> Set<String> {
+        var names = Set<String>()
+        func collect(_ n: String) {
+            names.insert(n)
+            for s in sprites where s.parentName == n { collect(s.name) }
+        }
+        collect(name)
+        return names
+    }
 
     private func location(ofSprite name: String) -> (Int, Int)? {
         guard let sets = controller.projectConfig?.spriteConfig.library.spriteSets else { return nil }
