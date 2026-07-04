@@ -74,6 +74,7 @@ enum PolygonTransforms {
             guard poly.visible else { return poly }
             var result = poly
             let pivot  = poly.centroid
+            let phaseIdx = ptwPhaseIndex(polyIdx, mode: d.ptwPhaseMode)
 
             if d.ptwTranslateX.enabled || d.ptwTranslateY.enabled {
                 let bbox = polyBBox(poly.points)
@@ -83,14 +84,14 @@ enum PolygonTransforms {
                     tx = DriverEvaluator.evaluate(d.ptwTranslateX,
                                                   globalElapsed: elapsed,
                                                   targetFPS: fps,
-                                                  spriteIndex: polyIdx) * bboxW
+                                                  spriteIndex: phaseIdx) * bboxW
                 }
                 if d.ptwTranslateY.enabled {
                     let bboxH = max(bbox.maxY - bbox.minY, 1e-9)
                     ty = DriverEvaluator.evaluate(d.ptwTranslateY,
                                                   globalElapsed: elapsed,
                                                   targetFPS: fps,
-                                                  spriteIndex: polyIdx) * bboxH
+                                                  spriteIndex: phaseIdx) * bboxH
                 }
                 if tx != 0 || ty != 0 {
                     result = result.translated(by: Vector2D(x: tx, y: ty))
@@ -101,7 +102,7 @@ enum PolygonTransforms {
                 let s = DriverEvaluator.evaluate(d.ptwScale,
                                                  globalElapsed: elapsed,
                                                  targetFPS: fps,
-                                                 spriteIndex: polyIdx)
+                                                 spriteIndex: phaseIdx)
                 if s != 1.0 {
                     result = result.scaled(by: s, around: pivot)
                 }
@@ -111,13 +112,26 @@ enum PolygonTransforms {
                 let angle = DriverEvaluator.evaluate(d.ptwRotation,
                                                      globalElapsed: elapsed,
                                                      targetFPS: fps,
-                                                     spriteIndex: polyIdx)
+                                                     spriteIndex: phaseIdx)
                 if angle != 0 {
                     result = result.rotated(by: angle, around: pivot)
                 }
             }
 
             return result
+        }
+    }
+
+    /// Maps a polygon index to the spriteIndex passed to DriverEvaluator based on phase mode.
+    private static func ptwPhaseIndex(_ polyIdx: Int, mode: PTWPhaseMode) -> Int {
+        switch mode {
+        case .all:        return 0
+        case .sequential: return polyIdx
+        case .random:
+            // Knuth multiplicative hash — stable per polygon, well-distributed
+            var x = UInt32(truncatingIfNeeded: polyIdx &* 1664525 &+ 1013904223)
+            x ^= x >> 16
+            return Int(bitPattern: UInt(x))
         }
     }
 

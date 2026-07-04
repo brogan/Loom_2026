@@ -42,6 +42,8 @@ public struct SubdivisionDrivers: Equatable, Codable, Sendable {
     public var ptwScale:       DoubleDriver = .one
     /// Per-polygon rotation in radians around the polygon centroid.
     public var ptwRotation:    DoubleDriver = .zero
+    /// Determines how per-polygon phase is derived from the polygon index.
+    public var ptwPhaseMode:   PTWPhaseMode = .sequential
 
     public init(
         lineRatio:      DoubleDriver = .zero,
@@ -53,7 +55,8 @@ public struct SubdivisionDrivers: Equatable, Codable, Sendable {
         ptwTranslateX:  DoubleDriver = .zero,
         ptwTranslateY:  DoubleDriver = .zero,
         ptwScale:       DoubleDriver = .one,
-        ptwRotation:    DoubleDriver = .zero
+        ptwRotation:    DoubleDriver = .zero,
+        ptwPhaseMode:   PTWPhaseMode = .sequential
     ) {
         self.lineRatio      = lineRatio
         self.cpRatio        = cpRatio
@@ -65,11 +68,12 @@ public struct SubdivisionDrivers: Equatable, Codable, Sendable {
         self.ptwTranslateY  = ptwTranslateY
         self.ptwScale       = ptwScale
         self.ptwRotation    = ptwRotation
+        self.ptwPhaseMode   = ptwPhaseMode
     }
 
     private enum CodingKeys: String, CodingKey {
         case lineRatio, cpRatio, cpNormalOffset, insetScale, insetRotation, ranDiv
-        case ptwTranslateX, ptwTranslateY, ptwScale, ptwRotation
+        case ptwTranslateX, ptwTranslateY, ptwScale, ptwRotation, ptwPhaseMode
     }
 
     public init(from decoder: Decoder) throws {
@@ -84,7 +88,19 @@ public struct SubdivisionDrivers: Equatable, Codable, Sendable {
         ptwTranslateY  = try c.decodeIfPresent(DoubleDriver.self, forKey: .ptwTranslateY) ?? .zero
         ptwScale       = try c.decodeIfPresent(DoubleDriver.self, forKey: .ptwScale)       ?? .one
         ptwRotation    = try c.decodeIfPresent(DoubleDriver.self, forKey: .ptwRotation)    ?? .zero
+        ptwPhaseMode   = try c.decodeIfPresent(PTWPhaseMode.self, forKey: .ptwPhaseMode)  ?? .sequential
     }
+}
+
+// MARK: - PTW Phase Mode
+
+public enum PTWPhaseMode: String, Codable, CaseIterable, Sendable {
+    /// All polygons receive the same phase — they move in unison.
+    case all        = "All"
+    /// Phase increments linearly with polygon index — produces wave-like propagation.
+    case sequential = "Sequential"
+    /// Phase is scrambled per polygon within [0, max] — produces independent, non-repeating motion.
+    case random     = "Random"
 }
 
 public enum PressureSubdivisionMode: String, CaseIterable, Codable, Sendable {
