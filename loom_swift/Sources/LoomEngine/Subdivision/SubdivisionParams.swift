@@ -1,5 +1,92 @@
 import Foundation
 
+// MARK: - Subdivision Drivers
+
+/// Continuous/keyframed drivers that animate `SubdivisionParams` fields at runtime.
+///
+/// **Generation-level drivers** (lineRatio, cpRatio, cpNormalOffset, insetScale,
+/// insetRotation, ranDiv) are evaluated once per frame using the sprite's own index
+/// and override the corresponding static fields on `SubdivisionParams` before the
+/// subdivision algorithm runs.
+///
+/// **Per-polygon PTW drivers** (ptwTranslateX/Y, ptwScale, ptwRotation) are
+/// evaluated per output polygon, using the polygon's index as the phase seed so
+/// each polygon gets a smoothly staggered, coherent trajectory rather than
+/// frame-to-frame random jitter. Displacement is normalised to the polygon's own
+/// bounding box so identical driver values produce proportionally equivalent motion
+/// at every subdivision depth.
+public struct SubdivisionDrivers: Equatable, Codable, Sendable {
+
+    // MARK: Generation-level
+
+    /// Overrides `lineRatios.x` and `.y` symmetrically (0–1 split position).
+    public var lineRatio:      DoubleDriver = .zero
+    /// Overrides `controlPointRatios` symmetrically: x = v, y = 1−v.
+    public var cpRatio:        DoubleDriver = .zero
+    /// Overrides `cpNormalOffsets.x` and `.y` (bow magnitude on internal connectors).
+    public var cpNormalOffset: DoubleDriver = .zero
+    /// Overrides both axes of `insetTransform.scale`. 1.0 = no change.
+    public var insetScale:     DoubleDriver = .one
+    /// Overrides `insetTransform.rotation` in radians.
+    public var insetRotation:  DoubleDriver = .zero
+    /// Overrides `ranDiv`. Higher value = less centre jitter.
+    public var ranDiv:         DoubleDriver = .zero
+
+    // MARK: Per-polygon PTW
+
+    /// Per-polygon X displacement as a fraction of the polygon's bounding-box width.
+    public var ptwTranslateX:  DoubleDriver = .zero
+    /// Per-polygon Y displacement as a fraction of the polygon's bounding-box height.
+    public var ptwTranslateY:  DoubleDriver = .zero
+    /// Per-polygon uniform scale multiplier around the polygon centroid. 1.0 = no change.
+    public var ptwScale:       DoubleDriver = .one
+    /// Per-polygon rotation in radians around the polygon centroid.
+    public var ptwRotation:    DoubleDriver = .zero
+
+    public init(
+        lineRatio:      DoubleDriver = .zero,
+        cpRatio:        DoubleDriver = .zero,
+        cpNormalOffset: DoubleDriver = .zero,
+        insetScale:     DoubleDriver = .one,
+        insetRotation:  DoubleDriver = .zero,
+        ranDiv:         DoubleDriver = .zero,
+        ptwTranslateX:  DoubleDriver = .zero,
+        ptwTranslateY:  DoubleDriver = .zero,
+        ptwScale:       DoubleDriver = .one,
+        ptwRotation:    DoubleDriver = .zero
+    ) {
+        self.lineRatio      = lineRatio
+        self.cpRatio        = cpRatio
+        self.cpNormalOffset = cpNormalOffset
+        self.insetScale     = insetScale
+        self.insetRotation  = insetRotation
+        self.ranDiv         = ranDiv
+        self.ptwTranslateX  = ptwTranslateX
+        self.ptwTranslateY  = ptwTranslateY
+        self.ptwScale       = ptwScale
+        self.ptwRotation    = ptwRotation
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case lineRatio, cpRatio, cpNormalOffset, insetScale, insetRotation, ranDiv
+        case ptwTranslateX, ptwTranslateY, ptwScale, ptwRotation
+    }
+
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        lineRatio      = try c.decodeIfPresent(DoubleDriver.self, forKey: .lineRatio)      ?? .zero
+        cpRatio        = try c.decodeIfPresent(DoubleDriver.self, forKey: .cpRatio)        ?? .zero
+        cpNormalOffset = try c.decodeIfPresent(DoubleDriver.self, forKey: .cpNormalOffset) ?? .zero
+        insetScale     = try c.decodeIfPresent(DoubleDriver.self, forKey: .insetScale)     ?? .one
+        insetRotation  = try c.decodeIfPresent(DoubleDriver.self, forKey: .insetRotation)  ?? .zero
+        ranDiv         = try c.decodeIfPresent(DoubleDriver.self, forKey: .ranDiv)         ?? .zero
+        ptwTranslateX  = try c.decodeIfPresent(DoubleDriver.self, forKey: .ptwTranslateX) ?? .zero
+        ptwTranslateY  = try c.decodeIfPresent(DoubleDriver.self, forKey: .ptwTranslateY) ?? .zero
+        ptwScale       = try c.decodeIfPresent(DoubleDriver.self, forKey: .ptwScale)       ?? .one
+        ptwRotation    = try c.decodeIfPresent(DoubleDriver.self, forKey: .ptwRotation)    ?? .zero
+    }
+}
+
 public enum PressureSubdivisionMode: String, CaseIterable, Codable, Sendable {
     case none
     case spatial
@@ -125,6 +212,11 @@ public struct SubdivisionParams: Equatable, Codable, Sendable {
     /// User-defined algorithm. Only used when `subdivisionType == .custom`.
     public var customAlgorithm: CustomSubdivisionAlgorithm?
 
+    // MARK: - Drivers
+
+    /// Optional continuous/keyframed drivers for generation-level and per-polygon PTW animation.
+    public var drivers: SubdivisionDrivers?
+
     // MARK: - Init
 
     public init(
@@ -161,7 +253,8 @@ public struct SubdivisionParams: Equatable, Codable, Sendable {
         pTW_randomRotationRange: FloatRange   = .zero,
         polysTransformPoints: Bool            = false,
         pTP_probability: Double               = 100,
-        ptpTransformSet: PTPTransformSet?     = nil
+        ptpTransformSet: PTPTransformSet?     = nil,
+        drivers: SubdivisionDrivers?          = nil
     ) {
         self.name                       = name
         self.enabled                    = enabled
@@ -197,6 +290,7 @@ public struct SubdivisionParams: Equatable, Codable, Sendable {
         self.polysTransformPoints       = polysTransformPoints
         self.pTP_probability            = pTP_probability
         self.ptpTransformSet            = ptpTransformSet
+        self.drivers                    = drivers
     }
 
     private enum CodingKeys: String, CodingKey {
@@ -210,6 +304,7 @@ public struct SubdivisionParams: Equatable, Codable, Sendable {
         case pTW_randomTranslation, pTW_randomScale, pTW_randomRotation, pTW_transform
         case pTW_randomCentreDivisor, pTW_randomTranslationRange, pTW_randomScaleRange, pTW_randomRotationRange
         case polysTransformPoints, pTP_probability, ptpTransformSet
+        case drivers
     }
 
     public init(from decoder: Decoder) throws {
@@ -249,7 +344,8 @@ public struct SubdivisionParams: Equatable, Codable, Sendable {
             pTW_randomRotationRange: try c.decodeIfPresent(FloatRange.self, forKey: .pTW_randomRotationRange) ?? defaults.pTW_randomRotationRange,
             polysTransformPoints: try c.decodeIfPresent(Bool.self, forKey: .polysTransformPoints) ?? defaults.polysTransformPoints,
             pTP_probability: try c.decodeIfPresent(Double.self, forKey: .pTP_probability) ?? defaults.pTP_probability,
-            ptpTransformSet: try c.decodeIfPresent(PTPTransformSet.self, forKey: .ptpTransformSet) ?? defaults.ptpTransformSet
+            ptpTransformSet: try c.decodeIfPresent(PTPTransformSet.self, forKey: .ptpTransformSet) ?? defaults.ptpTransformSet,
+            drivers: try c.decodeIfPresent(SubdivisionDrivers.self, forKey: .drivers)
         )
     }
 
@@ -289,6 +385,7 @@ public struct SubdivisionParams: Equatable, Codable, Sendable {
         try c.encode(polysTransformPoints, forKey: .polysTransformPoints)
         try c.encode(pTP_probability, forKey: .pTP_probability)
         try c.encodeIfPresent(ptpTransformSet, forKey: .ptpTransformSet)
+        try c.encodeIfPresent(drivers, forKey: .drivers)
     }
 
     // MARK: - Convenience

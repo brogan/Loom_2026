@@ -1453,9 +1453,12 @@ public struct SpriteScene: @unchecked Sendable {
             subdivided = morphed
         } else {
             subdivided = SubdivisionEngine.process(
-                polygons:  morphed,
-                paramSet:  activeInstance.subdivisionParams,
-                rng:       &rng
+                polygons:      morphed,
+                paramSet:      activeInstance.subdivisionParams,
+                elapsedFrames: elapsedFrames,
+                targetFPS:     targetFPS,
+                spriteIndex:   spriteIndex,
+                rng:           &rng
             )
         }
 

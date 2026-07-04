@@ -6,9 +6,22 @@ struct SubdivisionInspector: View {
     @EnvironmentObject private var controller: AppController
     @State private var activePTPTab: PTPTab = .exterior
     @State private var showCompositor = false
-    @State private var generalCollapsed  = false
-    @State private var insetCollapsed    = false
-    @State private var pressureCollapsed = false
+    @State private var generalCollapsed       = false
+    @State private var insetCollapsed         = false
+    @State private var pressureCollapsed      = false
+    @State private var subdivDriversCollapsed = true
+    @State private var subdivGenDriversCollapsed  = false
+    @State private var subdivPTWDriversCollapsed  = false
+    @State private var lineRatioDriverCollapsed      = true
+    @State private var cpRatioDriverCollapsed        = true
+    @State private var cpNormalDriverCollapsed       = true
+    @State private var insetScaleDriverCollapsed     = true
+    @State private var insetRotDriverCollapsed       = true
+    @State private var ranDivDriverCollapsed         = true
+    @State private var ptwTXDriverCollapsed          = true
+    @State private var ptwTYDriverCollapsed          = true
+    @State private var ptwScaleDriverCollapsed       = true
+    @State private var ptwRotDriverCollapsed         = true
 
     var body: some View {
         let setIdx = controller.selectedSubdivisionIndex ?? 0
@@ -72,6 +85,7 @@ struct SubdivisionInspector: View {
         polygonTransformEnabledSection(setIdx: setIdx, paramIdx: paramIdx)
         ptwSection(setIdx: setIdx, paramIdx: paramIdx)
         ptpSection(setIdx: setIdx, paramIdx: paramIdx)
+        subdivisionDriversSection(param: param, setIdx: setIdx, paramIdx: paramIdx)
     }
 
     // MARK: - Custom compositor
@@ -831,6 +845,110 @@ struct SubdivisionInspector: View {
                     groups[groupIndex] = value
                     cfg.subdivisionConfig.paramsSets[setIdx].params[paramIdx].pressureRandomGroups =
                         SubdivisionParams.normalizedPressureRandomGroups(groups)
+                }
+            }
+        )
+    }
+
+    // MARK: - Subdivision Drivers Section
+
+    @ViewBuilder
+    private func subdivisionDriversSection(param: SubdivisionParams,
+                                            setIdx: Int, paramIdx: Int) -> some View {
+        InspectorSection("Subdivision Drivers", isCollapsed: $subdivDriversCollapsed) {
+            Text("Generation drivers animate global params (split ratios, curves, inset). Per-polygon drivers give each output polygon its own smooth, index-staggered trajectory.")
+                .font(.system(size: 10)).foregroundStyle(.secondary)
+                .padding(.horizontal, 12).padding(.top, 4).padding(.bottom, 2)
+
+            // MARK: Generation-level sub-section
+            InspectorSection("Generation", isCollapsed: $subdivGenDriversCollapsed) {
+                DoubleDriverEditor(
+                    label: "Line Ratio",
+                    driver: bindSubdivDriver(setIdx, paramIdx, \.lineRatio),
+                    isCollapsed: $lineRatioDriverCollapsed)
+                .loomHelp("Overrides the edge split position (0–1). 0.5 = midpoint; lower values shift splits toward the start vertex. Drives both lineRatios.x and .y identically.")
+                DoubleDriverEditor(
+                    label: "CP Ratio",
+                    driver: bindSubdivDriver(setIdx, paramIdx, \.cpRatio),
+                    isCollapsed: $cpRatioDriverCollapsed)
+                .loomHelp("Overrides the Bézier control-point parametric position symmetrically: x = v, y = 1−v. At 0.5 both CPs land at the midpoint; values diverge from there.")
+                DoubleDriverEditor(
+                    label: "CP Normal",
+                    driver: bindSubdivDriver(setIdx, paramIdx, \.cpNormalOffset),
+                    isCollapsed: $cpNormalDriverCollapsed)
+                .loomHelp("Overrides the perpendicular bow offset on internal connector edges (both x and y). Positive values bow outward; negative inward.")
+                if param.subdivisionType.usesInsetTransform {
+                    DoubleDriverEditor(
+                        label: "Inset Scale",
+                        driver: bindSubdivDriver(setIdx, paramIdx, \.insetScale),
+                        isCollapsed: $insetScaleDriverCollapsed)
+                    .loomHelp("Overrides the inset polygon scale uniformly (both axes). 1.0 = same size as parent; values below 1 shrink. Echo and Bord variants only.")
+                    DoubleDriverEditor(
+                        label: "Inset Rotation",
+                        driver: bindSubdivDriver(setIdx, paramIdx, \.insetRotation),
+                        isCollapsed: $insetRotDriverCollapsed)
+                    .loomHelp("Overrides the inset polygon rotation in radians. Produces a spinning or counter-rotating inset effect. Echo and Bord variants only.")
+                }
+                DoubleDriverEditor(
+                    label: "Ran Divisor",
+                    driver: bindSubdivDriver(setIdx, paramIdx, \.ranDiv),
+                    isCollapsed: $ranDivDriverCollapsed)
+                .loomHelp("Overrides the random centre-jitter divisor. Higher values = smaller jitter; lower values = more chaotic midpoint movement. Has effect only when Ran Middle is on.")
+            }
+
+            // MARK: Per-polygon PTW sub-section
+            InspectorSection("Per-Polygon PTW", isCollapsed: $subdivPTWDriversCollapsed) {
+                Text("Each driver is evaluated per output polygon using its index as a phase seed — polygons at different positions get staggered, non-identical trajectories. Displacement is normalised to each polygon's own bounding box.")
+                    .font(.system(size: 10)).foregroundStyle(.secondary)
+                    .padding(.horizontal, 12).padding(.top, 4).padding(.bottom, 2)
+                DoubleDriverEditor(
+                    label: "Translate X",
+                    driver: bindSubdivDriver(setIdx, paramIdx, \.ptwTranslateX),
+                    isCollapsed: $ptwTXDriverCollapsed)
+                .loomHelp("Per-polygon X displacement as a fraction of that polygon's bounding-box width. 0.5 = half a polygon-width right. Each polygon gets a phase-offset version of the same driver curve.")
+                DoubleDriverEditor(
+                    label: "Translate Y",
+                    driver: bindSubdivDriver(setIdx, paramIdx, \.ptwTranslateY),
+                    isCollapsed: $ptwTYDriverCollapsed)
+                .loomHelp("Per-polygon Y displacement as a fraction of that polygon's bounding-box height. Staggered by polygon index.")
+                DoubleDriverEditor(
+                    label: "Scale",
+                    driver: bindSubdivDriver(setIdx, paramIdx, \.ptwScale),
+                    isCollapsed: $ptwScaleDriverCollapsed)
+                .loomHelp("Per-polygon uniform scale multiplier around the polygon centroid. 1.0 = no change; oscillate around 1.0 to breathe polygons in and out with index-staggered phase.")
+                DoubleDriverEditor(
+                    label: "Rotation",
+                    driver: bindSubdivDriver(setIdx, paramIdx, \.ptwRotation),
+                    isCollapsed: $ptwRotDriverCollapsed)
+                .loomHelp("Per-polygon rotation in radians around the centroid. Phase-staggered by polygon index — produces a propagating wave of rotations across the subdivision field.")
+            }
+        }
+    }
+
+    // MARK: - Binding helper: SubdivisionDrivers
+
+    private func bindSubdivDriver(_ setIdx: Int, _ paramIdx: Int,
+                                   _ kp: WritableKeyPath<SubdivisionDrivers, DoubleDriver>
+    ) -> Binding<DoubleDriver> {
+        let ctl = controller
+        let fallback = SubdivisionDrivers()[keyPath: kp]
+        return Binding(
+            get: {
+                ctl.projectConfig?.subdivisionConfig
+                    .paramsSets[safe: setIdx]?.params[safe: paramIdx]?
+                    .drivers?[keyPath: kp] ?? fallback
+            },
+            set: { v in
+                ctl.updateProjectConfig { cfg in
+                    guard setIdx < cfg.subdivisionConfig.paramsSets.count,
+                          paramIdx < cfg.subdivisionConfig.paramsSets[setIdx].params.count
+                    else { return }
+                    if cfg.subdivisionConfig.paramsSets[setIdx].params[paramIdx].drivers == nil {
+                        cfg.subdivisionConfig.paramsSets[setIdx].params[paramIdx].drivers =
+                            SubdivisionDrivers()
+                    }
+                    cfg.subdivisionConfig.paramsSets[setIdx].params[paramIdx]
+                        .drivers![keyPath: kp] = v
                 }
             }
         )

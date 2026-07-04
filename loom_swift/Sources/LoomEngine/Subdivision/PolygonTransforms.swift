@@ -32,21 +32,108 @@ enum PolygonTransforms {
     static func apply<G: RandomNumberGenerator>(
         _ polygons: [Polygon2D],
         params: SubdivisionParams,
+        elapsedFrames: Double = 0,
+        targetFPS: Double = 24,
+        spriteIndex: Int = 0,
         rng: inout G
     ) -> [Polygon2D] {
-        guard params.polysTransform else { return polygons }
+        let hasPTWDrvs = hasPTWDrivers(params.drivers)
+        guard params.polysTransform || hasPTWDrvs else { return polygons }
 
         var result = polygons
 
-        if params.polysTranformWhole {
-            result = applyWhole(result, params: params, rng: &rng)
+        if params.polysTransform {
+            if params.polysTranformWhole {
+                result = applyWhole(result, params: params, rng: &rng)
+            }
+            if params.polysTransformPoints {
+                result = applyPoints(result, params: params, rng: &rng)
+            }
         }
 
-        if params.polysTransformPoints {
-            result = applyPoints(result, params: params, rng: &rng)
+        if hasPTWDrvs, let d = params.drivers {
+            result = applyPTWDrivers(result, drivers: d,
+                                     elapsed: elapsedFrames, fps: targetFPS)
         }
 
         return result
+    }
+
+    private static func hasPTWDrivers(_ d: SubdivisionDrivers?) -> Bool {
+        guard let d else { return false }
+        return d.ptwTranslateX.enabled || d.ptwTranslateY.enabled
+            || d.ptwScale.enabled      || d.ptwRotation.enabled
+    }
+
+    private static func applyPTWDrivers(
+        _ polygons: [Polygon2D],
+        drivers d: SubdivisionDrivers,
+        elapsed: Double, fps: Double
+    ) -> [Polygon2D] {
+        return polygons.enumerated().map { (polyIdx, poly) in
+            guard poly.visible else { return poly }
+            var result = poly
+            let pivot  = poly.centroid
+
+            if d.ptwTranslateX.enabled || d.ptwTranslateY.enabled {
+                let bbox = polyBBox(poly.points)
+                var tx = 0.0, ty = 0.0
+                if d.ptwTranslateX.enabled {
+                    let bboxW = max(bbox.maxX - bbox.minX, 1e-9)
+                    tx = DriverEvaluator.evaluate(d.ptwTranslateX,
+                                                  globalElapsed: elapsed,
+                                                  targetFPS: fps,
+                                                  spriteIndex: polyIdx) * bboxW
+                }
+                if d.ptwTranslateY.enabled {
+                    let bboxH = max(bbox.maxY - bbox.minY, 1e-9)
+                    ty = DriverEvaluator.evaluate(d.ptwTranslateY,
+                                                  globalElapsed: elapsed,
+                                                  targetFPS: fps,
+                                                  spriteIndex: polyIdx) * bboxH
+                }
+                if tx != 0 || ty != 0 {
+                    result = result.translated(by: Vector2D(x: tx, y: ty))
+                }
+            }
+
+            if d.ptwScale.enabled {
+                let s = DriverEvaluator.evaluate(d.ptwScale,
+                                                 globalElapsed: elapsed,
+                                                 targetFPS: fps,
+                                                 spriteIndex: polyIdx)
+                if s != 1.0 {
+                    result = result.scaled(by: s, around: pivot)
+                }
+            }
+
+            if d.ptwRotation.enabled {
+                let angle = DriverEvaluator.evaluate(d.ptwRotation,
+                                                     globalElapsed: elapsed,
+                                                     targetFPS: fps,
+                                                     spriteIndex: polyIdx)
+                if angle != 0 {
+                    result = result.rotated(by: angle, around: pivot)
+                }
+            }
+
+            return result
+        }
+    }
+
+    private static func polyBBox(_ pts: [Vector2D])
+        -> (minX: Double, maxX: Double, minY: Double, maxY: Double)
+    {
+        guard !pts.isEmpty else { return (0, 0, 0, 0) }
+        var minX = pts[0].x, maxX = pts[0].x
+        var minY = pts[0].y, maxY = pts[0].y
+        for p in pts.dropFirst() {
+            if p.x < minX { minX = p.x }
+            else if p.x > maxX { maxX = p.x }
+            if p.y < minY { minY = p.y }
+            else if p.y > maxY { maxY = p.y }
+        }
+        return (minX, maxX, minY, maxY)
     }
 
     // MARK: - PTW

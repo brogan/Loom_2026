@@ -18,6 +18,9 @@ public enum SubdivisionEngine {
     public static func subdivide<G: RandomNumberGenerator>(
         polygon: Polygon2D,
         params: SubdivisionParams,
+        elapsedFrames: Double = 0,
+        targetFPS: Double = 24,
+        spriteIndex: Int = 0,
         rng: inout G
     ) -> [Polygon2D] {
         guard !polygon.isBypassType else { return [polygon] }
@@ -59,7 +62,9 @@ public enum SubdivisionEngine {
         )
 
         let visible = applyVisibility(pressureAwareChildren, rule: params.visibilityRule, rng: &rng)
-        return PolygonTransforms.apply(visible, params: params, rng: &rng)
+        return PolygonTransforms.apply(visible, params: params,
+                                       elapsedFrames: elapsedFrames, targetFPS: targetFPS,
+                                       spriteIndex: spriteIndex, rng: &rng)
     }
 
     // MARK: - Pipeline (multi-generation)
@@ -71,6 +76,9 @@ public enum SubdivisionEngine {
     public static func process<G: RandomNumberGenerator>(
         polygons: [Polygon2D],
         paramSet: [SubdivisionParams],
+        elapsedFrames: Double = 0,
+        targetFPS: Double = 24,
+        spriteIndex: Int = 0,
         rng: inout G
     ) -> [Polygon2D] {
         let bypass   = polygons.filter { $0.isBypassType }
@@ -78,12 +86,54 @@ public enum SubdivisionEngine {
 
         for params in paramSet {
             guard params.enabled else { continue }
-            active = active.flatMap { subdivide(polygon: $0, params: params, rng: &rng) }
+            let resolved = resolveDrivers(params, elapsed: elapsedFrames,
+                                          fps: targetFPS, spriteIndex: spriteIndex)
+            active = active.flatMap {
+                subdivide(polygon: $0, params: resolved,
+                          elapsedFrames: elapsedFrames, targetFPS: targetFPS,
+                          spriteIndex: spriteIndex, rng: &rng)
+            }
             // Prune: only visible polygons advance to the next generation
             active = active.filter { $0.visible }
         }
 
         return active + bypass
+    }
+
+    // MARK: - Driver resolution
+
+    private static func resolveDrivers(
+        _ params: SubdivisionParams,
+        elapsed: Double, fps: Double, spriteIndex: Int
+    ) -> SubdivisionParams {
+        guard let d = params.drivers else { return params }
+        var p = params
+        func eval(_ drv: DoubleDriver) -> Double {
+            DriverEvaluator.evaluate(drv, globalElapsed: elapsed, targetFPS: fps, spriteIndex: spriteIndex)
+        }
+        if d.lineRatio.enabled {
+            let v = eval(d.lineRatio)
+            p.lineRatios = Vector2D(x: v, y: v)
+        }
+        if d.cpRatio.enabled {
+            let v = eval(d.cpRatio)
+            p.controlPointRatios = Vector2D(x: v, y: 1.0 - v)
+        }
+        if d.cpNormalOffset.enabled {
+            let v = eval(d.cpNormalOffset)
+            p.cpNormalOffsets = Vector2D(x: v, y: v)
+        }
+        if d.insetScale.enabled {
+            let v = eval(d.insetScale)
+            p.insetTransform.scale = Vector2D(x: v, y: v)
+        }
+        if d.insetRotation.enabled {
+            p.insetTransform.rotation = eval(d.insetRotation)
+        }
+        if d.ranDiv.enabled {
+            p.ranDiv = max(1e-9, eval(d.ranDiv))
+        }
+        return p
     }
 
     // MARK: - Algorithm dispatch
