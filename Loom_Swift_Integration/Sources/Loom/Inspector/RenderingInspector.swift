@@ -788,7 +788,7 @@ struct RenderingInspector: View {
                     .labelsHidden()
                     .frame(maxWidth: 130)
                 }
-                .loomHelp("Gradient B type. At blend=1 this type takes effect.")
+                .loomHelp("Gradient B type — linear or radial. At blend=1 this type fully governs the gradient shape; it transitions at blend=0.5.")
 
                 VStack(alignment: .leading, spacing: 4) {
                     HStack {
@@ -826,6 +826,7 @@ struct RenderingInspector: View {
                         .padding(.horizontal, 12)
                     }
                 }
+                .loomHelp("Gradient B colour stops — the blend target. Each stop is interpolated toward its matching Gradient A stop by index. Position 0 = start/centre; 1 = end/outer edge.")
 
                 Divider().padding(.horizontal, 12)
 
@@ -834,31 +835,38 @@ struct RenderingInspector: View {
                         FloatEntryField(value: bindGradientBKP(setIdx, itemIdx, \.x0, fallback: resolved.x0),
                                         width: 55, fractionDigits: 2)
                     }
+                    .loomHelp("Gradient B linear start X as a fraction of the polygon bounding box width (0 = left, 1 = right). Interpolated from Gradient A's Start X at blend=1.")
                     InspectorField("Start Y") {
                         FloatEntryField(value: bindGradientBKP(setIdx, itemIdx, \.y0, fallback: resolved.y0),
                                         width: 55, fractionDigits: 2)
                     }
+                    .loomHelp("Gradient B linear start Y as a fraction of the bounding box height (0 = top, 1 = bottom).")
                     InspectorField("End X") {
                         FloatEntryField(value: bindGradientBKP(setIdx, itemIdx, \.x1, fallback: resolved.x1),
                                         width: 55, fractionDigits: 2)
                     }
+                    .loomHelp("Gradient B linear end X as a fraction of the bounding box width.")
                     InspectorField("End Y") {
                         FloatEntryField(value: bindGradientBKP(setIdx, itemIdx, \.y1, fallback: resolved.y1),
                                         width: 55, fractionDigits: 2)
                     }
+                    .loomHelp("Gradient B linear end Y as a fraction of the bounding box height.")
                 } else {
                     InspectorField("Centre X") {
                         FloatEntryField(value: bindGradientBKP(setIdx, itemIdx, \.x0, fallback: resolved.x0),
                                         width: 55, fractionDigits: 2)
                     }
+                    .loomHelp("Gradient B radial centre X as a fraction of the bounding box width (0 = left, 1 = right).")
                     InspectorField("Centre Y") {
                         FloatEntryField(value: bindGradientBKP(setIdx, itemIdx, \.y0, fallback: resolved.y0),
                                         width: 55, fractionDigits: 2)
                     }
+                    .loomHelp("Gradient B radial centre Y as a fraction of the bounding box height (0 = top, 1 = bottom).")
                     InspectorField("Radius") {
                         FloatEntryField(value: bindGradientBKP(setIdx, itemIdx, \.radius, fallback: resolved.radius),
                                         width: 55, fractionDigits: 2)
                     }
+                    .loomHelp("Gradient B outer radius as a fraction of max(bounding box width, height). Interpolated from Gradient A's radius at blend=1.")
                 }
             }
         }
