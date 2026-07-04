@@ -2139,6 +2139,15 @@ public struct SpriteScene: @unchecked Sendable {
                                                                    targetFPS: targetFPS,
                                                                    spriteIndex: spriteIndex))
         }
+        if drivers.gradientBlend.enabled,
+           let gradA = resolved.gradientConfig,
+           let gradB = resolved.gradientConfigB {
+            let t = max(0, min(1, DriverEvaluator.evaluate(drivers.gradientBlend,
+                                                           globalElapsed: elapsedFrames,
+                                                           targetFPS: targetFPS,
+                                                           spriteIndex: spriteIndex)))
+            resolved.gradientConfig = gradA.lerped(to: gradB, t: t)
+        }
         return resolved
     }
 

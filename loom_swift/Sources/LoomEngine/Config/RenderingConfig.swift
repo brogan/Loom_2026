@@ -145,22 +145,28 @@ public struct RendererDrivers: Equatable, Codable, Sendable {
     /// Per-renderer Gaussian blur radius in logical pixels. 0 = off.
     public var blur: DoubleDriver = .zero
 
+    /// Blend factor between `gradientConfig` (0) and `gradientConfigB` (1).
+    /// Only evaluated when `gradientConfigB` is non-nil and mode is gradient.
+    public var gradientBlend: DoubleDriver = .zero
+
     public init(
         fillColor: ColorDriver? = nil,
         strokeColor: ColorDriver? = nil,
         strokeWidth: DoubleDriver = .one,
         opacity: DoubleDriver = .one,
-        blur: DoubleDriver = .zero
+        blur: DoubleDriver = .zero,
+        gradientBlend: DoubleDriver = .zero
     ) {
         self.fillColor = fillColor
         self.strokeColor = strokeColor
         self.strokeWidth = strokeWidth
         self.opacity = opacity
         self.blur = blur
+        self.gradientBlend = gradientBlend
     }
 
     private enum CodingKeys: String, CodingKey {
-        case fillColor, strokeColor, strokeWidth, opacity, blur
+        case fillColor, strokeColor, strokeWidth, opacity, blur, gradientBlend
     }
 
     public init(from decoder: Decoder) throws {
@@ -170,6 +176,7 @@ public struct RendererDrivers: Equatable, Codable, Sendable {
         strokeWidth = try c.decodeIfPresent(DoubleDriver.self, forKey: .strokeWidth) ?? .one
         opacity = try c.decodeIfPresent(DoubleDriver.self, forKey: .opacity) ?? .one
         blur = try c.decodeIfPresent(DoubleDriver.self, forKey: .blur) ?? .zero
+        gradientBlend = try c.decodeIfPresent(DoubleDriver.self, forKey: .gradientBlend) ?? .zero
     }
 }
 
@@ -241,6 +248,33 @@ public struct GradientConfig: Equatable, Codable, Sendable {
         y1     = try c.decodeIfPresent(Double.self, forKey: .y1) ?? 1.0
         radius = try c.decodeIfPresent(Double.self, forKey: .radius) ?? 0.5
     }
+
+    /// Linearly interpolate all numeric fields and stop colours toward `other`.
+    /// Stops are paired by index; if `other` has fewer stops, the extra A stops blend toward themselves.
+    public func lerped(to other: GradientConfig, t: Double) -> GradientConfig {
+        let t = max(0, min(1, t))
+        func lerp(_ a: Double, _ b: Double) -> Double { a + (b - a) * t }
+        func lerp8(_ a: Int, _ b: Int) -> Int { Int((Double(a) + (Double(b) - Double(a)) * t).rounded()) }
+        var blendedStops: [GradientStop] = []
+        for i in stops.indices {
+            let sa = stops[i]
+            let sb = other.stops.indices.contains(i) ? other.stops[i] : sa
+            blendedStops.append(GradientStop(
+                color: LoomColor(r: lerp8(sa.color.r, sb.color.r),
+                                 g: lerp8(sa.color.g, sb.color.g),
+                                 b: lerp8(sa.color.b, sb.color.b),
+                                 a: lerp8(sa.color.a, sb.color.a)),
+                position: lerp(sa.position, sb.position)
+            ))
+        }
+        return GradientConfig(
+            type: t < 0.5 ? type : other.type,
+            stops: blendedStops,
+            x0: lerp(x0, other.x0), y0: lerp(y0, other.y0),
+            x1: lerp(x1, other.x1), y1: lerp(y1, other.y1),
+            radius: lerp(radius, other.radius)
+        )
+    }
 }
 
 // MARK: - Renderer mode
@@ -301,6 +335,8 @@ public struct Renderer: Equatable, Codable, Sendable {
     public var stencilConfig: StencilConfig?
     /// Non-nil when `mode == .gradientFilled` or `.gradientFilledStroked`.
     public var gradientConfig: GradientConfig?
+    /// Optional second gradient target for blend-driver animation.
+    public var gradientConfigB: GradientConfig?
 
     public init(
         name: String              = "",
@@ -316,7 +352,8 @@ public struct Renderer: Equatable, Codable, Sendable {
         drivers: RendererDrivers? = nil,
         brushConfig: BrushConfig?    = nil,
         stencilConfig: StencilConfig? = nil,
-        gradientConfig: GradientConfig? = nil
+        gradientConfig: GradientConfig? = nil,
+        gradientConfigB: GradientConfig? = nil
     ) {
         self.name = name; self.enabled = enabled; self.mode = mode
         self.strokeWidth = strokeWidth; self.strokeColor = strokeColor
@@ -324,31 +361,32 @@ public struct Renderer: Equatable, Codable, Sendable {
         self.holdLength = holdLength; self.blurRadius = blurRadius
         self.changes = changes; self.drivers = drivers
         self.brushConfig = brushConfig; self.stencilConfig = stencilConfig
-        self.gradientConfig = gradientConfig
+        self.gradientConfig = gradientConfig; self.gradientConfigB = gradientConfigB
     }
 
     private enum CodingKeys: String, CodingKey {
         case name, enabled, mode, strokeWidth, strokeColor, fillColor,
              pointSize, holdLength, blurRadius, changes, drivers,
-             brushConfig, stencilConfig, gradientConfig
+             brushConfig, stencilConfig, gradientConfig, gradientConfigB
     }
 
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
-        name           = try c.decodeIfPresent(String.self,           forKey: .name)           ?? ""
-        enabled        = try c.decodeIfPresent(Bool.self,             forKey: .enabled)        ?? true
-        mode           = try c.decodeIfPresent(RendererMode.self,     forKey: .mode)           ?? .stroked
-        strokeWidth    = try c.decodeIfPresent(Double.self,           forKey: .strokeWidth)    ?? 1.0
-        strokeColor    = try c.decodeIfPresent(LoomColor.self,        forKey: .strokeColor)    ?? .black
-        fillColor      = try c.decodeIfPresent(LoomColor.self,        forKey: .fillColor)      ?? .black
-        pointSize      = try c.decodeIfPresent(Double.self,           forKey: .pointSize)      ?? 2.0
-        holdLength     = try c.decodeIfPresent(Int.self,              forKey: .holdLength)     ?? 1
-        blurRadius     = try c.decodeIfPresent(Double.self,           forKey: .blurRadius)     ?? 0.0
-        changes        = try c.decodeIfPresent(RendererChanges.self,  forKey: .changes)        ?? RendererChanges()
-        drivers        = try c.decodeIfPresent(RendererDrivers.self,  forKey: .drivers)
-        brushConfig    = try c.decodeIfPresent(BrushConfig.self,      forKey: .brushConfig)
-        stencilConfig  = try c.decodeIfPresent(StencilConfig.self,    forKey: .stencilConfig)
-        gradientConfig = try c.decodeIfPresent(GradientConfig.self,   forKey: .gradientConfig)
+        name            = try c.decodeIfPresent(String.self,           forKey: .name)            ?? ""
+        enabled         = try c.decodeIfPresent(Bool.self,             forKey: .enabled)         ?? true
+        mode            = try c.decodeIfPresent(RendererMode.self,     forKey: .mode)            ?? .stroked
+        strokeWidth     = try c.decodeIfPresent(Double.self,           forKey: .strokeWidth)     ?? 1.0
+        strokeColor     = try c.decodeIfPresent(LoomColor.self,        forKey: .strokeColor)     ?? .black
+        fillColor       = try c.decodeIfPresent(LoomColor.self,        forKey: .fillColor)       ?? .black
+        pointSize       = try c.decodeIfPresent(Double.self,           forKey: .pointSize)       ?? 2.0
+        holdLength      = try c.decodeIfPresent(Int.self,              forKey: .holdLength)      ?? 1
+        blurRadius      = try c.decodeIfPresent(Double.self,           forKey: .blurRadius)      ?? 0.0
+        changes         = try c.decodeIfPresent(RendererChanges.self,  forKey: .changes)         ?? RendererChanges()
+        drivers         = try c.decodeIfPresent(RendererDrivers.self,  forKey: .drivers)
+        brushConfig     = try c.decodeIfPresent(BrushConfig.self,      forKey: .brushConfig)
+        stencilConfig   = try c.decodeIfPresent(StencilConfig.self,    forKey: .stencilConfig)
+        gradientConfig  = try c.decodeIfPresent(GradientConfig.self,   forKey: .gradientConfig)
+        gradientConfigB = try c.decodeIfPresent(GradientConfig.self,   forKey: .gradientConfigB)
     }
 }
 

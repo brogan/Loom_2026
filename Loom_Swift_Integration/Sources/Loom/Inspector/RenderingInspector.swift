@@ -20,6 +20,8 @@ struct RenderingInspector: View {
     @State private var meanderCollapsed      = true
     @State private var stampCollapsed        = false
     @State private var gradientCollapsed     = false
+    @State private var gradientBCollapsed    = true
+    @State private var gradientBlendDriverCollapsed = true
     @State private var opacityAnimCollapsed  = true
     @State private var fillChangeCollapsed   = true
     @State private var strokeChangeCollapsed = true
@@ -48,6 +50,8 @@ struct RenderingInspector: View {
                 case .gradientFilled, .gradientFilledStroked:
                     gradientConfigSection(setIdx: setIdx, itemIdx: itemIdx,
                                           cfg: renderer.gradientConfig ?? GradientConfig())
+                    gradientBConfigSection(setIdx: setIdx, itemIdx: itemIdx,
+                                           cfg: renderer.gradientConfigB)
                 default:
                     EmptyView()
                 }
@@ -266,26 +270,40 @@ struct RenderingInspector: View {
                 isCollapsed: $blurDriverCollapsed,
                 isHighlighted: selectedRendererLane(setIdx: setIdx, itemIdx: itemIdx) == .blur
             )
+            if renderer.mode == .gradientFilled || renderer.mode == .gradientFilledStroked {
+                DoubleDriverEditor(
+                    label: "Gradient Blend",
+                    driver: bindRendererGradientBlendDriver(setIdx, itemIdx),
+                    isCollapsed: $gradientBlendDriverCollapsed,
+                    isHighlighted: false
+                )
+            }
         }
     }
 
     @ViewBuilder
     private func rendererBatchEyeButton(for renderer: Renderer) -> some View {
         let d = renderer.drivers
+        let isGradient = renderer.mode == .gradientFilled || renderer.mode == .gradientFilledStroked
         let fillUnused   = !(d?.fillColor?.enabled   ?? false) && (d?.fillColor?.keyframes.isEmpty   ?? true)
         let sColorUnused = !(d?.strokeColor?.enabled ?? false) && (d?.strokeColor?.keyframes.isEmpty ?? true)
         let sWidthUnused = !(d?.strokeWidth.enabled  ?? false) && (d?.strokeWidth.keyframes.isEmpty  ?? true)
         let opacUnused   = !(d?.opacity.enabled      ?? false) && (d?.opacity.keyframes.isEmpty      ?? true)
         let blurUnused   = !(d?.blur.enabled         ?? false) && (d?.blur.keyframes.isEmpty         ?? true)
+        let blendUnused  = !(d?.gradientBlend.enabled ?? false) && (d?.gradientBlend.keyframes.isEmpty ?? true)
 
+        let blendCollapsed = isGradient && gradientBlendDriverCollapsed
         let collapsed = [fillColorDriverCollapsed, strokeColorDriverCollapsed,
                          strokeWidthDriverCollapsed, opacityDriverCollapsed,
-                         blurDriverCollapsed].filter { $0 }.count
+                         blurDriverCollapsed, blendCollapsed].filter { $0 }.count
+
+        let blendUnusedVisible = isGradient && blendUnused && !gradientBlendDriverCollapsed
         let unusedVisible = [fillUnused   && !fillColorDriverCollapsed,
                               sColorUnused && !strokeColorDriverCollapsed,
                               sWidthUnused && !strokeWidthDriverCollapsed,
                               opacUnused   && !opacityDriverCollapsed,
-                              blurUnused   && !blurDriverCollapsed].filter { $0 }.count
+                              blurUnused   && !blurDriverCollapsed,
+                              blendUnusedVisible].filter { $0 }.count
 
         if collapsed > 0 {
             HStack {
@@ -294,6 +312,7 @@ struct RenderingInspector: View {
                     fillColorDriverCollapsed = false; strokeColorDriverCollapsed = false
                     strokeWidthDriverCollapsed = false; opacityDriverCollapsed = false
                     blurDriverCollapsed = false
+                    if isGradient { gradientBlendDriverCollapsed = false }
                 } label: {
                     HStack(spacing: 3) {
                         Image(systemName: "eye.slash").font(.system(size: 10))
@@ -317,6 +336,7 @@ struct RenderingInspector: View {
                     if sWidthUnused { strokeWidthDriverCollapsed = true }
                     if opacUnused   { opacityDriverCollapsed = true }
                     if blurUnused   { blurDriverCollapsed = true }
+                    if isGradient && blendUnused { gradientBlendDriverCollapsed = true }
                 } label: {
                     Image(systemName: "eye")
                         .font(.system(size: 10))
@@ -705,6 +725,141 @@ struct RenderingInspector: View {
                                     width: 55, fractionDigits: 2)
                 }
                 .loomHelp("Outer radius of the radial gradient as a fraction of max(bounding box width, height). 0.5 = half the largest dimension.")
+            }
+        }
+    }
+
+    // MARK: - Gradient B section
+
+    @ViewBuilder
+    private func gradientBConfigSection(setIdx: Int, itemIdx: Int, cfg: GradientConfig?) -> some View {
+        let hasCfg = cfg != nil
+        let resolved = cfg ?? GradientConfig()
+        InspectorSection("Gradient B", isCollapsed: $gradientBCollapsed) {
+            if !hasCfg {
+                HStack {
+                    Text("No Gradient B defined.")
+                        .font(.system(size: 11)).foregroundStyle(.secondary)
+                    Spacer()
+                    Button("Add") {
+                        controller.updateProjectConfig { config in
+                            guard setIdx < config.renderingConfig.library.rendererSets.count,
+                                  itemIdx < config.renderingConfig.library.rendererSets[setIdx].renderers.count
+                            else { return }
+                            config.renderingConfig.library.rendererSets[setIdx]
+                                .renderers[itemIdx].gradientConfigB = GradientConfig()
+                        }
+                    }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(Color.accentColor)
+                    .font(.system(size: 11))
+                }
+                .padding(.horizontal, 12)
+                .padding(.vertical, 6)
+                Text("Add Gradient B and enable the Gradient Blend driver to animate between the two gradient states.")
+                    .font(.system(size: 10)).foregroundStyle(.secondary)
+                    .padding(.horizontal, 12)
+                    .padding(.bottom, 6)
+            } else {
+                HStack {
+                    Spacer()
+                    Button("Remove B") {
+                        controller.updateProjectConfig { config in
+                            guard setIdx < config.renderingConfig.library.rendererSets.count,
+                                  itemIdx < config.renderingConfig.library.rendererSets[setIdx].renderers.count
+                            else { return }
+                            config.renderingConfig.library.rendererSets[setIdx]
+                                .renderers[itemIdx].gradientConfigB = nil
+                        }
+                    }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(.red)
+                    .font(.system(size: 10))
+                    .padding(.trailing, 12)
+                    .padding(.top, 4)
+                }
+
+                InspectorField("Type") {
+                    Picker("", selection: bindGradientBKP(setIdx, itemIdx, \.type, fallback: resolved.type)) {
+                        ForEach(GradientType.allCases, id: \.self) { t in
+                            Text(t.displayName).tag(t)
+                        }
+                    }
+                    .labelsHidden()
+                    .frame(maxWidth: 130)
+                }
+                .loomHelp("Gradient B type. At blend=1 this type takes effect.")
+
+                VStack(alignment: .leading, spacing: 4) {
+                    HStack {
+                        Text("Stops").font(.system(size: 11)).foregroundStyle(.secondary)
+                        Spacer()
+                        Button {
+                            let pos = resolved.stops.last.map { min($0.position + 0.1, 1.0) } ?? 1.0
+                            addGradientBStop(setIdx: setIdx, itemIdx: itemIdx,
+                                             stop: GradientStop(color: .white, position: pos))
+                        } label: {
+                            Image(systemName: "plus").font(.system(size: 11))
+                        }
+                        .buttonStyle(.plain)
+                    }
+                    .padding(.horizontal, 12)
+                    .padding(.top, 4)
+
+                    ForEach(resolved.stops.indices, id: \.self) { si in
+                        HStack(spacing: 6) {
+                            gradientBStopColorPicker(setIdx: setIdx, itemIdx: itemIdx,
+                                                     stopIdx: si, stop: resolved.stops[si])
+                            FloatEntryField(
+                                value: bindGradientBStopPos(setIdx, itemIdx, stopIdx: si,
+                                                            fallback: resolved.stops[si].position),
+                                width: 46, fractionDigits: 2)
+                            Button {
+                                removeGradientBStop(setIdx: setIdx, itemIdx: itemIdx, stopIdx: si)
+                            } label: {
+                                Image(systemName: "minus.circle").font(.system(size: 11))
+                                    .foregroundStyle(.secondary)
+                            }
+                            .buttonStyle(.plain)
+                            .disabled(resolved.stops.count <= 2)
+                        }
+                        .padding(.horizontal, 12)
+                    }
+                }
+
+                Divider().padding(.horizontal, 12)
+
+                if resolved.type == .linear {
+                    InspectorField("Start X") {
+                        FloatEntryField(value: bindGradientBKP(setIdx, itemIdx, \.x0, fallback: resolved.x0),
+                                        width: 55, fractionDigits: 2)
+                    }
+                    InspectorField("Start Y") {
+                        FloatEntryField(value: bindGradientBKP(setIdx, itemIdx, \.y0, fallback: resolved.y0),
+                                        width: 55, fractionDigits: 2)
+                    }
+                    InspectorField("End X") {
+                        FloatEntryField(value: bindGradientBKP(setIdx, itemIdx, \.x1, fallback: resolved.x1),
+                                        width: 55, fractionDigits: 2)
+                    }
+                    InspectorField("End Y") {
+                        FloatEntryField(value: bindGradientBKP(setIdx, itemIdx, \.y1, fallback: resolved.y1),
+                                        width: 55, fractionDigits: 2)
+                    }
+                } else {
+                    InspectorField("Centre X") {
+                        FloatEntryField(value: bindGradientBKP(setIdx, itemIdx, \.x0, fallback: resolved.x0),
+                                        width: 55, fractionDigits: 2)
+                    }
+                    InspectorField("Centre Y") {
+                        FloatEntryField(value: bindGradientBKP(setIdx, itemIdx, \.y0, fallback: resolved.y0),
+                                        width: 55, fractionDigits: 2)
+                    }
+                    InspectorField("Radius") {
+                        FloatEntryField(value: bindGradientBKP(setIdx, itemIdx, \.radius, fallback: resolved.radius),
+                                        width: 55, fractionDigits: 2)
+                    }
+                }
             }
         }
     }
@@ -1113,7 +1268,8 @@ struct RenderingInspector: View {
             strokeColor: ColorDriver.constant(renderer.strokeColor),
             strokeWidth: DoubleDriver.constant(renderer.strokeWidth),
             opacity: .one,
-            blur: DoubleDriver.constant(renderer.blurRadius)
+            blur: DoubleDriver.constant(renderer.blurRadius),
+            gradientBlend: .zero
         )
     }
 
@@ -1315,6 +1471,153 @@ struct RenderingInspector: View {
             cfg.renderingConfig.library.rendererSets[setIdx]
                 .renderers[itemIdx].gradientConfig!.stops.remove(at: stopIdx)
         }
+    }
+
+    // MARK: - Binding helpers: gradient B config
+
+    private func bindGradientBKP<T>(_ setIdx: Int, _ itemIdx: Int,
+                                     _ kp: WritableKeyPath<GradientConfig, T>,
+                                     fallback: T) -> Binding<T> {
+        let ctl = controller
+        return Binding(
+            get: {
+                ctl.projectConfig?.renderingConfig.library
+                    .rendererSets[safe: setIdx]?.renderers[safe: itemIdx]?
+                    .gradientConfigB?[keyPath: kp] ?? fallback
+            },
+            set: { v in
+                ctl.updateProjectConfig { cfg in
+                    guard setIdx < cfg.renderingConfig.library.rendererSets.count,
+                          itemIdx < cfg.renderingConfig.library.rendererSets[setIdx].renderers.count
+                    else { return }
+                    if cfg.renderingConfig.library.rendererSets[setIdx]
+                        .renderers[itemIdx].gradientConfigB == nil {
+                        cfg.renderingConfig.library.rendererSets[setIdx]
+                            .renderers[itemIdx].gradientConfigB = GradientConfig()
+                    }
+                    cfg.renderingConfig.library.rendererSets[setIdx]
+                        .renderers[itemIdx].gradientConfigB![keyPath: kp] = v
+                }
+            }
+        )
+    }
+
+    @ViewBuilder
+    private func gradientBStopColorPicker(setIdx: Int, itemIdx: Int,
+                                           stopIdx: Int, stop: GradientStop) -> some View {
+        let ctl = controller
+        let binding = Binding<Color>(
+            get: {
+                Color(red: stop.color.rF, green: stop.color.gF,
+                      blue: stop.color.bF, opacity: stop.color.aF)
+            },
+            set: { newColor in
+                let ns = NSColor(newColor).usingColorSpace(.deviceRGB) ?? NSColor.black
+                let lc = LoomColor(
+                    r: Int(max(0, min(255, (ns.redComponent   * 255 + 0.5).rounded(.down)))),
+                    g: Int(max(0, min(255, (ns.greenComponent * 255 + 0.5).rounded(.down)))),
+                    b: Int(max(0, min(255, (ns.blueComponent  * 255 + 0.5).rounded(.down)))),
+                    a: Int(max(0, min(255, (ns.alphaComponent * 255 + 0.5).rounded(.down))))
+                )
+                ctl.updateProjectConfig { cfg in
+                    guard setIdx < cfg.renderingConfig.library.rendererSets.count,
+                          itemIdx < cfg.renderingConfig.library.rendererSets[setIdx].renderers.count,
+                          cfg.renderingConfig.library.rendererSets[setIdx]
+                              .renderers[itemIdx].gradientConfigB != nil,
+                          stopIdx < cfg.renderingConfig.library.rendererSets[setIdx]
+                              .renderers[itemIdx].gradientConfigB!.stops.count
+                    else { return }
+                    cfg.renderingConfig.library.rendererSets[setIdx]
+                        .renderers[itemIdx].gradientConfigB!.stops[stopIdx].color = lc
+                }
+            }
+        )
+        ColorPicker("", selection: binding, supportsOpacity: true)
+            .labelsHidden()
+            .frame(width: 44, height: 22)
+    }
+
+    private func bindGradientBStopPos(_ setIdx: Int, _ itemIdx: Int,
+                                       stopIdx: Int, fallback: Double) -> Binding<Double> {
+        let ctl = controller
+        return Binding(
+            get: {
+                ctl.projectConfig?.renderingConfig.library
+                    .rendererSets[safe: setIdx]?.renderers[safe: itemIdx]?
+                    .gradientConfigB?.stops[safe: stopIdx]?.position ?? fallback
+            },
+            set: { v in
+                ctl.updateProjectConfig { cfg in
+                    guard setIdx < cfg.renderingConfig.library.rendererSets.count,
+                          itemIdx < cfg.renderingConfig.library.rendererSets[setIdx].renderers.count,
+                          cfg.renderingConfig.library.rendererSets[setIdx]
+                              .renderers[itemIdx].gradientConfigB != nil,
+                          stopIdx < cfg.renderingConfig.library.rendererSets[setIdx]
+                              .renderers[itemIdx].gradientConfigB!.stops.count
+                    else { return }
+                    cfg.renderingConfig.library.rendererSets[setIdx]
+                        .renderers[itemIdx].gradientConfigB!.stops[stopIdx].position = max(0, min(1, v))
+                }
+            }
+        )
+    }
+
+    private func addGradientBStop(setIdx: Int, itemIdx: Int, stop: GradientStop) {
+        controller.updateProjectConfig { cfg in
+            guard setIdx < cfg.renderingConfig.library.rendererSets.count,
+                  itemIdx < cfg.renderingConfig.library.rendererSets[setIdx].renderers.count
+            else { return }
+            if cfg.renderingConfig.library.rendererSets[setIdx]
+                .renderers[itemIdx].gradientConfigB == nil {
+                cfg.renderingConfig.library.rendererSets[setIdx]
+                    .renderers[itemIdx].gradientConfigB = GradientConfig()
+            }
+            cfg.renderingConfig.library.rendererSets[setIdx]
+                .renderers[itemIdx].gradientConfigB!.stops.append(stop)
+        }
+    }
+
+    private func removeGradientBStop(setIdx: Int, itemIdx: Int, stopIdx: Int) {
+        controller.updateProjectConfig { cfg in
+            guard setIdx < cfg.renderingConfig.library.rendererSets.count,
+                  itemIdx < cfg.renderingConfig.library.rendererSets[setIdx].renderers.count,
+                  let count = cfg.renderingConfig.library.rendererSets[setIdx]
+                      .renderers[itemIdx].gradientConfigB?.stops.count,
+                  count > 2, stopIdx < count
+            else { return }
+            cfg.renderingConfig.library.rendererSets[setIdx]
+                .renderers[itemIdx].gradientConfigB!.stops.remove(at: stopIdx)
+        }
+    }
+
+    // MARK: - Binding helpers: gradient blend driver
+
+    private func bindRendererGradientBlendDriver(_ setIdx: Int,
+                                                  _ itemIdx: Int) -> Binding<DoubleDriver> {
+        let ctl = controller
+        return Binding(
+            get: {
+                ctl.projectConfig?.renderingConfig.library
+                    .rendererSets[safe: setIdx]?.renderers[safe: itemIdx]?
+                    .drivers?.gradientBlend ?? .zero
+            },
+            set: { v in
+                ctl.updateProjectConfig { cfg in
+                    guard setIdx < cfg.renderingConfig.library.rendererSets.count,
+                          itemIdx < cfg.renderingConfig.library.rendererSets[setIdx].renderers.count
+                    else { return }
+                    if cfg.renderingConfig.library.rendererSets[setIdx]
+                        .renderers[itemIdx].drivers == nil {
+                        cfg.renderingConfig.library.rendererSets[setIdx]
+                            .renderers[itemIdx].drivers = defaultRendererDrivers(
+                                for: cfg.renderingConfig.library.rendererSets[setIdx].renderers[itemIdx]
+                            )
+                    }
+                    cfg.renderingConfig.library.rendererSets[setIdx]
+                        .renderers[itemIdx].drivers!.gradientBlend = v
+                }
+            }
+        )
     }
 
     // MARK: - Binding helpers: RendererChanges — fill color
