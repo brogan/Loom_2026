@@ -12,6 +12,7 @@ struct DoubleDriverEditor: View {
     @Binding var driver: DoubleDriver
     @Binding var isCollapsed: Bool
     var isHighlighted: Bool = false
+    var phaseModeBinding: Binding<PTWPhaseMode>? = nil
 
     var body: some View {
         DriverSection(label, isCollapsed: $isCollapsed,
@@ -63,6 +64,18 @@ struct DoubleDriverEditor: View {
             .loomHelp("Oscillation frequency in cycles per second. Higher values = faster oscillation.")
             floatField("Phase 0–1",$driver.phase)
             .loomHelp("Starting phase offset of the wave (0 = start at centre crossing, 0.25 = start at peak).")
+            if let modeBinding = phaseModeBinding {
+                InspectorField("Phase mode") {
+                    Picker("", selection: modeBinding) {
+                        ForEach(PTWPhaseMode.allCases, id: \.self) { m in
+                            Text(m.rawValue).tag(m)
+                        }
+                    }
+                    .pickerStyle(.menu)
+                    .labelsHidden()
+                }
+                .loomHelp("All: every polygon shares the same phase and moves in unison. Sequential: phase advances by 1/N per polygon — creates a propagating wave. Random: each polygon gets a stable scrambled phase — independent non-repeating trajectories.")
+            }
             InspectorField("Wave") {
                 LoomPicker(selection: $driver.wave, maxWidth: 110)
             }

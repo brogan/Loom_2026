@@ -6,22 +6,22 @@ struct SubdivisionInspector: View {
     @EnvironmentObject private var controller: AppController
     @State private var activePTPTab: PTPTab = .exterior
     @State private var showCompositor = false
-    @State private var generalCollapsed       = false
-    @State private var insetCollapsed         = false
-    @State private var pressureCollapsed      = false
-    @State private var subdivDriversCollapsed = true
-    @State private var subdivGenDriversCollapsed  = false
-    @State private var subdivPTWDriversCollapsed  = false
-    @State private var lineRatioDriverCollapsed      = true
-    @State private var cpRatioDriverCollapsed        = true
-    @State private var cpNormalDriverCollapsed       = true
-    @State private var insetScaleDriverCollapsed     = true
-    @State private var insetRotDriverCollapsed       = true
-    @State private var ranDivDriverCollapsed         = true
-    @State private var ptwTXDriverCollapsed          = true
-    @State private var ptwTYDriverCollapsed          = true
-    @State private var ptwScaleDriverCollapsed       = true
-    @State private var ptwRotDriverCollapsed         = true
+    @AppStorage("subinsp.generalCollapsed")          private var generalCollapsed       = false
+    @AppStorage("subinsp.insetCollapsed")            private var insetCollapsed         = false
+    @AppStorage("subinsp.pressureCollapsed")         private var pressureCollapsed      = false
+    @AppStorage("subinsp.subdivDriversCollapsed")    private var subdivDriversCollapsed = true
+    @AppStorage("subinsp.subdivGenDriversCollapsed") private var subdivGenDriversCollapsed  = false
+    @AppStorage("subinsp.subdivPTWDriversCollapsed") private var subdivPTWDriversCollapsed  = false
+    @AppStorage("subinsp.lineRatioDriverCollapsed")  private var lineRatioDriverCollapsed    = true
+    @AppStorage("subinsp.cpRatioDriverCollapsed")    private var cpRatioDriverCollapsed      = true
+    @AppStorage("subinsp.cpNormalDriverCollapsed")   private var cpNormalDriverCollapsed     = true
+    @AppStorage("subinsp.insetScaleDriverCollapsed") private var insetScaleDriverCollapsed   = true
+    @AppStorage("subinsp.insetRotDriverCollapsed")   private var insetRotDriverCollapsed     = true
+    @AppStorage("subinsp.ranDivDriverCollapsed")     private var ranDivDriverCollapsed       = true
+    @AppStorage("subinsp.ptwTXDriverCollapsed")      private var ptwTXDriverCollapsed        = true
+    @AppStorage("subinsp.ptwTYDriverCollapsed")      private var ptwTYDriverCollapsed        = true
+    @AppStorage("subinsp.ptwScaleDriverCollapsed")   private var ptwScaleDriverCollapsed     = true
+    @AppStorage("subinsp.ptwRotDriverCollapsed")     private var ptwRotDriverCollapsed       = true
 
     var body: some View {
         let setIdx = controller.selectedSubdivisionIndex ?? 0
@@ -898,39 +898,33 @@ struct SubdivisionInspector: View {
 
             // MARK: Per-polygon PTW sub-section
             InspectorSection("Per-Polygon PTW", isCollapsed: $subdivPTWDriversCollapsed) {
-                Text("Each driver is evaluated per output polygon using its index as a phase seed — polygons at different positions get staggered, non-identical trajectories. Displacement is normalised to each polygon's own bounding box.")
+                Text("Each driver is evaluated per output polygon. Use the Phase mode picker (oscillator mode) to choose between unison, wave, or independent motion.")
                     .font(.system(size: 10)).foregroundStyle(.secondary)
                     .padding(.horizontal, 12).padding(.top, 4).padding(.bottom, 2)
-                InspectorField("Phase mode") {
-                    Picker("", selection: bindSubdivPTWPhaseMode(setIdx, paramIdx)) {
-                        ForEach(PTWPhaseMode.allCases, id: \.self) { mode in
-                            Text(mode.rawValue).tag(mode)
-                        }
-                    }
-                    .pickerStyle(.menu)
-                    .labelsHidden()
-                }
-                .loomHelp("Controls how each polygon's phase offset is derived from its index. All: every polygon shares the same phase and moves in unison. Sequential: phase advances linearly with index, creating a wave-like propagating motion. Random: phase is scrambled per polygon (stable, not per-frame noise), producing independent non-repeating trajectories.")
                 DoubleDriverEditor(
                     label: "Translate X",
                     driver: bindSubdivDriver(setIdx, paramIdx, \.ptwTranslateX),
-                    isCollapsed: $ptwTXDriverCollapsed)
-                .loomHelp("Per-polygon X displacement as a fraction of that polygon's bounding-box width. 0.5 = half a polygon-width right. Each polygon gets a phase-offset version of the same driver curve.")
+                    isCollapsed: $ptwTXDriverCollapsed,
+                    phaseModeBinding: bindSubdivPTWPhase(setIdx, paramIdx, \.ptwTranslateXPhase))
+                .loomHelp("Per-polygon X displacement as a fraction of that polygon's bounding-box width. 0.5 = half a polygon-width right.")
                 DoubleDriverEditor(
                     label: "Translate Y",
                     driver: bindSubdivDriver(setIdx, paramIdx, \.ptwTranslateY),
-                    isCollapsed: $ptwTYDriverCollapsed)
-                .loomHelp("Per-polygon Y displacement as a fraction of that polygon's bounding-box height. 0.5 = half a polygon-height down. Phase-staggered by polygon index — each polygon traces the same curve offset in time.")
+                    isCollapsed: $ptwTYDriverCollapsed,
+                    phaseModeBinding: bindSubdivPTWPhase(setIdx, paramIdx, \.ptwTranslateYPhase))
+                .loomHelp("Per-polygon Y displacement as a fraction of that polygon's bounding-box height. 0.5 = half a polygon-height down.")
                 DoubleDriverEditor(
                     label: "Scale",
                     driver: bindSubdivDriver(setIdx, paramIdx, \.ptwScale),
-                    isCollapsed: $ptwScaleDriverCollapsed)
-                .loomHelp("Per-polygon uniform scale multiplier around the polygon centroid. 1.0 = no change; oscillate around 1.0 to breathe polygons in and out with index-staggered phase.")
+                    isCollapsed: $ptwScaleDriverCollapsed,
+                    phaseModeBinding: bindSubdivPTWPhase(setIdx, paramIdx, \.ptwScalePhase))
+                .loomHelp("Per-polygon uniform scale multiplier around the polygon centroid. 1.0 = no change.")
                 DoubleDriverEditor(
                     label: "Rotation",
                     driver: bindSubdivDriver(setIdx, paramIdx, \.ptwRotation),
-                    isCollapsed: $ptwRotDriverCollapsed)
-                .loomHelp("Per-polygon rotation in radians around the centroid. Phase-staggered by polygon index — produces a propagating wave of rotations across the subdivision field.")
+                    isCollapsed: $ptwRotDriverCollapsed,
+                    phaseModeBinding: bindSubdivPTWPhase(setIdx, paramIdx, \.ptwRotationPhase))
+                .loomHelp("Per-polygon rotation in radians around the centroid.")
             }
         }
     }
@@ -964,13 +958,15 @@ struct SubdivisionInspector: View {
         )
     }
 
-    private func bindSubdivPTWPhaseMode(_ setIdx: Int, _ paramIdx: Int) -> Binding<PTWPhaseMode> {
+    private func bindSubdivPTWPhase(_ setIdx: Int, _ paramIdx: Int,
+                                     _ kp: WritableKeyPath<SubdivisionDrivers, PTWPhaseMode>
+    ) -> Binding<PTWPhaseMode> {
         let ctl = controller
         return Binding(
             get: {
                 ctl.projectConfig?.subdivisionConfig
                     .paramsSets[safe: setIdx]?.params[safe: paramIdx]?
-                    .drivers?.ptwPhaseMode ?? .sequential
+                    .drivers?[keyPath: kp] ?? .sequential
             },
             set: { v in
                 ctl.updateProjectConfig { cfg in
@@ -981,7 +977,7 @@ struct SubdivisionInspector: View {
                         cfg.subdivisionConfig.paramsSets[setIdx].params[paramIdx].drivers =
                             SubdivisionDrivers()
                     }
-                    cfg.subdivisionConfig.paramsSets[setIdx].params[paramIdx].drivers!.ptwPhaseMode = v
+                    cfg.subdivisionConfig.paramsSets[setIdx].params[paramIdx].drivers![keyPath: kp] = v
                 }
             }
         )
