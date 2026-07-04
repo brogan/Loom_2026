@@ -856,7 +856,7 @@ struct SubdivisionInspector: View {
     private func subdivisionDriversSection(param: SubdivisionParams,
                                             setIdx: Int, paramIdx: Int) -> some View {
         InspectorSection("Subdivision Drivers", isCollapsed: $subdivDriversCollapsed) {
-            Text("Generation drivers animate global params (split ratios, curves, inset). Per-polygon drivers give each output polygon its own smooth, index-staggered trajectory.")
+            Text("Generation drivers override static subdivision params each frame (split ratios, curves, inset scale/rotation). Per-polygon PTW drivers give each output polygon its own smooth, phase-staggered trajectory independent of the static PTW ranges.")
                 .font(.system(size: 10)).foregroundStyle(.secondary)
                 .padding(.horizontal, 12).padding(.top, 4).padding(.bottom, 2)
 
@@ -876,7 +876,7 @@ struct SubdivisionInspector: View {
                     label: "CP Normal",
                     driver: bindSubdivDriver(setIdx, paramIdx, \.cpNormalOffset),
                     isCollapsed: $cpNormalDriverCollapsed)
-                .loomHelp("Overrides the perpendicular bow offset on internal connector edges (both x and y). Positive values bow outward; negative inward.")
+                .loomHelp("Overrides the perpendicular bow offset on internal connector edges, driving CP1 and CP2 to the same value symmetrically. Positive/negative flips the bow direction. Has no effect unless a Quad-type algorithm is selected.")
                 if param.subdivisionType.usesInsetTransform {
                     DoubleDriverEditor(
                         label: "Inset Scale",
@@ -910,7 +910,7 @@ struct SubdivisionInspector: View {
                     label: "Translate Y",
                     driver: bindSubdivDriver(setIdx, paramIdx, \.ptwTranslateY),
                     isCollapsed: $ptwTYDriverCollapsed)
-                .loomHelp("Per-polygon Y displacement as a fraction of that polygon's bounding-box height. Staggered by polygon index.")
+                .loomHelp("Per-polygon Y displacement as a fraction of that polygon's bounding-box height. 0.5 = half a polygon-height down. Phase-staggered by polygon index — each polygon traces the same curve offset in time.")
                 DoubleDriverEditor(
                     label: "Scale",
                     driver: bindSubdivDriver(setIdx, paramIdx, \.ptwScale),
