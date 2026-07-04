@@ -70,28 +70,32 @@ enum PolygonTransforms {
         drivers d: SubdivisionDrivers,
         elapsed: Double, fps: Double
     ) -> [Polygon2D] {
+        let total = polygons.count
         return polygons.enumerated().map { (polyIdx, poly) in
             guard poly.visible else { return poly }
             var result = poly
             let pivot  = poly.centroid
-            let phaseIdx = ptwPhaseIndex(polyIdx, mode: d.ptwPhaseMode)
 
             if d.ptwTranslateX.enabled || d.ptwTranslateY.enabled {
                 let bbox = polyBBox(poly.points)
                 var tx = 0.0, ty = 0.0
                 if d.ptwTranslateX.enabled {
+                    let (si, po) = ptwPhaseParams(polyIdx, total: total, mode: d.ptwTranslateXPhase)
                     let bboxW = max(bbox.maxX - bbox.minX, 1e-9)
                     tx = DriverEvaluator.evaluate(d.ptwTranslateX,
                                                   globalElapsed: elapsed,
                                                   targetFPS: fps,
-                                                  spriteIndex: phaseIdx) * bboxW
+                                                  spriteIndex: si,
+                                                  phaseOffset: po) * bboxW
                 }
                 if d.ptwTranslateY.enabled {
+                    let (si, po) = ptwPhaseParams(polyIdx, total: total, mode: d.ptwTranslateYPhase)
                     let bboxH = max(bbox.maxY - bbox.minY, 1e-9)
                     ty = DriverEvaluator.evaluate(d.ptwTranslateY,
                                                   globalElapsed: elapsed,
                                                   targetFPS: fps,
-                                                  spriteIndex: phaseIdx) * bboxH
+                                                  spriteIndex: si,
+                                                  phaseOffset: po) * bboxH
                 }
                 if tx != 0 || ty != 0 {
                     result = result.translated(by: Vector2D(x: tx, y: ty))
@@ -99,20 +103,24 @@ enum PolygonTransforms {
             }
 
             if d.ptwScale.enabled {
+                let (si, po) = ptwPhaseParams(polyIdx, total: total, mode: d.ptwScalePhase)
                 let s = DriverEvaluator.evaluate(d.ptwScale,
                                                  globalElapsed: elapsed,
                                                  targetFPS: fps,
-                                                 spriteIndex: phaseIdx)
+                                                 spriteIndex: si,
+                                                 phaseOffset: po)
                 if s != 1.0 {
                     result = result.scaled(by: s, around: pivot)
                 }
             }
 
             if d.ptwRotation.enabled {
+                let (si, po) = ptwPhaseParams(polyIdx, total: total, mode: d.ptwRotationPhase)
                 let angle = DriverEvaluator.evaluate(d.ptwRotation,
                                                      globalElapsed: elapsed,
                                                      targetFPS: fps,
-                                                     spriteIndex: phaseIdx)
+                                                     spriteIndex: si,
+                                                     phaseOffset: po)
                 if angle != 0 {
                     result = result.rotated(by: angle, around: pivot)
                 }
@@ -122,16 +130,20 @@ enum PolygonTransforms {
         }
     }
 
-    /// Maps a polygon index to the spriteIndex passed to DriverEvaluator based on phase mode.
-    private static func ptwPhaseIndex(_ polyIdx: Int, mode: PTWPhaseMode) -> Int {
+    /// Returns (spriteIndex, phaseOffset) for a polygon given its index and phase mode.
+    /// spriteIndex is used by noise/jitter (hash-based); phaseOffset is added to oscillator phase.
+    private static func ptwPhaseParams(_ polyIdx: Int, total: Int,
+                                       mode: PTWPhaseMode) -> (Int, Double) {
         switch mode {
-        case .all:        return 0
-        case .sequential: return polyIdx
+        case .all:
+            return (0, 0.0)
+        case .sequential:
+            let offset = total > 1 ? Double(polyIdx) / Double(total) : 0.0
+            return (polyIdx, offset)
         case .random:
-            // Knuth multiplicative hash — stable per polygon, well-distributed
             var x = UInt32(truncatingIfNeeded: polyIdx &* 1664525 &+ 1013904223)
             x ^= x >> 16
-            return Int(bitPattern: UInt(x))
+            return (Int(bitPattern: UInt(x)), Double(x) / Double(UInt32.max))
         }
     }
 

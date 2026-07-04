@@ -389,7 +389,8 @@ public enum DriverEvaluator {
         _ driver: DoubleDriver,
         globalElapsed: Double,
         targetFPS:     Double,
-        spriteIndex:   Int
+        spriteIndex:   Int,
+        phaseOffset:   Double = 0
     ) -> Double {
         switch driver.mode {
 
@@ -409,7 +410,7 @@ public enum DriverEvaluator {
 
         case .oscillator:
             let fps = max(1, targetFPS)
-            let t   = globalElapsed * driver.freqHz / fps + driver.phase
+            let t   = globalElapsed * driver.freqHz / fps + driver.phase + phaseOffset
             return driver.base + driver.amplitude * wave(driver.wave, t: t)
 
         case .keyframe:

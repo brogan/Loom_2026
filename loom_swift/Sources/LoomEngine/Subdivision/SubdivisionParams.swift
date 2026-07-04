@@ -42,53 +42,69 @@ public struct SubdivisionDrivers: Equatable, Codable, Sendable {
     public var ptwScale:       DoubleDriver = .one
     /// Per-polygon rotation in radians around the polygon centroid.
     public var ptwRotation:    DoubleDriver = .zero
-    /// Determines how per-polygon phase is derived from the polygon index.
-    public var ptwPhaseMode:   PTWPhaseMode = .sequential
+    /// Phase mode for ptwTranslateX — how phase offset is derived from polygon index.
+    public var ptwTranslateXPhase: PTWPhaseMode = .sequential
+    /// Phase mode for ptwTranslateY — how phase offset is derived from polygon index.
+    public var ptwTranslateYPhase: PTWPhaseMode = .sequential
+    /// Phase mode for ptwScale — how phase offset is derived from polygon index.
+    public var ptwScalePhase:      PTWPhaseMode = .sequential
+    /// Phase mode for ptwRotation — how phase offset is derived from polygon index.
+    public var ptwRotationPhase:   PTWPhaseMode = .sequential
 
     public init(
-        lineRatio:      DoubleDriver = .zero,
-        cpRatio:        DoubleDriver = .zero,
-        cpNormalOffset: DoubleDriver = .zero,
-        insetScale:     DoubleDriver = .one,
-        insetRotation:  DoubleDriver = .zero,
-        ranDiv:         DoubleDriver = .zero,
-        ptwTranslateX:  DoubleDriver = .zero,
-        ptwTranslateY:  DoubleDriver = .zero,
-        ptwScale:       DoubleDriver = .one,
-        ptwRotation:    DoubleDriver = .zero,
-        ptwPhaseMode:   PTWPhaseMode = .sequential
+        lineRatio:         DoubleDriver = .zero,
+        cpRatio:           DoubleDriver = .zero,
+        cpNormalOffset:    DoubleDriver = .zero,
+        insetScale:        DoubleDriver = .one,
+        insetRotation:     DoubleDriver = .zero,
+        ranDiv:            DoubleDriver = .zero,
+        ptwTranslateX:     DoubleDriver = .zero,
+        ptwTranslateY:     DoubleDriver = .zero,
+        ptwScale:          DoubleDriver = .one,
+        ptwRotation:       DoubleDriver = .zero,
+        ptwTranslateXPhase: PTWPhaseMode = .sequential,
+        ptwTranslateYPhase: PTWPhaseMode = .sequential,
+        ptwScalePhase:      PTWPhaseMode = .sequential,
+        ptwRotationPhase:   PTWPhaseMode = .sequential
     ) {
-        self.lineRatio      = lineRatio
-        self.cpRatio        = cpRatio
-        self.cpNormalOffset = cpNormalOffset
-        self.insetScale     = insetScale
-        self.insetRotation  = insetRotation
-        self.ranDiv         = ranDiv
-        self.ptwTranslateX  = ptwTranslateX
-        self.ptwTranslateY  = ptwTranslateY
-        self.ptwScale       = ptwScale
-        self.ptwRotation    = ptwRotation
-        self.ptwPhaseMode   = ptwPhaseMode
+        self.lineRatio          = lineRatio
+        self.cpRatio            = cpRatio
+        self.cpNormalOffset     = cpNormalOffset
+        self.insetScale         = insetScale
+        self.insetRotation      = insetRotation
+        self.ranDiv             = ranDiv
+        self.ptwTranslateX      = ptwTranslateX
+        self.ptwTranslateY      = ptwTranslateY
+        self.ptwScale           = ptwScale
+        self.ptwRotation        = ptwRotation
+        self.ptwTranslateXPhase = ptwTranslateXPhase
+        self.ptwTranslateYPhase = ptwTranslateYPhase
+        self.ptwScalePhase      = ptwScalePhase
+        self.ptwRotationPhase   = ptwRotationPhase
     }
 
     private enum CodingKeys: String, CodingKey {
         case lineRatio, cpRatio, cpNormalOffset, insetScale, insetRotation, ranDiv
-        case ptwTranslateX, ptwTranslateY, ptwScale, ptwRotation, ptwPhaseMode
+        case ptwTranslateX, ptwTranslateY, ptwScale, ptwRotation
+        case ptwTranslateXPhase, ptwTranslateYPhase, ptwScalePhase, ptwRotationPhase
     }
 
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
-        lineRatio      = try c.decodeIfPresent(DoubleDriver.self, forKey: .lineRatio)      ?? .zero
-        cpRatio        = try c.decodeIfPresent(DoubleDriver.self, forKey: .cpRatio)        ?? .zero
-        cpNormalOffset = try c.decodeIfPresent(DoubleDriver.self, forKey: .cpNormalOffset) ?? .zero
-        insetScale     = try c.decodeIfPresent(DoubleDriver.self, forKey: .insetScale)     ?? .one
-        insetRotation  = try c.decodeIfPresent(DoubleDriver.self, forKey: .insetRotation)  ?? .zero
-        ranDiv         = try c.decodeIfPresent(DoubleDriver.self, forKey: .ranDiv)         ?? .zero
-        ptwTranslateX  = try c.decodeIfPresent(DoubleDriver.self, forKey: .ptwTranslateX) ?? .zero
-        ptwTranslateY  = try c.decodeIfPresent(DoubleDriver.self, forKey: .ptwTranslateY) ?? .zero
-        ptwScale       = try c.decodeIfPresent(DoubleDriver.self, forKey: .ptwScale)       ?? .one
-        ptwRotation    = try c.decodeIfPresent(DoubleDriver.self, forKey: .ptwRotation)    ?? .zero
-        ptwPhaseMode   = try c.decodeIfPresent(PTWPhaseMode.self, forKey: .ptwPhaseMode)  ?? .sequential
+        lineRatio          = try c.decodeIfPresent(DoubleDriver.self, forKey: .lineRatio)          ?? .zero
+        cpRatio            = try c.decodeIfPresent(DoubleDriver.self, forKey: .cpRatio)            ?? .zero
+        cpNormalOffset     = try c.decodeIfPresent(DoubleDriver.self, forKey: .cpNormalOffset)     ?? .zero
+        insetScale         = try c.decodeIfPresent(DoubleDriver.self, forKey: .insetScale)         ?? .one
+        insetRotation      = try c.decodeIfPresent(DoubleDriver.self, forKey: .insetRotation)      ?? .zero
+        ranDiv             = try c.decodeIfPresent(DoubleDriver.self, forKey: .ranDiv)             ?? .zero
+        ptwTranslateX      = try c.decodeIfPresent(DoubleDriver.self, forKey: .ptwTranslateX)      ?? .zero
+        ptwTranslateY      = try c.decodeIfPresent(DoubleDriver.self, forKey: .ptwTranslateY)      ?? .zero
+        ptwScale           = try c.decodeIfPresent(DoubleDriver.self, forKey: .ptwScale)           ?? .one
+        ptwRotation        = try c.decodeIfPresent(DoubleDriver.self, forKey: .ptwRotation)        ?? .zero
+        ptwTranslateXPhase = try c.decodeIfPresent(PTWPhaseMode.self, forKey: .ptwTranslateXPhase) ?? .sequential
+        ptwTranslateYPhase = try c.decodeIfPresent(PTWPhaseMode.self, forKey: .ptwTranslateYPhase) ?? .sequential
+        ptwScalePhase      = try c.decodeIfPresent(PTWPhaseMode.self, forKey: .ptwScalePhase)      ?? .sequential
+        ptwRotationPhase   = try c.decodeIfPresent(PTWPhaseMode.self, forKey: .ptwRotationPhase)   ?? .sequential
     }
 }
 
