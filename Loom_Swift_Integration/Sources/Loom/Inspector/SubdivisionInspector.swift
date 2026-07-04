@@ -901,6 +901,16 @@ struct SubdivisionInspector: View {
                 Text("Each driver is evaluated per output polygon using its index as a phase seed — polygons at different positions get staggered, non-identical trajectories. Displacement is normalised to each polygon's own bounding box.")
                     .font(.system(size: 10)).foregroundStyle(.secondary)
                     .padding(.horizontal, 12).padding(.top, 4).padding(.bottom, 2)
+                InspectorField("Phase mode") {
+                    Picker("", selection: bindSubdivPTWPhaseMode(setIdx, paramIdx)) {
+                        ForEach(PTWPhaseMode.allCases, id: \.self) { mode in
+                            Text(mode.rawValue).tag(mode)
+                        }
+                    }
+                    .pickerStyle(.menu)
+                    .labelsHidden()
+                }
+                .loomHelp("Controls how each polygon's phase offset is derived from its index. All: every polygon shares the same phase and moves in unison. Sequential: phase advances linearly with index, creating a wave-like propagating motion. Random: phase is scrambled per polygon (stable, not per-frame noise), producing independent non-repeating trajectories.")
                 DoubleDriverEditor(
                     label: "Translate X",
                     driver: bindSubdivDriver(setIdx, paramIdx, \.ptwTranslateX),
@@ -949,6 +959,29 @@ struct SubdivisionInspector: View {
                     }
                     cfg.subdivisionConfig.paramsSets[setIdx].params[paramIdx]
                         .drivers![keyPath: kp] = v
+                }
+            }
+        )
+    }
+
+    private func bindSubdivPTWPhaseMode(_ setIdx: Int, _ paramIdx: Int) -> Binding<PTWPhaseMode> {
+        let ctl = controller
+        return Binding(
+            get: {
+                ctl.projectConfig?.subdivisionConfig
+                    .paramsSets[safe: setIdx]?.params[safe: paramIdx]?
+                    .drivers?.ptwPhaseMode ?? .sequential
+            },
+            set: { v in
+                ctl.updateProjectConfig { cfg in
+                    guard setIdx < cfg.subdivisionConfig.paramsSets.count,
+                          paramIdx < cfg.subdivisionConfig.paramsSets[setIdx].params.count
+                    else { return }
+                    if cfg.subdivisionConfig.paramsSets[setIdx].params[paramIdx].drivers == nil {
+                        cfg.subdivisionConfig.paramsSets[setIdx].params[paramIdx].drivers =
+                            SubdivisionDrivers()
+                    }
+                    cfg.subdivisionConfig.paramsSets[setIdx].params[paramIdx].drivers!.ptwPhaseMode = v
                 }
             }
         )
