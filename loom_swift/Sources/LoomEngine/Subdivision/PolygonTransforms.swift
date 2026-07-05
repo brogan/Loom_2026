@@ -158,15 +158,18 @@ enum PolygonTransforms {
             return (polyIdx, frac * driverPhase)
 
         case .random:
-            // Murmur3 finalizer — well-distributed even for consecutive inputs
-            var h = UInt64(bitPattern: Int64(polyIdx &+ 1) &* 2_654_435_761)
-            h ^= h >> 33
-            h &*= 0xff51afd7ed558ccd
-            h ^= h >> 33
-            h &*= 0xc4ceb9fe1a85ec53
-            h ^= h >> 33
-            let frac = Double(h >> 11) / Double(1 << 53)
-            return (Int(bitPattern: UInt(h >> 1)), frac * driverPhase)
+            // splitmix64 — specifically designed for sequential counter inputs.
+            // Murmur3 fmix64 fails here because polyIdx values are < 2^36,
+            // making the first `h ^= h >> 33` step a near-no-op that leaves
+            // enough arithmetic structure to produce only two output bands.
+            // splitmix64 opens by adding the 64-bit golden ratio (~2^63),
+            // so every shift step sees bits across the full 64-bit range.
+            var z = UInt64(bitPattern: Int64(polyIdx)) &+ 0x9e3779b97f4a7c15
+            z = (z ^ z >> 30) &* 0xbf58476d1ce4e5b9
+            z = (z ^ z >> 27) &* 0x94d049bb133111eb
+            z = z ^ z >> 31
+            let frac = Double(z >> 11) / Double(1 << 53)
+            return (Int(bitPattern: UInt(z >> 1)), frac * driverPhase)
         }
     }
 
