@@ -63,7 +63,9 @@ struct DoubleDriverEditor: View {
             floatField("Freq Hz",  $driver.freqHz)
             .loomHelp("Oscillation frequency in cycles per second. Higher values = faster oscillation.")
             floatField("Phase 0–1",$driver.phase)
-            .loomHelp("Starting phase offset of the wave (0 = start at centre crossing, 0.25 = start at peak).")
+            .loomHelp(phaseModeBinding == nil
+                ? "Starting phase offset of the wave (0 = start at centre crossing, 0.25 = start at peak)."
+                : "Phase offset AND per-polygon spread range. All: static offset for every polygon. Sequential: total phase range from first to last polygon — 0.05–0.15 gives a tight queue where all polygons move the same direction; 1.0 gives a full standing wave with some moving opposite. Random: maximum random scatter — 0.05 = tight cluster, 1.0 = fully scattered across the cycle.")
             if let modeBinding = phaseModeBinding {
                 InspectorField("Phase mode") {
                     Picker("", selection: modeBinding) {

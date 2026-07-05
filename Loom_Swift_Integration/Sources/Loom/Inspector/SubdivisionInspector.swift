@@ -898,7 +898,7 @@ struct SubdivisionInspector: View {
 
             // MARK: Per-polygon PTW sub-section
             InspectorSection("Per-Polygon PTW", isCollapsed: $subdivPTWDriversCollapsed) {
-                Text("Each driver is evaluated per output polygon. Use the Phase mode picker (oscillator mode) to choose between unison, wave, or independent motion.")
+                Text("Per-polygon motion. In oscillator mode, the Phase 0–1 field doubles as a spread range: small values (0.05–0.15) create a tight queue where all polygons move the same direction; larger values spread phases further apart.")
                     .font(.system(size: 10)).foregroundStyle(.secondary)
                     .padding(.horizontal, 12).padding(.top, 4).padding(.bottom, 2)
                 DoubleDriverEditor(
