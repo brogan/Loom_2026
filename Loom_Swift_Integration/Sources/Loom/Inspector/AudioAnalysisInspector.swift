@@ -4,8 +4,7 @@ struct AudioAnalysisInspector: View {
     @EnvironmentObject private var controller: AppController
     @EnvironmentObject private var audio: AudioController
 
-    @AppStorage("audioinsp.analysisCollapsed")  private var analysisCollapsed  = false
-    @AppStorage("audioinsp.beatTicksCollapsed") private var beatTicksCollapsed = true
+    @AppStorage("audioinsp.analysisCollapsed") private var analysisCollapsed = false
 
     private var fps: Double {
         controller.projectConfig?.globalConfig.targetFPS ?? 30
@@ -31,38 +30,45 @@ struct AudioAnalysisInspector: View {
 
     @ViewBuilder
     private func analysisSection(_ a: AudioAnalysis) -> some View {
+        let beatsOn = audio.hasAnalysisMarkers(prefix: "b")
+        let kicksOn = audio.hasAnalysisMarkers(prefix: "k")
+
         InspectorSection("Analysis", isCollapsed: $analysisCollapsed) {
             if a.bpm > 0 {
-                InspectorRow(label: "BPM",        value: String(format: "%.1f", a.bpm))
-                InspectorRow(label: "Beat/frame",  value: String(format: "%.2f", 60.0 / a.bpm * fps))
+                InspectorRow(label: "BPM",       value: String(format: "%.1f", a.bpm))
+                InspectorRow(label: "Beat/frame", value: String(format: "%.2f", 60.0 / a.bpm * fps))
             } else {
                 InspectorRow(label: "BPM", value: "—")
             }
             InspectorRow(label: "Beats",       value: "\(a.beatOnsets.count)")
             InspectorRow(label: "Kick events", value: "\(a.lowFreqOnsets.count)")
 
-            // Auto-marker buttons
             HStack(spacing: 8) {
-                Button("Beat Markers") {
-                    audio.addAnalysisMarkers(times: a.beatOnsets, fps: fps, prefix: "b")
+                Button(beatsOn ? "Hide Beats" : "Beat Markers") {
+                    audio.toggleAnalysisMarkers(times: a.beatOnsets, fps: fps, prefix: "b")
                 }
                 .buttonStyle(.bordered)
+                .tint(beatsOn ? Color.cyan : nil)
                 .controlSize(.small)
                 .disabled(a.beatOnsets.isEmpty)
-                .modifier(LoomHoverHelp("Add a marker at each detected beat onset (cyan ticks)"))
+                .modifier(LoomHoverHelp(beatsOn
+                    ? "Remove beat markers from the timeline"
+                    : "Add a marker at each detected beat onset (cyan ticks)"))
 
-                Button("Kick Markers") {
-                    audio.addAnalysisMarkers(times: a.lowFreqOnsets, fps: fps, prefix: "k")
+                Button(kicksOn ? "Hide Kicks" : "Kick Markers") {
+                    audio.toggleAnalysisMarkers(times: a.lowFreqOnsets, fps: fps, prefix: "k")
                 }
                 .buttonStyle(.bordered)
+                .tint(kicksOn ? Color.green : nil)
                 .controlSize(.small)
                 .disabled(a.lowFreqOnsets.isEmpty)
-                .modifier(LoomHoverHelp("Add a marker at each detected low-frequency onset — kick drum proxy (green ticks)"))
+                .modifier(LoomHoverHelp(kicksOn
+                    ? "Remove kick markers from the timeline"
+                    : "Add a marker at each detected low-frequency onset — kick drum proxy (green ticks)"))
             }
             .padding(.horizontal, 12)
             .padding(.vertical, 4)
 
-            // Legend
             HStack(spacing: 12) {
                 legendDot(color: .cyan,  label: "beats")
                 legendDot(color: .green, label: "kick")

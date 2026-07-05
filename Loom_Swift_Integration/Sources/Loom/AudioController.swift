@@ -125,14 +125,26 @@ final class AudioController: ObservableObject {
 
     // MARK: - Markers
 
-    func addAnalysisMarkers(times: [Double], fps: Double, prefix: String) {
-        for t in times {
-            let frame = Int((t * fps).rounded())
-            var m = AudioMarker(frame: frame)
-            m.label = "\(prefix)\(frame)"
-            markers.append(m)
+    func hasAnalysisMarkers(prefix: String) -> Bool {
+        markers.contains { m in
+            m.label.hasPrefix(prefix) && m.label.dropFirst(prefix.count).allSatisfy(\.isNumber)
         }
-        markers.sort { $0.frame < $1.frame }
+    }
+
+    func toggleAnalysisMarkers(times: [Double], fps: Double, prefix: String) {
+        if hasAnalysisMarkers(prefix: prefix) {
+            markers.removeAll { m in
+                m.label.hasPrefix(prefix) && m.label.dropFirst(prefix.count).allSatisfy(\.isNumber)
+            }
+        } else {
+            for t in times {
+                let frame = Int((t * fps).rounded())
+                var m = AudioMarker(frame: frame)
+                m.label = "\(prefix)\(frame)"
+                markers.append(m)
+            }
+            markers.sort { $0.frame < $1.frame }
+        }
         saveState()
     }
 
@@ -290,9 +302,10 @@ final class AudioController: ObservableObject {
         for c in 0..<ch { for f in 0..<len { mono[f] += chData[c][f] } }
         if ch > 1 { let inv = 1.0 / Float(ch); for f in 0..<len { mono[f] *= inv } }
 
-        // IIR lowpass ~200 Hz for kick proxy
+        // Two-pass IIR lowpass ~80 Hz for kick proxy (steeper roll-off)
         var low = mono
-        let alpha = Float(1.0 / (sr / (2.0 * .pi * 200.0) + 1.0))
+        let alpha = Float(1.0 / (sr / (2.0 * .pi * 80.0) + 1.0))
+        for i in 1..<len { low[i] = alpha * low[i] + (1 - alpha) * low[i-1] }
         for i in 1..<len { low[i] = alpha * low[i] + (1 - alpha) * low[i-1] }
 
         // 10ms hop energy
@@ -336,14 +349,22 @@ final class AudioController: ObservableObject {
         let bpm = bestScore > 0 ? 60.0 / (Double(bestLag) * hopSec) : 0
         let beatPeriod = bpm > 0 ? 60.0 / bpm : 0.5
 
-        // Peak pick helper using global 75th-percentile threshold
-        func pickPeaks(_ onset: [Float], minGapSec: Double) -> [Double] {
+        // Peak pick using adaptive local-mean threshold over a ±500ms window.
+        // multiplier: how many times the local mean a peak must exceed to count.
+        func pickPeaks(_ onset: [Float], minGapSec: Double, multiplier: Float) -> [Double] {
             guard onset.count > 2 else { return [] }
-            var sorted = onset; sorted.sort()
-            let thresh = sorted[sorted.count * 3 / 4]
+            let halfWin = max(5, Int(0.5 / hopSec))
+            var localMean = [Float](repeating: 0, count: onset.count)
+            for i in 0..<onset.count {
+                let lo = max(0, i - halfWin), hi = min(onset.count - 1, i + halfWin)
+                var sum: Float = 0
+                for j in lo...hi { sum += onset[j] }
+                localMean[i] = sum / Float(hi - lo + 1)
+            }
             let minGap = max(1, Int(minGapSec / hopSec))
             var out: [Double] = []; var last = -minGap
             for i in 1..<(onset.count - 1) {
+                let thresh = localMean[i] * multiplier
                 guard onset[i] > thresh, onset[i] > onset[i-1], onset[i] >= onset[i+1] else { continue }
                 guard (i - last) >= minGap else { continue }
                 out.append(Double(i) * hopSec); last = i
@@ -351,8 +372,10 @@ final class AudioController: ObservableObject {
             return out
         }
 
-        let beatOnsets    = pickPeaks(fullOnset, minGapSec: beatPeriod * 0.5)
-        let lowFreqOnsets = pickPeaks(lowOnset,  minGapSec: 0.10)
+        // beats: must be 2.5× local mean, spaced ≥ half a beat period
+        // kicks: must be 4× local mean (very selective), spaced ≥ 250 ms
+        let beatOnsets    = pickPeaks(fullOnset, minGapSec: beatPeriod * 0.5, multiplier: 2.5)
+        let lowFreqOnsets = pickPeaks(lowOnset,  minGapSec: 0.25,             multiplier: 4.0)
 
         return AudioAnalysis(bpm: bpm, beatOnsets: beatOnsets, lowFreqOnsets: lowFreqOnsets)
     }
