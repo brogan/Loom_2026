@@ -193,6 +193,7 @@ struct ContentView: View {
             // Right: inspector
             InspectorPanel()
                 .environmentObject(controller)
+                .environmentObject(controller.audioController)
                 .frame(width: 280)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)

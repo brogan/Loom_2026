@@ -78,7 +78,8 @@ struct InspectorPanel: View {
                 placeholderText("Select a light.")
             }
         case .audio:
-            placeholderText("Select the Audio tab to work with audio.")
+            AudioAnalysisInspector()
+                .environmentObject(controller)
         case .rendering:
             if controller.selectedRendererIndex != nil {
                 RenderingInspector()

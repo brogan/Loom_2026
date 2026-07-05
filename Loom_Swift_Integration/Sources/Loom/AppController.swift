@@ -6788,7 +6788,7 @@ final class AppController: ObservableObject, @unchecked Sendable {
             try FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
             let topLevel = [
                 "polygonSets", "curveSets", "pointSets", "ovalSets", "regularPolygons",
-                "background_image", "brushes", "configuration", "morphTargets",
+                "audio", "background_image", "brushes", "configuration", "morphTargets",
                 "palettes", "stamps", "svgs"
             ]
             for folder in topLevel {

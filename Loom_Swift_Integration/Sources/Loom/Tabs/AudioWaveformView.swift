@@ -52,6 +52,7 @@ struct AudioWaveformView: View {
                 } else {
                     Canvas { ctx, size in
                         drawWaveform(ctx: ctx, size: size)
+                        if let a = audio.analysis { drawBeatTicks(ctx: ctx, size: size, analysis: a) }
                         drawMarkers(ctx: ctx, size: size)
                         drawTimeScale(ctx: ctx, size: size)
                         drawPlayhead(ctx: ctx, size: size)
@@ -128,6 +129,28 @@ struct AudioWaveformView: View {
             if i == 0 { outline.move(to: pt) } else { outline.addLine(to: pt) }
         }
         ctx.stroke(outline, with: .color(Color.accentColor.opacity(0.55)), lineWidth: 1)
+    }
+
+    private func drawBeatTicks(ctx: GraphicsContext, size: CGSize, analysis: AudioAnalysis) {
+        guard audio.duration > 0 else { return }
+        // Beat onsets: cyan ticks in the band just above the time scale
+        for t in analysis.beatOnsets {
+            guard t <= audio.duration else { continue }
+            let x = CGFloat(t / audio.duration) * size.width
+            var p = Path()
+            p.move(to:    CGPoint(x: x, y: size.height - 34))
+            p.addLine(to: CGPoint(x: x, y: size.height - 24))
+            ctx.stroke(p, with: .color(Color.cyan.opacity(0.65)), lineWidth: 1)
+        }
+        // Low-freq onsets (kick proxy): green ticks in the band just below beats
+        for t in analysis.lowFreqOnsets {
+            guard t <= audio.duration else { continue }
+            let x = CGFloat(t / audio.duration) * size.width
+            var p = Path()
+            p.move(to:    CGPoint(x: x, y: size.height - 22))
+            p.addLine(to: CGPoint(x: x, y: size.height - 14))
+            ctx.stroke(p, with: .color(Color.green.opacity(0.65)), lineWidth: 1)
+        }
     }
 
     private func drawMarkers(ctx: GraphicsContext, size: CGSize) {

@@ -4,6 +4,12 @@ import SwiftUI
 
 // MARK: - Data model
 
+struct AudioAnalysis {
+    var bpm: Double           = 0
+    var beatOnsets: [Double]  = []  // seconds
+    var lowFreqOnsets: [Double] = [] // seconds (kick proxy)
+}
+
 public struct AudioMarker: Identifiable {
     public var id: UUID    = UUID()
     public var frame: Int
@@ -39,6 +45,7 @@ final class AudioController: ObservableObject {
     @Published var isPlaying: Bool         = false
     @Published var waveformData: [Float]   = []
     @Published var markers: [AudioMarker]  = []
+    @Published var analysis: AudioAnalysis? = nil
     @Published var fileNotFound: Bool      = false
 
     private var player: AVAudioPlayer?
@@ -56,6 +63,7 @@ final class AudioController: ObservableObject {
         stop()
         player        = nil
         waveformData  = []
+        analysis      = nil
         audioFilename = nil
         markers       = []
         duration      = 0
@@ -78,6 +86,7 @@ final class AudioController: ObservableObject {
         fileNotFound  = false
         loadPlayer(from: dest)
         computeWaveform(from: dest)
+        computeAnalysis(from: dest)
         saveState()
     }
 
@@ -115,6 +124,17 @@ final class AudioController: ObservableObject {
     }
 
     // MARK: - Markers
+
+    func addAnalysisMarkers(times: [Double], fps: Double, prefix: String) {
+        for t in times {
+            let frame = Int((t * fps).rounded())
+            var m = AudioMarker(frame: frame)
+            m.label = "\(prefix)\(frame)"
+            markers.append(m)
+        }
+        markers.sort { $0.frame < $1.frame }
+        saveState()
+    }
 
     func dropMarker(fps: Double) {
         let frame = Int((currentTime * fps).rounded())
@@ -170,6 +190,13 @@ final class AudioController: ObservableObject {
         }
     }
 
+    private func computeAnalysis(from url: URL) {
+        Task.detached(priority: .background) {
+            let result = await Self.buildAnalysis(url: url)
+            await MainActor.run { [weak self] in self?.analysis = result }
+        }
+    }
+
     private func startTimer() {
         timer?.invalidate()
         timer = Timer.scheduledTimer(withTimeInterval: 1.0 / 30.0, repeats: true) { [weak self] _ in
@@ -194,18 +221,44 @@ final class AudioController: ObservableObject {
 
     private func loadState(from url: URL) {
         let stateURL = url.appendingPathComponent("audio.json")
-        guard let data  = try? Data(contentsOf: stateURL),
-              let state = try? JSONDecoder().decode(AudioState.self, from: data) else { return }
-        markers = state.markers
-        guard let filename = state.audioFilename else { return }
-        audioFilename = filename
-        let audioURL  = url.appendingPathComponent("audio").appendingPathComponent(filename)
-        if FileManager.default.fileExists(atPath: audioURL.path) {
-            loadPlayer(from: audioURL)
-            computeWaveform(from: audioURL)
-        } else {
-            fileNotFound = true
+        if let data  = try? Data(contentsOf: stateURL),
+           let state = try? JSONDecoder().decode(AudioState.self, from: data) {
+            markers = state.markers
+            if let filename = state.audioFilename {
+                audioFilename = filename
+                let audioURL = url.appendingPathComponent("audio").appendingPathComponent(filename)
+                if FileManager.default.fileExists(atPath: audioURL.path) {
+                    loadPlayer(from: audioURL)
+                    computeWaveform(from: audioURL)
+                    computeAnalysis(from: audioURL)
+                } else {
+                    fileNotFound = true
+                }
+            }
+            return
         }
+        // No audio.json: scan the audio/ directory and pick the first supported file.
+        let audioDir = url.appendingPathComponent("audio", isDirectory: true)
+        autoDetectAudio(in: audioDir)
+    }
+
+    private static let supportedExtensions: Set<String> = [
+        "wav", "aiff", "aif", "mp3", "m4a", "caf", "flac", "aac"
+    ]
+
+    private func autoDetectAudio(in dir: URL) {
+        guard let files = try? FileManager.default.contentsOfDirectory(
+            at: dir, includingPropertiesForKeys: nil, options: .skipsHiddenFiles
+        ) else { return }
+        guard let found = files.first(where: {
+            Self.supportedExtensions.contains($0.pathExtension.lowercased())
+        }) else { return }
+        audioFilename = found.lastPathComponent
+        fileNotFound  = false
+        loadPlayer(from: found)
+        computeWaveform(from: found)
+        computeAnalysis(from: found)
+        saveState()
     }
 
     private func saveState() {
@@ -213,6 +266,95 @@ final class AudioController: ObservableObject {
         let state = AudioState(audioFilename: audioFilename, markers: markers)
         guard let data = try? JSONEncoder().encode(state) else { return }
         try? data.write(to: projectURL.appendingPathComponent("audio.json"))
+    }
+
+    // MARK: - Audio analysis (background)
+
+    private static func buildAnalysis(url: URL) async -> AudioAnalysis {
+        guard let file = try? AVAudioFile(forReading: url) else { return AudioAnalysis() }
+        let format  = file.processingFormat
+        let sr      = format.sampleRate
+        let ch      = Int(format.channelCount)
+        let maxRead = Int(sr * 300)  // cap at 5 min for analysis
+        let nFrames = min(Int(file.length), maxRead)
+        guard sr > 0, ch > 0, nFrames > 16 else { return AudioAnalysis() }
+
+        guard let buf = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: AVAudioFrameCount(nFrames)),
+              (try? file.read(into: buf)) != nil,
+              let chData = buf.floatChannelData else { return AudioAnalysis() }
+
+        let len = Int(buf.frameLength)
+
+        // Mono mix
+        var mono = [Float](repeating: 0, count: len)
+        for c in 0..<ch { for f in 0..<len { mono[f] += chData[c][f] } }
+        if ch > 1 { let inv = 1.0 / Float(ch); for f in 0..<len { mono[f] *= inv } }
+
+        // IIR lowpass ~200 Hz for kick proxy
+        var low = mono
+        let alpha = Float(1.0 / (sr / (2.0 * .pi * 200.0) + 1.0))
+        for i in 1..<len { low[i] = alpha * low[i] + (1 - alpha) * low[i-1] }
+
+        // 10ms hop energy
+        let hop = max(1, Int(sr * 0.01))
+        let hops = len / hop
+        let hopSec = Double(hop) / sr
+        guard hops > 8 else { return AudioAnalysis() }
+
+        func hopEnergy(_ sig: [Float]) -> [Float] {
+            var e = [Float](repeating: 0, count: hops)
+            for h in 0..<hops {
+                let s = h * hop, end = min(s + hop, len)
+                var v: Float = 0
+                for i in s..<end { v += sig[i] * sig[i] }
+                e[h] = v / Float(end - s)
+            }
+            return e
+        }
+
+        func onsetStrength(_ e: [Float]) -> [Float] {
+            var o = [Float](repeating: 0, count: e.count)
+            for i in 1..<e.count {
+                o[i] = max(0, log(max(e[i], 1e-10)) - log(max(e[i-1], 1e-10)))
+            }
+            return o
+        }
+
+        let fullOnset = onsetStrength(hopEnergy(mono))
+        let lowOnset  = onsetStrength(hopEnergy(low))
+
+        // BPM via autocorrelation (40–200 BPM)
+        let lagMin = max(1, Int((60.0 / 200.0) / hopSec))
+        let lagMax = min(hops - 1, Int((60.0 / 40.0) / hopSec))
+        var bestLag = lagMin; var bestScore: Float = -1
+        for lag in lagMin...lagMax {
+            var score: Float = 0
+            let n = hops - lag
+            for i in 0..<n { score += fullOnset[i] * fullOnset[i + lag] }
+            if score > bestScore { bestScore = score; bestLag = lag }
+        }
+        let bpm = bestScore > 0 ? 60.0 / (Double(bestLag) * hopSec) : 0
+        let beatPeriod = bpm > 0 ? 60.0 / bpm : 0.5
+
+        // Peak pick helper using global 75th-percentile threshold
+        func pickPeaks(_ onset: [Float], minGapSec: Double) -> [Double] {
+            guard onset.count > 2 else { return [] }
+            var sorted = onset; sorted.sort()
+            let thresh = sorted[sorted.count * 3 / 4]
+            let minGap = max(1, Int(minGapSec / hopSec))
+            var out: [Double] = []; var last = -minGap
+            for i in 1..<(onset.count - 1) {
+                guard onset[i] > thresh, onset[i] > onset[i-1], onset[i] >= onset[i+1] else { continue }
+                guard (i - last) >= minGap else { continue }
+                out.append(Double(i) * hopSec); last = i
+            }
+            return out
+        }
+
+        let beatOnsets    = pickPeaks(fullOnset, minGapSec: beatPeriod * 0.5)
+        let lowFreqOnsets = pickPeaks(lowOnset,  minGapSec: 0.10)
+
+        return AudioAnalysis(bpm: bpm, beatOnsets: beatOnsets, lowFreqOnsets: lowFreqOnsets)
     }
 
     // MARK: - Waveform computation (background)
