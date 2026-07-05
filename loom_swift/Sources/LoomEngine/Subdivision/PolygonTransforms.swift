@@ -80,7 +80,8 @@ enum PolygonTransforms {
                 let bbox = polyBBox(poly.points)
                 var tx = 0.0, ty = 0.0
                 if d.ptwTranslateX.enabled {
-                    let (si, po) = ptwPhaseParams(polyIdx, total: total, mode: d.ptwTranslateXPhase)
+                    let (si, po) = ptwPhaseParams(polyIdx, total: total, mode: d.ptwTranslateXPhase,
+                                                  driverPhase: d.ptwTranslateX.phase)
                     let bboxW = max(bbox.maxX - bbox.minX, 1e-9)
                     tx = DriverEvaluator.evaluate(d.ptwTranslateX,
                                                   globalElapsed: elapsed,
@@ -89,7 +90,8 @@ enum PolygonTransforms {
                                                   phaseOffset: po) * bboxW
                 }
                 if d.ptwTranslateY.enabled {
-                    let (si, po) = ptwPhaseParams(polyIdx, total: total, mode: d.ptwTranslateYPhase)
+                    let (si, po) = ptwPhaseParams(polyIdx, total: total, mode: d.ptwTranslateYPhase,
+                                                  driverPhase: d.ptwTranslateY.phase)
                     let bboxH = max(bbox.maxY - bbox.minY, 1e-9)
                     ty = DriverEvaluator.evaluate(d.ptwTranslateY,
                                                   globalElapsed: elapsed,
@@ -103,7 +105,8 @@ enum PolygonTransforms {
             }
 
             if d.ptwScale.enabled {
-                let (si, po) = ptwPhaseParams(polyIdx, total: total, mode: d.ptwScalePhase)
+                let (si, po) = ptwPhaseParams(polyIdx, total: total, mode: d.ptwScalePhase,
+                                              driverPhase: d.ptwScale.phase)
                 let s = DriverEvaluator.evaluate(d.ptwScale,
                                                  globalElapsed: elapsed,
                                                  targetFPS: fps,
@@ -115,7 +118,8 @@ enum PolygonTransforms {
             }
 
             if d.ptwRotation.enabled {
-                let (si, po) = ptwPhaseParams(polyIdx, total: total, mode: d.ptwRotationPhase)
+                let (si, po) = ptwPhaseParams(polyIdx, total: total, mode: d.ptwRotationPhase,
+                                              driverPhase: d.ptwRotation.phase)
                 let angle = DriverEvaluator.evaluate(d.ptwRotation,
                                                      globalElapsed: elapsed,
                                                      targetFPS: fps,
@@ -130,20 +134,39 @@ enum PolygonTransforms {
         }
     }
 
-    /// Returns (spriteIndex, phaseOffset) for a polygon given its index and phase mode.
-    /// spriteIndex is used by noise/jitter (hash-based); phaseOffset is added to oscillator phase.
+    /// Returns (spriteIndex, phaseOffset) for a polygon given its index, phase mode, and the
+    /// driver's own phase value.
+    ///
+    /// - spriteIndex  feeds noise/jitter hash (determines which random trajectory each polygon follows)
+    /// - phaseOffset  is added to the oscillator t-argument (shifts where in the wave cycle a polygon starts)
+    ///
+    /// driverPhase doubles as a spread control for sequential/random:
+    ///   sequential: polygon i gets offset = driverPhase * i/(N-1), so first polygon has offset 0,
+    ///               last has offset = driverPhase. Set driverPhase ≈ 0.05–0.15 for a tight queue
+    ///               (all moving the same direction); 1.0 for a full standing wave.
+    ///   random:     each polygon gets a stable scrambled offset in [0, driverPhase).
+    ///   all:        offset = 0 (ignored — all polygons share the base driver.phase).
     private static func ptwPhaseParams(_ polyIdx: Int, total: Int,
-                                       mode: PTWPhaseMode) -> (Int, Double) {
+                                       mode: PTWPhaseMode,
+                                       driverPhase: Double) -> (Int, Double) {
         switch mode {
         case .all:
             return (0, 0.0)
+
         case .sequential:
-            let offset = total > 1 ? Double(polyIdx) / Double(total) : 0.0
-            return (polyIdx, offset)
+            let frac = total > 1 ? Double(polyIdx) / Double(total - 1) : 0.0
+            return (polyIdx, frac * driverPhase)
+
         case .random:
-            var x = UInt32(truncatingIfNeeded: polyIdx &* 1664525 &+ 1013904223)
-            x ^= x >> 16
-            return (Int(bitPattern: UInt(x)), Double(x) / Double(UInt32.max))
+            // Murmur3 finalizer — well-distributed even for consecutive inputs
+            var h = UInt64(bitPattern: Int64(polyIdx &+ 1) &* 2_654_435_761)
+            h ^= h >> 33
+            h &*= 0xff51afd7ed558ccd
+            h ^= h >> 33
+            h &*= 0xc4ceb9fe1a85ec53
+            h ^= h >> 33
+            let frac = Double(h >> 11) / Double(1 << 53)
+            return (Int(bitPattern: UInt(h >> 1)), frac * driverPhase)
         }
     }
 
