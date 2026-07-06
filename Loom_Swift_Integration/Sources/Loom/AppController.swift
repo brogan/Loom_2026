@@ -3444,6 +3444,63 @@ final class AppController: ObservableObject, @unchecked Sendable {
         }
 
         guard folder == "polygonSets" else { return false }
+
+        // Auto-route to the correct directory based on what's actually in the document.
+        // A document created via "+" always starts as polygonSets/ regardless of content.
+        let hasPolygons = document.layers.contains { !$0.polygons.isEmpty }
+        let hasCurves   = document.layers.contains { !$0.openCurves.isEmpty }
+        let hasPoints   = document.layers.contains { !$0.points.isEmpty }
+
+        if hasCurves && !hasPolygons && !hasPoints {
+            // Open-curve-only → curveSets/
+            let finalName = uniqueCurveSetName(baseName, excluding: "")
+            let filename  = "\(sanitizedGeometryFilename(finalName)).json"
+            let directory = projectURL.appendingPathComponent("curveSets", isDirectory: true)
+            let url       = directory.appendingPathComponent(filename)
+            document.name = finalName
+            do {
+                try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+                try EditableGeometryJSONLoader.save(document, to: url)
+                updateProjectConfig { cfg in
+                    cfg.polygonConfig.library.polygonSets.removeAll { $0.name == oldName }
+                    cfg.curveConfig.library.curveSets.append(OpenCurveSetDef(name: finalName, folder: "curveSets", filename: filename))
+                }
+                selectedGeometryKey = "curveSets/\(finalName)"
+                setGeometryEditorDocument(document, cleanSource: .saved)
+                geometryEditorLoadError = nil
+                geometryEditorReloadNonce += 1
+                return true
+            } catch {
+                geometryEditorLoadError = error.localizedDescription
+                return false
+            }
+        }
+
+        if hasPoints && !hasPolygons && !hasCurves {
+            // Standalone-point-only → pointSets/
+            let finalName = uniquePointSetName(baseName, excluding: "")
+            let filename  = "\(sanitizedGeometryFilename(finalName)).json"
+            let directory = projectURL.appendingPathComponent("pointSets", isDirectory: true)
+            let url       = directory.appendingPathComponent(filename)
+            document.name = finalName
+            do {
+                try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+                try EditableGeometryJSONLoader.save(document, to: url)
+                updateProjectConfig { cfg in
+                    cfg.polygonConfig.library.polygonSets.removeAll { $0.name == oldName }
+                    cfg.pointConfig.library.pointSets.append(PointSetDef(name: finalName, folder: "pointSets", filename: filename))
+                }
+                selectedGeometryKey = "pointSets/\(finalName)"
+                setGeometryEditorDocument(document, cleanSource: .saved)
+                geometryEditorLoadError = nil
+                geometryEditorReloadNonce += 1
+                return true
+            } catch {
+                geometryEditorLoadError = error.localizedDescription
+                return false
+            }
+        }
+
         let finalName = uniquePolygonSetName(baseName, excluding: oldName)
         let filename = "\(sanitizedGeometryFilename(finalName)).json"
         let directory = projectURL.appendingPathComponent("polygonSets", isDirectory: true)
@@ -6748,6 +6805,22 @@ final class AppController: ObservableObject, @unchecked Sendable {
         let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
         let base = trimmed.isEmpty ? "New_Geometry_Set" : trimmed
         let existing = Set(projectConfig?.polygonConfig.library.polygonSets
+            .map(\.name)
+            .filter { $0 != oldName } ?? [])
+        guard existing.contains(base) else { return base }
+        var suffix = 2
+        var candidate = "\(base)_\(suffix)"
+        while existing.contains(candidate) {
+            suffix += 1
+            candidate = "\(base)_\(suffix)"
+        }
+        return candidate
+    }
+
+    private func uniquePointSetName(_ name: String, excluding oldName: String) -> String {
+        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        let base = trimmed.isEmpty ? "New_Point_Set" : trimmed
+        let existing = Set(projectConfig?.pointConfig.library.pointSets
             .map(\.name)
             .filter { $0 != oldName } ?? [])
         guard existing.contains(base) else { return base }
