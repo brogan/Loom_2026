@@ -31,11 +31,16 @@ struct SubdivisionWireframeView: View {
         }
         .task(id: subdivisionInputs) {
             guard let inputs = subdivisionInputs else { cachedSubdivided = []; return }
-            let polys  = inputs.basePolygons
-            let params = inputs.params
+            let polys            = inputs.basePolygons
+            let params           = inputs.params
+            let curveRefinement  = inputs.curveRefinement
             let result: [Polygon2D] = await Task.detached(priority: .userInitiated) {
                 var rng = SeededRNG()
-                return SubdivisionEngine.process(polygons: polys, paramSet: params, rng: &rng)
+                var subdivided = SubdivisionEngine.process(polygons: polys, paramSet: params, rng: &rng)
+                if !curveRefinement.isEmpty {
+                    subdivided = CurveRefinementEngine.process(polygons: subdivided, paramSet: curveRefinement)
+                }
+                return subdivided
             }.value
             cachedSubdivided = result
         }
@@ -44,10 +49,11 @@ struct SubdivisionWireframeView: View {
     // MARK: - Subdivision inputs (triggers recomputation only when these change)
 
     private struct SubdivisionInputs: Equatable, Sendable {
-        let spriteID: String
-        let setName: String
-        let basePolygons: [Polygon2D]
-        let params: [SubdivisionParams]
+        let spriteID:       String
+        let setName:        String
+        let basePolygons:   [Polygon2D]
+        let params:         [SubdivisionParams]
+        let curveRefinement: [CurveRefinementParams]
     }
 
     private var subdivisionInputs: SubdivisionInputs? {
@@ -58,7 +64,9 @@ struct SubdivisionWireframeView: View {
               let inst     = makeInstanceMap()[spriteID]
         else { return nil }
         return SubdivisionInputs(spriteID: spriteID, setName: setName,
-                                  basePolygons: inst.basePolygons, params: paramSet.params)
+                                  basePolygons: inst.basePolygons,
+                                  params: paramSet.params,
+                                  curveRefinement: paramSet.curveRefinement)
     }
 
     // MARK: - Canvas rect (letterboxed)

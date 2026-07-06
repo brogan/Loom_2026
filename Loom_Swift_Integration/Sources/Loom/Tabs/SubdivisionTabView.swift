@@ -17,27 +17,36 @@ struct SubdivisionTabView: View {
     private let setsToolbarHeight: CGFloat = 78
 
     var body: some View {
-        GeometryReader { geo in
-            VStack(spacing: 0) {
-                spriteSection
-                    .frame(height: geo.size.height * 0.38)
+        VStack(spacing: 0) {
+            lifecycleTabBar
+            Divider()
 
-                applyBar
-                    .frame(height: shouldShowApplyBar ? 32 : 0)
-                    .clipped()
+            if controller.lifecycleTab == .involution {
+                GeometryReader { geo in
+                    VStack(spacing: 0) {
+                        spriteSection
+                            .frame(height: geo.size.height * 0.38)
 
-                Divider()
+                        applyBar
+                            .frame(height: shouldShowApplyBar ? 32 : 0)
+                            .clipped()
 
-                setsSection
-                    .frame(height: max(0, geo.size.height * 0.62
-                                       - (shouldShowApplyBar ? 32 : 0)
-                                       - 1   // divider
-                                       - setsToolbarHeight
-                    ))
+                        Divider()
 
-                Divider()
-                setsToolbar
-                    .frame(height: setsToolbarHeight)
+                        setsSection
+                            .frame(height: max(0, geo.size.height * 0.62
+                                               - (shouldShowApplyBar ? 32 : 0)
+                                               - 1   // divider
+                                               - setsToolbarHeight
+                            ))
+
+                        Divider()
+                        setsToolbar
+                            .frame(height: setsToolbarHeight)
+                    }
+                }
+            } else {
+                lifecyclePlaceholder(controller.lifecycleTab)
             }
         }
         .onAppear { autoSelectFirstSprite() }
@@ -50,6 +59,48 @@ struct SubdivisionTabView: View {
         }
     }
 
+    // MARK: - Lifecycle tab bar
+
+    private var lifecycleTabBar: some View {
+        HStack(spacing: 2) {
+            ForEach(LifecycleTab.allCases, id: \.self) { tab in
+                Button(tab.rawValue) {
+                    controller.lifecycleTab = tab
+                }
+                .buttonStyle(.plain)
+                .font(.system(size: 10, weight: controller.lifecycleTab == tab ? .semibold : .regular))
+                .padding(.horizontal, 7)
+                .padding(.vertical, 3)
+                .background(
+                    controller.lifecycleTab == tab
+                        ? Color.accentColor.opacity(0.2)
+                        : Color(nsColor: .controlBackgroundColor)
+                )
+                .clipShape(RoundedRectangle(cornerRadius: 4))
+                .help(tab.fullName)
+            }
+            Spacer()
+        }
+        .padding(.horizontal, 8)
+        .padding(.vertical, 5)
+    }
+
+    // MARK: - Lifecycle placeholder
+
+    private func lifecyclePlaceholder(_ tab: LifecycleTab) -> some View {
+        VStack(spacing: 10) {
+            Spacer()
+            Text(tab.fullName)
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundStyle(.secondary)
+            Text("Coming soon")
+                .font(.system(size: 11))
+                .foregroundStyle(.tertiary)
+            Spacer()
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
     // MARK: - Sprite section (top)
 
     private var spriteSection: some View {
@@ -57,7 +108,7 @@ struct SubdivisionTabView: View {
             HStack {
                 Text("Sprite Set")
                 Spacer()
-                Text("Subdivision Set")
+                Text("Transform Set")
             }
             .font(.system(size: 10, weight: .semibold))
             .foregroundStyle(.tertiary)
@@ -215,7 +266,7 @@ struct SubdivisionTabView: View {
 
     private var setsSection: some View {
         VStack(spacing: 0) {
-            sectionLabel("Subdivision Sets")
+            sectionLabel("Transform Sets")
             Divider()
             setsTree
         }
@@ -226,7 +277,7 @@ struct SubdivisionTabView: View {
             VStack(alignment: .leading, spacing: 0) {
                 let sets = controller.projectConfig?.subdivisionConfig.paramsSets ?? []
                 if sets.isEmpty {
-                    emptyText("No subdivision sets")
+                    emptyText("No transform sets")
                 } else {
                     ForEach(sets.indices, id: \.self) { setIdx in
                         let set = sets[setIdx]
@@ -778,10 +829,13 @@ struct SubdivisionTabView: View {
             return
         }
 
-        // Run subdivision.
+        // Run subdivision + curve refinement.
         let paramSet = cfg.subdivisionConfig.paramsSets[setIdx]
         var rng      = SystemRandomNumberGenerator()
-        let result   = SubdivisionEngine.process(polygons: polys, paramSet: paramSet.params, rng: &rng)
+        var result   = SubdivisionEngine.process(polygons: polys, paramSet: paramSet.params, rng: &rng)
+        if !paramSet.curveRefinement.isEmpty {
+            result = CurveRefinementEngine.process(polygons: result, paramSet: paramSet.curveRefinement)
+        }
 
         // Build output path in polygonSets/.
         let safePolyName  = shape.polygonSetName.replacingOccurrences(of: " ", with: "_")
@@ -866,7 +920,10 @@ struct SubdivisionTabView: View {
 
         let paramSet = cfg.subdivisionConfig.paramsSets[setIdx]
         var rng      = SystemRandomNumberGenerator()
-        let result   = SubdivisionEngine.process(polygons: polys, paramSet: paramSet.params, rng: &rng)
+        var result   = SubdivisionEngine.process(polygons: polys, paramSet: paramSet.params, rng: &rng)
+        if !paramSet.curveRefinement.isEmpty {
+            result = CurveRefinementEngine.process(polygons: result, paramSet: paramSet.curveRefinement)
+        }
 
         let safePolyName = shape.polygonSetName.replacingOccurrences(of: " ", with: "_")
         let safeSetName  = paramSet.name.replacingOccurrences(of: " ", with: "_")

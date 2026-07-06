@@ -47,11 +47,15 @@ struct InspectorPanel: View {
                 placeholderText("Select a geometry set.")
             }
         case .subdivision:
-            if controller.selectedSubdivisionIndex != nil {
-                SubdivisionInspector()
-                    .environmentObject(controller)
+            if controller.lifecycleTab == .involution {
+                if controller.selectedSubdivisionIndex != nil {
+                    SubdivisionInspector()
+                        .environmentObject(controller)
+                } else {
+                    placeholderText("Select a sprite or subdivision set to edit params.")
+                }
             } else {
-                placeholderText("Select a sprite or subdivision set to edit params.")
+                placeholderText("\(controller.lifecycleTab.fullName) — coming soon.")
             }
         case .sprites:
             if controller.selectedSpriteID != nil {
@@ -2616,10 +2620,10 @@ private struct QuickSetupSection: View {
             .loomHelp("Root name used to auto-generate names for the shape, sprite, and renderer. Seeded from the geometry filename or selected layer name.")
             Divider().padding(.vertical, 4)
             pipelinePhaseHeader(.subdivision)
-            InspectorField("Subdivision set") {
+            InspectorField("Transform set") {
                 comboField($qsSubdivSetName, options: subdivisionSetOptions)
             }
-            .loomHelp("Subdivision parameter set applied to the generated shape. Type a new name or use the chevron to pick an existing set. Type or choose 'None' for raw unsubdivided geometry.")
+            .loomHelp("Transformation set applied to the generated shape. Controls subdivision (closed polygons) and curve refinement (open curves). Type 'None' for raw unsubdivided geometry.")
             Divider().padding(.vertical, 4)
             pipelinePhaseHeader(.sprites)
             InspectorField("Sprite set") {
@@ -2791,19 +2795,36 @@ private struct QuickSetupSection: View {
         let rendererSetName = clean(qsRendererSetName)
         let rendererName = clean(qsRendererName)
 
-        let hasPolygonSet = cfg.polygonConfig.library.polygonSets.contains {
-            $0.name == polygonSetName && layerTargetMatches($0)
+        let hasPolygonSet: Bool
+        if folder == "curveSets" {
+            hasPolygonSet = cfg.curveConfig.library.curveSets.contains { $0.name == geoName }
+        } else {
+            hasPolygonSet = cfg.polygonConfig.library.polygonSets.contains {
+                $0.name == polygonSetName && layerTargetMatches($0)
+            }
         }
         let hasSubdiv = subdivSetName.isEmpty || cfg.subdivisionConfig.paramsSets.contains { $0.name == subdivSetName }
-        let hasShape = cfg.shapeConfig.library.shapeSets
-            .first(where: { $0.name == shapeSetName })?
-            .shapes
-            .contains {
-                $0.name == shapeName &&
-                $0.sourceType == .polygonSet &&
-                $0.polygonSetName == polygonSetName &&
-                $0.subdivisionParamsSetName == subdivSetName
-            } ?? false
+        let hasShape: Bool
+        if folder == "curveSets" {
+            hasShape = cfg.shapeConfig.library.shapeSets
+                .first(where: { $0.name == shapeSetName })?
+                .shapes
+                .contains {
+                    $0.name == shapeName &&
+                    $0.sourceType == .openCurveSet &&
+                    $0.openCurveSetName == geoName
+                } ?? false
+        } else {
+            hasShape = cfg.shapeConfig.library.shapeSets
+                .first(where: { $0.name == shapeSetName })?
+                .shapes
+                .contains {
+                    $0.name == shapeName &&
+                    $0.sourceType == .polygonSet &&
+                    $0.polygonSetName == polygonSetName &&
+                    $0.subdivisionParamsSetName == subdivSetName
+                } ?? false
+        }
         let hasRenderer = cfg.renderingConfig.library.rendererSets
             .first(where: { $0.name == rendererSetName })?
             .renderers
@@ -2833,22 +2854,40 @@ private struct QuickSetupSection: View {
         let rendererMode = recommendedQuickSetupRendererMode
 
         controller.updateProjectConfig { cfg in
-            upsertLayerTargetPolygonSet(in: &cfg, polygonSetName: polygonSetName)
+            if folder != "curveSets" {
+                upsertLayerTargetPolygonSet(in: &cfg, polygonSetName: polygonSetName)
+            }
 
             if !subdivSetName.isEmpty,
                !cfg.subdivisionConfig.paramsSets.contains(where: { $0.name == subdivSetName }) {
-                let param = SubdivisionParams(name: "\(geoName)_quad_1", subdivisionType: .quad)
-                cfg.subdivisionConfig.paramsSets.append(
-                    SubdivisionParamsSet(name: subdivSetName, params: [param])
-                )
+                if folder == "curveSets" {
+                    cfg.subdivisionConfig.paramsSets.append(
+                        SubdivisionParamsSet(name: subdivSetName, params: [])
+                    )
+                } else {
+                    let param = SubdivisionParams(name: "\(geoName)_quad_1", subdivisionType: .quad)
+                    cfg.subdivisionConfig.paramsSets.append(
+                        SubdivisionParamsSet(name: subdivSetName, params: [param])
+                    )
+                }
             }
 
-            let shape = ShapeDef(
-                name: shapeName,
-                sourceType: .polygonSet,
-                polygonSetName: polygonSetName,
-                subdivisionParamsSetName: subdivSetName
-            )
+            let shape: ShapeDef
+            if folder == "curveSets" {
+                shape = ShapeDef(
+                    name: shapeName,
+                    sourceType: .openCurveSet,
+                    openCurveSetName: geoName,
+                    subdivisionParamsSetName: subdivSetName
+                )
+            } else {
+                shape = ShapeDef(
+                    name: shapeName,
+                    sourceType: .polygonSet,
+                    polygonSetName: polygonSetName,
+                    subdivisionParamsSetName: subdivSetName
+                )
+            }
             if let setIndex = cfg.shapeConfig.library.shapeSets.firstIndex(where: { $0.name == shapeSetName }) {
                 if let shapeIndex = cfg.shapeConfig.library.shapeSets[setIndex].shapes
                     .firstIndex(where: { $0.name == shapeName }) {

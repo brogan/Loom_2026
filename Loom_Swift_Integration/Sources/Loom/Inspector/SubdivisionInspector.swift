@@ -31,8 +31,12 @@ struct SubdivisionInspector: View {
         return AnyView(VStack(alignment: .leading, spacing: 0) {
             setHeader(set: set, setIdx: setIdx)
             paramsList(set: set, setIdx: setIdx)
-            if let paramIdx = controller.selectedSubdivisionParamIndex,
-               let param = set.params[safe: paramIdx] {
+            curveRefinementList(set: set, setIdx: setIdx)
+            if let crIdx = controller.selectedCurveRefinementParamIndex {
+                CurveRefinementInspector(setIdx: setIdx, crIdx: crIdx)
+                    .environmentObject(controller)
+            } else if let paramIdx = controller.selectedSubdivisionParamIndex,
+                      let param = set.params[safe: paramIdx] {
                 paramEditor(param: param, setIdx: setIdx, paramIdx: paramIdx)
             }
         })
@@ -61,13 +65,114 @@ struct SubdivisionInspector: View {
                 labelFor: { $0.name.isEmpty ? "(unnamed)" : $0.name },
                 selection: Binding(
                     get: { controller.selectedSubdivisionParamIndex },
-                    set: { controller.selectedSubdivisionParamIndex = $0 }
+                    set: { newVal in
+                        controller.selectedSubdivisionParamIndex = newVal
+                        if newVal != nil { controller.selectedCurveRefinementParamIndex = nil }
+                    }
                 )
             )
         }
         .onChange(of: controller.selectedSubdivisionIndex) { _, _ in
-            controller.selectedSubdivisionParamIndex = nil
+            controller.selectedSubdivisionParamIndex     = nil
+            controller.selectedCurveRefinementParamIndex = nil
         }
+    }
+
+    // MARK: - Curve refinement mini-list
+
+    @ViewBuilder
+    private func curveRefinementList(set: SubdivisionParamsSet, setIdx: Int) -> some View {
+        InspectorSection("Curve Refinement") {
+            if set.curveRefinement.isEmpty {
+                HStack {
+                    Text("No refinement passes")
+                        .font(.caption2)
+                        .foregroundStyle(.tertiary)
+                    Spacer()
+                    addCurveRefinementButton(setIdx: setIdx)
+                }
+                .padding(.horizontal, 12)
+                .padding(.vertical, 6)
+            } else {
+                InspectorPickList(
+                    items: set.curveRefinement,
+                    labelFor: { $0.name.isEmpty ? "(unnamed)" : $0.name },
+                    selection: Binding(
+                        get: { controller.selectedCurveRefinementParamIndex },
+                        set: { newVal in
+                            controller.selectedCurveRefinementParamIndex = newVal
+                            if newVal != nil { controller.selectedSubdivisionParamIndex = nil }
+                        }
+                    )
+                )
+                HStack(spacing: 4) {
+                    addCurveRefinementButton(setIdx: setIdx)
+                    if let crIdx = controller.selectedCurveRefinementParamIndex {
+                        Button(action: { deleteCurveRefinementParam(setIdx: setIdx, crIdx: crIdx) }) {
+                            Image(systemName: "minus.circle").font(.system(size: 13))
+                        }
+                        .buttonStyle(.plain)
+                        .foregroundStyle(.secondary)
+                        .help("Delete selected curve refinement pass")
+                        Button(action: { duplicateCurveRefinementParam(setIdx: setIdx, crIdx: crIdx) }) {
+                            Image(systemName: "plus.square.on.square").font(.system(size: 12))
+                        }
+                        .buttonStyle(.plain)
+                        .foregroundStyle(.secondary)
+                        .help("Duplicate selected curve refinement pass")
+                    }
+                    Spacer()
+                }
+                .padding(.horizontal, 12)
+                .padding(.vertical, 4)
+            }
+        }
+    }
+
+    private func addCurveRefinementButton(setIdx: Int) -> some View {
+        Button(action: { addCurveRefinementParam(setIdx: setIdx) }) {
+            Image(systemName: "plus.circle").font(.system(size: 13))
+        }
+        .buttonStyle(.plain)
+        .foregroundStyle(.secondary)
+        .help("Add curve refinement pass")
+    }
+
+    private func addCurveRefinementParam(setIdx: Int) {
+        guard let cfg = controller.projectConfig,
+              setIdx < cfg.subdivisionConfig.paramsSets.count else { return }
+        let newParam = CurveRefinementParams()
+        controller.updateProjectConfig { config in
+            config.subdivisionConfig.paramsSets[setIdx].curveRefinement.append(newParam)
+        }
+        let newIdx = (controller.projectConfig?.subdivisionConfig.paramsSets[setIdx].curveRefinement.count ?? 1) - 1
+        controller.selectedCurveRefinementParamIndex = newIdx
+        controller.selectedSubdivisionParamIndex     = nil
+    }
+
+    private func deleteCurveRefinementParam(setIdx: Int, crIdx: Int) {
+        guard let cfg = controller.projectConfig,
+              setIdx < cfg.subdivisionConfig.paramsSets.count,
+              crIdx  < cfg.subdivisionConfig.paramsSets[setIdx].curveRefinement.count
+        else { return }
+        _ = cfg
+        controller.updateProjectConfig { config in
+            config.subdivisionConfig.paramsSets[setIdx].curveRefinement.remove(at: crIdx)
+        }
+        let remaining = controller.projectConfig?.subdivisionConfig.paramsSets[safe: setIdx]?.curveRefinement.count ?? 0
+        controller.selectedCurveRefinementParamIndex = remaining > 0 ? min(crIdx, remaining - 1) : nil
+    }
+
+    private func duplicateCurveRefinementParam(setIdx: Int, crIdx: Int) {
+        guard let cfg = controller.projectConfig,
+              setIdx < cfg.subdivisionConfig.paramsSets.count,
+              crIdx  < cfg.subdivisionConfig.paramsSets[setIdx].curveRefinement.count
+        else { return }
+        let copy = cfg.subdivisionConfig.paramsSets[setIdx].curveRefinement[crIdx]
+        controller.updateProjectConfig { config in
+            config.subdivisionConfig.paramsSets[setIdx].curveRefinement.insert(copy, at: crIdx + 1)
+        }
+        controller.selectedCurveRefinementParamIndex = crIdx + 1
     }
 
     // MARK: - Param editor
@@ -193,11 +298,45 @@ struct SubdivisionInspector: View {
             InspectorField("Ran middle") {
                 Toggle("", isOn: bindP(setIdx, paramIdx, \.ranMiddle)).labelsHidden()
             }
-            .loomHelp("Jitters the subdivision midpoint position randomly each draw cycle, breaking the regularity of the split.")
+            .loomHelp("Jitters the subdivision midpoint position randomly, breaking the regularity of the split.")
+            InspectorField("Mode") {
+                Picker("", selection: bindP(setIdx, paramIdx, \.ranMiddleMode)) {
+                    Text("Jitter").tag(RanMiddleMode.jitter)
+                    Text("Lazy").tag(RanMiddleMode.lazy)
+                }
+                .labelsHidden()
+                .pickerStyle(.segmented)
+                .frame(maxWidth: 130)
+            }
+            .loomHelp("Jitter: picks a new random centre every frame. Lazy: computes a new target once per period and smoothly tweens toward it — slow organic drift.")
+            if bindP(setIdx, paramIdx, \.ranMiddleMode).wrappedValue == .lazy {
+                InspectorField("Period") {
+                    let periodBind = bindP(setIdx, paramIdx, \.ranMiddlePeriod)
+                    FloatEntryField(
+                        value: Binding(
+                            get: { Double(periodBind.wrappedValue) },
+                            set: { periodBind.wrappedValue = max(1, Int($0.rounded())) }
+                        ),
+                        width: 60, fractionDigits: 0
+                    )
+                }
+                .loomHelp("Lazy mode: frames between new target-centre samples. Set this to your project FPS to get one new target per second.")
+                InspectorField("Seed") {
+                    let seedBind = bindP(setIdx, paramIdx, \.ranMiddleSeed)
+                    FloatEntryField(
+                        value: Binding(
+                            get: { Double(seedBind.wrappedValue) },
+                            set: { seedBind.wrappedValue = Int($0.rounded()) }
+                        ),
+                        width: 60, fractionDigits: 0
+                    )
+                }
+                .loomHelp("Lazy mode: deterministic seed — change to get a different centre trajectory without altering other settings.")
+            }
             InspectorField("Ran divisor") {
                 FloatEntryField(value: bindP(setIdx, paramIdx, \.ranDiv), width: 60, fractionDigits: 1)
             }
-            .loomHelp("Scales the midpoint jitter amount — higher values produce smaller offsets. Default 100.")
+            .loomHelp("Scales the midpoint jitter amount — higher values produce smaller offsets. Minimum 1. Default 100.")
         }
     }
 

@@ -268,10 +268,14 @@ public struct SpriteScene: @unchecked Sendable {
         // ── 5. Resolve subdivision params ────────────────────────────────────
         let paramsName = shapeDef?.subdivisionParamsSetName ?? ""
         let subdivParams: [SubdivisionParams]
+        let curveRefinementParams: [CurveRefinementParams]
         if paramsName.isEmpty || paramsName.caseInsensitiveCompare("none") == .orderedSame {
-            subdivParams = []
+            subdivParams          = []
+            curveRefinementParams = []
         } else {
-            subdivParams = config.subdivisionConfig.paramsSet(named: paramsName)?.params ?? []
+            let resolvedSet       = config.subdivisionConfig.paramsSet(named: paramsName)
+            subdivParams          = resolvedSet?.params ?? []
+            curveRefinementParams = resolvedSet?.curveRefinement ?? []
         }
 
         // ── 6. Load shape-sequence polygon sets ─────────────────────────────
@@ -360,6 +364,7 @@ public struct SpriteScene: @unchecked Sendable {
             morphTargetPolygons:    morphTargetPolygons,
             rendererSet:            rendererSet,
             subdivisionParams:      subdivParams,
+            curveRefinementParams:  curveRefinementParams,
             sequencePolygons:       sequencePolygons,
             variantPolygons:        variantPolygons,
             variantRendererSets:    variantRendererSets,
@@ -1448,7 +1453,7 @@ public struct SpriteScene: @unchecked Sendable {
         }
 
         // 2. Subdivision
-        let subdivided: [Polygon2D]
+        var subdivided: [Polygon2D]
         if activeInstance.subdivisionParams.isEmpty {
             subdivided = morphed
         } else {
@@ -1459,6 +1464,17 @@ public struct SpriteScene: @unchecked Sendable {
                 targetFPS:     targetFPS,
                 spriteIndex:   spriteIndex,
                 rng:           &rng
+            )
+        }
+
+        // 2b. Curve refinement (open-curve involution)
+        if !activeInstance.curveRefinementParams.isEmpty {
+            subdivided = CurveRefinementEngine.process(
+                polygons:      subdivided,
+                paramSet:      activeInstance.curveRefinementParams,
+                elapsedFrames: elapsedFrames,
+                targetFPS:     targetFPS,
+                spriteIndex:   spriteIndex
             )
         }
 

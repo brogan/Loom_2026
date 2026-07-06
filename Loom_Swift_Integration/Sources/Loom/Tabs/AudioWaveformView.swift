@@ -1,16 +1,181 @@
+import AppKit
 import SwiftUI
+
+// MARK: - Zoom / scroll state
+
+private final class WaveformState: ObservableObject {
+    @Published var zoomLevel: CGFloat    = 1.0
+    @Published var scrollFraction: Double = 0.0   // 0 = start, max = 1 − 1/zoom
+    @Published var draggingMarkerID: UUID? = nil
+    var scrubWasPlaying: Bool = false
+
+    func clampScroll() {
+        let max = Swift.max(0.0, 1.0 - 1.0 / Double(Swift.max(1, zoomLevel)))
+        scrollFraction = Swift.max(0.0, Swift.min(max, scrollFraction))
+    }
+
+    func zoom(by factor: CGFloat, centreT: Double, duration: Double) {
+        guard duration > 0 else { return }
+        zoomLevel = Swift.max(1.0, Swift.min(50.0, zoomLevel * factor))
+        let newVD = duration / Double(zoomLevel)
+        scrollFraction = (centreT - newVD * 0.5) / duration
+        clampScroll()
+    }
+
+    func pan(by fraction: Double) {
+        scrollFraction += fraction
+        clampScroll()
+    }
+
+    func reset() {
+        zoomLevel = 1.0
+        scrollFraction = 0.0
+    }
+}
+
+// MARK: - NSView that handles all waveform input
+
+private final class WaveformEventView: NSView {
+    // Set by NSViewRepresentable on every update
+    var state:     WaveformState?
+    var audio:     AudioController?
+    var fps:       Double  = 30
+    var viewWidth: CGFloat = 1
+
+    private var dragStartX: CGFloat?
+
+    // Convert absolute time → pixel x given current zoom/scroll
+    func timeToX(_ t: Double) -> CGFloat {
+        guard let audio, audio.duration > 0, let state else { return 0 }
+        let vDur   = audio.duration / Double(state.zoomLevel)
+        let vStart = state.scrollFraction * audio.duration
+        return CGFloat((t - vStart) / vDur) * viewWidth
+    }
+
+    // Convert pixel x → absolute time
+    func xToTime(_ x: CGFloat) -> Double {
+        guard let audio, audio.duration > 0, let state else { return 0 }
+        let vDur   = audio.duration / Double(state.zoomLevel)
+        let vStart = state.scrollFraction * audio.duration
+        return min(audio.duration, max(0, vStart + Double(x / viewWidth) * vDur))
+    }
+
+    override var acceptsFirstResponder: Bool { true }
+
+    // MARK: Scroll wheel – vertical = zoom, horizontal = pan
+    override func scrollWheel(with event: NSEvent) {
+        guard let state, let audio else { return }
+        let dx = event.scrollingDeltaX
+        let dy = event.scrollingDeltaY
+        if abs(dy) >= abs(dx) && abs(dy) > 0 {
+            let cursorX = convert(event.locationInWindow, from: nil).x
+            let cursorT = xToTime(cursorX)
+            // scroll up (dy < 0) → zoom in
+            let factor  = CGFloat(pow(1.1, Double(-dy) / 10.0))
+            state.zoom(by: factor, centreT: cursorT, duration: audio.duration)
+        } else if abs(dx) > 0 {
+            let panFrac = Double(dx) / Double(viewWidth) / Double(state.zoomLevel)
+            state.pan(by: panFrac)
+        }
+    }
+
+    // MARK: Trackpad pinch – zoom toward cursor
+    override func magnify(with event: NSEvent) {
+        guard let state, let audio else { return }
+        let cursorX = convert(event.locationInWindow, from: nil).x
+        let cursorT = xToTime(cursorX)
+        state.zoom(by: CGFloat(1.0 + event.magnification),
+                   centreT: cursorT, duration: audio.duration)
+    }
+
+    // MARK: Mouse drag – seek / move marker
+    override func mouseDown(with event: NSEvent) {
+        window?.makeFirstResponder(self)
+        dragStartX = convert(event.locationInWindow, from: nil).x
+    }
+
+    override func mouseDragged(with event: NSEvent) {
+        guard let state, let audio else { return }
+        let loc = convert(event.locationInWindow, from: nil)
+
+        if event.modifierFlags.contains(.shift) {
+            // Shift-drag: move nearest marker
+            if state.draggingMarkerID == nil, let startX = dragStartX {
+                state.draggingMarkerID = nearestMarker(to: startX, in: audio)
+            }
+            if let mid = state.draggingMarkerID {
+                let t     = xToTime(loc.x)
+                let frame = Int((t * fps).rounded())
+                audio.moveMarker(id: mid, toFrame: frame)
+            }
+        } else {
+            state.draggingMarkerID = nil
+            audio.seek(to: xToTime(loc.x))
+            if !audio.isPlaying && !state.scrubWasPlaying && audio.duration > 0 {
+                audio.play()
+                state.scrubWasPlaying = true
+            }
+        }
+    }
+
+    override func mouseUp(with event: NSEvent) {
+        guard let state, let audio else { return }
+        state.draggingMarkerID = nil
+        if state.scrubWasPlaying {
+            audio.pause()
+            state.scrubWasPlaying = false
+        }
+        dragStartX = nil
+    }
+
+    private func nearestMarker(to x: CGFloat, in audio: AudioController) -> UUID? {
+        guard audio.duration > 0 else { return nil }
+        var best: (UUID, CGFloat)?
+        for marker in audio.markers {
+            let mx   = timeToX(Double(marker.frame) / fps)
+            let dist = abs(mx - x)
+            if dist < 12, best == nil || dist < best!.1 { best = (marker.id, dist) }
+        }
+        return best?.0
+    }
+}
+
+// MARK: - NSViewRepresentable wrapper
+
+private struct WaveformEventCapture: NSViewRepresentable {
+    let state:     WaveformState
+    let audio:     AudioController
+    let fps:       Double
+    let viewWidth: CGFloat
+
+    func makeNSView(context: Context) -> WaveformEventView {
+        let v = WaveformEventView()
+        v.state = state; v.audio = audio
+        v.fps = fps; v.viewWidth = viewWidth
+        return v
+    }
+
+    func updateNSView(_ v: WaveformEventView, context: Context) {
+        v.fps = fps; v.viewWidth = viewWidth
+    }
+}
+
+// MARK: - Main view
 
 struct AudioWaveformView: View {
     @EnvironmentObject private var audio: AudioController
     @EnvironmentObject private var controller: AppController
+    @StateObject private var ws = WaveformState()
 
-    @State private var draggingMarkerID: UUID? = nil
-    @State private var zoomLevel: CGFloat      = 1.0
-    @State private var magnifyBase: CGFloat    = 1.0
-    @State private var scrubWasPlaying: Bool   = false
+    private var fps: Double { controller.projectConfig?.globalConfig.targetFPS ?? 30 }
 
-    private var fps: Double {
-        controller.projectConfig?.globalConfig.targetFPS ?? 30
+    // Visible time window
+    private var visibleDuration: Double { audio.duration / Double(max(1, ws.zoomLevel)) }
+    private var visibleStart:    Double { ws.scrollFraction * audio.duration }
+
+    private func timeToX(_ t: Double, width: CGFloat) -> CGFloat {
+        guard visibleDuration > 0 else { return 0 }
+        return CGFloat((t - visibleStart) / visibleDuration) * width
     }
 
     var body: some View {
@@ -46,120 +211,63 @@ struct AudioWaveformView: View {
 
     private var waveformArea: some View {
         GeometryReader { geo in
-            let canvasW = geo.size.width * max(1, zoomLevel)
-            let canvasH = geo.size.height
+            ZStack(alignment: .topLeading) {
+                Color(nsColor: .controlBackgroundColor)
 
-            ScrollView(.horizontal, showsIndicators: zoomLevel > 1.01) {
-                ZStack(alignment: .topLeading) {
-                    Color(nsColor: .controlBackgroundColor)
-
-                    if audio.waveformData.isEmpty {
-                        ProgressView("Computing waveform…")
-                            .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    } else {
-                        Canvas { ctx, size in
-                            drawWaveform(ctx: ctx, size: size)
-                            if let a = audio.analysis {
-                                drawBeatTicks(ctx: ctx, size: size, analysis: a)
-                            }
-                            drawMarkers(ctx: ctx, size: size)
-                            drawTimeScale(ctx: ctx, size: size)
-                            drawPlayhead(ctx: ctx, size: size)
-                        }
-                        .contentShape(Rectangle())
-                        .gesture(
-                            DragGesture(minimumDistance: 0)
-                                .onChanged { v in handleDrag(v, canvasWidth: canvasW) }
-                                .onEnded   { _ in handleDragEnd() }
-                        )
+                if audio.waveformData.isEmpty {
+                    ProgressView("Computing waveform…")
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                } else {
+                    Canvas { ctx, size in
+                        drawWaveform(ctx: ctx, size: size)
+                        if let a = audio.analysis { drawBeatTicks(ctx: ctx, size: size, analysis: a) }
+                        drawMarkers(ctx: ctx, size: size)
+                        drawTimeScale(ctx: ctx, size: size)
+                        drawPlayhead(ctx: ctx, size: size)
+                        if ws.zoomLevel > 1.01 { drawOverview(ctx: ctx, size: size) }
                     }
+
+                    // Full-area input capture: handles scroll wheel, pinch, and drag
+                    WaveformEventCapture(
+                        state: ws, audio: audio,
+                        fps: fps, viewWidth: geo.size.width
+                    )
                 }
-                .frame(width: canvasW, height: canvasH)
-            }
-            // Pinch-to-zoom via trackpad spread/pinch
-            .simultaneousGesture(
-                MagnificationGesture()
-                    .onChanged { scale in
-                        zoomLevel = max(1.0, min(50.0, magnifyBase * scale))
-                    }
-                    .onEnded { scale in
-                        magnifyBase = max(1.0, min(50.0, magnifyBase * scale))
-                        zoomLevel   = magnifyBase
-                    }
-            )
-        }
-    }
-
-    // MARK: - Drag handling
-
-    private func handleDrag(_ v: DragGesture.Value, canvasWidth: CGFloat) {
-        if NSEvent.modifierFlags.contains(.shift) {
-            // Shift-drag: move nearest marker
-            if draggingMarkerID == nil {
-                draggingMarkerID = nearestMarker(to: v.startLocation.x, width: canvasWidth)
-            }
-            if let mid = draggingMarkerID {
-                let frac  = Double(v.location.x / canvasWidth)
-                let frame = Int((frac * audio.duration * fps).rounded())
-                audio.moveMarker(id: mid, toFrame: frame)
-            }
-        } else {
-            // Plain drag: seek + audio scrub preview
-            draggingMarkerID = nil
-            let frac = min(1, max(0, Double(v.location.x / canvasWidth)))
-            audio.seek(to: frac * audio.duration)
-            if !audio.isPlaying && !scrubWasPlaying && audio.duration > 0 {
-                audio.play()
-                scrubWasPlaying = true
             }
         }
-    }
-
-    private func handleDragEnd() {
-        draggingMarkerID = nil
-        if scrubWasPlaying {
-            audio.pause()
-            scrubWasPlaying = false
-        }
-    }
-
-    private func nearestMarker(to x: CGFloat, width: CGFloat) -> UUID? {
-        guard audio.duration > 0 else { return nil }
-        let threshold: CGFloat = 12
-        var best: (UUID, CGFloat)?
-        for marker in audio.markers {
-            let mx   = CGFloat(Double(marker.frame) / fps / audio.duration) * width
-            let dist = abs(mx - x)
-            if dist < threshold, best == nil || dist < best!.1 {
-                best = (marker.id, dist)
-            }
-        }
-        return best?.0
     }
 
     // MARK: - Drawing
 
     private func drawWaveform(ctx: GraphicsContext, size: CGSize) {
         let samples = audio.waveformData
-        guard !samples.isEmpty else { return }
+        guard !samples.isEmpty, audio.duration > 0 else { return }
+
+        let startFrac = visibleStart / audio.duration
+        let endFrac   = min(1.0, startFrac + 1.0 / Double(max(1, ws.zoomLevel)))
+        let si = max(0, Int(startFrac * Double(samples.count)))
+        let ei = min(samples.count, Int(endFrac * Double(samples.count)) + 2)
+        let vis = samples[si..<ei]
+        guard !vis.isEmpty else { return }
+
         let midY   = size.height / 2
-        let xScale = size.width / CGFloat(samples.count)
         let halfH  = midY * 0.88
+        let xScale = size.width / CGFloat(vis.count)
 
         var path = Path()
         path.move(to: CGPoint(x: 0, y: midY))
-        for (i, s) in samples.enumerated() {
+        for (i, s) in vis.enumerated() {
             path.addLine(to: CGPoint(x: CGFloat(i) * xScale, y: midY - CGFloat(s) * halfH))
         }
         path.addLine(to: CGPoint(x: size.width, y: midY))
-        for (i, s) in samples.enumerated().reversed() {
+        for (i, s) in vis.enumerated().reversed() {
             path.addLine(to: CGPoint(x: CGFloat(i) * xScale, y: midY + CGFloat(s) * halfH))
         }
         path.closeSubpath()
         ctx.fill(path, with: .color(Color.accentColor.opacity(0.28)))
 
         var outline = Path()
-        for (i, s) in samples.enumerated() {
+        for (i, s) in vis.enumerated() {
             let pt = CGPoint(x: CGFloat(i) * xScale, y: midY - CGFloat(s) * halfH)
             if i == 0 { outline.move(to: pt) } else { outline.addLine(to: pt) }
         }
@@ -168,19 +276,18 @@ struct AudioWaveformView: View {
 
     private func drawBeatTicks(ctx: GraphicsContext, size: CGSize, analysis: AudioAnalysis) {
         guard audio.duration > 0 else { return }
+        let vEnd = visibleStart + visibleDuration
         for t in analysis.beatOnsets {
-            guard t <= audio.duration else { continue }
-            let x = CGFloat(t / audio.duration) * size.width
-            var p = Path()
-            p.move(to: CGPoint(x: x, y: size.height - 34))
+            guard t >= visibleStart, t <= vEnd else { continue }
+            let x = timeToX(t, width: size.width)
+            var p = Path(); p.move(to: CGPoint(x: x, y: size.height - 34))
             p.addLine(to: CGPoint(x: x, y: size.height - 24))
             ctx.stroke(p, with: .color(Color.cyan.opacity(0.65)), lineWidth: 1)
         }
         for t in analysis.lowFreqOnsets {
-            guard t <= audio.duration else { continue }
-            let x = CGFloat(t / audio.duration) * size.width
-            var p = Path()
-            p.move(to: CGPoint(x: x, y: size.height - 22))
+            guard t >= visibleStart, t <= vEnd else { continue }
+            let x = timeToX(t, width: size.width)
+            var p = Path(); p.move(to: CGPoint(x: x, y: size.height - 22))
             p.addLine(to: CGPoint(x: x, y: size.height - 14))
             ctx.stroke(p, with: .color(Color.green.opacity(0.65)), lineWidth: 1)
         }
@@ -188,28 +295,27 @@ struct AudioWaveformView: View {
 
     private func drawMarkers(ctx: GraphicsContext, size: CGSize) {
         guard audio.duration > 0 else { return }
+        let vEnd = visibleStart + visibleDuration
         for marker in audio.markers {
-            let frac       = (Double(marker.frame) / fps) / audio.duration
-            let x          = CGFloat(frac) * size.width
-            let isDragging = marker.id == draggingMarkerID
+            let t = Double(marker.frame) / fps
+            guard t >= visibleStart - 0.1, t <= vEnd + 0.1 else { continue }
+            let x          = timeToX(t, width: size.width)
+            let isDragging = marker.id == ws.draggingMarkerID
             let color      = isDragging ? Color.yellow : Color.orange
             let lw: CGFloat = isDragging ? 2.5 : 1.5
 
             var tick = Path()
-            tick.move(to:    CGPoint(x: x, y: 0))
-            tick.addLine(to: CGPoint(x: x, y: size.height))
+            tick.move(to: CGPoint(x: x, y: 0)); tick.addLine(to: CGPoint(x: x, y: size.height))
             ctx.stroke(tick, with: .color(color.opacity(isDragging ? 1.0 : 0.8)), lineWidth: lw)
 
             if isDragging {
                 ctx.fill(Path(ellipseIn: CGRect(x: x - 5, y: 0, width: 10, height: 10)),
                          with: .color(color))
             }
-
             let label = marker.label.isEmpty ? "f\(marker.frame)" : marker.label
             ctx.draw(
-                Text(label)
-                    .font(.system(size: 9, weight: isDragging ? .semibold : .medium))
-                    .foregroundStyle(color),
+                Text(label).font(.system(size: 9, weight: isDragging ? .semibold : .medium))
+                           .foregroundStyle(color),
                 at: CGPoint(x: min(x + 3, size.width - 82), y: isDragging ? 12 : 4),
                 anchor: .topLeading
             )
@@ -218,45 +324,59 @@ struct AudioWaveformView: View {
 
     private func drawTimeScale(ctx: GraphicsContext, size: CGSize) {
         guard audio.duration > 0 else { return }
-        // Scale tick density to the visible portion of the audio
-        let visibleDur = audio.duration / Double(max(1, zoomLevel))
-        let interval   = niceInterval(for: visibleDur, targetTicks: 14)
-        var t = interval
-        while t <= audio.duration {
-            let x = CGFloat(t / audio.duration) * size.width
+        let interval = niceInterval(for: visibleDuration, targetTicks: 14)
+        let tFirst   = (floor(visibleStart / interval) + 1) * interval
+        var t = tFirst
+        while t <= visibleStart + visibleDuration {
+            let x = timeToX(t, width: size.width)
+            guard x >= 0, x <= size.width else { t += interval; continue }
             var ln = Path()
-            ln.move(to:    CGPoint(x: x, y: size.height - 18))
+            ln.move(to: CGPoint(x: x, y: size.height - 18))
             ln.addLine(to: CGPoint(x: x, y: size.height - 4))
             ctx.stroke(ln, with: .color(.secondary.opacity(0.4)), lineWidth: 1)
-
-            let mins = Int(t) / 60
-            let secs = Int(t) % 60
-            let lbl  = mins > 0 ? String(format: "%d:%02d", mins, secs)
-                                : String(format: "0:%02d", secs)
-            ctx.draw(
-                Text(lbl).font(.system(size: 9, design: .monospaced))
-                         .foregroundStyle(Color.secondary.opacity(0.7)),
-                at: CGPoint(x: x + 3, y: size.height - 17),
-                anchor: .topLeading
-            )
+            let m = Int(t) / 60, s = Int(t) % 60
+            let lbl = m > 0 ? String(format: "%d:%02d", m, s) : String(format: "0:%02d", s)
+            ctx.draw(Text(lbl).font(.system(size: 9, design: .monospaced))
+                              .foregroundStyle(Color.secondary.opacity(0.7)),
+                     at: CGPoint(x: x + 3, y: size.height - 17), anchor: .topLeading)
             t += interval
         }
     }
 
     private func drawPlayhead(ctx: GraphicsContext, size: CGSize) {
         guard audio.duration > 0 else { return }
-        let x = CGFloat(audio.currentTime / audio.duration) * size.width
+        let x = timeToX(audio.currentTime, width: size.width)
+        guard x >= -2, x <= size.width + 2 else { return }
         var line = Path()
-        line.move(to:    CGPoint(x: x, y: 0))
-        line.addLine(to: CGPoint(x: x, y: size.height))
+        line.move(to: CGPoint(x: x, y: 0)); line.addLine(to: CGPoint(x: x, y: size.height))
         ctx.stroke(line, with: .color(.white.opacity(0.85)), lineWidth: 1.5)
-
         var handle = Path()
-        handle.move(to:    CGPoint(x: x,     y: 0))
-        handle.addLine(to: CGPoint(x: x - 5, y: 8))
-        handle.addLine(to: CGPoint(x: x + 5, y: 8))
+        handle.move(to: CGPoint(x: x, y: 0))
+        handle.addLine(to: CGPoint(x: x - 5, y: 8)); handle.addLine(to: CGPoint(x: x + 5, y: 8))
         handle.closeSubpath()
         ctx.fill(handle, with: .color(.white.opacity(0.9)))
+    }
+
+    private func drawOverview(ctx: GraphicsContext, size: CGSize) {
+        let h: CGFloat = 10, y: CGFloat = 4
+        ctx.fill(Path(CGRect(x: 0, y: y, width: size.width, height: h)),
+                 with: .color(Color.black.opacity(0.4)))
+        let samples = audio.waveformData
+        if samples.count > 1 {
+            let midY = y + h / 2, halfH = h / 2 * 0.85
+            var mini = Path()
+            for (i, s) in samples.enumerated() {
+                let x = CGFloat(i) / CGFloat(samples.count - 1) * size.width
+                mini.move(to: CGPoint(x: x, y: midY - CGFloat(s) * halfH))
+                mini.addLine(to: CGPoint(x: x, y: midY + CGFloat(s) * halfH))
+            }
+            ctx.stroke(mini, with: .color(Color.accentColor.opacity(0.45)), lineWidth: 1)
+        }
+        let winX = CGFloat(ws.scrollFraction) * size.width
+        let winW = max(4, size.width / ws.zoomLevel)
+        let wr   = CGRect(x: winX, y: y, width: winW, height: h)
+        ctx.fill(Path(wr), with: .color(Color.white.opacity(0.18)))
+        ctx.stroke(Path(wr), with: .color(Color.white.opacity(0.7)), lineWidth: 1)
     }
 
     // MARK: - Status bar
@@ -270,19 +390,16 @@ struct AudioWaveformView: View {
                 .font(.system(size: 11, design: .monospaced))
                 .foregroundStyle(.tertiary)
             Spacer()
-            if zoomLevel > 1.01 {
+            if ws.zoomLevel > 1.01 {
                 HStack(spacing: 8) {
-                    Text(String(format: "%.1f×", zoomLevel))
+                    Text(String(format: "%.1f×", ws.zoomLevel))
                         .font(.system(size: 10, design: .monospaced))
                         .foregroundStyle(.tertiary)
-                    Button("Reset") {
-                        zoomLevel   = 1.0
-                        magnifyBase = 1.0
-                    }
-                    .buttonStyle(.borderless)
-                    .font(.system(size: 10))
-                    .foregroundStyle(Color.accentColor)
-                    .modifier(LoomHoverHelp("Reset zoom to full view"))
+                    Button("Reset") { ws.reset() }
+                        .buttonStyle(.borderless)
+                        .font(.system(size: 10))
+                        .foregroundStyle(Color.accentColor)
+                        .modifier(LoomHoverHelp("Reset zoom to full view"))
                 }
             }
             if !audio.waveformData.isEmpty {
@@ -298,13 +415,11 @@ struct AudioWaveformView: View {
     // MARK: - Helpers
 
     private func formatTimecode(_ t: Double) -> String {
-        let total = Int(t)
-        return String(format: "%d:%02d", total / 60, total % 60)
+        let i = Int(t); return String(format: "%d:%02d", i / 60, i % 60)
     }
 
     private func niceInterval(for duration: Double, targetTicks: Int) -> Double {
         let raw = duration / Double(max(1, targetTicks))
-        let candidates: [Double] = [0.25, 0.5, 1, 2, 5, 10, 15, 20, 30, 60, 120, 300]
-        return candidates.first { $0 >= raw } ?? 300
+        return [0.25, 0.5, 1, 2, 5, 10, 15, 20, 30, 60, 120, 300].first { $0 >= raw } ?? 300
     }
 }

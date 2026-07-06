@@ -47,6 +47,26 @@ enum AppTab: String, CaseIterable, Hashable {
     var hasListPanel: Bool { true }
 }
 
+// MARK: - Geometric Lifecycle subtabs (within the Subdivision tab)
+
+enum LifecycleTab: String, CaseIterable {
+    case involution  = "Inv"
+    case ext         = "Ext"
+    case evolution   = "Evo"
+    case fulguration = "Ful"
+    case dissolution = "Dis"
+
+    var fullName: String {
+        switch self {
+        case .involution:  return "Involution"
+        case .ext:         return "Extension"
+        case .evolution:   return "Evolution"
+        case .fulguration: return "Fulguration"
+        case .dissolution: return "Dissolution"
+        }
+    }
+}
+
 // MARK: - Theatre spotlight icon for the Lights tab
 
 struct TheatreSpotIcon: View {

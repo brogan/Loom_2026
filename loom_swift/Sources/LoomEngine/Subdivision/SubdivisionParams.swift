@@ -1,5 +1,16 @@
 import Foundation
 
+// MARK: - RanMiddleMode
+
+/// Controls how the subdivision centre jitter behaves when `ranMiddle` is enabled.
+public enum RanMiddleMode: String, Codable, CaseIterable, Equatable, Sendable {
+    /// Picks a completely new random centre on every frame (original behaviour).
+    case jitter
+    /// Computes a new target centre once per `ranMiddlePeriod` frames and smoothly
+    /// interpolates toward it — gives a slow, organic drift rather than per-frame noise.
+    case lazy
+}
+
 // MARK: - Subdivision Drivers
 
 /// Continuous/keyframed drivers that animate `SubdivisionParams` fields at runtime.
@@ -185,8 +196,14 @@ public struct SubdivisionParams: Equatable, Codable, Sendable {
 
     /// Jitter the polygon centre before computing child positions.
     public var ranMiddle: Bool
-    /// Jitter magnitude divisor. Lower = more randomisation.
+    /// Jitter magnitude divisor. Lower = more randomisation. Clamped to ≥ 1 at runtime.
     public var ranDiv: Double
+    /// How the centre jitter behaves: per-frame random (`.jitter`) or slow-drift tween (`.lazy`).
+    public var ranMiddleMode: RanMiddleMode
+    /// Lazy mode: frames between new target-centre samples. Matches `DoubleDriver.period` conventions.
+    public var ranMiddlePeriod: Int
+    /// Lazy mode: deterministic seed so each polygon gets a unique trajectory.
+    public var ranMiddleSeed: Int
 
     // MARK: - Visibility
 
@@ -268,6 +285,9 @@ public struct SubdivisionParams: Equatable, Codable, Sendable {
         insetTransform: InsetTransform        = .default,
         ranMiddle: Bool                       = false,
         ranDiv: Double                        = 100,
+        ranMiddleMode: RanMiddleMode          = .jitter,
+        ranMiddlePeriod: Int                  = 30,
+        ranMiddleSeed: Int                    = 0,
         visibilityRule: VisibilityRule        = .all,
         pressureSubdivisionMode: PressureSubdivisionMode = .spatial,
         pressureRandomGroups: [Bool]          = [true, true, true, true, true],
@@ -304,6 +324,9 @@ public struct SubdivisionParams: Equatable, Codable, Sendable {
         self.insetTransform             = insetTransform
         self.ranMiddle                  = ranMiddle
         self.ranDiv                     = ranDiv
+        self.ranMiddleMode              = ranMiddleMode
+        self.ranMiddlePeriod            = ranMiddlePeriod
+        self.ranMiddleSeed              = ranMiddleSeed
         self.visibilityRule             = visibilityRule
         self.pressureSubdivisionMode    = pressureSubdivisionMode
         self.pressureRandomGroups       = Self.normalizedPressureRandomGroups(pressureRandomGroups)
@@ -330,7 +353,8 @@ public struct SubdivisionParams: Equatable, Codable, Sendable {
         case lineRatios, controlPointRatios, cpNormalOffsets, cpNormalizeTowardsCentre, continuous, curveAwareSplit
         case mirrorOuterCurvature, invertCurvature, curvatureSync
         case insetTransform
-        case ranMiddle, ranDiv, visibilityRule
+        case ranMiddle, ranDiv, ranMiddleMode, ranMiddlePeriod, ranMiddleSeed
+        case visibilityRule
         case pressureSubdivisionMode, pressureRandomGroups
         case polysTransform, polysTranformWhole, pTW_probability, pTW_commonCentre
         case pTW_randomTranslation, pTW_randomScale, pTW_randomRotation, pTW_transform
@@ -359,6 +383,9 @@ public struct SubdivisionParams: Equatable, Codable, Sendable {
             insetTransform: try c.decodeIfPresent(InsetTransform.self, forKey: .insetTransform) ?? defaults.insetTransform,
             ranMiddle: try c.decodeIfPresent(Bool.self, forKey: .ranMiddle) ?? defaults.ranMiddle,
             ranDiv: try c.decodeIfPresent(Double.self, forKey: .ranDiv) ?? defaults.ranDiv,
+            ranMiddleMode: try c.decodeIfPresent(RanMiddleMode.self, forKey: .ranMiddleMode) ?? defaults.ranMiddleMode,
+            ranMiddlePeriod: try c.decodeIfPresent(Int.self, forKey: .ranMiddlePeriod) ?? defaults.ranMiddlePeriod,
+            ranMiddleSeed: try c.decodeIfPresent(Int.self, forKey: .ranMiddleSeed) ?? defaults.ranMiddleSeed,
             visibilityRule: try c.decodeIfPresent(VisibilityRule.self, forKey: .visibilityRule) ?? defaults.visibilityRule,
             pressureSubdivisionMode: try c.decodeIfPresent(PressureSubdivisionMode.self, forKey: .pressureSubdivisionMode) ?? defaults.pressureSubdivisionMode,
             pressureRandomGroups: try c.decodeIfPresent([Bool].self, forKey: .pressureRandomGroups) ?? defaults.pressureRandomGroups,
@@ -397,9 +424,12 @@ public struct SubdivisionParams: Equatable, Codable, Sendable {
         try c.encode(invertCurvature, forKey: .invertCurvature)
         try c.encode(curvatureSync, forKey: .curvatureSync)
         try c.encode(insetTransform, forKey: .insetTransform)
-        try c.encode(ranMiddle, forKey: .ranMiddle)
-        try c.encode(ranDiv, forKey: .ranDiv)
-        try c.encode(visibilityRule, forKey: .visibilityRule)
+        try c.encode(ranMiddle,       forKey: .ranMiddle)
+        try c.encode(ranDiv,          forKey: .ranDiv)
+        try c.encode(ranMiddleMode,   forKey: .ranMiddleMode)
+        try c.encode(ranMiddlePeriod, forKey: .ranMiddlePeriod)
+        try c.encode(ranMiddleSeed,   forKey: .ranMiddleSeed)
+        try c.encode(visibilityRule,  forKey: .visibilityRule)
         try c.encode(pressureSubdivisionMode, forKey: .pressureSubdivisionMode)
         try c.encode(pressureRandomGroups, forKey: .pressureRandomGroups)
         try c.encode(polysTransform, forKey: .polysTransform)

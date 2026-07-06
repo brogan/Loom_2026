@@ -270,8 +270,10 @@ final class AppController: ObservableObject, @unchecked Sendable {
     @Published var geometryEditorWeldTolerance:   Double = 0.5
     @Published var geometryEditorAutoWeldSegmentIDs: Set<EditableGeometryID> = []
     @Published var selectedGeometryEditorLayerID: UUID?   = nil
-    @Published var selectedSubdivisionIndex:      Int?    = nil
-    @Published var selectedSubdivisionParamIndex: Int?    = nil   // within selected set
+    @Published var lifecycleTab:                  LifecycleTab = .involution
+    @Published var selectedSubdivisionIndex:           Int?    = nil
+    @Published var selectedSubdivisionParamIndex:      Int?    = nil   // within selected set
+    @Published var selectedCurveRefinementParamIndex:  Int?    = nil   // curve refinement param within selected set
     @Published var selectedSpriteID:              String? = nil
     @Published var selectedTimelineKF:            TimelineKFSelection? = nil
     @Published var selectedRendererTimelineKF:    RendererTimelineKFSelection? = nil
@@ -6706,7 +6708,7 @@ final class AppController: ObservableObject, @unchecked Sendable {
 
     private func uniquePolygonSetName(_ name: String, excluding oldName: String) -> String {
         let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
-        let base = trimmed.isEmpty ? "New_Polygon_Set" : trimmed
+        let base = trimmed.isEmpty ? "New_Geometry_Set" : trimmed
         let existing = Set(projectConfig?.polygonConfig.library.polygonSets
             .map(\.name)
             .filter { $0 != oldName } ?? [])
@@ -7212,7 +7214,7 @@ final class AppController: ObservableObject, @unchecked Sendable {
         var createdName: String?
         updateProjectConfig { cfg in
             let existing = Set(cfg.polygonConfig.library.polygonSets.map(\.name))
-            let base = "New_Polygon_Set"
+            let base = "New_Geometry_Set"
             var candidate = base
             var suffix = 1
             while existing.contains(candidate) {
@@ -7783,8 +7785,9 @@ final class AppController: ObservableObject, @unchecked Sendable {
 
     private func clearSelections() {
         selectedGeometryKey           = nil
-        selectedSubdivisionIndex      = nil
-        selectedSubdivisionParamIndex = nil
+        selectedSubdivisionIndex           = nil
+        selectedSubdivisionParamIndex      = nil
+        selectedCurveRefinementParamIndex  = nil
         selectedSpriteID              = nil
         subdivSelectedSpriteID        = nil
         subdivPreviewSetName          = nil

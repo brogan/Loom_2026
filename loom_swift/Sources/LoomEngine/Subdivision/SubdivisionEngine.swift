@@ -41,7 +41,14 @@ public enum SubdivisionEngine {
 
         // Optionally jitter the polygon centre (affects QUAD and TRI internal edges)
         let centre = jitteredCentre(
-            pts: pts, enabled: params.ranMiddle, div: params.ranDiv, rng: &rng
+            pts: pts,
+            enabled: params.ranMiddle,
+            div: params.ranDiv,
+            mode: params.ranMiddleMode,
+            period: params.ranMiddlePeriod,
+            seed: params.ranMiddleSeed,
+            elapsedFrames: elapsedFrames,
+            rng: &rng
         )
 
         let children = dispatch(
@@ -131,7 +138,10 @@ public enum SubdivisionEngine {
             p.insetTransform.rotation = eval(d.insetRotation)
         }
         if d.ranDiv.enabled {
-            p.ranDiv = max(1e-9, eval(d.ranDiv))
+            // Clamp to ≥ 1.0: a divisor below 1 would place the centre farther from the
+            // polygon than its own radius, producing wildly out-of-bounds geometry when an
+            // oscillator driver crosses zero.
+            p.ranDiv = max(1.0, eval(d.ranDiv))
         }
         return p
     }
@@ -238,20 +248,85 @@ public enum SubdivisionEngine {
     // MARK: - Centre jitter
 
     /// Returns a jittered centre when `enabled`; otherwise the canonical anchor centre.
-    /// Jitter range is ±(distance from centre to first anchor) / div.
+    ///
+    /// - `.jitter`: picks a new random centre every frame within ±radius of canonical.
+    /// - `.lazy`:   computes a new target once per `period` frames and smoothly tweens
+    ///              between consecutive targets — slow organic drift rather than per-frame noise.
     private static func jitteredCentre<G: RandomNumberGenerator>(
         pts: [Vector2D],
         enabled: Bool,
         div: Double,
+        mode: RanMiddleMode,
+        period: Int,
+        seed: Int,
+        elapsedFrames: Double,
         rng: inout G
     ) -> Vector2D {
-        let centre = BezierMath.centreSpline(pts)
-        guard enabled, pts.count >= 4 else { return centre }
-        let dist  = centre.distance(to: pts[0])
-        let third = dist / max(div, 1e-9)
-        let x = Double.random(in: -third...third, using: &rng) + centre.x
-        let y = Double.random(in: -third...third, using: &rng) + centre.y
-        return Vector2D(x: x, y: y)
+        let canonical = BezierMath.centreSpline(pts)
+        guard enabled, pts.count >= 4 else { return canonical }
+        let dist   = canonical.distance(to: pts[0])
+        let radius = dist / max(div, 1.0)
+
+        switch mode {
+        case .jitter:
+            return Vector2D(
+                x: Double.random(in: -radius...radius, using: &rng) + canonical.x,
+                y: Double.random(in: -radius...radius, using: &rng) + canonical.y
+            )
+        case .lazy:
+            return lazyCentre(canonical: canonical, radius: radius,
+                              seed: seed, pts: pts,
+                              elapsedFrames: elapsedFrames, period: period)
+        }
+    }
+
+    /// Slow-drift centre: deterministically samples a target point once per `period`
+    /// frames and smoothly interpolates between consecutive targets.
+    private static func lazyCentre(
+        canonical: Vector2D,
+        radius:    Double,
+        seed:      Int,
+        pts:       [Vector2D],
+        elapsedFrames: Double,
+        period:    Int
+    ) -> Vector2D {
+        let p  = Double(max(1, period))
+        let st = elapsedFrames / p          // fractional cycle index
+        let iA = Int(st)
+        let iB = iA + 1
+        let t  = smoothstep(st - Double(iA))
+
+        // Per-polygon seed: XOR of raw IEEE-754 bit patterns of the first anchor coordinate.
+        // Different polygons (different pts[0]) get distinct trajectories.
+        let polyBits = Int(bitPattern: UInt(pts[0].x.bitPattern) ^ UInt(pts[0].y.bitPattern &>> 3))
+        let s = seed ^ polyBits
+
+        let cA = lazyPoint(canonical: canonical, radius: radius, seed: s,     cycle: iA)
+        let cB = lazyPoint(canonical: canonical, radius: radius, seed: s,     cycle: iB)
+        return Vector2D(x: cA.x + (cB.x - cA.x) * t, y: cA.y + (cB.y - cA.y) * t)
+    }
+
+    private static func lazyPoint(canonical: Vector2D, radius: Double,
+                                   seed: Int, cycle: Int) -> Vector2D {
+        let hx = centreHash(seed: seed,     cycle: cycle)
+        let hy = centreHash(seed: seed &+ 1, cycle: cycle)
+        return Vector2D(
+            x: canonical.x + (hx * 2 - 1) * radius,
+            y: canonical.y + (hy * 2 - 1) * radius
+        )
+    }
+
+    static func centreHash(seed: Int, cycle: Int) -> Double {
+        var h = UInt64(bitPattern: Int64(seed)  &* 2_654_435_761)
+               ^ UInt64(bitPattern: Int64(cycle) &* 1_640_531_513)
+        h ^= h >> 33; h &*= 0xff51afd7ed558ccd
+        h ^= h >> 33; h &*= 0xc4ceb9fe1a85ec53
+        h ^= h >> 33
+        return Double(h >> 11) / Double(1 << 53)
+    }
+
+    static func smoothstep(_ t: Double) -> Double {
+        let c = max(0, min(1, t)); return c * c * (3 - 2 * c)
     }
 
     // MARK: - Pressure propagation

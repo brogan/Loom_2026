@@ -52,7 +52,7 @@ struct SpritesInspector: View {
             .loomHelp("Renderer set that draws this sprite. Assign a set from the Rendering tab to control how the shape is painted.")
             let subdivSets = controller.projectConfig?.subdivisionConfig.paramsSets ?? []
             if !subdivSets.isEmpty {
-                InspectorField("Subdiv set") {
+                InspectorField("Transform set") {
                     Picker("", selection: subdivBinding(setIdx: setIdx, spriteIdx: spriteIdx)) {
                         Text("None").tag("")
                         ForEach(subdivSets, id: \.name) { set in
@@ -63,7 +63,7 @@ struct SpritesInspector: View {
                     .font(.system(size: 12))
                     .frame(maxWidth: 120)
                 }
-                .loomHelp("Subdivision parameter set applied to this sprite's geometry before drawing.")
+                .loomHelp("Transformation set applied to this sprite's geometry — controls subdivision (closed shapes) and curve refinement (open curves).")
             }
             let svgFiles = svgSpriteFiles()
             if !svgFiles.isEmpty {
@@ -789,7 +789,7 @@ private struct DriverSectionsView: View {
             DoubleDriverEditor(label: "Opacity",  driver: db.opacity,  isCollapsed: $opacCollapsed,
                                isHighlighted: selectedLane == .opacity)
             NameDriverEditor(
-                label: "Subdivision Set Driver",
+                label: "Transform Set Driver",
                 driver: db.subdivisionSet,
                 isCollapsed: $subdivSetDriverCollapsed,
                 isHighlighted: selectedLane == .subdivisionSet,

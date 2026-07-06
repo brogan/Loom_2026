@@ -29,6 +29,10 @@ public struct SpriteInstance: Sendable {
     /// name is "none".
     public var subdivisionParams: [SubdivisionParams]
 
+    /// Ordered curve-refinement passes applied to `.openSpline` polygons each frame.
+    /// Empty when the set has no curve-refinement entries.
+    public var curveRefinementParams: [CurveRefinementParams]
+
     /// Polygon sets for `SpriteDef.shapeSequence` cycling (parallel to
     /// `def.shapeSequence.shapeSetNames`).  Empty when no sequence is configured.
     public var sequencePolygons: [[Polygon2D]]
@@ -70,6 +74,7 @@ public struct SpriteInstance: Sendable {
         morphTargetPolygons: [[Polygon2D]],
         rendererSet: RendererSet,
         subdivisionParams: [SubdivisionParams],
+        curveRefinementParams: [CurveRefinementParams] = [],
         sequencePolygons: [[Polygon2D]] = [],
         variantPolygons: [[Polygon2D]] = [],
         variantRendererSets: [RendererSet] = [],
@@ -84,6 +89,7 @@ public struct SpriteInstance: Sendable {
         self.morphTargetPolygons    = morphTargetPolygons
         self.rendererSet            = rendererSet
         self.subdivisionParams      = subdivisionParams
+        self.curveRefinementParams  = curveRefinementParams
         self.sequencePolygons       = sequencePolygons
         self.variantPolygons        = variantPolygons
         self.variantRendererSets    = variantRendererSets
