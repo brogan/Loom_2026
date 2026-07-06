@@ -33,6 +33,10 @@ public struct SpriteInstance: Sendable {
     /// Empty when the set has no curve-refinement entries.
     public var curveRefinementParams: [CurveRefinementParams]
 
+    /// Ordered segment-extraction passes applied after curve refinement each frame.
+    /// Empty when the set has no segment-extraction entries.
+    public var segmentExtractionParams: [SegmentExtractionParams]
+
     /// Polygon sets for `SpriteDef.shapeSequence` cycling (parallel to
     /// `def.shapeSequence.shapeSetNames`).  Empty when no sequence is configured.
     public var sequencePolygons: [[Polygon2D]]
@@ -75,6 +79,7 @@ public struct SpriteInstance: Sendable {
         rendererSet: RendererSet,
         subdivisionParams: [SubdivisionParams],
         curveRefinementParams: [CurveRefinementParams] = [],
+        segmentExtractionParams: [SegmentExtractionParams] = [],
         sequencePolygons: [[Polygon2D]] = [],
         variantPolygons: [[Polygon2D]] = [],
         variantRendererSets: [RendererSet] = [],
@@ -89,8 +94,9 @@ public struct SpriteInstance: Sendable {
         self.morphTargetPolygons    = morphTargetPolygons
         self.rendererSet            = rendererSet
         self.subdivisionParams      = subdivisionParams
-        self.curveRefinementParams  = curveRefinementParams
-        self.sequencePolygons       = sequencePolygons
+        self.curveRefinementParams   = curveRefinementParams
+        self.segmentExtractionParams = segmentExtractionParams
+        self.sequencePolygons        = sequencePolygons
         self.variantPolygons        = variantPolygons
         self.variantRendererSets    = variantRendererSets
         self.variantImageFilenames  = variantImageFilenames

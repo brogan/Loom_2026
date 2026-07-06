@@ -829,12 +829,15 @@ struct SubdivisionTabView: View {
             return
         }
 
-        // Run subdivision + curve refinement.
+        // Run subdivision + curve refinement + segment extraction.
         let paramSet = cfg.subdivisionConfig.paramsSets[setIdx]
         var rng      = SystemRandomNumberGenerator()
         var result   = SubdivisionEngine.process(polygons: polys, paramSet: paramSet.params, rng: &rng)
         if !paramSet.curveRefinement.isEmpty {
             result = CurveRefinementEngine.process(polygons: result, paramSet: paramSet.curveRefinement)
+        }
+        if !paramSet.segmentExtraction.isEmpty {
+            result = SegmentExtractionEngine.process(polygons: result, paramSet: paramSet.segmentExtraction)
         }
 
         // Build output path in polygonSets/.
@@ -923,6 +926,9 @@ struct SubdivisionTabView: View {
         var result   = SubdivisionEngine.process(polygons: polys, paramSet: paramSet.params, rng: &rng)
         if !paramSet.curveRefinement.isEmpty {
             result = CurveRefinementEngine.process(polygons: result, paramSet: paramSet.curveRefinement)
+        }
+        if !paramSet.segmentExtraction.isEmpty {
+            result = SegmentExtractionEngine.process(polygons: result, paramSet: paramSet.segmentExtraction)
         }
 
         let safePolyName = shape.polygonSetName.replacingOccurrences(of: " ", with: "_")

@@ -32,7 +32,11 @@ struct SubdivisionInspector: View {
             setHeader(set: set, setIdx: setIdx)
             paramsList(set: set, setIdx: setIdx)
             curveRefinementList(set: set, setIdx: setIdx)
-            if let crIdx = controller.selectedCurveRefinementParamIndex {
+            segmentExtractionList(set: set, setIdx: setIdx)
+            if let seIdx = controller.selectedSegmentExtractionParamIndex {
+                SegmentExtractionInspector(setIdx: setIdx, seIdx: seIdx)
+                    .environmentObject(controller)
+            } else if let crIdx = controller.selectedCurveRefinementParamIndex {
                 CurveRefinementInspector(setIdx: setIdx, crIdx: crIdx)
                     .environmentObject(controller)
             } else if let paramIdx = controller.selectedSubdivisionParamIndex,
@@ -73,8 +77,9 @@ struct SubdivisionInspector: View {
             )
         }
         .onChange(of: controller.selectedSubdivisionIndex) { _, _ in
-            controller.selectedSubdivisionParamIndex     = nil
-            controller.selectedCurveRefinementParamIndex = nil
+            controller.selectedSubdivisionParamIndex      = nil
+            controller.selectedCurveRefinementParamIndex  = nil
+            controller.selectedSegmentExtractionParamIndex = nil
         }
     }
 
@@ -100,8 +105,11 @@ struct SubdivisionInspector: View {
                     selection: Binding(
                         get: { controller.selectedCurveRefinementParamIndex },
                         set: { newVal in
-                            controller.selectedCurveRefinementParamIndex = newVal
-                            if newVal != nil { controller.selectedSubdivisionParamIndex = nil }
+                            controller.selectedCurveRefinementParamIndex    = newVal
+                            if newVal != nil {
+                                controller.selectedSubdivisionParamIndex      = nil
+                                controller.selectedSegmentExtractionParamIndex = nil
+                            }
                         }
                     )
                 )
@@ -173,6 +181,107 @@ struct SubdivisionInspector: View {
             config.subdivisionConfig.paramsSets[setIdx].curveRefinement.insert(copy, at: crIdx + 1)
         }
         controller.selectedCurveRefinementParamIndex = crIdx + 1
+    }
+
+    // MARK: - Segment extraction mini-list
+
+    @ViewBuilder
+    private func segmentExtractionList(set: SubdivisionParamsSet, setIdx: Int) -> some View {
+        InspectorSection("Segment Extraction") {
+            if set.segmentExtraction.isEmpty {
+                HStack {
+                    Text("No extraction passes")
+                        .font(.caption2)
+                        .foregroundStyle(.tertiary)
+                    Spacer()
+                    addSegmentExtractionButton(setIdx: setIdx)
+                }
+                .padding(.horizontal, 12)
+                .padding(.vertical, 6)
+            } else {
+                InspectorPickList(
+                    items: set.segmentExtraction,
+                    labelFor: { $0.name.isEmpty ? "(unnamed)" : $0.name },
+                    selection: Binding(
+                        get: { controller.selectedSegmentExtractionParamIndex },
+                        set: { newVal in
+                            controller.selectedSegmentExtractionParamIndex = newVal
+                            if newVal != nil {
+                                controller.selectedSubdivisionParamIndex      = nil
+                                controller.selectedCurveRefinementParamIndex  = nil
+                            }
+                        }
+                    )
+                )
+                HStack(spacing: 4) {
+                    addSegmentExtractionButton(setIdx: setIdx)
+                    if let seIdx = controller.selectedSegmentExtractionParamIndex {
+                        Button(action: { deleteSegmentExtractionParam(setIdx: setIdx, seIdx: seIdx) }) {
+                            Image(systemName: "minus.circle").font(.system(size: 13))
+                        }
+                        .buttonStyle(.plain)
+                        .foregroundStyle(.secondary)
+                        .help("Delete selected extraction pass")
+                        Button(action: { duplicateSegmentExtractionParam(setIdx: setIdx, seIdx: seIdx) }) {
+                            Image(systemName: "plus.square.on.square").font(.system(size: 12))
+                        }
+                        .buttonStyle(.plain)
+                        .foregroundStyle(.secondary)
+                        .help("Duplicate selected extraction pass")
+                    }
+                    Spacer()
+                }
+                .padding(.horizontal, 12)
+                .padding(.vertical, 4)
+            }
+        }
+    }
+
+    private func addSegmentExtractionButton(setIdx: Int) -> some View {
+        Button(action: { addSegmentExtractionParam(setIdx: setIdx) }) {
+            Image(systemName: "plus.circle").font(.system(size: 13))
+        }
+        .buttonStyle(.plain)
+        .foregroundStyle(.secondary)
+        .help("Add segment extraction pass")
+    }
+
+    private func addSegmentExtractionParam(setIdx: Int) {
+        guard let cfg = controller.projectConfig,
+              setIdx < cfg.subdivisionConfig.paramsSets.count else { return }
+        let newParam = SegmentExtractionParams()
+        controller.updateProjectConfig { config in
+            config.subdivisionConfig.paramsSets[setIdx].segmentExtraction.append(newParam)
+        }
+        let newIdx = (controller.projectConfig?.subdivisionConfig.paramsSets[setIdx].segmentExtraction.count ?? 1) - 1
+        controller.selectedSegmentExtractionParamIndex = newIdx
+        controller.selectedSubdivisionParamIndex       = nil
+        controller.selectedCurveRefinementParamIndex   = nil
+    }
+
+    private func deleteSegmentExtractionParam(setIdx: Int, seIdx: Int) {
+        guard let cfg = controller.projectConfig,
+              setIdx < cfg.subdivisionConfig.paramsSets.count,
+              seIdx  < cfg.subdivisionConfig.paramsSets[setIdx].segmentExtraction.count
+        else { return }
+        _ = cfg
+        controller.updateProjectConfig { config in
+            config.subdivisionConfig.paramsSets[setIdx].segmentExtraction.remove(at: seIdx)
+        }
+        let remaining = controller.projectConfig?.subdivisionConfig.paramsSets[safe: setIdx]?.segmentExtraction.count ?? 0
+        controller.selectedSegmentExtractionParamIndex = remaining > 0 ? min(seIdx, remaining - 1) : nil
+    }
+
+    private func duplicateSegmentExtractionParam(setIdx: Int, seIdx: Int) {
+        guard let cfg = controller.projectConfig,
+              setIdx < cfg.subdivisionConfig.paramsSets.count,
+              seIdx  < cfg.subdivisionConfig.paramsSets[setIdx].segmentExtraction.count
+        else { return }
+        let copy = cfg.subdivisionConfig.paramsSets[setIdx].segmentExtraction[seIdx]
+        controller.updateProjectConfig { config in
+            config.subdivisionConfig.paramsSets[setIdx].segmentExtraction.insert(copy, at: seIdx + 1)
+        }
+        controller.selectedSegmentExtractionParamIndex = seIdx + 1
     }
 
     // MARK: - Param editor

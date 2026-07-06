@@ -268,14 +268,17 @@ public struct SpriteScene: @unchecked Sendable {
         // ── 5. Resolve subdivision params ────────────────────────────────────
         let paramsName = shapeDef?.subdivisionParamsSetName ?? ""
         let subdivParams: [SubdivisionParams]
-        let curveRefinementParams: [CurveRefinementParams]
+        let curveRefinementParams:   [CurveRefinementParams]
+        let segmentExtractionParams: [SegmentExtractionParams]
         if paramsName.isEmpty || paramsName.caseInsensitiveCompare("none") == .orderedSame {
-            subdivParams          = []
-            curveRefinementParams = []
+            subdivParams             = []
+            curveRefinementParams    = []
+            segmentExtractionParams  = []
         } else {
-            let resolvedSet       = config.subdivisionConfig.paramsSet(named: paramsName)
-            subdivParams          = resolvedSet?.params ?? []
-            curveRefinementParams = resolvedSet?.curveRefinement ?? []
+            let resolvedSet          = config.subdivisionConfig.paramsSet(named: paramsName)
+            subdivParams             = resolvedSet?.params ?? []
+            curveRefinementParams    = resolvedSet?.curveRefinement ?? []
+            segmentExtractionParams  = resolvedSet?.segmentExtraction ?? []
         }
 
         // ── 6. Load shape-sequence polygon sets ─────────────────────────────
@@ -364,8 +367,9 @@ public struct SpriteScene: @unchecked Sendable {
             morphTargetPolygons:    morphTargetPolygons,
             rendererSet:            rendererSet,
             subdivisionParams:      subdivParams,
-            curveRefinementParams:  curveRefinementParams,
-            sequencePolygons:       sequencePolygons,
+            curveRefinementParams:   curveRefinementParams,
+            segmentExtractionParams: segmentExtractionParams,
+            sequencePolygons:        sequencePolygons,
             variantPolygons:        variantPolygons,
             variantRendererSets:    variantRendererSets,
             variantImageFilenames:  variantImageFilenames,
@@ -1472,6 +1476,17 @@ public struct SpriteScene: @unchecked Sendable {
             subdivided = CurveRefinementEngine.process(
                 polygons:      subdivided,
                 paramSet:      activeInstance.curveRefinementParams,
+                elapsedFrames: elapsedFrames,
+                targetFPS:     targetFPS,
+                spriteIndex:   spriteIndex
+            )
+        }
+
+        // 2c. Segment extraction (open-curve involution — break curve into sub-curves)
+        if !activeInstance.segmentExtractionParams.isEmpty {
+            subdivided = SegmentExtractionEngine.process(
+                polygons:      subdivided,
+                paramSet:      activeInstance.segmentExtractionParams,
                 elapsedFrames: elapsedFrames,
                 targetFPS:     targetFPS,
                 spriteIndex:   spriteIndex

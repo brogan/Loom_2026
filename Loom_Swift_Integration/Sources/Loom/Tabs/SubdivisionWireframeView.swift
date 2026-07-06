@@ -31,14 +31,18 @@ struct SubdivisionWireframeView: View {
         }
         .task(id: subdivisionInputs) {
             guard let inputs = subdivisionInputs else { cachedSubdivided = []; return }
-            let polys            = inputs.basePolygons
-            let params           = inputs.params
-            let curveRefinement  = inputs.curveRefinement
+            let polys             = inputs.basePolygons
+            let params            = inputs.params
+            let curveRefinement   = inputs.curveRefinement
+            let segmentExtraction = inputs.segmentExtraction
             let result: [Polygon2D] = await Task.detached(priority: .userInitiated) {
                 var rng = SeededRNG()
                 var subdivided = SubdivisionEngine.process(polygons: polys, paramSet: params, rng: &rng)
                 if !curveRefinement.isEmpty {
                     subdivided = CurveRefinementEngine.process(polygons: subdivided, paramSet: curveRefinement)
+                }
+                if !segmentExtraction.isEmpty {
+                    subdivided = SegmentExtractionEngine.process(polygons: subdivided, paramSet: segmentExtraction)
                 }
                 return subdivided
             }.value
@@ -49,11 +53,12 @@ struct SubdivisionWireframeView: View {
     // MARK: - Subdivision inputs (triggers recomputation only when these change)
 
     private struct SubdivisionInputs: Equatable, Sendable {
-        let spriteID:       String
-        let setName:        String
-        let basePolygons:   [Polygon2D]
-        let params:         [SubdivisionParams]
-        let curveRefinement: [CurveRefinementParams]
+        let spriteID:         String
+        let setName:          String
+        let basePolygons:     [Polygon2D]
+        let params:           [SubdivisionParams]
+        let curveRefinement:  [CurveRefinementParams]
+        let segmentExtraction: [SegmentExtractionParams]
     }
 
     private var subdivisionInputs: SubdivisionInputs? {
@@ -66,7 +71,8 @@ struct SubdivisionWireframeView: View {
         return SubdivisionInputs(spriteID: spriteID, setName: setName,
                                   basePolygons: inst.basePolygons,
                                   params: paramSet.params,
-                                  curveRefinement: paramSet.curveRefinement)
+                                  curveRefinement: paramSet.curveRefinement,
+                                  segmentExtraction: paramSet.segmentExtraction)
     }
 
     // MARK: - Canvas rect (letterboxed)

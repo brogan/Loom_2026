@@ -274,6 +274,7 @@ final class AppController: ObservableObject, @unchecked Sendable {
     @Published var selectedSubdivisionIndex:           Int?    = nil
     @Published var selectedSubdivisionParamIndex:      Int?    = nil   // within selected set
     @Published var selectedCurveRefinementParamIndex:  Int?    = nil   // curve refinement param within selected set
+    @Published var selectedSegmentExtractionParamIndex: Int?   = nil   // segment extraction param within selected set
     @Published var selectedSpriteID:              String? = nil
     @Published var selectedTimelineKF:            TimelineKFSelection? = nil
     @Published var selectedRendererTimelineKF:    RendererTimelineKFSelection? = nil
@@ -7787,7 +7788,8 @@ final class AppController: ObservableObject, @unchecked Sendable {
         selectedGeometryKey           = nil
         selectedSubdivisionIndex           = nil
         selectedSubdivisionParamIndex      = nil
-        selectedCurveRefinementParamIndex  = nil
+        selectedCurveRefinementParamIndex    = nil
+        selectedSegmentExtractionParamIndex  = nil
         selectedSpriteID              = nil
         subdivSelectedSpriteID        = nil
         subdivPreviewSetName          = nil
