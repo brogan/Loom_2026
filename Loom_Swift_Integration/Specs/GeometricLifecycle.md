@@ -1,6 +1,6 @@
 # Geometric Lifecycle — Spec
 
-**Status**: Conceptual / pre-implementation  
+**Status**: Phases 0–4 complete; Phases 5–7 (Evolution / Dissolution / Fulguration) pending  
 **Affects**: LoomEngine, Loom (studio), subdivision tab architecture
 
 ---
@@ -437,9 +437,18 @@ mix, and the render pipeline dispatches by type — `SubdivisionEngine` handles 
 open curves), a mixed-type polygon-set file is served by one transformation set that
 covers both. Separate layers are not required; the dispatch is automatic by polygon type.
 
-**Open question:** The UI currently has no direct path to create a `curveSets/` item
+**Curve set save routing (resolved):** The geometry editor can now save open-curve
+documents directly to `curveSets/`. `saveGeometryEditorDocument` detects a
+`curveSets/...` key and routes to the curve set folder, updating
+`curveConfig.library.curveSets`. The curveSets load path now supports both `.xml`
+(legacy) and `.json` (geometry editor output) via `EditableGeometryJSONLoader`.
+A `uniqueCurveSetName` helper mirrors `uniquePolygonSetName` for the curve namespace.
+
+**Open question:** There is still no direct path to *create* a new `curveSets/` entry
 from the Geometry tab's "+" button — new geometry always starts as a `polygonSets/`
-entry. Adding an explicit "New Curve Set" creation path is a pending UX improvement.
+entry. The workaround is to draw an open curve in any polygon-set document and save
+it; the editor detects the `curveSets/` key and routes correctly. Adding an explicit
+"New Curve Set" button is a pending UX improvement.
 
 ---
 
@@ -513,42 +522,94 @@ implemented.
 Phase A and B renames described in §11. Transformation set naming, QPS type awareness,
 default geometry name.
 
-### Phase 3 — Involution: open-curve segment extraction
+### Phase 3 — Involution: open-curve segment extraction (complete)
 
-Break a curve at its existing anchor points, producing edges as independent open
-sub-curves. Modes: `.all`, `.alternate`, `.driven`.
+`SegmentExtractionParams` on `SubdivisionParamsSet.segmentExtraction`. Engine:
+`SegmentExtractionEngine`. Inspector: `SegmentExtractionInspector` wired into
+`SubdivisionInspector`. Modes implemented: `.all`, `.alternate`, `.every(n, offset)`,
+`.driven`. Output types: open curve, closed polygon. Inspector uses `DoubleDriverEditor`
+for the driven-mode selector. Full help documentation added.
 
-### Phase 4 — Extension: branching and edge extrusion
+### Phase 4 — Extension: branching and edge extrusion (complete)
 
-Branching from open-curve endpoints and closed-polygon vertices. Edge extrusion for
-closed polygons. Both require the new `ExtensionParams` data model and `ExtensionEngine`.
+`ExtensionParams` on `SubdivisionParamsSet.extensionPasses: [ExtensionParams]`.
+(Property name is `extensionPasses` not `extension` — Swift reserved word.)
+Engine: `ExtensionEngine`. Inspector: `ExtensionInspector` wired into
+`SubdivisionInspector`.
 
-### Phase 5 — Evolution: momentum drift
+**Branch** (`.openSpline` input): recursive tree from both endpoints of each open
+curve. `branchAngle: DoubleDriver`, `branchAngleJitter`, `branchScaleRatio`, `branchDepth`
+(1–8, capped at practical depth by budget), `branchCount`, `branchProbability`,
+`branchSeed`. Deterministic jitter via `SubdivisionEngine.centreHash`.
+
+**Extrude** (`.spline` input): outward 4-segment closed polygon per target segment.
+`extrusionDistance: DoubleDriver`, `extrusionWidth`, `extrusionCurvature`,
+`extrusionGenerations` (1–6), `extrusionTarget` (`.allEdges` / `.longestEdge`). Outward
+normal computed once from original chord; passed through all recursive generations.
+Outer edge control points bow in the outward-normal direction.
+
+**Memory fix (post-initial-commit):** The original implementation applied
+`prefix(256)` *after* the full recursive tree was materialized — with depth=8 count=2
+this built ~87,000 `Polygon2D` objects before trimming. Fixed by threading an
+`inout budget: Int` counter through `branchPolygon`; recursion stops the moment 256
+branches are produced. OOM crash and black render canvas are resolved.
+
+**QPS transform-set dropdown fix:** `subdivisionSetOptions` in `InspectorPanel` now
+always includes existing transform sets regardless of `sourceSupportsSubdivision`,
+so open-curve sources see the full list in Quick Setup.
+
+**Tab label fix:** `AppTab.subdivision.label` returns `"Transform"` (rawValue stays
+`"Subdivision"` for config-file persistence). `GlobalProjectInfoView` left panel
+renamed to match. Help doc updated: nav, TOC, and section heading all say "Transform
+Tab"; Curve Refinement, Segment Extraction, Branch, and Extrude all have full
+step-by-step sections with parameter tables and safe-value guidance.
+
+### Phase 5 — Evolution: momentum drift (pending)
 
 `EvolutionState` per-sprite state object maintained across frames by the engine.
 Momentum drift for centre position and line-ratio parameters. Convergence pressure
 as a second Evolution operation in the same phase.
 
-### Phase 6 — Dissolution: entropy and collapse
+**Prerequisite:** The render pipeline must gain a stateful per-sprite context object
+that `SpriteScene` can update and thread through to `EvolutionEngine`. The current
+`SpriteInstance` / `SpriteScene` design is stateless (same inputs → same frame);
+Evolution breaks this assumption. A `SpriteEvolutionState: [String: EvolutionState]`
+dictionary keyed by sprite name is the likely attachment point on the engine or
+`AppController`. Replay determinism requires that accumulated drift be reconstructible
+from `(frameIndex, seed)` without requiring prior frames to have been rendered.
+
+### Phase 6 — Dissolution: entropy and collapse (pending)
 
 `DissolutionEngine` with per-sprite decay state. Entropy targeting `.smoothed` and
 `.centroid`. Collapse with `.frameCount`, `.probability`, and `.loop` end mode.
 
-### Phase 7 — Fulguration: triggers
+**Note:** Dissolution shares the per-sprite statefulness requirement with Evolution
+(see Phase 5). Collapse `.loop` mode resets to original geometry — this requires
+storing the pre-dissolution base polygon per sprite, not just the decayed version.
+
+### Phase 7 — Fulguration: triggers (pending)
 
 Condition-check pre-pass in the render pipeline. Global-parameter trigger.
 Proximity trigger with `.connectionLine` geometry. Both require the new
 `FulgurationParams` model and the conditional rendering architecture.
 
+**Architectural note:** Requires a pre-render condition evaluation pass that runs
+*before* `SubdivisionEngine` dispatch. The trigger state (firing / held / refractory)
+is frame-level state, not per-polygon state. The proximity trigger requires computing
+nearest-point distances between two `[Polygon2D]` sets per frame — O(m×n) naively;
+a bounding-box pre-check reduces practical cost to O(1) for non-overlapping sets.
+
 ---
 
 ## 13. Open Questions
 
-1. **Naming in the UI.** The philosophical vocabulary is part of Loom's identity.
-   The current abbreviated tab labels (Inv/Ext/Evo/Ful/Dis) are legible with tooltips.
-   Whether the full names ("Fulguration", "Involution") appear elsewhere in the UI
-   (inspector section headers, help text) is a design choice worth settling before
-   Phase 1 UI work begins.
+1. **Naming in the UI (partially resolved).** Tab now shows "Transform" (the functional
+   label) with Inv/Ext/Evo/Ful/Dis subtab abbreviations and full names in tooltips.
+   The philosophical full names ("Fulguration", "Involution") appear in help documentation
+   and subtab tooltips but not in inspector section headers — section headers use
+   functional names ("Branch", "Extrude", "Curve Refinement") for discoverability.
+   The data-model rename (Phase D: `SubdivisionParamsSet` → `TransformationSet`) is still
+   deferred pending a migration strategy.
 
 2. **Evolution state and determinism.** The Evolution engine maintains per-sprite
    state that accumulates across frames. For replay and export rendering to be
