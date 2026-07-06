@@ -303,6 +303,8 @@
   <a class="nav-link nav-sub" href="#segment-extraction">Segment Extraction</a>
   <a class="nav-link nav-sub" href="#extension-branch">Branch (open curves)</a>
   <a class="nav-link nav-sub" href="#extension-extrude">Extrude (closed)</a>
+  <a class="nav-link nav-sub" href="#evolution-drift">Evolution — Momentum Drift</a>
+  <a class="nav-link nav-sub" href="#evolution-convergence">Evolution — Convergence Pressure</a>
   <a class="nav-link" href="#rendering">Rendering</a>
   <a class="nav-link nav-sub" href="#rendering-modes">Render Modes</a>
   <a class="nav-link nav-sub" href="#rendering-brush">Brushes &amp; Stamps</a>
@@ -422,6 +424,8 @@
   <div class="toc-entry sub"><a href="#segment-extraction">Segment Extraction</a><span class="toc-fill"></span></div>
   <div class="toc-entry sub"><a href="#extension-branch">Branch (open curves)</a><span class="toc-fill"></span></div>
   <div class="toc-entry sub"><a href="#extension-extrude">Extrude (closed)</a><span class="toc-fill"></span></div>
+  <div class="toc-entry sub"><a href="#evolution-drift">Evolution — Momentum Drift</a><span class="toc-fill"></span></div>
+  <div class="toc-entry sub"><a href="#evolution-convergence">Evolution — Convergence Pressure</a><span class="toc-fill"></span></div>
   <div class="toc-entry"><a href="#rendering">Rendering</a><span class="toc-fill"></span></div>
   <div class="toc-entry sub"><a href="#rendering-modes">Render Modes</a><span class="toc-fill"></span></div>
   <div class="toc-entry sub"><a href="#rendering-brush">Brushes &amp; Stamps</a><span class="toc-fill"></span></div>
@@ -2700,6 +2704,71 @@
   <p>Extrude Distance supports a <strong>DoubleDriver</strong>. A slow oscillator on distance (amplitude 0.02–0.08, period 2–4 seconds) makes polygon walls breathe in and out, creating a pulsating cell structure. Negative distance values push walls inward rather than outward — ensure <strong>Width</strong> is set to a value that prevents self-intersection when going negative.</p>
 
   <div class="tip"><strong>Combining Branch and Extrude:</strong> Branch and Extrude are separate Extension passes and can both be enabled in the same transform set. They run independently on their respective polygon types — Branch on open curves, Extrude on closed polygons. A common pattern: draw an open curve tree (Branch pass) alongside a subdivided polygon mesh (Extrude pass) in the same sprite so that the branching organic structure and the extruded rigid structure share the same transform and renderer.</div>
+
+  <h3 id="evolution-drift">Evolution — Momentum Drift</h3>
+  <p>Momentum Drift displaces a chosen subdivision parameter over time using a slowly-changing noise field. Unlike a DoubleDriver, which applies an independent value each frame, drift has <em>inertia</em>: the direction of change accumulates, producing organic wandering rather than oscillation. The displacement is fully deterministic and seekable — the value at any frame is computed directly from the seed and frame index without simulating prior frames.</p>
+
+  <p>The drift is computed as a closed-form weighted sum: each frame's noise value is weighted by <code>momentum^k</code> where <em>k</em> is how many frames ago it occurred. High momentum means old frames still contribute strongly; the form wanders in long sweeps. Low momentum means only recent frames matter; the form jitters rapidly.</p>
+
+  <div class="note"><strong>Where drift applies:</strong> Evolution passes modify subdivision parameters <em>before</em> SubdivisionEngine runs. The displaced value is not saved — it exists only during that frame's render. The base parameter value in the inspector is the resting position.</div>
+
+  <h4>Step-by-step: adding momentum drift to a subdivided polygon</h4>
+  <ol class="steps">
+    <li>Select a transform set that has at least one subdivision pass (e.g. Quad at level 2).</li>
+    <li>In the <strong>Evolution</strong> section of the inspector, click <strong>+</strong> to add an evolution pass. The default operation type is Momentum Drift.</li>
+    <li>Set <strong>Target</strong> to <strong>Line Ratio XY</strong> to drift the subdivision split point on both axes simultaneously — this is the most visually active target for most algorithms.</li>
+    <li>Start with <strong>Momentum</strong> at <strong>0.85</strong>. This gives smooth, medium-speed drift. Values above 0.95 produce very slow sweeping motion; values below 0.5 produce rapid nervous jitter.</li>
+    <li>Set <strong>Strength</strong> to <strong>0.08–0.12</strong>. This is the peak displacement added to the base line ratio. A strength of 0.1 shifts the ratio from its base value by up to ±0.1. Keep strength below 0.25 to avoid the subdivision collapsing to degenerate geometry.</li>
+    <li>Set <strong>Frequency</strong> to <strong>0.02</strong> (one noise cycle per 50 frames at 24 fps). Lower values produce slower drift; higher values produce faster direction changes. Very high values (&gt;0.1) start to look like random jitter again.</li>
+    <li>Leave <strong>Seed</strong> at 0. Change it to get a completely different trajectory without touching any other parameter.</li>
+    <li>Play back and observe. Adjust Momentum up to slow the sweep or down to increase its responsiveness. If the geometry looks chaotic, reduce Strength.</li>
+  </ol>
+
+  <h4>Momentum Drift parameter reference and safe input values</h4>
+  <table>
+    <thead><tr><th>Parameter</th><th>Safe range</th><th>Effect</th></tr></thead>
+    <tbody>
+      <tr><td>Target</td><td>—</td><td>Which subdivision parameter is displaced. <strong>Line Ratio X/Y/XY:</strong> shifts the split position along that axis (stays clamped 0–1 so geometry never collapses). <strong>CP Normal X/Y:</strong> displaces the bow of internal connectors — produces breathing or wobbling curves. <strong>Inset Scale:</strong> expands/contracts the inset polygon — use on BORD or ECHO algorithms. <strong>Inset Rotation:</strong> rotates the inset polygon — produces slow spinning inset forms.</td></tr>
+      <tr><td>Momentum</td><td>0.5–0.97</td><td>Fraction of previous drift direction retained each frame. 0.85 = moderate organic sweep. 0.95 = very slow glacial drift. 0.5 = rapid changing direction. Values ≥ 1.0 freeze the drift.</td></tr>
+      <tr><td>Strength</td><td>0.02–0.2</td><td>Peak displacement amplitude added to the target parameter. For line ratios (0–1 range), keep below 0.25. For CP normals or rotation, larger values are fine. Start at 0.05–0.1.</td></tr>
+      <tr><td>Frequency</td><td>0.005–0.05</td><td>Temporal noise rate in cycles per frame. 0.02 = one noise cycle every 50 frames. Lower = slower underlying variation; higher = faster changing inputs (does not substitute for low Momentum).</td></tr>
+      <tr><td>Seed</td><td>any integer</td><td>Deterministic seed for the trajectory. Two passes with different seeds drift independently and can be layered on different targets.</td></tr>
+    </tbody>
+  </table>
+
+  <h4>Tips for combining drift targets</h4>
+  <p>Add two Evolution passes to the same transform set: one targeting <strong>Line Ratio XY</strong> and a second targeting <strong>CP Normal X</strong>. Use different seeds and slightly different momentums so they drift out of phase. The result is compound organic motion — the split position wanders while the curve bow independently breathes — that is far richer than any single animated DoubleDriver can produce.</p>
+
+  <h3 id="evolution-convergence">Evolution — Convergence Pressure</h3>
+  <p>Convergence Pressure gradually lerps all subdivision parameters of the current transform set toward a named <em>target set</em>. As pressure increases, the geometry slowly takes on the character of the target. At full pressure (1.0) the geometry exactly matches the target set's parameters. Pressure can be driven — starting at zero and ramping up over time — so the form evolves from its original character into a new one.</p>
+
+  <p>Convergence pressure can compose with momentum drift: drift makes the form wander stochastically, while pressure focuses that wandering toward an attractor. At low pressure the form roams freely; as pressure rises, the roaming becomes increasingly constrained and directed.</p>
+
+  <div class="note"><strong>What is lerped:</strong> Line ratios, CP normal offsets, and inset scale/rotation are lerped toward the target. The target set must have the same number of subdivision passes; passes beyond the target count are left unchanged. Algorithm type, PTW, and stochastic parameters are not lerped — only the primary numeric geometry parameters.</div>
+
+  <h4>Step-by-step: converging between two transform set states</h4>
+  <ol class="steps">
+    <li>Create a <strong>source</strong> transform set (e.g. "Quad Loose" — Quad with line ratios 0.3 / 0.7, giving an off-centre split).</li>
+    <li>Create a <strong>target</strong> transform set (e.g. "Quad Centred" — Quad with line ratios 0.5 / 0.5, giving a symmetric split). The two sets should use the same algorithm and pass count.</li>
+    <li>Select the <strong>source</strong> set. In the <strong>Evolution</strong> section, click <strong>+</strong> and set <strong>Type</strong> to <strong>Convergence Pressure</strong>.</li>
+    <li>Set <strong>Target set</strong> to <strong>Quad Centred</strong> using the picker.</li>
+    <li>Leave <strong>Mode</strong> at <strong>Hold</strong>. Set the <strong>Pressure</strong> driver to a <strong>Ramp</strong> from 0 to 1 over 120 frames. Assign the source set to your sprite. On playback, the geometry gradually morphs from the asymmetric split to the symmetric split over 5 seconds.</li>
+    <li>To loop the convergence, set <strong>Mode</strong> to <strong>Loop</strong> and <strong>Duration</strong> to <strong>120</strong> frames. The pressure will automatically cycle 0→1→0→1 regardless of the driver value — set the driver to a constant 1.0 and let the mode control the envelope.</li>
+    <li>For a single convergence that comes back, use <strong>Oscillate</strong> mode: the pressure follows a sin wave from 0 to 1 to 0 over the duration, then holds at 0.</li>
+  </ol>
+
+  <h4>Convergence Pressure parameter reference and safe input values</h4>
+  <table>
+    <thead><tr><th>Parameter</th><th>Safe range</th><th>Effect</th></tr></thead>
+    <tbody>
+      <tr><td>Target set</td><td>—</td><td>The named transform set whose parameters this pass converges toward. Must exist in the project. If the target set is deleted or renamed, the pass has no effect (passes through unchanged). Target and source sets should have the same pass count and algorithm type for the best visual result.</td></tr>
+      <tr><td>Pressure</td><td>0.0–1.0</td><td>DoubleDriver controlling the current convergence amount. 0 = source parameters unchanged. 1 = fully converged to target. Intermediate values are a linear interpolation. A ramp from 0→1 produces a smooth morphing effect. A constant 0.5 produces a blended midpoint between the two sets.</td></tr>
+      <tr><td>Mode</td><td>—</td><td><strong>Hold:</strong> the driver value is applied directly — use this when you want precise control via the driver. <strong>Oscillate:</strong> multiplies the driver value by a sin wave (0→1→0) over the duration — the form converges then returns. <strong>Loop:</strong> cycles the sin wave continuously (0→1→0→1…) — produces an endlessly repeating morph cycle. Duration has no effect in Hold mode.</td></tr>
+      <tr><td>Duration</td><td>24–480 frames</td><td>Length of one Oscillate or Loop cycle in frames. 120 frames = 5 seconds at 24 fps. Shorter durations produce rapid morphing; longer produce slow, barely-perceptible evolution. Has no effect in Hold mode.</td></tr>
+    </tbody>
+  </table>
+
+  <div class="tip"><strong>Combining Momentum Drift and Convergence Pressure:</strong> Add both a Momentum Drift pass and a Convergence Pressure pass to the same transform set. Start pressure at 0 and ramp it slowly over many frames. Initially the geometry wanders freely under drift; as pressure rises, it is gradually reined in toward the target — the drift does not stop but its excursions become increasingly constrained. This is the "starts random, accumulates into a trajectory, gets focused" pattern that is the core of the Evolution lifecycle stage.</div>
 </section>
 
 <!-- ────────────────────────────────────────────────── -->
