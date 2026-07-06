@@ -67,14 +67,16 @@ struct SubdivisionInspector: View {
             }
 
             // ── 5. DISSOLUTION ────────────────────────────────────────────
-            InspectorSection("Dissolution", isCollapsed: $dissolutionCollapsed) {
-                lifecyclePlaceholder(
-                    "Entropy and collapse.",
-                    detail: "Progressive loss of form or sudden triggered termination. Phase 6.")
+            InspectorSection("Dissolution", isCollapsed: $dissolutionCollapsed,
+                             isHighlighted: true) {
+                dissolutionPassesContent(set: set, setIdx: setIdx)
             }
 
             // ── Param editor (shown below the stage list) ─────────────────
-            if let evIdx = controller.selectedEvolutionParamIndex {
+            if let disIdx = controller.selectedDissolutionParamIndex {
+                DissolutionInspector(setIdx: setIdx, disIdx: disIdx)
+                    .environmentObject(controller)
+            } else if let evIdx = controller.selectedEvolutionParamIndex {
                 EvolutionInspector(setIdx: setIdx, evIdx: evIdx)
                     .environmentObject(controller)
             } else if let exIdx = controller.selectedExtensionParamIndex {
@@ -132,7 +134,8 @@ struct SubdivisionInspector: View {
         if set.curveRefinement.count > 0 { parts.append("\(set.curveRefinement.count) refine") }
         if set.segmentExtraction.count > 0 { parts.append("\(set.segmentExtraction.count) extract") }
         if set.extensionPasses.count > 0 { parts.append("\(set.extensionPasses.count) ext") }
-        if set.evolutionPasses.count > 0 { parts.append("\(set.evolutionPasses.count) evol") }
+        if set.evolutionPasses.count   > 0 { parts.append("\(set.evolutionPasses.count) evol") }
+        if set.dissolutionPasses.count > 0 { parts.append("\(set.dissolutionPasses.count) dis") }
         return parts.isEmpty ? "none" : parts.joined(separator: ", ")
     }
 
@@ -181,6 +184,7 @@ struct SubdivisionInspector: View {
             controller.selectedSegmentExtractionParamIndex = nil
             controller.selectedExtensionParamIndex         = nil
             controller.selectedEvolutionParamIndex         = nil
+            controller.selectedDissolutionParamIndex       = nil
         }
     }
 
@@ -577,6 +581,111 @@ struct SubdivisionInspector: View {
         }
         let remaining = controller.projectConfig?.subdivisionConfig.paramsSets[safe: setIdx]?.evolutionPasses.count ?? 0
         controller.selectedEvolutionParamIndex = remaining > 0 ? min(evIdx, remaining - 1) : nil
+    }
+
+    // MARK: - Dissolution passes mini-list
+
+    @ViewBuilder
+    private func dissolutionPassesContent(set: SubdivisionParamsSet, setIdx: Int) -> some View {
+        if set.dissolutionPasses.isEmpty {
+            HStack {
+                Text("No dissolution passes")
+                    .font(.caption2)
+                    .foregroundStyle(.tertiary)
+                Spacer()
+                addDissolutionButton(setIdx: setIdx)
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 6)
+        } else {
+            InspectorPickList(
+                items: set.dissolutionPasses,
+                labelFor: { $0.name.isEmpty ? "(unnamed)" : $0.name },
+                selection: Binding(
+                    get: { controller.selectedDissolutionParamIndex },
+                    set: { newVal in
+                        controller.selectedDissolutionParamIndex = newVal
+                        if newVal != nil {
+                            controller.selectedSubdivisionParamIndex       = nil
+                            controller.selectedCurveRefinementParamIndex   = nil
+                            controller.selectedSegmentExtractionParamIndex = nil
+                            controller.selectedExtensionParamIndex         = nil
+                            controller.selectedEvolutionParamIndex         = nil
+                        }
+                    }
+                )
+            )
+            HStack(spacing: 4) {
+                addDissolutionButton(setIdx: setIdx)
+                if let disIdx = controller.selectedDissolutionParamIndex {
+                    Button(action: { deleteDissolutionParam(setIdx: setIdx, disIdx: disIdx) }) {
+                        Image(systemName: "minus.circle").font(.system(size: 13))
+                    }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(.secondary)
+                    .help("Delete selected dissolution pass")
+                    Button(action: { duplicateDissolutionParam(setIdx: setIdx, disIdx: disIdx) }) {
+                        Image(systemName: "plus.square.on.square").font(.system(size: 12))
+                    }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(.secondary)
+                    .help("Duplicate selected dissolution pass")
+                }
+                Spacer()
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 4)
+        }
+    }
+
+    private func addDissolutionButton(setIdx: Int) -> some View {
+        Button(action: { addDissolutionParam(setIdx: setIdx) }) {
+            Image(systemName: "plus.circle").font(.system(size: 13))
+        }
+        .buttonStyle(.plain)
+        .foregroundStyle(.secondary)
+        .help("Add dissolution pass")
+    }
+
+    private func addDissolutionParam(setIdx: Int) {
+        guard let cfg = controller.projectConfig,
+              setIdx < cfg.subdivisionConfig.paramsSets.count else { return }
+        let newParam = DissolutionParams()
+        controller.updateProjectConfig { config in
+            config.subdivisionConfig.paramsSets[setIdx].dissolutionPasses.append(newParam)
+        }
+        let newIdx = (controller.projectConfig?.subdivisionConfig.paramsSets[setIdx].dissolutionPasses.count ?? 1) - 1
+        controller.selectedDissolutionParamIndex       = newIdx
+        controller.selectedSubdivisionParamIndex       = nil
+        controller.selectedCurveRefinementParamIndex   = nil
+        controller.selectedSegmentExtractionParamIndex = nil
+        controller.selectedExtensionParamIndex         = nil
+        controller.selectedEvolutionParamIndex         = nil
+    }
+
+    private func deleteDissolutionParam(setIdx: Int, disIdx: Int) {
+        guard let cfg = controller.projectConfig,
+              setIdx < cfg.subdivisionConfig.paramsSets.count,
+              disIdx < cfg.subdivisionConfig.paramsSets[setIdx].dissolutionPasses.count
+        else { return }
+        _ = cfg
+        controller.updateProjectConfig { config in
+            config.subdivisionConfig.paramsSets[setIdx].dissolutionPasses.remove(at: disIdx)
+        }
+        let remaining = controller.projectConfig?.subdivisionConfig.paramsSets[safe: setIdx]?.dissolutionPasses.count ?? 0
+        controller.selectedDissolutionParamIndex = remaining > 0 ? min(disIdx, remaining - 1) : nil
+    }
+
+    private func duplicateDissolutionParam(setIdx: Int, disIdx: Int) {
+        guard let cfg = controller.projectConfig,
+              setIdx < cfg.subdivisionConfig.paramsSets.count,
+              disIdx < cfg.subdivisionConfig.paramsSets[setIdx].dissolutionPasses.count
+        else { return }
+        let copy = cfg.subdivisionConfig.paramsSets[setIdx].dissolutionPasses[disIdx]
+        controller.updateProjectConfig { config in
+            config.subdivisionConfig.paramsSets[setIdx].dissolutionPasses.insert(copy, at: disIdx + 1)
+        }
+        controller.selectedDissolutionParamIndex = disIdx + 1
     }
 
     private func duplicateEvolutionParam(setIdx: Int, evIdx: Int) {

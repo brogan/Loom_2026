@@ -272,12 +272,14 @@ public struct SpriteScene: @unchecked Sendable {
         let segmentExtractionParams: [SegmentExtractionParams]
         let extensionParams:         [ExtensionParams]
         let evolutionParams:         [EvolutionParams]
+        let dissolutionParams:       [DissolutionParams]
         if paramsName.isEmpty || paramsName.caseInsensitiveCompare("none") == .orderedSame {
             subdivParams             = []
             curveRefinementParams    = []
             segmentExtractionParams  = []
             extensionParams          = []
             evolutionParams          = []
+            dissolutionParams        = []
         } else {
             let resolvedSet          = config.subdivisionConfig.paramsSet(named: paramsName)
             subdivParams             = resolvedSet?.params ?? []
@@ -285,6 +287,7 @@ public struct SpriteScene: @unchecked Sendable {
             segmentExtractionParams  = resolvedSet?.segmentExtraction ?? []
             extensionParams          = resolvedSet?.extensionPasses ?? []
             evolutionParams          = resolvedSet?.evolutionPasses ?? []
+            dissolutionParams        = resolvedSet?.dissolutionPasses ?? []
         }
 
         // ── 6. Load shape-sequence polygon sets ─────────────────────────────
@@ -377,6 +380,7 @@ public struct SpriteScene: @unchecked Sendable {
             segmentExtractionParams: segmentExtractionParams,
             extensionParams:         extensionParams,
             evolutionParams:         evolutionParams,
+            dissolutionParams:       dissolutionParams,
             sequencePolygons:        sequencePolygons,
             variantPolygons:        variantPolygons,
             variantRendererSets:    variantRendererSets,
@@ -1520,6 +1524,16 @@ public struct SpriteScene: @unchecked Sendable {
                 paramSet:      activeInstance.extensionParams,
                 elapsedFrames: elapsedFrames,
                 targetFPS:     targetFPS,
+                spriteIndex:   spriteIndex
+            )
+        }
+
+        // 2e. Dissolution (entropy and collapse applied to output geometry)
+        if !activeInstance.dissolutionParams.isEmpty {
+            subdivided = DissolutionEngine.apply(
+                polygons:      subdivided,
+                passes:        activeInstance.dissolutionParams,
+                elapsedFrames: elapsedFrames,
                 spriteIndex:   spriteIndex
             )
         }

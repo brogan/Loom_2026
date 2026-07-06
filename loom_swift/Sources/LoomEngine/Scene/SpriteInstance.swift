@@ -45,6 +45,10 @@ public struct SpriteInstance: Sendable {
     /// Empty when the set has no evolution entries.
     public var evolutionParams: [EvolutionParams]
 
+    /// Ordered dissolution passes applied to output polygons after all other pipeline stages.
+    /// Empty when the set has no dissolution entries.
+    public var dissolutionParams: [DissolutionParams]
+
     /// Polygon sets for `SpriteDef.shapeSequence` cycling (parallel to
     /// `def.shapeSequence.shapeSetNames`).  Empty when no sequence is configured.
     public var sequencePolygons: [[Polygon2D]]
@@ -90,6 +94,7 @@ public struct SpriteInstance: Sendable {
         segmentExtractionParams: [SegmentExtractionParams] = [],
         extensionParams: [ExtensionParams] = [],
         evolutionParams: [EvolutionParams] = [],
+        dissolutionParams: [DissolutionParams] = [],
         sequencePolygons: [[Polygon2D]] = [],
         variantPolygons: [[Polygon2D]] = [],
         variantRendererSets: [RendererSet] = [],
@@ -108,6 +113,7 @@ public struct SpriteInstance: Sendable {
         self.segmentExtractionParams = segmentExtractionParams
         self.extensionParams         = extensionParams
         self.evolutionParams         = evolutionParams
+        self.dissolutionParams       = dissolutionParams
         self.sequencePolygons        = sequencePolygons
         self.variantPolygons        = variantPolygons
         self.variantRendererSets    = variantRendererSets

@@ -37,6 +37,7 @@ struct SubdivisionWireframeView: View {
             let segmentExtraction = inputs.segmentExtraction
             let extensionPasses   = inputs.extensionPasses
             let evolutionPasses   = inputs.evolutionPasses
+            let dissolutionPasses = inputs.dissolutionPasses
             let result: [Polygon2D] = await Task.detached(priority: .userInitiated) {
                 var rng = SeededRNG()
                 if !evolutionPasses.isEmpty {
@@ -54,6 +55,10 @@ struct SubdivisionWireframeView: View {
                 if !extensionPasses.isEmpty {
                     subdivided = ExtensionEngine.process(polygons: subdivided, paramSet: extensionPasses)
                 }
+                if !dissolutionPasses.isEmpty {
+                    subdivided = DissolutionEngine.apply(polygons: subdivided, passes: dissolutionPasses,
+                                                         elapsedFrames: 0, spriteIndex: 0)
+                }
                 return subdivided
             }.value
             cachedSubdivided = result
@@ -69,8 +74,9 @@ struct SubdivisionWireframeView: View {
         let params:           [SubdivisionParams]
         let curveRefinement:  [CurveRefinementParams]
         let segmentExtraction: [SegmentExtractionParams]
-        let extensionPasses:  [ExtensionParams]
-        let evolutionPasses:  [EvolutionParams]
+        let extensionPasses:   [ExtensionParams]
+        let evolutionPasses:   [EvolutionParams]
+        let dissolutionPasses: [DissolutionParams]
     }
 
     private var subdivisionInputs: SubdivisionInputs? {
@@ -86,7 +92,8 @@ struct SubdivisionWireframeView: View {
                                   curveRefinement: paramSet.curveRefinement,
                                   segmentExtraction: paramSet.segmentExtraction,
                                   extensionPasses: paramSet.extensionPasses,
-                                  evolutionPasses: paramSet.evolutionPasses)
+                                  evolutionPasses: paramSet.evolutionPasses,
+                                  dissolutionPasses: paramSet.dissolutionPasses)
     }
 
     // MARK: - Canvas rect (letterboxed)

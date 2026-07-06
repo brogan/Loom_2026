@@ -847,6 +847,10 @@ struct SubdivisionTabView: View {
         if !paramSet.extensionPasses.isEmpty {
             result = ExtensionEngine.process(polygons: result, paramSet: paramSet.extensionPasses)
         }
+        if !paramSet.dissolutionPasses.isEmpty {
+            result = DissolutionEngine.apply(polygons: result, passes: paramSet.dissolutionPasses,
+                                              elapsedFrames: 0, spriteIndex: 0)
+        }
 
         // Build output path in polygonSets/.
         let safePolyName  = shape.polygonSetName.replacingOccurrences(of: " ", with: "_")
@@ -945,6 +949,10 @@ struct SubdivisionTabView: View {
         }
         if !paramSet2.extensionPasses.isEmpty {
             result = ExtensionEngine.process(polygons: result, paramSet: paramSet2.extensionPasses)
+        }
+        if !paramSet2.dissolutionPasses.isEmpty {
+            result = DissolutionEngine.apply(polygons: result, passes: paramSet2.dissolutionPasses,
+                                              elapsedFrames: 0, spriteIndex: 0)
         }
 
         let safePolyName = shape.polygonSetName.replacingOccurrences(of: " ", with: "_")

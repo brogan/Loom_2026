@@ -10,6 +10,7 @@ public struct SubdivisionParamsSet: Equatable, Codable, Sendable {
     public var segmentExtraction:  [SegmentExtractionParams]
     public var extensionPasses:    [ExtensionParams]
     public var evolutionPasses:    [EvolutionParams]
+    public var dissolutionPasses:  [DissolutionParams]
 
     public init(
         name:               String                     = "",
@@ -17,7 +18,8 @@ public struct SubdivisionParamsSet: Equatable, Codable, Sendable {
         curveRefinement:    [CurveRefinementParams]    = [],
         segmentExtraction:  [SegmentExtractionParams]  = [],
         extensionPasses:    [ExtensionParams]          = [],
-        evolutionPasses:    [EvolutionParams]          = []
+        evolutionPasses:    [EvolutionParams]          = [],
+        dissolutionPasses:  [DissolutionParams]        = []
     ) {
         self.name               = name
         self.params             = params
@@ -25,10 +27,11 @@ public struct SubdivisionParamsSet: Equatable, Codable, Sendable {
         self.segmentExtraction  = segmentExtraction
         self.extensionPasses    = extensionPasses
         self.evolutionPasses    = evolutionPasses
+        self.dissolutionPasses  = dissolutionPasses
     }
 
     private enum CodingKeys: String, CodingKey {
-        case name, params, curveRefinement, segmentExtraction, extensionPasses, evolutionPasses
+        case name, params, curveRefinement, segmentExtraction, extensionPasses, evolutionPasses, dissolutionPasses
     }
 
     public init(from decoder: Decoder) throws {
@@ -36,10 +39,11 @@ public struct SubdivisionParamsSet: Equatable, Codable, Sendable {
         self.init(
             name:               try c.decode(String.self,                          forKey: .name),
             params:             try c.decode([SubdivisionParams].self,             forKey: .params),
-            curveRefinement:    try c.decodeIfPresent([CurveRefinementParams].self,   forKey: .curveRefinement)   ?? [],
-            segmentExtraction:  try c.decodeIfPresent([SegmentExtractionParams].self, forKey: .segmentExtraction) ?? [],
-            extensionPasses:    try c.decodeIfPresent([ExtensionParams].self,         forKey: .extensionPasses)   ?? [],
-            evolutionPasses:    try c.decodeIfPresent([EvolutionParams].self,         forKey: .evolutionPasses)   ?? []
+            curveRefinement:    try c.decodeIfPresent([CurveRefinementParams].self,    forKey: .curveRefinement)   ?? [],
+            segmentExtraction:  try c.decodeIfPresent([SegmentExtractionParams].self,  forKey: .segmentExtraction) ?? [],
+            extensionPasses:    try c.decodeIfPresent([ExtensionParams].self,          forKey: .extensionPasses)   ?? [],
+            evolutionPasses:    try c.decodeIfPresent([EvolutionParams].self,          forKey: .evolutionPasses)   ?? [],
+            dissolutionPasses:  try c.decodeIfPresent([DissolutionParams].self,        forKey: .dissolutionPasses) ?? []
         )
     }
 }
