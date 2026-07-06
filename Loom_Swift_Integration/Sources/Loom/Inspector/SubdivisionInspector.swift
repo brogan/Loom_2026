@@ -6,6 +6,14 @@ struct SubdivisionInspector: View {
     @EnvironmentObject private var controller: AppController
     @State private var activePTPTab: PTPTab = .exterior
     @State private var showCompositor = false
+    // Lifecycle stage collapse states
+    @AppStorage("subinsp.involutionCollapsed")   private var involutionCollapsed   = false
+    @AppStorage("subinsp.extStageCollapsed")     private var extStageCollapsed     = false
+    @AppStorage("subinsp.evolutionCollapsed")    private var evolutionCollapsed    = true
+    @AppStorage("subinsp.fulgurationCollapsed")  private var fulgurationCollapsed  = true
+    @AppStorage("subinsp.dissolutionCollapsed")  private var dissolutionCollapsed  = true
+
+    // Param editor collapse states
     @AppStorage("subinsp.generalCollapsed")          private var generalCollapsed       = false
     @AppStorage("subinsp.insetCollapsed")            private var insetCollapsed         = false
     @AppStorage("subinsp.pressureCollapsed")         private var pressureCollapsed      = false
@@ -30,10 +38,43 @@ struct SubdivisionInspector: View {
         }
         return AnyView(VStack(alignment: .leading, spacing: 0) {
             setHeader(set: set, setIdx: setIdx)
-            paramsList(set: set, setIdx: setIdx)
-            curveRefinementList(set: set, setIdx: setIdx)
-            segmentExtractionList(set: set, setIdx: setIdx)
-            extensionList(set: set, setIdx: setIdx)
+
+            // ── 1. INVOLUTION ─────────────────────────────────────────────
+            InspectorSection("Involution", isCollapsed: $involutionCollapsed,
+                             isHighlighted: true) {
+                paramsList(set: set, setIdx: setIdx)
+                curveRefinementList(set: set, setIdx: setIdx)
+                segmentExtractionList(set: set, setIdx: setIdx)
+            }
+
+            // ── 2. EXTENSION ──────────────────────────────────────────────
+            InspectorSection("Extension", isCollapsed: $extStageCollapsed,
+                             isHighlighted: true) {
+                extensionPassesContent(set: set, setIdx: setIdx)
+            }
+
+            // ── 3. EVOLUTION ──────────────────────────────────────────────
+            InspectorSection("Evolution", isCollapsed: $evolutionCollapsed) {
+                lifecyclePlaceholder(
+                    "Momentum drift and convergence pressure.",
+                    detail: "Stateful per-sprite parameter accumulation. Phase 5.")
+            }
+
+            // ── 4. FULGURATION ────────────────────────────────────────────
+            InspectorSection("Fulguration", isCollapsed: $fulgurationCollapsed) {
+                lifecyclePlaceholder(
+                    "Conditional geometry via triggers.",
+                    detail: "Global-parameter and proximity-based emergence. Phase 7.")
+            }
+
+            // ── 5. DISSOLUTION ────────────────────────────────────────────
+            InspectorSection("Dissolution", isCollapsed: $dissolutionCollapsed) {
+                lifecyclePlaceholder(
+                    "Entropy and collapse.",
+                    detail: "Progressive loss of form or sudden triggered termination. Phase 6.")
+            }
+
+            // ── Param editor (shown below the stage list) ─────────────────
             if let exIdx = controller.selectedExtensionParamIndex {
                 ExtensionInspector(setIdx: setIdx, exIdx: exIdx)
                     .environmentObject(controller)
@@ -50,24 +91,52 @@ struct SubdivisionInspector: View {
         })
     }
 
+    // Placeholder content for stages not yet implemented
+    private func lifecyclePlaceholder(_ headline: String, detail: String) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(headline)
+                .font(.system(size: 11))
+                .foregroundStyle(.secondary)
+            Text(detail)
+                .font(.system(size: 10))
+                .foregroundStyle(.tertiary)
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
+    }
+
     // MARK: - Set header
 
     private func setHeader(set: SubdivisionParamsSet, setIdx: Int) -> some View {
-        InspectorSection("Set") {
+        InspectorSection("Transform Set") {
             InspectorField("Name") {
                 TextField("", text: bindSet(setIdx, \.name))
                     .textFieldStyle(.squareBorder)
                     .font(.system(size: 12))
                     .frame(maxWidth: 120)
             }
-            InspectorRow(label: "Params", value: "\(set.params.count)")
+            let invCount = set.params.count + set.curveRefinement.count + set.segmentExtraction.count
+            let extCount = set.extensionPasses.count
+            if invCount > 0 || extCount > 0 {
+                InspectorRow(label: "Passes",
+                             value: passCountSummary(set: set))
+            }
         }
+    }
+
+    private func passCountSummary(set: SubdivisionParamsSet) -> String {
+        var parts: [String] = []
+        if set.params.count > 0 { parts.append("\(set.params.count) subdiv") }
+        if set.curveRefinement.count > 0 { parts.append("\(set.curveRefinement.count) refine") }
+        if set.segmentExtraction.count > 0 { parts.append("\(set.segmentExtraction.count) extract") }
+        if set.extensionPasses.count > 0 { parts.append("\(set.extensionPasses.count) ext") }
+        return parts.isEmpty ? "none" : parts.joined(separator: ", ")
     }
 
     // MARK: - Params mini-list
 
     private func paramsList(set: SubdivisionParamsSet, setIdx: Int) -> some View {
-        InspectorSection("Params") {
+        InspectorSection("Subdivision") {
             InspectorPickList(
                 items: set.params,
                 labelFor: { $0.name.isEmpty ? "(unnamed)" : $0.name },
@@ -291,58 +360,56 @@ struct SubdivisionInspector: View {
         controller.selectedSegmentExtractionParamIndex = seIdx + 1
     }
 
-    // MARK: - Extension mini-list
+    // MARK: - Extension passes content (no outer section wrapper — stage wrapper provides it)
 
     @ViewBuilder
-    private func extensionList(set: SubdivisionParamsSet, setIdx: Int) -> some View {
-        InspectorSection("Extension") {
-            if set.extensionPasses.isEmpty {
-                HStack {
-                    Text("No extension passes")
-                        .font(.caption2)
-                        .foregroundStyle(.tertiary)
-                    Spacer()
-                    addExtensionButton(setIdx: setIdx)
-                }
-                .padding(.horizontal, 12)
-                .padding(.vertical, 6)
-            } else {
-                InspectorPickList(
-                    items: set.extensionPasses,
-                    labelFor: { $0.name.isEmpty ? "(unnamed)" : $0.name },
-                    selection: Binding(
-                        get: { controller.selectedExtensionParamIndex },
-                        set: { newVal in
-                            controller.selectedExtensionParamIndex = newVal
-                            if newVal != nil {
-                                controller.selectedSubdivisionParamIndex       = nil
-                                controller.selectedCurveRefinementParamIndex   = nil
-                                controller.selectedSegmentExtractionParamIndex = nil
-                            }
-                        }
-                    )
-                )
-                HStack(spacing: 4) {
-                    addExtensionButton(setIdx: setIdx)
-                    if let exIdx = controller.selectedExtensionParamIndex {
-                        Button(action: { deleteExtensionParam(setIdx: setIdx, exIdx: exIdx) }) {
-                            Image(systemName: "minus.circle").font(.system(size: 13))
-                        }
-                        .buttonStyle(.plain)
-                        .foregroundStyle(.secondary)
-                        .help("Delete selected extension pass")
-                        Button(action: { duplicateExtensionParam(setIdx: setIdx, exIdx: exIdx) }) {
-                            Image(systemName: "plus.square.on.square").font(.system(size: 12))
-                        }
-                        .buttonStyle(.plain)
-                        .foregroundStyle(.secondary)
-                        .help("Duplicate selected extension pass")
-                    }
-                    Spacer()
-                }
-                .padding(.horizontal, 12)
-                .padding(.vertical, 4)
+    private func extensionPassesContent(set: SubdivisionParamsSet, setIdx: Int) -> some View {
+        if set.extensionPasses.isEmpty {
+            HStack {
+                Text("No extension passes")
+                    .font(.caption2)
+                    .foregroundStyle(.tertiary)
+                Spacer()
+                addExtensionButton(setIdx: setIdx)
             }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 6)
+        } else {
+            InspectorPickList(
+                items: set.extensionPasses,
+                labelFor: { $0.name.isEmpty ? "(unnamed)" : $0.name },
+                selection: Binding(
+                    get: { controller.selectedExtensionParamIndex },
+                    set: { newVal in
+                        controller.selectedExtensionParamIndex = newVal
+                        if newVal != nil {
+                            controller.selectedSubdivisionParamIndex       = nil
+                            controller.selectedCurveRefinementParamIndex   = nil
+                            controller.selectedSegmentExtractionParamIndex = nil
+                        }
+                    }
+                )
+            )
+            HStack(spacing: 4) {
+                addExtensionButton(setIdx: setIdx)
+                if let exIdx = controller.selectedExtensionParamIndex {
+                    Button(action: { deleteExtensionParam(setIdx: setIdx, exIdx: exIdx) }) {
+                        Image(systemName: "minus.circle").font(.system(size: 13))
+                    }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(.secondary)
+                    .help("Delete selected extension pass")
+                    Button(action: { duplicateExtensionParam(setIdx: setIdx, exIdx: exIdx) }) {
+                        Image(systemName: "plus.square.on.square").font(.system(size: 12))
+                    }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(.secondary)
+                    .help("Duplicate selected extension pass")
+                }
+                Spacer()
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 4)
         }
     }
 
@@ -448,6 +515,8 @@ struct SubdivisionInspector: View {
 
     private func generalSection(setIdx: Int, paramIdx: Int) -> some View {
         InspectorSection("General", isCollapsed: $generalCollapsed) {
+
+            // — Core: what the step produces ——————————————————————————————
             InspectorField("Name") {
                 TextField("", text: bindP(setIdx, paramIdx, \.name))
                     .textFieldStyle(.squareBorder)
@@ -468,6 +537,22 @@ struct SubdivisionInspector: View {
             vector2DField("Line ratios", xKP: \.lineRatios.x, yKP: \.lineRatios.y,
                           setIdx: setIdx, paramIdx: paramIdx)
             .loomHelp("Horizontal (X) and vertical (Y) split positions within the polygon, in the range 0–1. Controls exactly where the subdivision lines land.")
+            InspectorField("Visibility") {
+                Picker("", selection: bindP(setIdx, paramIdx, \.visibilityRule)) {
+                    ForEach(VisibilityRule.allCases, id: \.self) { r in
+                        Text(r.shortName).tag(r)
+                    }
+                }
+                .labelsHidden()
+                .frame(maxWidth: 130)
+            }
+            .loomHelp("Filters which output polygons are rendered — all, alternating, random fractions, every nth, and so on.")
+            InspectorField("Continuous") {
+                Toggle("", isOn: bindP(setIdx, paramIdx, \.continuous)).labelsHidden()
+            }
+            .loomHelp("When on, all child polygons from this step use this same parameter rather than advancing to the next one in the set.")
+
+            // — Curvature control ——————————————————————————————————————————
             vector2DField("CP ratios", xKP: \.controlPointRatios.x, yKP: \.controlPointRatios.y,
                           setIdx: setIdx, paramIdx: paramIdx)
             .loomHelp("Parametric position of each control point along the internal connector edge (0 = start anchor, 1 = end anchor). Affects the spacing distribution of subdivision vertices but not the geometric curvature of the edge.")
@@ -478,14 +563,6 @@ struct SubdivisionInspector: View {
                 Toggle("", isOn: bindP(setIdx, paramIdx, \.cpNormalizeTowardsCentre)).labelsHidden()
             }
             .loomHelp("When on, positive CP normals offset away from the polygon centroid (outward bow); when off, positive is the fixed left-perpendicular of each edge direction.")
-            InspectorField("Continuous") {
-                Toggle("", isOn: bindP(setIdx, paramIdx, \.continuous)).labelsHidden()
-            }
-            .loomHelp("When on, all child polygons from this step use this same parameter rather than advancing to the next one in the set.")
-            InspectorField("Curve split") {
-                Toggle("", isOn: bindP(setIdx, paramIdx, \.curveAwareSplit)).labelsHidden()
-            }
-            .loomHelp("Quad only. When off (default), new split-point anchors land at the straight-line midpoint between the two existing anchors — matching the original Scala behaviour and avoiding drift at higher subdivision levels. When on, split points land on the actual Bézier curve (de Casteljau), so curved outer edges like circles or ovals are respected. The two modes produce visibly different results: off keeps straight edges straight; on keeps curved edges curved.")
             InspectorField("Mirror curve") {
                 Toggle("", isOn: bindP(setIdx, paramIdx, \.mirrorOuterCurvature)).labelsHidden()
             }
@@ -504,16 +581,14 @@ struct SubdivisionInspector: View {
                 .labelsHidden().frame(maxWidth: 110)
             }
             .loomHelp("Controls which internal edges receive the mirrored bow. All: every edge. Even/Odd: every other edge, straight on the remaining ones. Alternate: even edges bow forward, odd edges bow in reverse — produces a pinwheel or turbine pattern.")
-            InspectorField("Visibility") {
-                Picker("", selection: bindP(setIdx, paramIdx, \.visibilityRule)) {
-                    ForEach(VisibilityRule.allCases, id: \.self) { r in
-                        Text(r.shortName).tag(r)
-                    }
-                }
-                .labelsHidden()
-                .frame(maxWidth: 130)
+
+            // — Advanced / rarely changed ——————————————————————————————————
+            InspectorField("Curve split") {
+                Toggle("", isOn: bindP(setIdx, paramIdx, \.curveAwareSplit)).labelsHidden()
             }
-            .loomHelp("Filters which output polygons are rendered — all, alternating, random fractions, every nth, and so on.")
+            .loomHelp("Quad only. When off (default), new split-point anchors land at the straight-line midpoint between the two existing anchors — matching the original Scala behaviour and avoiding drift at higher subdivision levels. When on, split points land on the actual Bézier curve (de Casteljau), so curved outer edges like circles or ovals are respected. The two modes produce visibly different results: off keeps straight edges straight; on keeps curved edges curved.")
+
+            // — Stochastic midpoint jitter —————————————————————————————————
             InspectorField("Ran middle") {
                 Toggle("", isOn: bindP(setIdx, paramIdx, \.ranMiddle)).labelsHidden()
             }
