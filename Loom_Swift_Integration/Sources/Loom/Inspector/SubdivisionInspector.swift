@@ -33,7 +33,11 @@ struct SubdivisionInspector: View {
             paramsList(set: set, setIdx: setIdx)
             curveRefinementList(set: set, setIdx: setIdx)
             segmentExtractionList(set: set, setIdx: setIdx)
-            if let seIdx = controller.selectedSegmentExtractionParamIndex {
+            extensionList(set: set, setIdx: setIdx)
+            if let exIdx = controller.selectedExtensionParamIndex {
+                ExtensionInspector(setIdx: setIdx, exIdx: exIdx)
+                    .environmentObject(controller)
+            } else if let seIdx = controller.selectedSegmentExtractionParamIndex {
                 SegmentExtractionInspector(setIdx: setIdx, seIdx: seIdx)
                     .environmentObject(controller)
             } else if let crIdx = controller.selectedCurveRefinementParamIndex {
@@ -77,9 +81,10 @@ struct SubdivisionInspector: View {
             )
         }
         .onChange(of: controller.selectedSubdivisionIndex) { _, _ in
-            controller.selectedSubdivisionParamIndex      = nil
-            controller.selectedCurveRefinementParamIndex  = nil
+            controller.selectedSubdivisionParamIndex       = nil
+            controller.selectedCurveRefinementParamIndex   = nil
             controller.selectedSegmentExtractionParamIndex = nil
+            controller.selectedExtensionParamIndex         = nil
         }
     }
 
@@ -107,8 +112,9 @@ struct SubdivisionInspector: View {
                         set: { newVal in
                             controller.selectedCurveRefinementParamIndex    = newVal
                             if newVal != nil {
-                                controller.selectedSubdivisionParamIndex      = nil
+                                controller.selectedSubdivisionParamIndex       = nil
                                 controller.selectedSegmentExtractionParamIndex = nil
+                                controller.selectedExtensionParamIndex         = nil
                             }
                         }
                     )
@@ -257,6 +263,7 @@ struct SubdivisionInspector: View {
         controller.selectedSegmentExtractionParamIndex = newIdx
         controller.selectedSubdivisionParamIndex       = nil
         controller.selectedCurveRefinementParamIndex   = nil
+        controller.selectedExtensionParamIndex         = nil
     }
 
     private func deleteSegmentExtractionParam(setIdx: Int, seIdx: Int) {
@@ -282,6 +289,109 @@ struct SubdivisionInspector: View {
             config.subdivisionConfig.paramsSets[setIdx].segmentExtraction.insert(copy, at: seIdx + 1)
         }
         controller.selectedSegmentExtractionParamIndex = seIdx + 1
+    }
+
+    // MARK: - Extension mini-list
+
+    @ViewBuilder
+    private func extensionList(set: SubdivisionParamsSet, setIdx: Int) -> some View {
+        InspectorSection("Extension") {
+            if set.extensionPasses.isEmpty {
+                HStack {
+                    Text("No extension passes")
+                        .font(.caption2)
+                        .foregroundStyle(.tertiary)
+                    Spacer()
+                    addExtensionButton(setIdx: setIdx)
+                }
+                .padding(.horizontal, 12)
+                .padding(.vertical, 6)
+            } else {
+                InspectorPickList(
+                    items: set.extensionPasses,
+                    labelFor: { $0.name.isEmpty ? "(unnamed)" : $0.name },
+                    selection: Binding(
+                        get: { controller.selectedExtensionParamIndex },
+                        set: { newVal in
+                            controller.selectedExtensionParamIndex = newVal
+                            if newVal != nil {
+                                controller.selectedSubdivisionParamIndex       = nil
+                                controller.selectedCurveRefinementParamIndex   = nil
+                                controller.selectedSegmentExtractionParamIndex = nil
+                            }
+                        }
+                    )
+                )
+                HStack(spacing: 4) {
+                    addExtensionButton(setIdx: setIdx)
+                    if let exIdx = controller.selectedExtensionParamIndex {
+                        Button(action: { deleteExtensionParam(setIdx: setIdx, exIdx: exIdx) }) {
+                            Image(systemName: "minus.circle").font(.system(size: 13))
+                        }
+                        .buttonStyle(.plain)
+                        .foregroundStyle(.secondary)
+                        .help("Delete selected extension pass")
+                        Button(action: { duplicateExtensionParam(setIdx: setIdx, exIdx: exIdx) }) {
+                            Image(systemName: "plus.square.on.square").font(.system(size: 12))
+                        }
+                        .buttonStyle(.plain)
+                        .foregroundStyle(.secondary)
+                        .help("Duplicate selected extension pass")
+                    }
+                    Spacer()
+                }
+                .padding(.horizontal, 12)
+                .padding(.vertical, 4)
+            }
+        }
+    }
+
+    private func addExtensionButton(setIdx: Int) -> some View {
+        Button(action: { addExtensionParam(setIdx: setIdx) }) {
+            Image(systemName: "plus.circle").font(.system(size: 13))
+        }
+        .buttonStyle(.plain)
+        .foregroundStyle(.secondary)
+        .help("Add extension pass")
+    }
+
+    private func addExtensionParam(setIdx: Int) {
+        guard let cfg = controller.projectConfig,
+              setIdx < cfg.subdivisionConfig.paramsSets.count else { return }
+        let newParam = ExtensionParams()
+        controller.updateProjectConfig { config in
+            config.subdivisionConfig.paramsSets[setIdx].extensionPasses.append(newParam)
+        }
+        let newIdx = (controller.projectConfig?.subdivisionConfig.paramsSets[setIdx].extensionPasses.count ?? 1) - 1
+        controller.selectedExtensionParamIndex         = newIdx
+        controller.selectedSubdivisionParamIndex       = nil
+        controller.selectedCurveRefinementParamIndex   = nil
+        controller.selectedSegmentExtractionParamIndex = nil
+    }
+
+    private func deleteExtensionParam(setIdx: Int, exIdx: Int) {
+        guard let cfg = controller.projectConfig,
+              setIdx < cfg.subdivisionConfig.paramsSets.count,
+              exIdx  < cfg.subdivisionConfig.paramsSets[setIdx].extensionPasses.count
+        else { return }
+        _ = cfg
+        controller.updateProjectConfig { config in
+            config.subdivisionConfig.paramsSets[setIdx].extensionPasses.remove(at: exIdx)
+        }
+        let remaining = controller.projectConfig?.subdivisionConfig.paramsSets[safe: setIdx]?.extensionPasses.count ?? 0
+        controller.selectedExtensionParamIndex = remaining > 0 ? min(exIdx, remaining - 1) : nil
+    }
+
+    private func duplicateExtensionParam(setIdx: Int, exIdx: Int) {
+        guard let cfg = controller.projectConfig,
+              setIdx < cfg.subdivisionConfig.paramsSets.count,
+              exIdx  < cfg.subdivisionConfig.paramsSets[setIdx].extensionPasses.count
+        else { return }
+        let copy = cfg.subdivisionConfig.paramsSets[setIdx].extensionPasses[exIdx]
+        controller.updateProjectConfig { config in
+            config.subdivisionConfig.paramsSets[setIdx].extensionPasses.insert(copy, at: exIdx + 1)
+        }
+        controller.selectedExtensionParamIndex = exIdx + 1
     }
 
     // MARK: - Param editor

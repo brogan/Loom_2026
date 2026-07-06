@@ -270,15 +270,18 @@ public struct SpriteScene: @unchecked Sendable {
         let subdivParams: [SubdivisionParams]
         let curveRefinementParams:   [CurveRefinementParams]
         let segmentExtractionParams: [SegmentExtractionParams]
+        let extensionParams:         [ExtensionParams]
         if paramsName.isEmpty || paramsName.caseInsensitiveCompare("none") == .orderedSame {
             subdivParams             = []
             curveRefinementParams    = []
             segmentExtractionParams  = []
+            extensionParams          = []
         } else {
             let resolvedSet          = config.subdivisionConfig.paramsSet(named: paramsName)
             subdivParams             = resolvedSet?.params ?? []
             curveRefinementParams    = resolvedSet?.curveRefinement ?? []
             segmentExtractionParams  = resolvedSet?.segmentExtraction ?? []
+            extensionParams          = resolvedSet?.extensionPasses ?? []
         }
 
         // ── 6. Load shape-sequence polygon sets ─────────────────────────────
@@ -369,6 +372,7 @@ public struct SpriteScene: @unchecked Sendable {
             subdivisionParams:      subdivParams,
             curveRefinementParams:   curveRefinementParams,
             segmentExtractionParams: segmentExtractionParams,
+            extensionParams:         extensionParams,
             sequencePolygons:        sequencePolygons,
             variantPolygons:        variantPolygons,
             variantRendererSets:    variantRendererSets,
@@ -1487,6 +1491,17 @@ public struct SpriteScene: @unchecked Sendable {
             subdivided = SegmentExtractionEngine.process(
                 polygons:      subdivided,
                 paramSet:      activeInstance.segmentExtractionParams,
+                elapsedFrames: elapsedFrames,
+                targetFPS:     targetFPS,
+                spriteIndex:   spriteIndex
+            )
+        }
+
+        // 2d. Extension (branching from endpoints / edge extrusion)
+        if !activeInstance.extensionParams.isEmpty {
+            subdivided = ExtensionEngine.process(
+                polygons:      subdivided,
+                paramSet:      activeInstance.extensionParams,
                 elapsedFrames: elapsedFrames,
                 targetFPS:     targetFPS,
                 spriteIndex:   spriteIndex

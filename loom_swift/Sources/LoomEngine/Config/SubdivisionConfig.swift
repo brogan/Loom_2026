@@ -1,27 +1,31 @@
 /// A named, ordered list of `SubdivisionParams` — one complete subdivision recipe.
 ///
 /// Corresponds to `<SubdivisionParamsSet>` in `subdivision.xml`.
-/// A set may also carry `curveRefinement` passes for `.openSpline` polygons.
+/// A set may also carry `curveRefinement` and `segmentExtraction` passes for
+/// `.openSpline` polygons, and `extensionPasses` for branching and edge extrusion.
 public struct SubdivisionParamsSet: Equatable, Codable, Sendable {
     public var name:               String
     public var params:             [SubdivisionParams]
     public var curveRefinement:    [CurveRefinementParams]
     public var segmentExtraction:  [SegmentExtractionParams]
+    public var extensionPasses:    [ExtensionParams]
 
     public init(
         name:               String                     = "",
         params:             [SubdivisionParams]        = [],
         curveRefinement:    [CurveRefinementParams]    = [],
-        segmentExtraction:  [SegmentExtractionParams]  = []
+        segmentExtraction:  [SegmentExtractionParams]  = [],
+        extensionPasses:    [ExtensionParams]          = []
     ) {
         self.name               = name
         self.params             = params
         self.curveRefinement    = curveRefinement
         self.segmentExtraction  = segmentExtraction
+        self.extensionPasses    = extensionPasses
     }
 
     private enum CodingKeys: String, CodingKey {
-        case name, params, curveRefinement, segmentExtraction
+        case name, params, curveRefinement, segmentExtraction, extensionPasses
     }
 
     public init(from decoder: Decoder) throws {
@@ -30,7 +34,8 @@ public struct SubdivisionParamsSet: Equatable, Codable, Sendable {
             name:               try c.decode(String.self,                          forKey: .name),
             params:             try c.decode([SubdivisionParams].self,             forKey: .params),
             curveRefinement:    try c.decodeIfPresent([CurveRefinementParams].self,   forKey: .curveRefinement)   ?? [],
-            segmentExtraction:  try c.decodeIfPresent([SegmentExtractionParams].self, forKey: .segmentExtraction) ?? []
+            segmentExtraction:  try c.decodeIfPresent([SegmentExtractionParams].self, forKey: .segmentExtraction) ?? [],
+            extensionPasses:    try c.decodeIfPresent([ExtensionParams].self,         forKey: .extensionPasses)   ?? []
         )
     }
 }

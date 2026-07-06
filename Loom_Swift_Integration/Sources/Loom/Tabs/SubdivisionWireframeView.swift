@@ -35,6 +35,7 @@ struct SubdivisionWireframeView: View {
             let params            = inputs.params
             let curveRefinement   = inputs.curveRefinement
             let segmentExtraction = inputs.segmentExtraction
+            let extensionPasses   = inputs.extensionPasses
             let result: [Polygon2D] = await Task.detached(priority: .userInitiated) {
                 var rng = SeededRNG()
                 var subdivided = SubdivisionEngine.process(polygons: polys, paramSet: params, rng: &rng)
@@ -43,6 +44,9 @@ struct SubdivisionWireframeView: View {
                 }
                 if !segmentExtraction.isEmpty {
                     subdivided = SegmentExtractionEngine.process(polygons: subdivided, paramSet: segmentExtraction)
+                }
+                if !extensionPasses.isEmpty {
+                    subdivided = ExtensionEngine.process(polygons: subdivided, paramSet: extensionPasses)
                 }
                 return subdivided
             }.value
@@ -59,6 +63,7 @@ struct SubdivisionWireframeView: View {
         let params:           [SubdivisionParams]
         let curveRefinement:  [CurveRefinementParams]
         let segmentExtraction: [SegmentExtractionParams]
+        let extensionPasses:  [ExtensionParams]
     }
 
     private var subdivisionInputs: SubdivisionInputs? {
@@ -72,7 +77,8 @@ struct SubdivisionWireframeView: View {
                                   basePolygons: inst.basePolygons,
                                   params: paramSet.params,
                                   curveRefinement: paramSet.curveRefinement,
-                                  segmentExtraction: paramSet.segmentExtraction)
+                                  segmentExtraction: paramSet.segmentExtraction,
+                                  extensionPasses: paramSet.extensionPasses)
     }
 
     // MARK: - Canvas rect (letterboxed)
