@@ -305,6 +305,8 @@
   <a class="nav-link nav-sub" href="#extension-extrude">Extrude (closed)</a>
   <a class="nav-link nav-sub" href="#evolution-drift">Evolution — Momentum Drift</a>
   <a class="nav-link nav-sub" href="#evolution-convergence">Evolution — Convergence Pressure</a>
+  <a class="nav-link nav-sub" href="#dissolution-entropy">Dissolution — Entropy</a>
+  <a class="nav-link nav-sub" href="#dissolution-collapse">Dissolution — Collapse</a>
   <a class="nav-link" href="#rendering">Rendering</a>
   <a class="nav-link nav-sub" href="#rendering-modes">Render Modes</a>
   <a class="nav-link nav-sub" href="#rendering-brush">Brushes &amp; Stamps</a>
@@ -426,6 +428,8 @@
   <div class="toc-entry sub"><a href="#extension-extrude">Extrude (closed)</a><span class="toc-fill"></span></div>
   <div class="toc-entry sub"><a href="#evolution-drift">Evolution — Momentum Drift</a><span class="toc-fill"></span></div>
   <div class="toc-entry sub"><a href="#evolution-convergence">Evolution — Convergence Pressure</a><span class="toc-fill"></span></div>
+  <div class="toc-entry sub"><a href="#dissolution-entropy">Dissolution — Entropy</a><span class="toc-fill"></span></div>
+  <div class="toc-entry sub"><a href="#dissolution-collapse">Dissolution — Collapse</a><span class="toc-fill"></span></div>
   <div class="toc-entry"><a href="#rendering">Rendering</a><span class="toc-fill"></span></div>
   <div class="toc-entry sub"><a href="#rendering-modes">Render Modes</a><span class="toc-fill"></span></div>
   <div class="toc-entry sub"><a href="#rendering-brush">Brushes &amp; Stamps</a><span class="toc-fill"></span></div>
@@ -2770,6 +2774,69 @@
 
   <div class="tip"><strong>Combining Momentum Drift and Convergence Pressure:</strong> Add both a Momentum Drift pass and a Convergence Pressure pass to the same transform set. Start pressure at 0 and ramp it slowly over many frames. Initially the geometry wanders freely under drift; as pressure rises, it is gradually reined in toward the target — the drift does not stop but its excursions become increasingly constrained. This is the "starts random, accumulates into a trajectory, gets focused" pattern that is the core of the Evolution lifecycle stage.</div>
 </section>
+
+<!-- ────────────────────────────────────────────────── -->
+<h3 id="dissolution-entropy">Dissolution — Entropy</h3>
+<p>Entropy causes a polygon to progressively lose its geometric specificity over time. The form does not disappear — it <em>forgets</em> its original character: corners round, the shape simplifies, and it approaches the target shape asymptotically. Entropy operates on the fully-built output polygon (after subdivision, extension, and evolution) each frame.</p>
+<p>Because entropy uses a closed-form calculation (<code>factor = 1 − (1−rate)^frames</code>), any frame is computable independently �� it is fully seekable and deterministic.</p>
+<ol>
+  <li>In the Transform tab inspector, select a transform set and expand the <strong>Dissolution</strong> stage section.</li>
+  <li>Click <strong>+</strong> to add a dissolution pass. Select it to open the Dissolution inspector.</li>
+  <li>Under <strong>Entropy</strong>, enable <strong>Enabled</strong>.</li>
+  <li>Choose a <strong>Target</strong>: <em>Smoothed</em> rounds corners while retaining the polygon's overall gesture; <em>Centroid</em> collapses the form inward to a point; <em>Circle</em> normalises vertices to a best-fit circle radius.</li>
+  <li>Set <strong>Rate</strong>. At 0.005, the form reaches roughly half-decay after 140 frames (about 6 seconds at 24 fps). At 0.02, half-decay in about 35 frames. Rates above 0.05 decay very fast.</li>
+  <li>Leave <strong>Noise</strong> at 0 for uniform decay. Increase it (try 1���5 canvas units) to introduce per-vertex irregularity so the path toward simplicity feels organic rather than mechanical.</li>
+  <li>Change <strong>Seed</strong> to get a different noise pattern without altering any other behaviour.</li>
+</ol>
+<table>
+  <thead><tr><th>Parameter</th><th>Safe range</th><th>Effect</th></tr></thead>
+  <tbody>
+    <tr><td>Rate</td><td>0.001–0.05</td><td>Fraction of remaining distance to target consumed per frame, compounded. 0.005 = very slow erosion; 0.02 = moderate; above 0.1 may feel abrupt. The decay is exponential: each frame closes the same <em>fraction</em> of the remaining gap, not a fixed amount.</td></tr>
+    <tr><td>Target</td><td>—</td><td><strong>Smoothed:</strong> each anchor moves toward the average of its two neighbours (Laplacian step). Corners round; curves and overall polygon direction are retained longest. <strong>Centroid:</strong> all anchors converge to the polygon's centre ��� the form implodes. <strong>Circle:</strong> anchors normalise to a best-fit radius �� angular polygons become progressively circular.</td></tr>
+    <tr><td>Noise</td><td>0–10 units</td><td>Random per-anchor perturbation added during erosion. At 0 the decay is perfectly uniform and geometric. Values above 0 break the symmetry so different anchors decay at slightly different rates and in slightly different directions. Keep under 5 for subtle organic texture; above 10 the noise dominates the signal.</td></tr>
+    <tr><td>Seed</td><td>any integer</td><td>Deterministic seed for the per-anchor noise. Change to get a different erosion character. The noise pattern is constant across frames for a given seed — it modifies the direction/magnitude of erosion, not the timing.</td></tr>
+  </tbody>
+</table>
+<div class="tip"><strong>Entropy + Evolution:</strong> Add a Convergence Pressure pass (Evolution) targeting a simpler polygon, then add a Dissolution Entropy pass with Target = Smoothed. The Evolution pass actively lerps the subdivision parameters toward simplicity; the Entropy pass additionally softens the output geometry. Together they produce a form that simplifies at two levels simultaneously — in how it subdivides, and in the shape of the resulting polygons.</div>
+
+<!-- ────────────────────────────────────────────────── -->
+<h3 id="dissolution-collapse">Dissolution — Collapse</h3>
+<p>Collapse causes the form to disappear at a specific trigger moment — either abruptly or over a brief shrinking window. Unlike entropy, there is no gradual degradation before the moment of collapse; the form is entirely itself, then gone. Collapse and entropy compose: a common pattern is entropy first (the form erodes), followed by collapse (it finally vanishes).</p>
+<p>Collapse is fully deterministic and seekable. The trigger frame is computed once from the parameters and seed, the same way on every frame.</p>
+<ol>
+  <li>In the Dissolution inspector, expand the <strong>Collapse</strong> section and enable <strong>Enabled</strong>.</li>
+  <li>Choose a <strong>Trigger</strong>:
+    <ul>
+      <li><em>Frame count</em> — set <strong>Frame</strong> to the number of frames before collapse. Simple and predictable.</li>
+      <li><em>Probability</em> — set <strong>Probability</strong> to the per-frame chance of collapse. 0.01 gives an expected lifetime of 100 frames; 0.002 gives 500 frames. Exact timing varies per sprite (governed by the Seed), but the average is 1/P frames.</li>
+    </ul>
+  </li>
+  <li>Choose a <strong>Mode</strong>:
+    <ul>
+      <li><em>Instant</em> — the form disappears in a single frame. Best for sharp, graphic effects.</li>
+      <li><em>Brief</em> — the form shrinks toward its centroid over <strong>Duration</strong> frames before vanishing. 6–12 frames is a fast but visible implosion; 24+ frames makes the collapse feel deliberate.</li>
+    </ul>
+  </li>
+  <li>Choose <strong>After</strong> (end mode):
+    <ul>
+      <li><em>Remove</em> — the form is gone permanently for the rest of playback.</li>
+      <li><em>Loop</em> — after collapsing, the dissolution cycle restarts from frame zero. The form reappears at full complexity and begins eroding and collapsing again. With Entropy active, this produces a continuous cycle of growth → erosion → collapse → rebirth.</li>
+      <li><em>Respawn</em> — same as Remove for now; integration with Fulguration (Phase 7) is pending.</li>
+    </ul>
+  </li>
+</ol>
+<table>
+  <thead><tr><th>Parameter</th><th>Safe range</th><th>Effect</th></tr></thead>
+  <tbody>
+    <tr><td>Trigger</td><td>—</td><td><strong>Frame count:</strong> fires at exactly N frames elapsed. <strong>Probability:</strong> each frame independently has probability P of triggering (Bernoulli trial). The first frame where the deterministic hash falls below P is when collapse occurs — the result is fixed for a given seed and sprite index, but varies across sprites.</td></tr>
+    <tr><td>Frame</td><td>1–∞</td><td>For Frame count trigger: number of frames before collapse. 240 = 10 seconds at 24 fps. With Loop end mode, the period of each cycle. Has no effect when Probability trigger is selected.</td></tr>
+    <tr><td>Probability</td><td>0.0001–0.1</td><td>For Probability trigger: per-frame chance of collapse. Expected lifetime in frames = 1/P. 0.005 = average 200-frame lifetime. Very small values (below 0.001) produce unpredictably long lives; values above 0.1 collapse almost immediately. Has no effect when Frame count trigger is selected.</td></tr>
+    <tr><td>Mode</td><td>—</td><td><strong>Instant:</strong> one-frame disappearance. <strong>Brief:</strong> polygon scales to zero over the Duration window — produces a visual implosion effect.</td></tr>
+    <tr><td>Duration</td><td>2–30 frames</td><td>Brief mode only. Number of frames for the shrink-to-centroid animation. Below 6 frames is very fast; above 24 is a slow, deliberate implosion. Has no effect in Instant mode.</td></tr>
+    <tr><td>After</td><td>—</td><td><strong>Remove:</strong> form is permanently absent after collapse. <strong>Loop:</strong> cycle restarts; effective elapsed time is wrapped by the period (collapseFrame + briefDuration). <strong>Respawn:</strong> reserved for Fulguration integration (currently behaves as Remove).</td></tr>
+  </tbody>
+</table>
+<div class="tip"><strong>Entropy → Collapse composition:</strong> Enable both Entropy and Collapse in the same dissolution pass. Set Entropy Rate to 0.005 and Collapse to Frame count at 300 frames. The form erodes for 300 frames then vanishes. With After = Loop, this creates a repeating lifecycle: the form begins complex, simplifies, collapses, and reappears. Adjust the ratio of entropy rate to collapse frame to control how much simplicity has accumulated by the time collapse fires — at 0.005 rate and 300 frames the form is roughly 78% decayed when it collapses.</div>
 
 <!-- ────────────────────────────────────────────────── -->
 <section id="lights">

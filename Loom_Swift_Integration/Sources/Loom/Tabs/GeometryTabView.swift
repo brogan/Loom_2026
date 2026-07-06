@@ -843,12 +843,20 @@ struct GeometryMainView: View {
             guard let def = cfg.curveConfig.library.curveSets.first(where: { $0.name == name })
             else { return [] }
             let url = projURL.appendingPathComponent(def.folder).appendingPathComponent(def.filename)
+            if def.filename.lowercased().hasSuffix(".json") {
+                return try EditableGeometryJSONLoader.load(url: url).runtimePolygons(
+                    targetLayerID: nil, targetLayerName: nil)
+            }
             return try XMLPolygonLoader.loadOpenCurveSet(url: url)
 
         case "pointSets":
             guard let def = cfg.pointConfig.library.pointSets.first(where: { $0.name == name })
             else { return [] }
             let url = projURL.appendingPathComponent(def.folder).appendingPathComponent(def.filename)
+            if def.filename.lowercased().hasSuffix(".json") {
+                return try EditableGeometryJSONLoader.load(url: url).runtimePolygons(
+                    targetLayerID: nil, targetLayerName: nil)
+            }
             return try XMLPolygonLoader.loadPointSet(url: url)
 
         default:
@@ -862,20 +870,42 @@ struct GeometryMainView: View {
         else { return nil }
 
         let parts = key.split(separator: "/", maxSplits: 1)
-        guard parts.count == 2,
-              String(parts[0]) == "polygonSets"
-        else { return nil }
+        guard parts.count == 2 else { return nil }
+        let folder = String(parts[0])
+        let name   = String(parts[1])
 
-        let name = String(parts[1])
-        guard let def = cfg.polygonConfig.library.polygonSets.first(where: { $0.name == name }),
-              !def.filename.isEmpty,
-              def.filename.lowercased().hasSuffix(".json")
-        else { return nil }
+        if folder == "polygonSets" {
+            guard let def = cfg.polygonConfig.library.polygonSets.first(where: { $0.name == name }),
+                  !def.filename.isEmpty,
+                  def.filename.lowercased().hasSuffix(".json")
+            else { return nil }
+            let dir = (def.folder == "polygonSet" || def.folder.isEmpty) ? "polygonSets" : def.folder
+            return try EditableGeometryJSONLoader.load(
+                url: projURL.appendingPathComponent(dir).appendingPathComponent(def.filename)
+            )
+        }
 
-        let dir = (def.folder == "polygonSet" || def.folder.isEmpty) ? "polygonSets" : def.folder
-        return try EditableGeometryJSONLoader.load(
-            url: projURL.appendingPathComponent(dir).appendingPathComponent(def.filename)
-        )
+        if folder == "curveSets" {
+            guard let def = cfg.curveConfig.library.curveSets.first(where: { $0.name == name }),
+                  !def.filename.isEmpty,
+                  def.filename.lowercased().hasSuffix(".json")
+            else { return nil }
+            return try EditableGeometryJSONLoader.load(
+                url: projURL.appendingPathComponent(def.folder).appendingPathComponent(def.filename)
+            )
+        }
+
+        if folder == "pointSets" {
+            guard let def = cfg.pointConfig.library.pointSets.first(where: { $0.name == name }),
+                  !def.filename.isEmpty,
+                  def.filename.lowercased().hasSuffix(".json")
+            else { return nil }
+            return try EditableGeometryJSONLoader.load(
+                url: projURL.appendingPathComponent(def.folder).appendingPathComponent(def.filename)
+            )
+        }
+
+        return nil
     }
 
     private func resolveEditableLayerTarget(key: String) -> (id: EditableGeometryID?, name: String?)? {

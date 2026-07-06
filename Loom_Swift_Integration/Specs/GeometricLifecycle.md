@@ -1,6 +1,6 @@
 # Geometric Lifecycle — Spec
 
-**Status**: Phases 0–5 complete; Phases 6–7 (Dissolution / Fulguration) pending  
+**Status**: Phases 0–6 complete; Phase 7 (Fulguration) pending  
 **Affects**: LoomEngine, Loom (studio), subdivision tab architecture
 
 ---
@@ -595,14 +595,51 @@ and before SubdivisionEngine — it modifies `activeInstance.subdivisionParams` 
 Convergence target lookup uses `[:]` at static-export time (frame 0, no convergence
 targets in non-interactive contexts); drift still applies at frame 0.
 
-### Phase 6 — Dissolution: entropy and collapse (pending)
+### Phase 6 — Dissolution: entropy and collapse (complete)
 
-`DissolutionEngine` with per-sprite decay state. Entropy targeting `.smoothed` and
-`.centroid`. Collapse with `.frameCount`, `.probability`, and `.loop` end mode.
+`DissolutionParams` on `SubdivisionParamsSet.dissolutionPasses: [DissolutionParams]`.
+Engine: `DissolutionEngine`. Inspector: `DissolutionInspector` wired into
+`SubdivisionInspector`. Pipeline position: after `ExtensionEngine`, before sprite
+transform (step 2e in `SpriteScene`).
 
-**Note:** Dissolution shares the per-sprite statefulness requirement with Evolution
-(see Phase 5). Collapse `.loop` mode resets to original geometry — this requires
-storing the pre-dissolution base polygon per sprite, not just the decayed version.
+**Architecture decision — stateless:** Dissolution does not accumulate per-sprite
+state. Entropy uses a closed-form exponential decay:
+```
+factor(N) = 1 - (1 - rate)^N
+vertex_N  = lerp(vertex_current, target_current, factor)
+```
+"Current" means the polygon as produced by the upstream pipeline for this frame
+(post-evolution). Any frame is computable independently without prior state.
+
+Collapse probability mode determines the first-fire frame by a deterministic hash
+scan (`SubdivisionEngine.centreHash`) — same result for any given frame, fully
+seekable. The `.loop` end mode wraps `effectiveFrames` by the period
+`collapseFrame + briefDuration` rather than storing a reset timestamp.
+
+**Entropy targets:**
+- `.centroid`: each anchor in the spline encoding (indices `4k`) moves toward the
+  `BezierMath.centreSpline` average; control points translated by the same delta
+  (rigid follow), preserving local curve shape
+- `.smoothed`: each anchor moves toward the average of its two neighbours (Laplacian
+  step) — corners round while the overall polygon gesture is retained
+- `.circle`: anchors normalised to a mean-radius circle centered on the anchor
+  centroid — angular forms become progressively rounder
+
+Per-anchor noise added via `centreHash(seed, cycle: Int(frames))` — changes each
+frame, seeded per-anchor and per-sprite.
+
+**Collapse:**
+- `frameCount`: fires at exactly N frames
+- `probability(p)`: hash scan over `[0, 100_000)` finds first frame k where
+  `hash(seed ^ k*1231, cycle: k) < p`; expected lifetime = 1/p frames
+- `brief` mode: polygon scaled toward `BezierMath.centreSpline` centroid over the
+  fade window using `Polygon2D.scaled(by:around:)`
+- `loop` end mode: wraps effective frames; `remove` and `respawn` return `[]`
+  once collapsed (respawn is a placeholder for Fulguration integration)
+
+**Note:** The spec originally anticipated per-sprite state for `.loop` reset.
+Resolved identically to Evolution: closed-form modular arithmetic on frame count
+eliminates the need for stored state without changing the observable behavior.
 
 ### Phase 7 — Fulguration: triggers (pending)
 

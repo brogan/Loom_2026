@@ -4688,6 +4688,10 @@ final class AppController: ObservableObject, @unchecked Sendable {
             guard let def = cfg.pointConfig.library.pointSets.first(where: { $0.name == name })
             else { return [] }
             let url = projURL.appendingPathComponent(def.folder).appendingPathComponent(def.filename)
+            if def.filename.lowercased().hasSuffix(".json") {
+                return try EditableGeometryJSONLoader.load(url: url).runtimePolygons(
+                    targetLayerID: nil, targetLayerName: nil)
+            }
             return try XMLPolygonLoader.loadPointSet(url: url)
         default:
             return []
