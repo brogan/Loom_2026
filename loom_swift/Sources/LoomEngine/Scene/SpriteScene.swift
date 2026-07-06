@@ -461,6 +461,10 @@ public struct SpriteScene: @unchecked Sendable {
             guard FileManager.default.fileExists(atPath: url.path) else {
                 throw SpriteSceneError.polygonFileNotFound(url)
             }
+            if curveDef.filename.lowercased().hasSuffix(".json") {
+                return try EditableGeometryJSONLoader.load(url: url).runtimePolygons(
+                    targetLayerID: nil, targetLayerName: nil)
+            }
             return try XMLPolygonLoader.loadOpenCurveSet(url: url)
 
         case .ovalSet:
@@ -488,6 +492,10 @@ public struct SpriteScene: @unchecked Sendable {
                 .appendingPathComponent(pointDef.filename)
             guard FileManager.default.fileExists(atPath: url.path) else {
                 throw SpriteSceneError.polygonFileNotFound(url)
+            }
+            if pointDef.filename.lowercased().hasSuffix(".json") {
+                return try EditableGeometryJSONLoader.load(url: url).runtimePolygons(
+                    targetLayerID: nil, targetLayerName: nil)
             }
             return try XMLPolygonLoader.loadPointSet(url: url)
 
