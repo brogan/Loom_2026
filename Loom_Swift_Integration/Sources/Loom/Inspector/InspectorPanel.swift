@@ -2861,8 +2861,10 @@ private struct QuickSetupSection: View {
             if !subdivSetName.isEmpty,
                !cfg.subdivisionConfig.paramsSets.contains(where: { $0.name == subdivSetName }) {
                 if folder == "curveSets" {
+                    let defaultRefinement = CurveRefinementParams(name: "\(geoName)_refine_1")
                     cfg.subdivisionConfig.paramsSets.append(
-                        SubdivisionParamsSet(name: subdivSetName, params: [])
+                        SubdivisionParamsSet(name: subdivSetName, params: [],
+                                             curveRefinement: [defaultRefinement])
                     )
                 } else {
                     let param = SubdivisionParams(name: "\(geoName)_quad_1", subdivisionType: .quad)

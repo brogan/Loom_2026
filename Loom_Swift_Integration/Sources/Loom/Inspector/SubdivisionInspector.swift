@@ -136,21 +136,44 @@ struct SubdivisionInspector: View {
         return parts.isEmpty ? "none" : parts.joined(separator: ", ")
     }
 
+    // MARK: - Source-type helpers
+
+    /// True when the currently-selected sprite uses an open-curve source.
+    /// Used to suppress subdivision UI that has no effect on open curves.
+    private var selectedSpriteIsOpenCurve: Bool {
+        guard let spriteID = controller.subdivSelectedSpriteID,
+              let cfg      = controller.projectConfig,
+              let sprite   = cfg.spriteConfig.library.allSprites.first(where: { $0.name == spriteID }),
+              let shape    = cfg.shapeConfig.library.shapeSets
+                  .first(where: { $0.name == sprite.shapeSetName })?
+                  .shapes.first(where: { $0.name == sprite.shapeName })
+        else { return false }
+        return shape.sourceType == .openCurveSet
+    }
+
     // MARK: - Params mini-list
 
     private func paramsList(set: SubdivisionParamsSet, setIdx: Int) -> some View {
         InspectorSection("Subdivision") {
-            InspectorPickList(
-                items: set.params,
-                labelFor: { $0.name.isEmpty ? "(unnamed)" : $0.name },
-                selection: Binding(
-                    get: { controller.selectedSubdivisionParamIndex },
-                    set: { newVal in
-                        controller.selectedSubdivisionParamIndex = newVal
-                        if newVal != nil { controller.selectedCurveRefinementParamIndex = nil }
-                    }
+            if selectedSpriteIsOpenCurve {
+                Text("Subdivision has no effect on open curves — use Curve Refinement and Segment Extraction.")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 8)
+            } else {
+                InspectorPickList(
+                    items: set.params,
+                    labelFor: { $0.name.isEmpty ? "(unnamed)" : $0.name },
+                    selection: Binding(
+                        get: { controller.selectedSubdivisionParamIndex },
+                        set: { newVal in
+                            controller.selectedSubdivisionParamIndex = newVal
+                            if newVal != nil { controller.selectedCurveRefinementParamIndex = nil }
+                        }
+                    )
                 )
-            )
+            }
         }
         .onChange(of: controller.selectedSubdivisionIndex) { _, _ in
             controller.selectedSubdivisionParamIndex       = nil
