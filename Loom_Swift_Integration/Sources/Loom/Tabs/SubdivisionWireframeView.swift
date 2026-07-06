@@ -32,12 +32,18 @@ struct SubdivisionWireframeView: View {
         .task(id: subdivisionInputs) {
             guard let inputs = subdivisionInputs else { cachedSubdivided = []; return }
             let polys             = inputs.basePolygons
-            let params            = inputs.params
+            var params            = inputs.params
             let curveRefinement   = inputs.curveRefinement
             let segmentExtraction = inputs.segmentExtraction
             let extensionPasses   = inputs.extensionPasses
+            let evolutionPasses   = inputs.evolutionPasses
             let result: [Polygon2D] = await Task.detached(priority: .userInitiated) {
                 var rng = SeededRNG()
+                if !evolutionPasses.isEmpty {
+                    EvolutionEngine.apply(params: &params, passes: evolutionPasses,
+                                          elapsedFrames: 0, targetFPS: 24, spriteIndex: 0,
+                                          allSets: [:])
+                }
                 var subdivided = SubdivisionEngine.process(polygons: polys, paramSet: params, rng: &rng)
                 if !curveRefinement.isEmpty {
                     subdivided = CurveRefinementEngine.process(polygons: subdivided, paramSet: curveRefinement)
@@ -64,6 +70,7 @@ struct SubdivisionWireframeView: View {
         let curveRefinement:  [CurveRefinementParams]
         let segmentExtraction: [SegmentExtractionParams]
         let extensionPasses:  [ExtensionParams]
+        let evolutionPasses:  [EvolutionParams]
     }
 
     private var subdivisionInputs: SubdivisionInputs? {
@@ -78,7 +85,8 @@ struct SubdivisionWireframeView: View {
                                   params: paramSet.params,
                                   curveRefinement: paramSet.curveRefinement,
                                   segmentExtraction: paramSet.segmentExtraction,
-                                  extensionPasses: paramSet.extensionPasses)
+                                  extensionPasses: paramSet.extensionPasses,
+                                  evolutionPasses: paramSet.evolutionPasses)
     }
 
     // MARK: - Canvas rect (letterboxed)

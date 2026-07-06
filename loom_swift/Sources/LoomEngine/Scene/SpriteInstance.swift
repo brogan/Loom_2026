@@ -41,6 +41,10 @@ public struct SpriteInstance: Sendable {
     /// Empty when the set has no extension entries.
     public var extensionParams: [ExtensionParams]
 
+    /// Ordered evolution passes applied to subdivision params before SubdivisionEngine runs.
+    /// Empty when the set has no evolution entries.
+    public var evolutionParams: [EvolutionParams]
+
     /// Polygon sets for `SpriteDef.shapeSequence` cycling (parallel to
     /// `def.shapeSequence.shapeSetNames`).  Empty when no sequence is configured.
     public var sequencePolygons: [[Polygon2D]]
@@ -85,6 +89,7 @@ public struct SpriteInstance: Sendable {
         curveRefinementParams: [CurveRefinementParams] = [],
         segmentExtractionParams: [SegmentExtractionParams] = [],
         extensionParams: [ExtensionParams] = [],
+        evolutionParams: [EvolutionParams] = [],
         sequencePolygons: [[Polygon2D]] = [],
         variantPolygons: [[Polygon2D]] = [],
         variantRendererSets: [RendererSet] = [],
@@ -102,6 +107,7 @@ public struct SpriteInstance: Sendable {
         self.curveRefinementParams   = curveRefinementParams
         self.segmentExtractionParams = segmentExtractionParams
         self.extensionParams         = extensionParams
+        self.evolutionParams         = evolutionParams
         self.sequencePolygons        = sequencePolygons
         self.variantPolygons        = variantPolygons
         self.variantRendererSets    = variantRendererSets

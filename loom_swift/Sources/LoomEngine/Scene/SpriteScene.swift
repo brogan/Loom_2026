@@ -271,17 +271,20 @@ public struct SpriteScene: @unchecked Sendable {
         let curveRefinementParams:   [CurveRefinementParams]
         let segmentExtractionParams: [SegmentExtractionParams]
         let extensionParams:         [ExtensionParams]
+        let evolutionParams:         [EvolutionParams]
         if paramsName.isEmpty || paramsName.caseInsensitiveCompare("none") == .orderedSame {
             subdivParams             = []
             curveRefinementParams    = []
             segmentExtractionParams  = []
             extensionParams          = []
+            evolutionParams          = []
         } else {
             let resolvedSet          = config.subdivisionConfig.paramsSet(named: paramsName)
             subdivParams             = resolvedSet?.params ?? []
             curveRefinementParams    = resolvedSet?.curveRefinement ?? []
             segmentExtractionParams  = resolvedSet?.segmentExtraction ?? []
             extensionParams          = resolvedSet?.extensionPasses ?? []
+            evolutionParams          = resolvedSet?.evolutionPasses ?? []
         }
 
         // ── 6. Load shape-sequence polygon sets ─────────────────────────────
@@ -373,6 +376,7 @@ public struct SpriteScene: @unchecked Sendable {
             curveRefinementParams:   curveRefinementParams,
             segmentExtractionParams: segmentExtractionParams,
             extensionParams:         extensionParams,
+            evolutionParams:         evolutionParams,
             sequencePolygons:        sequencePolygons,
             variantPolygons:        variantPolygons,
             variantRendererSets:    variantRendererSets,
@@ -1458,6 +1462,18 @@ public struct SpriteScene: @unchecked Sendable {
            let name = DriverEvaluator.evaluateName(drv, globalElapsed: elapsedFrames, spriteIndex: spriteIndex),
            let overrideParams = allSubdivisionSets[name] {
             activeInstance.subdivisionParams = overrideParams
+        }
+
+        // 2a. Evolution (modifies subdivision params before subdivision runs)
+        if !activeInstance.evolutionParams.isEmpty {
+            EvolutionEngine.apply(
+                params:        &activeInstance.subdivisionParams,
+                passes:        activeInstance.evolutionParams,
+                elapsedFrames: elapsedFrames,
+                targetFPS:     targetFPS,
+                spriteIndex:   spriteIndex,
+                allSets:       allSubdivisionSets
+            )
         }
 
         // 2. Subdivision

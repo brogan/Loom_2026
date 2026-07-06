@@ -9,23 +9,26 @@ public struct SubdivisionParamsSet: Equatable, Codable, Sendable {
     public var curveRefinement:    [CurveRefinementParams]
     public var segmentExtraction:  [SegmentExtractionParams]
     public var extensionPasses:    [ExtensionParams]
+    public var evolutionPasses:    [EvolutionParams]
 
     public init(
         name:               String                     = "",
         params:             [SubdivisionParams]        = [],
         curveRefinement:    [CurveRefinementParams]    = [],
         segmentExtraction:  [SegmentExtractionParams]  = [],
-        extensionPasses:    [ExtensionParams]          = []
+        extensionPasses:    [ExtensionParams]          = [],
+        evolutionPasses:    [EvolutionParams]          = []
     ) {
         self.name               = name
         self.params             = params
         self.curveRefinement    = curveRefinement
         self.segmentExtraction  = segmentExtraction
         self.extensionPasses    = extensionPasses
+        self.evolutionPasses    = evolutionPasses
     }
 
     private enum CodingKeys: String, CodingKey {
-        case name, params, curveRefinement, segmentExtraction, extensionPasses
+        case name, params, curveRefinement, segmentExtraction, extensionPasses, evolutionPasses
     }
 
     public init(from decoder: Decoder) throws {
@@ -35,7 +38,8 @@ public struct SubdivisionParamsSet: Equatable, Codable, Sendable {
             params:             try c.decode([SubdivisionParams].self,             forKey: .params),
             curveRefinement:    try c.decodeIfPresent([CurveRefinementParams].self,   forKey: .curveRefinement)   ?? [],
             segmentExtraction:  try c.decodeIfPresent([SegmentExtractionParams].self, forKey: .segmentExtraction) ?? [],
-            extensionPasses:    try c.decodeIfPresent([ExtensionParams].self,         forKey: .extensionPasses)   ?? []
+            extensionPasses:    try c.decodeIfPresent([ExtensionParams].self,         forKey: .extensionPasses)   ?? [],
+            evolutionPasses:    try c.decodeIfPresent([EvolutionParams].self,         forKey: .evolutionPasses)   ?? []
         )
     }
 }

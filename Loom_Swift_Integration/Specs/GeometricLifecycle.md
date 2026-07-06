@@ -1,6 +1,6 @@
 # Geometric Lifecycle — Spec
 
-**Status**: Phases 0–4 complete; Phases 5–7 (Evolution / Dissolution / Fulguration) pending  
+**Status**: Phases 0–5 complete; Phases 6–7 (Dissolution / Fulguration) pending  
 **Affects**: LoomEngine, Loom (studio), subdivision tab architecture
 
 ---
@@ -564,19 +564,36 @@ renamed to match. Help doc updated: nav, TOC, and section heading all say "Trans
 Tab"; Curve Refinement, Segment Extraction, Branch, and Extrude all have full
 step-by-step sections with parameter tables and safe-value guidance.
 
-### Phase 5 — Evolution: momentum drift (pending)
+### Phase 5 — Evolution: momentum drift + convergence pressure (complete)
 
-`EvolutionState` per-sprite state object maintained across frames by the engine.
-Momentum drift for centre position and line-ratio parameters. Convergence pressure
-as a second Evolution operation in the same phase.
+`EvolutionParams` on `SubdivisionParamsSet.evolutionPasses: [EvolutionParams]`. Engine:
+`EvolutionEngine`. Inspector: `EvolutionInspector` wired into `SubdivisionInspector`.
 
-**Prerequisite:** The render pipeline must gain a stateful per-sprite context object
-that `SpriteScene` can update and thread through to `EvolutionEngine`. The current
-`SpriteInstance` / `SpriteScene` design is stateless (same inputs → same frame);
-Evolution breaks this assumption. A `SpriteEvolutionState: [String: EvolutionState]`
-dictionary keyed by sprite name is the likely attachment point on the engine or
-`AppController`. Replay determinism requires that accumulated drift be reconstructible
-from `(frameIndex, seed)` without requiring prior frames to have been rendered.
+**Architecture decision — no per-sprite state:** The spec anticipated an `EvolutionState`
+accumulator. This was resolved with a closed-form drift formula instead:
+```
+drift[N] = Σ noise(seed, N-k) × momentum^k   for k = 0 .. K
+```
+where K = log(epsilon) / log(momentum), constant-time and fully seekable. Any frame can
+be evaluated without prior frames having been rendered. No stateful accumulator needed.
+
+**Momentum drift**: Applies closed-form noise-driven displacement to a `DriftTarget`
+field in each SubdivisionParam before SubdivisionEngine runs. Targets: line ratio X/Y/XY,
+CP normal X/Y, inset scale, inset rotation. Parameters: `driftMomentum` (0–1),
+`driftNoiseStrength`, `driftNoiseFrequency`, `driftSeed`.
+
+**Convergence pressure**: Lerps each SubdivisionParam's lineRatios, cpNormalOffsets, and
+insetTransform toward a named target set. Pressure is a `DoubleDriver`. Three modes:
+`.hold` (driver value applied directly), `.oscillate` (sin wave over duration frames),
+`.loop` (0→1→0→1 cycle). Target set looked up via `allSubdivisionSets` (existing
+`[String: [SubdivisionParams]]` cache — no new data structure).
+
+**Pipeline position:** EvolutionEngine runs after the subdivision-set driver override
+and before SubdivisionEngine — it modifies `activeInstance.subdivisionParams` in-place.
+
+**Bake / SVG export / wireframe preview:** All three paths pass evolution passes through.
+Convergence target lookup uses `[:]` at static-export time (frame 0, no convergence
+targets in non-interactive contexts); drift still applies at frame 0.
 
 ### Phase 6 — Dissolution: entropy and collapse (pending)
 
@@ -611,12 +628,9 @@ a bounding-box pre-check reduces practical cost to O(1) for non-overlapping sets
    The data-model rename (Phase D: `SubdivisionParamsSet` → `TransformationSet`) is still
    deferred pending a migration strategy.
 
-2. **Evolution state and determinism.** The Evolution engine maintains per-sprite
-   state that accumulates across frames. For replay and export rendering to be
-   deterministic, this state must be fully reconstructible from (frame index, seed).
-   The momentum drift can be computed as a function of frame index if the noise field
-   is deterministic — the accumulated velocity is the integral of that function up to
-   frame N. This needs to be verified to hold before implementing.
+2. **Evolution state and determinism (resolved).** No per-sprite state is accumulated.
+   Drift at frame N is a closed-form weighted sum over a bounded history window
+   (constant time, fully seekable). Verified via Phase 5 implementation.
 
 3. **Fulguration and the render pipeline.** The current render loop evaluates all
    sprite polygon sets unconditionally. A Fulguration condition check requires a

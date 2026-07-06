@@ -54,10 +54,9 @@ struct SubdivisionInspector: View {
             }
 
             // ── 3. EVOLUTION ──────────────────────────────────────────────
-            InspectorSection("Evolution", isCollapsed: $evolutionCollapsed) {
-                lifecyclePlaceholder(
-                    "Momentum drift and convergence pressure.",
-                    detail: "Stateful per-sprite parameter accumulation. Phase 5.")
+            InspectorSection("Evolution", isCollapsed: $evolutionCollapsed,
+                             isHighlighted: true) {
+                evolutionPassesContent(set: set, setIdx: setIdx)
             }
 
             // ── 4. FULGURATION ────────────────────────────────────────────
@@ -75,7 +74,10 @@ struct SubdivisionInspector: View {
             }
 
             // ── Param editor (shown below the stage list) ─────────────────
-            if let exIdx = controller.selectedExtensionParamIndex {
+            if let evIdx = controller.selectedEvolutionParamIndex {
+                EvolutionInspector(setIdx: setIdx, evIdx: evIdx)
+                    .environmentObject(controller)
+            } else if let exIdx = controller.selectedExtensionParamIndex {
                 ExtensionInspector(setIdx: setIdx, exIdx: exIdx)
                     .environmentObject(controller)
             } else if let seIdx = controller.selectedSegmentExtractionParamIndex {
@@ -130,6 +132,7 @@ struct SubdivisionInspector: View {
         if set.curveRefinement.count > 0 { parts.append("\(set.curveRefinement.count) refine") }
         if set.segmentExtraction.count > 0 { parts.append("\(set.segmentExtraction.count) extract") }
         if set.extensionPasses.count > 0 { parts.append("\(set.extensionPasses.count) ext") }
+        if set.evolutionPasses.count > 0 { parts.append("\(set.evolutionPasses.count) evol") }
         return parts.isEmpty ? "none" : parts.joined(separator: ", ")
     }
 
@@ -154,6 +157,7 @@ struct SubdivisionInspector: View {
             controller.selectedCurveRefinementParamIndex   = nil
             controller.selectedSegmentExtractionParamIndex = nil
             controller.selectedExtensionParamIndex         = nil
+            controller.selectedEvolutionParamIndex         = nil
         }
     }
 
@@ -459,6 +463,109 @@ struct SubdivisionInspector: View {
             config.subdivisionConfig.paramsSets[setIdx].extensionPasses.insert(copy, at: exIdx + 1)
         }
         controller.selectedExtensionParamIndex = exIdx + 1
+    }
+
+    // MARK: - Evolution passes mini-list
+
+    @ViewBuilder
+    private func evolutionPassesContent(set: SubdivisionParamsSet, setIdx: Int) -> some View {
+        if set.evolutionPasses.isEmpty {
+            HStack {
+                Text("No evolution passes")
+                    .font(.caption2)
+                    .foregroundStyle(.tertiary)
+                Spacer()
+                addEvolutionButton(setIdx: setIdx)
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 6)
+        } else {
+            InspectorPickList(
+                items: set.evolutionPasses,
+                labelFor: { $0.name.isEmpty ? "(unnamed)" : $0.name },
+                selection: Binding(
+                    get: { controller.selectedEvolutionParamIndex },
+                    set: { newVal in
+                        controller.selectedEvolutionParamIndex = newVal
+                        if newVal != nil {
+                            controller.selectedSubdivisionParamIndex       = nil
+                            controller.selectedCurveRefinementParamIndex   = nil
+                            controller.selectedSegmentExtractionParamIndex = nil
+                            controller.selectedExtensionParamIndex         = nil
+                        }
+                    }
+                )
+            )
+            HStack(spacing: 4) {
+                addEvolutionButton(setIdx: setIdx)
+                if let evIdx = controller.selectedEvolutionParamIndex {
+                    Button(action: { deleteEvolutionParam(setIdx: setIdx, evIdx: evIdx) }) {
+                        Image(systemName: "minus.circle").font(.system(size: 13))
+                    }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(.secondary)
+                    .help("Delete selected evolution pass")
+                    Button(action: { duplicateEvolutionParam(setIdx: setIdx, evIdx: evIdx) }) {
+                        Image(systemName: "plus.square.on.square").font(.system(size: 12))
+                    }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(.secondary)
+                    .help("Duplicate selected evolution pass")
+                }
+                Spacer()
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 4)
+        }
+    }
+
+    private func addEvolutionButton(setIdx: Int) -> some View {
+        Button(action: { addEvolutionParam(setIdx: setIdx) }) {
+            Image(systemName: "plus.circle").font(.system(size: 13))
+        }
+        .buttonStyle(.plain)
+        .foregroundStyle(.secondary)
+        .help("Add evolution pass")
+    }
+
+    private func addEvolutionParam(setIdx: Int) {
+        guard let cfg = controller.projectConfig,
+              setIdx < cfg.subdivisionConfig.paramsSets.count else { return }
+        let newParam = EvolutionParams()
+        controller.updateProjectConfig { config in
+            config.subdivisionConfig.paramsSets[setIdx].evolutionPasses.append(newParam)
+        }
+        let newIdx = (controller.projectConfig?.subdivisionConfig.paramsSets[setIdx].evolutionPasses.count ?? 1) - 1
+        controller.selectedEvolutionParamIndex         = newIdx
+        controller.selectedSubdivisionParamIndex       = nil
+        controller.selectedCurveRefinementParamIndex   = nil
+        controller.selectedSegmentExtractionParamIndex = nil
+        controller.selectedExtensionParamIndex         = nil
+    }
+
+    private func deleteEvolutionParam(setIdx: Int, evIdx: Int) {
+        guard let cfg = controller.projectConfig,
+              setIdx < cfg.subdivisionConfig.paramsSets.count,
+              evIdx  < cfg.subdivisionConfig.paramsSets[setIdx].evolutionPasses.count
+        else { return }
+        _ = cfg
+        controller.updateProjectConfig { config in
+            config.subdivisionConfig.paramsSets[setIdx].evolutionPasses.remove(at: evIdx)
+        }
+        let remaining = controller.projectConfig?.subdivisionConfig.paramsSets[safe: setIdx]?.evolutionPasses.count ?? 0
+        controller.selectedEvolutionParamIndex = remaining > 0 ? min(evIdx, remaining - 1) : nil
+    }
+
+    private func duplicateEvolutionParam(setIdx: Int, evIdx: Int) {
+        guard let cfg = controller.projectConfig,
+              setIdx < cfg.subdivisionConfig.paramsSets.count,
+              evIdx  < cfg.subdivisionConfig.paramsSets[setIdx].evolutionPasses.count
+        else { return }
+        let copy = cfg.subdivisionConfig.paramsSets[setIdx].evolutionPasses[evIdx]
+        controller.updateProjectConfig { config in
+            config.subdivisionConfig.paramsSets[setIdx].evolutionPasses.insert(copy, at: evIdx + 1)
+        }
+        controller.selectedEvolutionParamIndex = evIdx + 1
     }
 
     // MARK: - Param editor

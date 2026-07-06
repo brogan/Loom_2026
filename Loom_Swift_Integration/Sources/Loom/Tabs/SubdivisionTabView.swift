@@ -829,10 +829,15 @@ struct SubdivisionTabView: View {
             return
         }
 
-        // Run subdivision + curve refinement + segment extraction + extension.
-        let paramSet = cfg.subdivisionConfig.paramsSets[setIdx]
-        var rng      = SystemRandomNumberGenerator()
-        var result   = SubdivisionEngine.process(polygons: polys, paramSet: paramSet.params, rng: &rng)
+        // Run evolution (modifies params) → subdivision → refinement → extraction → extension.
+        let paramSet     = cfg.subdivisionConfig.paramsSets[setIdx]
+        var evolvedParams = paramSet.params
+        if !paramSet.evolutionPasses.isEmpty {
+            EvolutionEngine.apply(params: &evolvedParams, passes: paramSet.evolutionPasses,
+                                   elapsedFrames: 0, targetFPS: 24, spriteIndex: 0, allSets: [:])
+        }
+        var rng    = SystemRandomNumberGenerator()
+        var result = SubdivisionEngine.process(polygons: polys, paramSet: evolvedParams, rng: &rng)
         if !paramSet.curveRefinement.isEmpty {
             result = CurveRefinementEngine.process(polygons: result, paramSet: paramSet.curveRefinement)
         }
@@ -924,21 +929,26 @@ struct SubdivisionTabView: View {
             return
         }
 
-        let paramSet = cfg.subdivisionConfig.paramsSets[setIdx]
-        var rng      = SystemRandomNumberGenerator()
-        var result   = SubdivisionEngine.process(polygons: polys, paramSet: paramSet.params, rng: &rng)
-        if !paramSet.curveRefinement.isEmpty {
-            result = CurveRefinementEngine.process(polygons: result, paramSet: paramSet.curveRefinement)
+        let paramSet2     = cfg.subdivisionConfig.paramsSets[setIdx]
+        var evolvedParams2 = paramSet2.params
+        if !paramSet2.evolutionPasses.isEmpty {
+            EvolutionEngine.apply(params: &evolvedParams2, passes: paramSet2.evolutionPasses,
+                                   elapsedFrames: 0, targetFPS: 24, spriteIndex: 0, allSets: [:])
         }
-        if !paramSet.segmentExtraction.isEmpty {
-            result = SegmentExtractionEngine.process(polygons: result, paramSet: paramSet.segmentExtraction)
+        var rng    = SystemRandomNumberGenerator()
+        var result = SubdivisionEngine.process(polygons: polys, paramSet: evolvedParams2, rng: &rng)
+        if !paramSet2.curveRefinement.isEmpty {
+            result = CurveRefinementEngine.process(polygons: result, paramSet: paramSet2.curveRefinement)
         }
-        if !paramSet.extensionPasses.isEmpty {
-            result = ExtensionEngine.process(polygons: result, paramSet: paramSet.extensionPasses)
+        if !paramSet2.segmentExtraction.isEmpty {
+            result = SegmentExtractionEngine.process(polygons: result, paramSet: paramSet2.segmentExtraction)
+        }
+        if !paramSet2.extensionPasses.isEmpty {
+            result = ExtensionEngine.process(polygons: result, paramSet: paramSet2.extensionPasses)
         }
 
         let safePolyName = shape.polygonSetName.replacingOccurrences(of: " ", with: "_")
-        let safeSetName  = paramSet.name.replacingOccurrences(of: " ", with: "_")
+        let safeSetName  = paramSet2.name.replacingOccurrences(of: " ", with: "_")
         let stem         = "\(safePolyName)_\(safeSetName)"
         let svgsDir      = projectURL.appendingPathComponent("svgs")
 
