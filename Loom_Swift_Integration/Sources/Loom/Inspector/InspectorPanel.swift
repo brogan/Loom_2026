@@ -3152,11 +3152,12 @@ private struct QuickSetupSection: View {
     }
 
     private var subdivisionSetOptions: [String] {
-        guard sourceSupportsSubdivision else { return [Self.noSubdivisionName] }
-        return uniqueOptions(
-            [Self.noSubdivisionName, recommendedSubdivSetName] +
-            (controller.projectConfig?.subdivisionConfig.paramsSets.map(\.name) ?? [])
-        )
+        let existingSets = controller.projectConfig?.subdivisionConfig.paramsSets.map(\.name) ?? []
+        if sourceSupportsSubdivision {
+            return uniqueOptions([Self.noSubdivisionName, recommendedSubdivSetName] + existingSets)
+        } else {
+            return uniqueOptions([Self.noSubdivisionName] + existingSets)
+        }
     }
 
     private var spriteSetOptions: [String] {

@@ -3405,19 +3405,50 @@ final class AppController: ObservableObject, @unchecked Sendable {
         else { return false }
 
         let parts = key.split(separator: "/", maxSplits: 1)
-        guard parts.count == 2, String(parts[0]) == "polygonSets" else { return false }
+        guard parts.count == 2 else { return false }
+        let folder = String(parts[0])
         let oldName = String(parts[1])
         let requested = requestedName.trimmingCharacters(in: .whitespacesAndNewlines)
         let fallback = document.name.trimmingCharacters(in: .whitespacesAndNewlines)
         let baseName = requested.isEmpty ? (fallback.isEmpty ? oldName : fallback) : requested
+
+        document.name = baseName
+        applyLayerPanelState(to: &document)
+
+        if folder == "curveSets" {
+            let finalName = uniqueCurveSetName(baseName, excluding: oldName)
+            let filename = "\(sanitizedGeometryFilename(finalName)).json"
+            let directory = projectURL.appendingPathComponent("curveSets", isDirectory: true)
+            let url = directory.appendingPathComponent(filename)
+            document.name = finalName
+            do {
+                try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+                try EditableGeometryJSONLoader.save(document, to: url)
+                updateProjectConfig { cfg in
+                    if let index = cfg.curveConfig.library.curveSets.firstIndex(where: { $0.name == oldName }) {
+                        cfg.curveConfig.library.curveSets[index].name = finalName
+                        cfg.curveConfig.library.curveSets[index].folder = "curveSets"
+                        cfg.curveConfig.library.curveSets[index].filename = filename
+                    }
+                }
+                selectedGeometryKey = "curveSets/\(finalName)"
+                setGeometryEditorDocument(document, cleanSource: .saved)
+                geometryEditorLoadError = nil
+                geometryEditorReloadNonce += 1
+                return true
+            } catch {
+                geometryEditorLoadError = error.localizedDescription
+                return false
+            }
+        }
+
+        guard folder == "polygonSets" else { return false }
         let finalName = uniquePolygonSetName(baseName, excluding: oldName)
         let filename = "\(sanitizedGeometryFilename(finalName)).json"
         let directory = projectURL.appendingPathComponent("polygonSets", isDirectory: true)
         let url = directory.appendingPathComponent(filename)
 
         document.name = finalName
-        applyLayerPanelState(to: &document)
-
         do {
             try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
             try EditableGeometryJSONLoader.save(document, to: url)
@@ -4589,6 +4620,10 @@ final class AppController: ObservableObject, @unchecked Sendable {
             guard let def = cfg.curveConfig.library.curveSets.first(where: { $0.name == name })
             else { return [] }
             let url = projURL.appendingPathComponent(def.folder).appendingPathComponent(def.filename)
+            if def.filename.lowercased().hasSuffix(".json") {
+                return try EditableGeometryJSONLoader.load(url: url).runtimePolygons(
+                    targetLayerID: nil, targetLayerName: nil)
+            }
             return try XMLPolygonLoader.loadOpenCurveSet(url: url)
         case "pointSets":
             guard let def = cfg.pointConfig.library.pointSets.first(where: { $0.name == name })
@@ -6712,6 +6747,22 @@ final class AppController: ObservableObject, @unchecked Sendable {
         let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
         let base = trimmed.isEmpty ? "New_Geometry_Set" : trimmed
         let existing = Set(projectConfig?.polygonConfig.library.polygonSets
+            .map(\.name)
+            .filter { $0 != oldName } ?? [])
+        guard existing.contains(base) else { return base }
+        var suffix = 2
+        var candidate = "\(base)_\(suffix)"
+        while existing.contains(candidate) {
+            suffix += 1
+            candidate = "\(base)_\(suffix)"
+        }
+        return candidate
+    }
+
+    private func uniqueCurveSetName(_ name: String, excluding oldName: String) -> String {
+        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        let base = trimmed.isEmpty ? "New_Curve_Set" : trimmed
+        let existing = Set(projectConfig?.curveConfig.library.curveSets
             .map(\.name)
             .filter { $0 != oldName } ?? [])
         guard existing.contains(base) else { return base }

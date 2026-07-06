@@ -11,7 +11,7 @@ enum AppTab: String, CaseIterable, Hashable {
     case audio       = "Audio"
     case rendering   = "Rendering"
 
-    var label: String { rawValue }
+    var label: String { self == .subdivision ? "Transform" : rawValue }
 
     var systemImage: String {
         switch self {

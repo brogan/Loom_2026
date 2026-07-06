@@ -24,15 +24,17 @@ public enum ExtensionEngine {
                                                       spriteIndex: spriteIndex)
                 var additions: [Polygon2D] = []
                 for polygon in polygons where polygon.type == .openSpline {
+                    var budget = maxBranchesPerPolygon
                     let branches = branchPolygon(
                         polygon,
                         root:             polygon,
                         params:           params,
                         resolvedAngleDeg: angle,
                         cumulativeScale:  1.0,
-                        depth:            max(1, min(8, params.branchDepth))
+                        depth:            max(1, min(8, params.branchDepth)),
+                        budget:           &budget
                     )
-                    additions.append(contentsOf: branches.prefix(maxBranchesPerPolygon))
+                    additions.append(contentsOf: branches)
                 }
                 result.append(contentsOf: additions)
 
@@ -59,10 +61,11 @@ public enum ExtensionEngine {
         params:           ExtensionParams,
         resolvedAngleDeg: Double,
         cumulativeScale:  Double,
-        depth:            Int
+        depth:            Int,
+        budget:           inout Int
     ) -> [Polygon2D] {
         let segCount = polygon.points.count / 4
-        guard segCount > 0, depth > 0 else { return [] }
+        guard segCount > 0, depth > 0, budget > 0 else { return [] }
         guard root.points.count >= 4 else { return [] }
 
         let rootStartAngle = atan2(root.points[1].y - root.points[0].y,
@@ -85,8 +88,10 @@ public enum ExtensionEngine {
         let count     = max(1, params.branchCount)
         var branches: [Polygon2D] = []
 
-        for ep in endpoints {
+        outer: for ep in endpoints {
             for i in 0..<count {
+                guard budget > 0 else { break outer }
+
                 let seedBase = params.branchSeed ^ ep.seed * 997 ^ i * 1009 ^ depth * 1013
 
                 if params.branchProbability < 1.0 - 1e-9 {
@@ -111,13 +116,15 @@ public enum ExtensionEngine {
 
                 let branch = transformBranch(root, to: ep.pos, rotation: rotation, scale: nextScale)
                 branches.append(branch)
+                budget -= 1
 
                 if depth > 1 {
                     let subs = branchPolygon(
                         branch, root: root, params: params,
                         resolvedAngleDeg: resolvedAngleDeg,
                         cumulativeScale:  nextScale,
-                        depth:            depth - 1
+                        depth:            depth - 1,
+                        budget:           &budget
                     )
                     branches.append(contentsOf: subs)
                 }

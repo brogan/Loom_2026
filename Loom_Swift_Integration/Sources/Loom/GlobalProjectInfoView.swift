@@ -17,7 +17,7 @@ struct GlobalProjectInfoView: View {
                     infoSection("Geometry", isExpanded: $geometryExpanded) {
                         geometryRows(cfg)
                     }
-                    infoSection("Subdivision", isExpanded: $subdivisionExpanded) {
+                    infoSection("Transform", isExpanded: $subdivisionExpanded) {
                         subdivisionRows(cfg)
                     }
                     infoSection("Sprites", isExpanded: $spritesExpanded) {

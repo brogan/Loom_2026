@@ -291,7 +291,7 @@
   <a class="nav-link nav-sub" href="#layers-blur">Blur &amp; DOF</a>
   <a class="nav-link nav-sub" href="#layers-blend">Blend Modes</a>
   <a class="nav-link nav-sub" href="#layers-redraw">Redraw Modes</a>
-  <a class="nav-link" href="#subdivision">Subdivision</a>
+  <a class="nav-link" href="#subdivision">Transform Tab</a>
   <a class="nav-link nav-sub" href="#subdivision-algorithms">Algorithms</a>
   <a class="nav-link nav-sub" href="#subdivision-edge-curvature">Edge Curvature</a>
   <a class="nav-link nav-sub" href="#subdivision-ptw">PTW</a>
@@ -299,6 +299,10 @@
   <a class="nav-link nav-sub" href="#subdivision-pressure">Pressure</a>
   <a class="nav-link nav-sub" href="#subdivision-bake">Baking</a>
   <a class="nav-link nav-sub" href="#subdivision-custom">Custom Compositor</a>
+  <a class="nav-link nav-sub" href="#curve-refinement">Curve Refinement</a>
+  <a class="nav-link nav-sub" href="#segment-extraction">Segment Extraction</a>
+  <a class="nav-link nav-sub" href="#extension-branch">Branch (open curves)</a>
+  <a class="nav-link nav-sub" href="#extension-extrude">Extrude (closed)</a>
   <a class="nav-link" href="#rendering">Rendering</a>
   <a class="nav-link nav-sub" href="#rendering-modes">Render Modes</a>
   <a class="nav-link nav-sub" href="#rendering-brush">Brushes &amp; Stamps</a>
@@ -406,7 +410,7 @@
   <div class="toc-entry sub"><a href="#layers-blur">Blur &amp; Depth of Field</a><span class="toc-fill"></span></div>
   <div class="toc-entry sub"><a href="#layers-blend">Blend Modes</a><span class="toc-fill"></span></div>
   <div class="toc-entry sub"><a href="#layers-redraw">Redraw Modes</a><span class="toc-fill"></span></div>
-  <div class="toc-entry"><a href="#subdivision">Subdivision</a><span class="toc-fill"></span></div>
+  <div class="toc-entry"><a href="#subdivision">Transform Tab</a><span class="toc-fill"></span></div>
   <div class="toc-entry sub"><a href="#subdivision-algorithms">Algorithms</a><span class="toc-fill"></span></div>
   <div class="toc-entry sub"><a href="#subdivision-edge-curvature">Edge Curvature</a><span class="toc-fill"></span></div>
   <div class="toc-entry sub"><a href="#subdivision-ptw">PTW</a><span class="toc-fill"></span></div>
@@ -414,6 +418,10 @@
   <div class="toc-entry sub"><a href="#subdivision-pressure">Pressure</a><span class="toc-fill"></span></div>
   <div class="toc-entry sub"><a href="#subdivision-bake">Baking</a><span class="toc-fill"></span></div>
   <div class="toc-entry sub"><a href="#subdivision-custom">Custom Compositor</a><span class="toc-fill"></span></div>
+  <div class="toc-entry sub"><a href="#curve-refinement">Curve Refinement</a><span class="toc-fill"></span></div>
+  <div class="toc-entry sub"><a href="#segment-extraction">Segment Extraction</a><span class="toc-fill"></span></div>
+  <div class="toc-entry sub"><a href="#extension-branch">Branch (open curves)</a><span class="toc-fill"></span></div>
+  <div class="toc-entry sub"><a href="#extension-extrude">Extrude (closed)</a><span class="toc-fill"></span></div>
   <div class="toc-entry"><a href="#rendering">Rendering</a><span class="toc-fill"></span></div>
   <div class="toc-entry sub"><a href="#rendering-modes">Render Modes</a><span class="toc-fill"></span></div>
   <div class="toc-entry sub"><a href="#rendering-brush">Brushes &amp; Stamps</a><span class="toc-fill"></span></div>
@@ -2174,8 +2182,8 @@
 
 <!-- ────────────────────────────────────────────────── -->
 <section id="subdivision">
-  <h2>Subdivision Tab</h2>
-  <p>The Subdivision tab is where Loom's generative power lives. It manages <em>subdivision parameter sets</em> — ordered sequences of algorithms that progressively fracture geometry into more complex polygonal structures.</p>
+  <h2>Transform Tab</h2>
+  <p>The Transform tab is where Loom's generative power lives. It manages <em>transformation parameter sets</em> — ordered sequences of algorithms that progressively fracture and grow geometry into more complex polygonal structures. Each set contains up to five independent pipeline stages run in order: <strong>Involution</strong> (subdivision algorithms), <strong>Curve Refinement</strong> (curve-space post-processing), <strong>Segment Extraction</strong> (selective segment harvesting), <strong>Extension</strong> (branching from open curves or extruding polygon edges), and additional stages as the Geometric Lifecycle pipeline develops.</p>
 
   <div class="diagram">
     <svg width="480" height="100" viewBox="0 0 480 100" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -2583,6 +2591,115 @@
   <p>Click <strong>Save</strong> in the compositor toolbar. The algorithm is written back to the subdivision generation's params and immediately used by the live render in the main canvas. Custom algorithms are stored inline in <code>project_config.json</code> alongside all other subdivision parameters and round-trip cleanly through save/load.</p>
 
   <div class="tip"><strong>Tip:</strong> Custom algorithms respect all the same subdivision parameters as built-in types — CP ratios, CP normals, visibility rules, PTW, and PTP all apply. Use CP normals in the main inspector to add curvature to the connectors between your anchor points.</div>
+
+  <!-- ═══════════════════════════════════════════════════════════════════ -->
+  <h3 id="curve-refinement">Curve Refinement</h3>
+  <p>Curve Refinement passes run <em>after</em> the Involution subdivision stage and operate in curve space — they adjust the curvature of Bézier control points without changing the polygon topology. This is the right place for global-curvature shaping, smoothing, and curvature-inversion effects that would be awkward to express as subdivision rules.</p>
+
+  <p>Each refinement pass has a <strong>Name</strong>, <strong>Enabled</strong> toggle, and an <strong>Algorithm</strong> picker. Multiple passes chain in list order, each receiving the output of the previous.</p>
+
+  <h4>Step-by-step: adding curve refinement to a transform set</h4>
+  <ol class="steps">
+    <li>Open the <strong>Transform</strong> tab and select (or create) a transform set in the left panel.</li>
+    <li>In the inspector, scroll to the <strong>Curve Refinement</strong> section and click <strong>+</strong> to add a pass.</li>
+    <li>Choose an algorithm from the <strong>Algorithm</strong> picker. Start with <strong>Smooth</strong> for general curvature softening.</li>
+    <li>Adjust the pass parameters. Observe the preview canvas updating in real time.</li>
+    <li>Add further passes as needed. Drag to reorder. Toggle <strong>Enabled</strong> off to temporarily bypass a pass without deleting it.</li>
+  </ol>
+
+  <div class="tip"><strong>Tip:</strong> Curve refinement is non-destructive — it changes the rendered appearance without altering the stored geometry. Toggle a pass off to compare before/after instantly.</div>
+
+  <!-- ═══════════════════════════════════════════════════════════════════ -->
+  <h3 id="segment-extraction">Segment Extraction</h3>
+  <p>Segment Extraction passes run after Curve Refinement. Instead of generating new geometry, they <em>filter</em> the existing polygon set — selecting a subset of segments by index, length, or angle criteria and emitting only those as standalone open-curve or closed-polygon outputs. This is the right tool when subdivision produces a large symmetric mesh and you want to use only its diagonals, every nth edge, or the longest edges to build a sparser structure.</p>
+
+  <h4>Step-by-step: extracting every other segment from a subdivided polygon</h4>
+  <ol class="steps">
+    <li>Create or select a transform set that already has subdivision passes producing the mesh you want to sample.</li>
+    <li>In the <strong>Segment Extraction</strong> section, click <strong>+</strong> to add a pass.</li>
+    <li>Set <strong>Mode</strong> to <strong>Every Nth</strong> and set <strong>N</strong> to 2. This emits segments at indices 0, 2, 4, …</li>
+    <li>Set <strong>Output type</strong> to <strong>Open curve</strong> if you want stroke-rendered lines, or <strong>Polygon</strong> if you want filled shapes.</li>
+    <li>Adjust <strong>Offset</strong> (0–N−1) to shift which segment in each N-group is extracted without changing N.</li>
+    <li>Check the preview canvas to confirm the expected pattern.</li>
+  </ol>
+
+  <div class="note"><strong>Input geometry:</strong> Segment Extraction operates on the polygon set produced by the stages above it (Involution + Curve Refinement). It does not consume the original base geometry directly — the segment indices it refers to belong to the subdivided output polygons.</div>
+
+  <!-- ═══════════════════════════════════════════════════════════════════ -->
+  <h3 id="extension-branch">Extension — Branch (open curves)</h3>
+  <p>The Branch operation grows a recursive tree from the two endpoints of any <strong>open spline</strong> polygon in the scene. At each endpoint the algorithm places a scaled, rotated copy of the original open curve; each copy is itself treated as a new node and branched again to the specified depth. The result is a parametric fractal tree structure derived entirely from the input curve's shape.</p>
+
+  <div class="note"><strong>Input requirement:</strong> Branch only acts on polygons with type <code>openSpline</code>. Closed splines and other polygon types are passed through unchanged. Make sure your geometry source is an open curve set, not a polygon set.</div>
+
+  <h4>Branch geometry overview</h4>
+  <p>Given an open curve with a start endpoint and an end endpoint, at depth 1 the engine places one copy of the original curve at each endpoint, rotated so that the copy's start aligns with the endpoint tangent and offset by <strong>Branch angle</strong> degrees. At depth 2 each of those copies is itself treated as a root and branched again. The scale of each successive level is multiplied by <strong>Scale ratio</strong>, so the tree naturally tapers toward the tips.</p>
+
+  <h4>Step-by-step: creating a branching tree from a single open curve</h4>
+  <ol class="steps">
+    <li>In the <strong>Geometry</strong> tab, draw an open curve using the <strong>Freehand</strong> or <strong>Point-by-point → Finalise open curve</strong> workflow. A single straight line with one Bézier segment works well as a first test.</li>
+    <li>Save the open curve to a curve set (click <strong>Save</strong> in the geometry editor toolbar). It will be stored in <code>curveSets/</code>.</li>
+    <li>In the <strong>Sprites</strong> inspector, run <strong>Quick Setup</strong> with the curve set as the source. Assign a stroke renderer (e.g. a thin line brush).</li>
+    <li>Open the <strong>Transform</strong> tab. Select (or create) the transform set assigned to this sprite.</li>
+    <li>In the <strong>Extension</strong> section, click <strong>+</strong> to add a pass. Set <strong>Type</strong> to <strong>Branch</strong>.</li>
+    <li>Set <strong>Depth</strong> to <strong>2</strong> and <strong>Count</strong> to <strong>2</strong> to start. You will see 4 + 16 = 20 branches added to the canvas.</li>
+    <li>Set <strong>Branch angle</strong> to <strong>45°</strong>. This opens the tree symmetrically. Adjust upward (60–90°) for a wide bush, downward (15–30°) for a tall narrow tree.</li>
+    <li>Set <strong>Scale ratio</strong> to <strong>0.65</strong>. Each successive level will be 65% the size of its parent.</li>
+    <li>Adjust <strong>Angle jitter</strong> (0–15°) for organic variation. Leave at 0 for a perfectly symmetrical fractal.</li>
+    <li>Once satisfied, increase <strong>Depth</strong> to 3 or 4 — but read the caution below first.</li>
+  </ol>
+
+  <h4>Branch parameter reference and safe input values</h4>
+  <table>
+    <thead><tr><th>Parameter</th><th>Safe range</th><th>Effect</th></tr></thead>
+    <tbody>
+      <tr><td>Branch angle</td><td>10°–80°</td><td>Rotation of each child relative to the endpoint tangent. 45° gives a balanced Y-fork. Values above 80° fold branches back on themselves.</td></tr>
+      <tr><td>Count</td><td>1–3</td><td>Number of branches per endpoint per level. With 2 endpoints, count=2 gives 4 children per level. <strong>Keep at 1 or 2 until depth is confirmed stable.</strong></td></tr>
+      <tr><td>Depth</td><td>1–4 (practical)</td><td>Recursion levels. Total branches = sum of (2×count)^i for i in 1..depth. Depth 4 count 2 = 340 branches; depth 5 count 2 = 1364. The engine hard-caps at 256 branches per input polygon — excess levels are silently discarded. <strong>Do not combine depth &gt; 4 with count &gt; 2 expecting full output.</strong></td></tr>
+      <tr><td>Scale ratio</td><td>0.4–0.8</td><td>Size of each child relative to its parent. Values near 1.0 make all levels the same size (no tapering); values near 0 collapse children instantly. 0.6–0.7 is typical for natural-looking trees.</td></tr>
+      <tr><td>Angle jitter</td><td>0°–20°</td><td>Random perturbation added to each branch angle. Controlled by Seed for determinism. 0 = perfect symmetry; 5–15° = organic irregularity.</td></tr>
+      <tr><td>Probability</td><td>0.5–1.0</td><td>Chance each branch spawns. 1.0 = always; 0.5 = sparse stochastic. Use with Seed for a stable sparse tree.</td></tr>
+      <tr><td>Seed</td><td>0–9999</td><td>Deterministic seed for jitter and probability rolls. Change to get a different tree topology without touching other settings.</td></tr>
+    </tbody>
+  </table>
+
+  <div class="warning"><strong>Memory caution — exponential growth:</strong> Branch output is <em>exponential</em> in depth × count. With count=2 and 2 endpoints, each depth level multiplies the branch count by 4. Depth 8 would theoretically produce 87,000+ branches from a single curve. The engine enforces a hard cap of <strong>256 branches per input polygon</strong> and stops early once this is reached — excess depth is silently discarded rather than computed. However, building to the cap still requires iteration, so use the lowest depth that achieves your visual result. Recommended starting point: <strong>Depth 2–3, Count 1–2</strong>. Only increase depth after confirming the count is correct. If the render canvas goes black, reduce depth or count immediately.</div>
+
+  <h4>Animating branches</h4>
+  <p>Branch angle supports a <strong>DoubleDriver</strong>. Wire it to a noise or oscillator driver to make the tree breathe — branches fan out and close over time. Because the tree is recomputed every frame, any driver change propagates instantly through all levels. Keep driver amplitude below 30° for readable motion; large swings at high depth can flip branches through each other.</p>
+
+  <!-- ═══════════════════════════════════════════════════════════════════ -->
+  <h3 id="extension-extrude">Extension — Extrude (closed polygons)</h3>
+  <p>The Extrude operation grows closed polygon faces outward from selected edges. For each target segment of a <strong>closed spline</strong> polygon it constructs a new 4-segment closed polygon: the inner face (the original segment), two straight wall segments, and a bowed outer face. Multiple <strong>Generations</strong> stack by extruding the outer face of each previous result, building layered wall structures.</p>
+
+  <div class="note"><strong>Input requirement:</strong> Extrude only acts on polygons with type <code>spline</code> (closed splines). Open curves are passed through unchanged. Use the Geometry editor to confirm your source polygons are closed before expecting extrusion output.</div>
+
+  <h4>Step-by-step: extruding a subdivided polygon's edges</h4>
+  <ol class="steps">
+    <li>Create a transform set with a subdivision pass that produces the closed polygons you want to extrude (e.g. Quad at level 2 produces 16 quads).</li>
+    <li>In the <strong>Extension</strong> section, click <strong>+</strong> and set <strong>Type</strong> to <strong>Extrude</strong>.</li>
+    <li>Set <strong>Target</strong> to <strong>All Edges</strong>. Each quad will grow outward from all four sides. For a sparser look, try <strong>Longest Edge</strong> to extrude only the longest side of each polygon.</li>
+    <li>Set <strong>Distance</strong> to roughly <strong>0.05–0.15</strong> (in normalised canvas units). This is the height of the extrusion wall. Start at 0.1.</li>
+    <li>Leave <strong>Width</strong> at <strong>1.0</strong> (parallel walls). Values below 1.0 taper toward a point; above 1.0 flare outward. Try <strong>0.8</strong> for a trapezoidal cross-section.</li>
+    <li>Set <strong>Curvature</strong> to <strong>0.0</strong> for straight outer edges, or a small positive value (0.1–0.3) to bow the outer face outward. Negative values bow inward (concave).</li>
+    <li>Set <strong>Generations</strong> to <strong>1</strong> for a single wall. Increase to 2 or 3 to stack concentric extrusion layers. Each generation extrudes the outer face of the previous result at the same distance and width.</li>
+  </ol>
+
+  <h4>Extrude parameter reference and safe input values</h4>
+  <table>
+    <thead><tr><th>Parameter</th><th>Safe range</th><th>Effect</th></tr></thead>
+    <tbody>
+      <tr><td>Distance</td><td>0.01–0.3</td><td>Height of the extrusion wall in normalised canvas units. Too large (above 0.5) causes walls to overlap adjacent cells. Start at 0.05–0.1 for subdivided geometry.</td></tr>
+      <tr><td>Width</td><td>0.2–2.0</td><td>Scales the outer edge around the segment midpoint. 1.0 = parallel. &lt;1 = taper to a point. &gt;1 = flare. Values near 0 collapse the outer edge to a spike; values above 2 cause the outer edge to overlap the adjacent polygon's extrusion.</td></tr>
+      <tr><td>Curvature</td><td>−0.5–0.5</td><td>Bow applied to the outer edge as a fraction of its length. 0 = straight. Positive = outward dome. Negative = inward concave. Beyond ±0.5 the bow exceeds the outer edge length and creates crossing control points.</td></tr>
+      <tr><td>Generations</td><td>1–3</td><td>Number of stacked extrusion levels. Each level extrudes the outer face of the previous polygon. Generation 3 with All Edges on a 16-polygon mesh produces 16 × 4 × 3 = 192 additional polygons. Keep generations at 1–2 for dense meshes.</td></tr>
+      <tr><td>Target</td><td>—</td><td><strong>All Edges:</strong> every segment of every input polygon is extruded — use for uniform growth patterns. <strong>Longest Edge:</strong> only the single longest segment per polygon — use for directional spines or elongated crystals.</td></tr>
+    </tbody>
+  </table>
+
+  <h4>Animating extrusion distance</h4>
+  <p>Extrude Distance supports a <strong>DoubleDriver</strong>. A slow oscillator on distance (amplitude 0.02–0.08, period 2–4 seconds) makes polygon walls breathe in and out, creating a pulsating cell structure. Negative distance values push walls inward rather than outward — ensure <strong>Width</strong> is set to a value that prevents self-intersection when going negative.</p>
+
+  <div class="tip"><strong>Combining Branch and Extrude:</strong> Branch and Extrude are separate Extension passes and can both be enabled in the same transform set. They run independently on their respective polygon types — Branch on open curves, Extrude on closed polygons. A common pattern: draw an open curve tree (Branch pass) alongside a subdivided polygon mesh (Extrude pass) in the same sprite so that the branching organic structure and the extruded rigid structure share the same transform and renderer.</div>
 </section>
 
 <!-- ────────────────────────────────────────────────── -->
