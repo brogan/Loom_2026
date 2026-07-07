@@ -345,6 +345,40 @@ final class GenerationalEvolutionEngineTests: XCTestCase {
         XCTAssertEqual(GenerationalEvolutionEngine.revealCycleIndex(for: driver, elapsedFrames: 125, targetFPS: 30), 2)
     }
 
+    func testEffectiveSeedMatchesGenerationSeedWhenVaryingIsOff() {
+        var params = EvolutionParams(operationType: .generational, generationSeed: 42)
+        params.generationPhase = DoubleDriver(mode: .oscillator, freqHz: 1.0, enabled: true)
+        params.varySeedPerCycle = false
+        XCTAssertEqual(
+            GenerationalEvolutionEngine.effectiveSeed(for: params, elapsedFrames: 999, targetFPS: 30),
+            42
+        )
+    }
+
+    func testEffectiveSeedMatchesGenerationSeedWhenDriverDisabledEvenIfVaryingIsOn() {
+        var params = EvolutionParams(operationType: .generational, generationSeed: 42)
+        params.varySeedPerCycle = true
+        params.generationPhase.enabled = false
+        XCTAssertEqual(
+            GenerationalEvolutionEngine.effectiveSeed(for: params, elapsedFrames: 999, targetFPS: 30),
+            42
+        )
+    }
+
+    func testEffectiveSeedMatchesCombineSeedOfCurrentCycleWhenVaryingIsOn() {
+        var params = EvolutionParams(operationType: .generational, generationSeed: 42)
+        params.generationPhase = DoubleDriver(mode: .oscillator, base: 2, amplitude: 2,
+                                              freqHz: 1.0, phase: 0.75, wave: .sine, enabled: true)
+        params.varySeedPerCycle = true
+
+        let cycle = GenerationalEvolutionEngine.revealCycleIndex(for: params.generationPhase, elapsedFrames: 12, targetFPS: 8)
+        XCTAssertEqual(cycle, 1, "sanity check against testRevealCycleIndexOscillatorAlignsWithTroughNotWrapPoint")
+        XCTAssertEqual(
+            GenerationalEvolutionEngine.effectiveSeed(for: params, elapsedFrames: 12, targetFPS: 8),
+            GenerationalEvolutionEngine.combineSeed(42, 1)
+        )
+    }
+
     func testVarySeedPerCycleProducesDifferentResultsAcrossCyclesAtSamePhase() {
         let square = makeSquare()
         var params = EvolutionParams(

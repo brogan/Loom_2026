@@ -866,6 +866,11 @@
 
   <h3>Notes</h3>
   <p>A plain-text editor for project-level notes — algorithm descriptions, colour palette references, or render instructions. Not exported.</p>
+
+  <h3 id="global-evolution-seed">Evolution Seed</h3>
+  <p>At the bottom of the Global tab's inspector, below Status and Utility, a live readout shows the seed currently driving whichever <a href="#evolution-generational">Generational Evolution</a> pass is selected in the Transform tab — updating every frame as the timeline advances. With that pass's <strong>Vary seed per cycle</strong> off, this just mirrors its Seed field. With it on, the value changes each time the reveal driver completes a cycle, since a different effective seed is in play each time round.</p>
+  <p>This exists so you can watch an animated reveal, spot a generation you particularly like, and reproduce it exactly: select the text next to <strong>Seed</strong> here, paste it into the pass's own <strong>Seed</strong> field (in the Transform tab's Evolution inspector), and turn off <strong>Vary seed per cycle</strong>. The pass now always regrows that specific shape rather than continuing to vary.</p>
+  <div class="note">Nothing shows here unless a Generational Evolution pass is selected in the Transform tab — momentum drift and convergence pressure passes, or no selection at all, leave this section showing a placeholder instead.</div>
 </section>
 
 <!-- ────────────────────────────────────────────────── -->
@@ -2819,6 +2824,7 @@
     <li>Play back across several cycles. Each time the reveal restarts from generation 0, it grows into a different shape — the base <strong>Seed</strong> field is combined with an internally-tracked cycle count to produce a different effective seed per cycle, without you needing to change Seed by hand or script anything.</li>
     <li>The variation is still fully deterministic: the same cycle always regrows the same shape (scrubbing within a cycle works exactly as before), only which cycle you're in changes what it grows into.</li>
     <li>This has no effect with Reveal off, or with a one-shot (non-looping) Keyframe track — both cases have no "cycle restart" moment to key the seed change off.</li>
+    <li>To catch and keep a generation you like as it cycles past: watch the <a href="#global-evolution-seed">Evolution Seed</a> readout at the bottom of the <strong>Global</strong> tab's inspector (it tracks whichever Generational pass is selected here). When you see a shape you want, copy the seed number shown there into this pass's <strong>Seed</strong> field and turn <strong>Vary seed per cycle</strong> back off — the pass now always regrows that exact shape instead of continuing to vary.</li>
   </ol>
 
   <h4>Generational parameter reference and safe input values</h4>

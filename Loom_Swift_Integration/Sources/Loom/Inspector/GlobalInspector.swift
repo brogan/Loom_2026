@@ -51,6 +51,7 @@ struct GlobalInspector: View {
             statusSection
             Divider()
             utilitySection
+            liveEvolutionSeedSection
         } else {
             Text("No project open")
                 .font(.caption)
@@ -300,6 +301,78 @@ struct GlobalInspector: View {
             .padding(.horizontal, 12)
             .padding(.bottom, 8)
         }
+    }
+
+    /// Live readout of the seed actually driving the currently-selected Generational
+    /// Evolution pass (selected in the Transform tab) at the current timeline frame.
+    /// With "Vary seed per cycle" on, this changes each time the reveal loops — the
+    /// point is to let a user watching an animated reveal note the seed of a
+    /// generation they like, then paste it into that pass's Seed field (with Vary
+    /// seed per cycle off) to reproduce that exact result.
+    private var liveEvolutionSeedSection: some View {
+        InspectorSection("Evolution Seed") {
+            if let info = liveGenerationalSeedInfo {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("\(info.setName) → \(info.passName)")
+                        .font(.system(size: 11))
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                    HStack(spacing: 6) {
+                        Text("Seed")
+                            .font(.system(size: 11))
+                            .foregroundStyle(.secondary)
+                        Text("\(info.seed)")
+                            .font(.system(size: 14, weight: .semibold, design: .monospaced))
+                            .textSelection(.enabled)
+                        if info.varying {
+                            Text("cycle \(info.cycle)")
+                                .font(.system(size: 10, design: .monospaced))
+                                .foregroundStyle(.tertiary)
+                        }
+                    }
+                }
+                .padding(.horizontal, 12)
+                .padding(.vertical, 6)
+            } else {
+                Text("Select a Generational Evolution pass in the Transform tab to see its live seed here.")
+                    .font(.system(size: 11))
+                    .foregroundStyle(.tertiary)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 6)
+            }
+        }
+        .loomHelp("The seed actually in effect for the selected Generational Evolution pass right now. Unchanged from the pass's own Seed field unless \"Vary seed per cycle\" is on, in which case it updates every time the reveal driver completes a cycle. Copy the number shown (select the text) into the pass's Seed field and turn off Vary seed per cycle to lock in and reproduce this exact generation.")
+    }
+
+    private struct LiveSeedInfo {
+        let setName:  String
+        let passName: String
+        let seed:     Int
+        let cycle:    Int
+        let varying:  Bool
+    }
+
+    private var liveGenerationalSeedInfo: LiveSeedInfo? {
+        guard let setIdx = controller.selectedSubdivisionIndex,
+              let evIdx  = controller.selectedEvolutionParamIndex,
+              let set    = controller.projectConfig?.subdivisionConfig.paramsSets[safe: setIdx],
+              let pass   = set.evolutionPasses[safe: evIdx],
+              pass.operationType == .generational
+        else { return nil }
+
+        let elapsedFrames = Double(controller.currentTimelineFrame)
+        let targetFPS     = controller.engine?.globalConfig.targetFPS ?? 24
+        let seed  = GenerationalEvolutionEngine.effectiveSeed(for: pass, elapsedFrames: elapsedFrames, targetFPS: targetFPS)
+        let cycle = GenerationalEvolutionEngine.revealCycleIndex(for: pass.generationPhase, elapsedFrames: elapsedFrames, targetFPS: targetFPS)
+        return LiveSeedInfo(
+            setName:  set.name.isEmpty ? "(unnamed set)" : set.name,
+            passName: pass.name.isEmpty ? "(unnamed pass)" : pass.name,
+            seed:     seed,
+            cycle:    cycle,
+            varying:  pass.varySeedPerCycle && pass.generationPhase.enabled
+        )
     }
 
     // MARK: - Actions

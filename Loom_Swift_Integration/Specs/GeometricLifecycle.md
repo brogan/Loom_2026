@@ -1045,6 +1045,33 @@ in `EvolutionInspector`. Help doc: two new step-by-step guides (a smooth Oscilla
 sweep with the `base = amplitude = Count/2`, `phase = 0.75` recipe worked out above,
 and the vary-seed-per-cycle walkthrough) plus a new parameter-reference row.
 
+**Live seed readout (complete, 2026-07-07):** `GenerationalEvolutionEngine` gained a
+public `effectiveSeed(for:elapsedFrames:targetFPS:)` — a single shared entry point
+wrapping the same "is `varySeedPerCycle` on and the driver enabled? combine; else
+return `generationSeed` unchanged" logic that `process(polygons:passes:...)` already
+used inline, so the pipeline and any UI reading the value can't drift out of sync.
+`revealCycleIndex` was also made `public` (previously internal to the engine module)
+so the UI can show which cycle is active alongside the seed.
+
+`GlobalInspector` gained an "Evolution Seed" section at the very bottom of its
+inspector — deliberately on the Global tab rather than the Transform tab, so it's
+visible while watching a live preview regardless of which tab's canvas is showing.
+It reads whichever Generational pass is currently selected via
+`controller.selectedSubdivisionIndex`/`selectedEvolutionParamIndex` (set in the
+Transform tab), evaluates `effectiveSeed`/`revealCycleIndex` at
+`controller.currentTimelineFrame` (already kept in sync with live playback via
+`ContentView`'s `.onChange(of: currentFrame)`) and `engine.globalConfig.targetFPS`,
+and displays the set/pass name, the seed (selectable text, for copy-paste), and the
+current cycle number when varying is active. Shows a placeholder when no
+Generational pass is selected. The intended workflow: watch an animated reveal,
+spot a generation you like, copy the seed shown here into that pass's own Seed
+field, and turn off Vary seed per cycle to lock it in.
+
+Verified with 3 additional tests (27 total) for `effectiveSeed`: matches
+`generationSeed` unchanged when varying is off, matches it unchanged when the
+driver is disabled even with varying on, and matches `combineSeed` of the current
+cycle when varying is genuinely active. All 477 tests in `LoomEngineTests` pass.
+
 **Not yet done:** duplicate-and-graft, subdivision-cycle-as-operator, fitness
 measures, lock/graft selection, budget cap on *lineage* count (moot until grafting
 exists), an easing curve option for the tween (currently linear).

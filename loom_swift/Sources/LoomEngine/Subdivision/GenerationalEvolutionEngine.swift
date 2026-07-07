@@ -40,17 +40,31 @@ public enum GenerationalEvolutionEngine {
             }
 
             var effectivePass = pass
-            if pass.varySeedPerCycle, pass.generationPhase.enabled {
-                let cycle = revealCycleIndex(
-                    for:           pass.generationPhase,
-                    elapsedFrames: elapsedFrames,
-                    targetFPS:     targetFPS
-                )
-                effectivePass.generationSeed = combineSeed(pass.generationSeed, cycle)
-            }
+            effectivePass.generationSeed = effectiveSeed(
+                for:           pass,
+                elapsedFrames: elapsedFrames,
+                targetFPS:     targetFPS
+            )
             result = process(polygons: result, params: effectivePass, phase: phase)
         }
         return result
+    }
+
+    /// The seed actually in effect for `pass` at `elapsedFrames` — `generationSeed`
+    /// unchanged unless `varySeedPerCycle` is on and the reveal driver is enabled, in
+    /// which case it's combined with the current cycle index. Exposed publicly (not
+    /// just used internally by `process(polygons:passes:...)` above) so the UI can
+    /// display the live seed during playback — e.g. so a user watching an animated
+    /// reveal can read off and note the seed of a result they like, then paste it
+    /// into `generationSeed` (with `varySeedPerCycle` off) to reproduce it exactly.
+    public static func effectiveSeed(
+        for pass:        EvolutionParams,
+        elapsedFrames:   Double,
+        targetFPS:       Double
+    ) -> Int {
+        guard pass.varySeedPerCycle, pass.generationPhase.enabled else { return pass.generationSeed }
+        let cycle = revealCycleIndex(for: pass.generationPhase, elapsedFrames: elapsedFrames, targetFPS: targetFPS)
+        return combineSeed(pass.generationSeed, cycle)
     }
 
     /// How many times the reveal driver has completed a full cycle by
@@ -63,7 +77,7 @@ public enum GenerationalEvolutionEngine {
     /// Only Oscillator and looping Keyframe modes have a well-defined "cycle" —
     /// Constant/Jitter/Noise and non-looping Keyframe return 0 (no variation),
     /// since there's no restart point to key off.
-    static func revealCycleIndex(
+    public static func revealCycleIndex(
         for driver:      DoubleDriver,
         elapsedFrames:   Double,
         targetFPS:       Double
