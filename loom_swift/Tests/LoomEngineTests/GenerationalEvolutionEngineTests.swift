@@ -296,4 +296,107 @@ final class GenerationalEvolutionEngineTests: XCTestCase {
         let viaFull    = GenerationalEvolutionEngine.process(polygons: [square], params: params)
         XCTAssertEqual(viaPasses, viaFull)
     }
+
+    // MARK: - Vary seed per cycle
+
+    func testRevealCycleIndexOscillatorAlignsWithTroughNotWrapPoint() {
+        // fps=8, freqHz=1 -> period 8 frames. phase=0.75 puts the trough (generation 0)
+        // at elapsedFrames=0, matching the "start at frame 0" setup from the Reveal
+        // driver walkthrough. The seed must not flip until a full cycle has passed
+        // *from the trough*, not at the wave's internal p=0 wrap (a quarter-cycle
+        // earlier), or it would glitch mid-climb.
+        let driver = DoubleDriver(mode: .oscillator, base: 2, amplitude: 2,
+                                  freqHz: 1.0, phase: 0.75, wave: .sine, enabled: true)
+        XCTAssertEqual(GenerationalEvolutionEngine.revealCycleIndex(for: driver, elapsedFrames: 0, targetFPS: 8), 0)
+        XCTAssertEqual(GenerationalEvolutionEngine.revealCycleIndex(for: driver, elapsedFrames: 4, targetFPS: 8), 0,
+                       "quarter-cycle in (partway up the climb) must still be cycle 0")
+        XCTAssertEqual(GenerationalEvolutionEngine.revealCycleIndex(for: driver, elapsedFrames: 7.999, targetFPS: 8), 0)
+        XCTAssertEqual(GenerationalEvolutionEngine.revealCycleIndex(for: driver, elapsedFrames: 8, targetFPS: 8), 1,
+                       "exactly one full cycle after the trough")
+        XCTAssertEqual(GenerationalEvolutionEngine.revealCycleIndex(for: driver, elapsedFrames: 12, targetFPS: 8), 1)
+        XCTAssertEqual(GenerationalEvolutionEngine.revealCycleIndex(for: driver, elapsedFrames: 16, targetFPS: 8), 2)
+    }
+
+    func testRevealCycleIndexZeroWhenDriverDisabledOrNonLooping() {
+        var disabled = DoubleDriver(mode: .oscillator, freqHz: 1.0, enabled: false)
+        XCTAssertEqual(GenerationalEvolutionEngine.revealCycleIndex(for: disabled, elapsedFrames: 100, targetFPS: 30), 0)
+
+        let onceKeyframe = DoubleDriver(
+            mode: .keyframe, loopMode: .once,
+            keyframes: [DoubleKeyframe(frame: 0, value: 0), DoubleKeyframe(frame: 60, value: 5)],
+            enabled: true
+        )
+        XCTAssertEqual(GenerationalEvolutionEngine.revealCycleIndex(for: onceKeyframe, elapsedFrames: 200, targetFPS: 30), 0,
+                       "a one-shot (non-looping) keyframe track never restarts, so there's no cycle to key off")
+
+        disabled.mode = .noise
+        XCTAssertEqual(GenerationalEvolutionEngine.revealCycleIndex(for: disabled, elapsedFrames: 100, targetFPS: 30), 0)
+    }
+
+    func testRevealCycleIndexKeyframeLoop() {
+        let driver = DoubleDriver(
+            mode: .keyframe, loopMode: .loop,
+            keyframes: [DoubleKeyframe(frame: 0, value: 0), DoubleKeyframe(frame: 60, value: 5)],
+            enabled: true
+        )
+        XCTAssertEqual(GenerationalEvolutionEngine.revealCycleIndex(for: driver, elapsedFrames: 0,  targetFPS: 30), 0)
+        XCTAssertEqual(GenerationalEvolutionEngine.revealCycleIndex(for: driver, elapsedFrames: 59, targetFPS: 30), 0)
+        XCTAssertEqual(GenerationalEvolutionEngine.revealCycleIndex(for: driver, elapsedFrames: 60, targetFPS: 30), 1)
+        XCTAssertEqual(GenerationalEvolutionEngine.revealCycleIndex(for: driver, elapsedFrames: 125, targetFPS: 30), 2)
+    }
+
+    func testVarySeedPerCycleProducesDifferentResultsAcrossCyclesAtSamePhase() {
+        let square = makeSquare()
+        var params = EvolutionParams(
+            operationType: .generational, generationCount: 4,
+            extrudeWeight: 1.0, splitWeight: 0.0,
+            extrudeRunLengthMin: 1, extrudeRunLengthMax: 1,
+            generationSeed: 21
+        )
+        params.generationPhase = DoubleDriver(mode: .oscillator, base: 2, amplitude: 2,
+                                              freqHz: 1.0, phase: 0.75, wave: .sine, enabled: true)
+        params.varySeedPerCycle = true
+
+        // elapsedFrames 4 and 12 are both a quarter-cycle past their respective
+        // troughs (cycles 0 and 1 respectively — see testRevealCycleIndex... above),
+        // so they evaluate to the *same* phase value but should mutate differently.
+        let cycle0 = GenerationalEvolutionEngine.process(polygons: [square], passes: [params],
+                                                          elapsedFrames: 4, targetFPS: 8)
+        let cycle1 = GenerationalEvolutionEngine.process(polygons: [square], passes: [params],
+                                                          elapsedFrames: 12, targetFPS: 8)
+        XCTAssertNotEqual(cycle0, cycle1, "different cycles should mutate differently when varySeedPerCycle is on")
+
+        // Same elapsedFrames called twice must still be fully deterministic.
+        let cycle0Again = GenerationalEvolutionEngine.process(polygons: [square], passes: [params],
+                                                               elapsedFrames: 4, targetFPS: 8)
+        XCTAssertEqual(cycle0, cycle0Again)
+    }
+
+    func testVarySeedPerCycleHasNoEffectWhenDriverDisabled() {
+        let square = makeSquare()
+        var withVary = EvolutionParams(operationType: .generational, generationCount: 3, generationSeed: 5)
+        withVary.varySeedPerCycle = true
+        withVary.generationPhase.enabled = false
+
+        var withoutVary = withVary
+        withoutVary.varySeedPerCycle = false
+
+        let a = GenerationalEvolutionEngine.process(polygons: [square], passes: [withVary],
+                                                     elapsedFrames: 500, targetFPS: 30)
+        let b = GenerationalEvolutionEngine.process(polygons: [square], passes: [withoutVary],
+                                                     elapsedFrames: 500, targetFPS: 30)
+        XCTAssertEqual(a, b, "varySeedPerCycle must be inert when the reveal driver itself is disabled")
+    }
+
+    func testSameCycleProducesSameResultRegardlessOfExactFrame() {
+        let driver = DoubleDriver(mode: .oscillator, base: 2, amplitude: 2,
+                                  freqHz: 1.0, phase: 0.75, wave: .sine, enabled: true)
+        // elapsedFrames 4 and 4.5 are both within cycle 0 (see revealCycleIndex
+        // tests above) — the cycle index (and therefore the effective seed) must
+        // be identical even though the phase itself differs between them.
+        XCTAssertEqual(
+            GenerationalEvolutionEngine.revealCycleIndex(for: driver, elapsedFrames: 4,   targetFPS: 8),
+            GenerationalEvolutionEngine.revealCycleIndex(for: driver, elapsedFrames: 4.5, targetFPS: 8)
+        )
+    }
 }

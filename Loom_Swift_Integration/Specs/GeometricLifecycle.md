@@ -1004,6 +1004,47 @@ split displacement by the exact predicted amount, and the `passes:` overload bot
 evaluates an enabled driver and falls back correctly when disabled. All 468 tests
 in `LoomEngineTests` pass; both packages build clean.
 
+**Vary seed per cycle (complete, 2026-07-07):** a `varySeedPerCycle: Bool` field on
+`EvolutionParams` (default `false`, no effect unless `generationPhase` is also
+enabled). Without it, a looping `generationPhase` driver (Oscillator, or Keyframe
+with Loop/Ping-pong) retraces the *identical* growth every cycle — the engine is a
+pure function of `(seed, generation index)`, and neither changes cycle-to-cycle. With
+it, `GenerationalEvolutionEngine.process(polygons:passes:elapsedFrames:targetFPS:spriteIndex:)`
+computes a cycle index for the pass's driver and swaps in an effective seed
+(`generationSeed` combined with the cycle index via a golden-ratio splitmix64-style
+mix, `combineSeed`) before calling the per-pass core — `generationSeed` itself is
+never mutated, only the copy used for that call.
+
+The cycle boundary is aligned to the driver's **trough** (its minimum output, i.e.
+generation 0), not its raw internal wrap point:
+- **Oscillator** — trough offset in normalized wave-position is `0.75` for
+  Sine/Triangle, `0.5` for Square, `0.0` for Sawtooth (where each wave shape's
+  minimum actually falls); `revealCycleIndex` computes `floor(t − troughOffset)`
+  where `t` is the same `elapsedFrames·freqHz/targetFPS + phase` used internally by
+  `DriverEvaluator`. Aligning to the raw wrap point instead (`floor(t)`) would flip
+  the seed a quarter-cycle *after* the trough for Sine/Triangle — partway up the
+  climb from generation 0 — producing a visible glitch mid-growth instead of a clean
+  per-cycle change.
+- **Keyframe** with `loopMode == .loop` — period is the last keyframe's frame;
+  `.pingPong` — period is double that (a full there-and-back); `.once` and
+  Constant/Jitter/Noise modes have no defined "restart," so `revealCycleIndex`
+  returns `0` (no variation) for those.
+
+Verified with 6 additional tests (24 total, up from 18): the trough-alignment math
+itself (cycle stays 0 for a full period after the trough, increments exactly one
+period later — both for Oscillator and Keyframe-loop), the `0`-fallback for a
+disabled/non-looping driver, that two elapsedFrames values landing in the same
+cycle produce the same cycle index despite different phases, that two values in
+*different* cycles at the *same* phase produce different geometry when the toggle
+is on, that results stay fully deterministic for a fixed elapsedFrames, and that the
+toggle is inert when the reveal driver itself is disabled. All 474 tests in
+`LoomEngineTests` pass.
+
+Inspector: a "Vary seed per cycle" toggle directly below the Reveal driver section
+in `EvolutionInspector`. Help doc: two new step-by-step guides (a smooth Oscillator
+sweep with the `base = amplitude = Count/2`, `phase = 0.75` recipe worked out above,
+and the vary-seed-per-cycle walkthrough) plus a new parameter-reference row.
+
 **Not yet done:** duplicate-and-graft, subdivision-cycle-as-operator, fitness
 measures, lock/graft selection, budget cap on *lineage* count (moot until grafting
 exists), an easing curve option for the tween (currently linear).

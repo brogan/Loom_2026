@@ -2802,6 +2802,25 @@
     <li>Scrub the timeline freely in either direction — because the whole chain recomputes from generation 0 each time, moving backward correctly un-grows the shape rather than getting stuck at its most-evolved state.</li>
   </ol>
 
+  <h4>Step-by-step: a smooth up-and-down reveal with Oscillator</h4>
+  <p>Oscillator mode grows the shape to full Count and back down, repeating, with no separate "reset" jump — good for a continuously breathing form rather than a grow-then-restart cycle.</p>
+  <ol class="steps">
+    <li>With Generations → <strong>Count</strong> set to, say, <strong>26</strong>, expand <strong>Reveal</strong>, enable the driver, and set <strong>Mode</strong> to <strong>Oscillator</strong>.</li>
+    <li>Set both <strong>Base</strong> and <strong>Amplitude</strong> to <strong>half of Count</strong> (13, for Count 26). The oscillator output is <code>base ± amplitude</code>, so this centres the swing exactly on <code>[0, Count]</code> — leaving Base at its default with only Amplitude set will produce an off-centre range and clip against 0 or Count, sitting flat there until the wave swings back into range.</li>
+    <li>Set <strong>Wave</strong> to <strong>Sine</strong> (smooth easing at both ends) or <strong>Triangle</strong> (constant-speed ramp, sharp reversal at the peaks). Avoid <strong>Square</strong> — it holds flat at each extreme for half the cycle, which is exactly the "dead period" this setup is meant to avoid. Avoid <strong>Sawtooth</strong> — it doesn't reverse smoothly, it ramps up then snaps discontinuously back to the start.</li>
+    <li>To make playback start exactly at generation 0 rather than mid-swing, set <strong>Phase</strong> to <strong>0.75</strong> — both Sine and Triangle sit at their minimum a three-quarters of the way through a cycle, and phase is measured in cycle units (1.0 = one full period). Leaving Phase at its default 0 starts the animation already at the midpoint generation, moving upward.</li>
+    <li><strong>Freq (Hz)</strong> controls how long one full up-and-down sweep takes: period in frames = project fps ÷ Freq. Pick a value that gives a pace you like — e.g. at 24fps, Freq 0.1 gives a 240-frame (10 second) sweep.</li>
+  </ol>
+
+  <h4>Step-by-step: a different shape each time it cycles</h4>
+  <p>By default, an Oscillator or Loop-keyframe Reveal retraces the <em>identical</em> growth every cycle — same seed, same generation history, just replayed. Enable <strong>Vary seed per cycle</strong> to make each cycle mutate differently.</p>
+  <ol class="steps">
+    <li>With a looping Reveal driver already set up (Oscillator, or Keyframe with Loop/Ping-pong), enable <strong>Vary seed per cycle</strong> just below the Reveal driver.</li>
+    <li>Play back across several cycles. Each time the reveal restarts from generation 0, it grows into a different shape — the base <strong>Seed</strong> field is combined with an internally-tracked cycle count to produce a different effective seed per cycle, without you needing to change Seed by hand or script anything.</li>
+    <li>The variation is still fully deterministic: the same cycle always regrows the same shape (scrubbing within a cycle works exactly as before), only which cycle you're in changes what it grows into.</li>
+    <li>This has no effect with Reveal off, or with a one-shot (non-looping) Keyframe track — both cases have no "cycle restart" moment to key the seed change off.</li>
+  </ol>
+
   <h4>Generational parameter reference and safe input values</h4>
   <table>
     <thead><tr><th>Parameter</th><th>Safe range</th><th>Effect</th></tr></thead>
@@ -2814,7 +2833,8 @@
       <tr><td>Extrude Distance</td><td>0.02–0.3</td><td>Range for the outward extrusion distance, resampled each generation. Keep the upper bound modest relative to the base shape's size, or a handful of generations can dwarf the original form.</td></tr>
       <tr><td>Split Weight</td><td>0–1 (relative)</td><td>Selection weight for the split operator each generation, relative to Extrude Weight. 0 excludes splitting entirely.</td></tr>
       <tr><td>Split Displacement</td><td>0.02–0.3</td><td>Range for how far the new point (from splitting a random edge) is displaced outward from the shape's centre, resampled each generation. Only the new point moves — its neighbouring control points stay put, which pulls the boundary into a rounded spike rather than a sharp corner.</td></tr>
-      <tr><td>Reveal</td><td>—</td><td>Optional DoubleDriver mapping playback time to a position in [0, Count]. Disabled (default): the full Count is always applied. Enabled: the integer part is how many generations are fully applied; the fractional part tweens the in-progress generation's operator magnitude in from zero. Keyframe mode gives explicit control over pacing; Oscillator/Loop modes produce a repeating grow-and-reset cycle.</td></tr>
+      <tr><td>Reveal</td><td>—</td><td>Optional DoubleDriver mapping playback time to a position in [0, Count]. Disabled (default): the full Count is always applied. Enabled: the integer part is how many generations are fully applied; the fractional part tweens the in-progress generation's operator magnitude in from zero. Keyframe mode gives explicit control over pacing; Oscillator with Base = Amplitude = Count/2 gives a smooth repeating up-and-down sweep with no dead periods (see the Oscillator walkthrough above).</td></tr>
+      <tr><td>Vary seed per cycle</td><td>—</td><td>Only meaningful with a looping Reveal driver (Oscillator, or Keyframe with Loop/Ping-pong). Off (default): every cycle replays the identical growth. On: each full cycle derives a different effective seed from the base Seed field, so it mutates a fresh shape each time rather than repeating. No effect with Reveal off or a one-shot Keyframe track.</td></tr>
     </tbody>
   </table>
 

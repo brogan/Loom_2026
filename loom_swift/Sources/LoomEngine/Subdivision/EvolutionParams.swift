@@ -75,6 +75,14 @@ public struct EvolutionParams: Equatable, Codable, Sendable {
     /// rather than having it pop in. See GenerationalEvolutionEngine.
     public var generationPhase: DoubleDriver
 
+    /// When true and `generationPhase` is enabled, each full cycle of the reveal
+    /// (each time it returns to generation 0 and climbs again) uses a different
+    /// effective seed — derived from `generationSeed` combined with a cycle index,
+    /// not `generationSeed` itself, which is left untouched. Has no effect when
+    /// `generationPhase` is disabled (no cycles exist to vary between). See
+    /// `GenerationalEvolutionEngine.revealCycleIndex`/`combineSeed`.
+    public var varySeedPerCycle: Bool
+
     public init(
         name:                     String                  = "",
         enabled:                  Bool                    = true,
@@ -99,7 +107,8 @@ public struct EvolutionParams: Equatable, Codable, Sendable {
         splitDisplacementMax:     Double                  = 0.2,
         generationSeed:           Int                     = 0,
         maxVertexBudget:          Int                     = 512,
-        generationPhase:          DoubleDriver            = DoubleDriver()
+        generationPhase:          DoubleDriver            = DoubleDriver(),
+        varySeedPerCycle:         Bool                    = false
     ) {
         self.name                     = name
         self.enabled                  = enabled
@@ -125,6 +134,7 @@ public struct EvolutionParams: Equatable, Codable, Sendable {
         self.generationSeed           = generationSeed
         self.maxVertexBudget          = maxVertexBudget
         self.generationPhase          = generationPhase
+        self.varySeedPerCycle         = varySeedPerCycle
     }
 
     // MARK: - Codable
@@ -136,7 +146,7 @@ public struct EvolutionParams: Equatable, Codable, Sendable {
         case generationCount, extrudeWeight, splitWeight
         case extrudeRunLengthMin, extrudeRunLengthMax, extrudeDistanceMin, extrudeDistanceMax
         case splitDisplacementMin, splitDisplacementMax, generationSeed, maxVertexBudget
-        case generationPhase
+        case generationPhase, varySeedPerCycle
     }
 
     public init(from decoder: Decoder) throws {
@@ -165,5 +175,6 @@ public struct EvolutionParams: Equatable, Codable, Sendable {
         generationSeed           = try c.decodeIfPresent(Int.self,                     forKey: .generationSeed)           ?? 0
         maxVertexBudget          = try c.decodeIfPresent(Int.self,                     forKey: .maxVertexBudget)          ?? 512
         generationPhase          = try c.decodeIfPresent(DoubleDriver.self,            forKey: .generationPhase)          ?? DoubleDriver()
+        varySeedPerCycle         = try c.decodeIfPresent(Bool.self,                    forKey: .varySeedPerCycle)         ?? false
     }
 }

@@ -38,9 +38,68 @@ public enum GenerationalEvolutionEngine {
             } else {
                 phase = Double(pass.generationCount)
             }
-            result = process(polygons: result, params: pass, phase: phase)
+
+            var effectivePass = pass
+            if pass.varySeedPerCycle, pass.generationPhase.enabled {
+                let cycle = revealCycleIndex(
+                    for:           pass.generationPhase,
+                    elapsedFrames: elapsedFrames,
+                    targetFPS:     targetFPS
+                )
+                effectivePass.generationSeed = combineSeed(pass.generationSeed, cycle)
+            }
+            result = process(polygons: result, params: effectivePass, phase: phase)
         }
         return result
+    }
+
+    /// How many times the reveal driver has completed a full cycle by
+    /// `elapsedFrames`, aligned to the driver's *trough* (its minimum output,
+    /// i.e. generation 0) rather than its raw internal wrap point. Aligning to the
+    /// wrap point instead would flip the seed partway up the climb from generation
+    /// 0 (a quarter-cycle after the trough for sine/triangle), producing a visible
+    /// mid-climb glitch instead of a clean per-cycle variation.
+    ///
+    /// Only Oscillator and looping Keyframe modes have a well-defined "cycle" —
+    /// Constant/Jitter/Noise and non-looping Keyframe return 0 (no variation),
+    /// since there's no restart point to key off.
+    static func revealCycleIndex(
+        for driver:      DoubleDriver,
+        elapsedFrames:   Double,
+        targetFPS:       Double
+    ) -> Int {
+        guard driver.enabled else { return 0 }
+        switch driver.mode {
+        case .oscillator:
+            let fps = max(1, targetFPS)
+            let t = elapsedFrames * driver.freqHz / fps + driver.phase
+            let troughOffset: Double
+            switch driver.wave {
+            case .sine, .triangle: troughOffset = 0.75
+            case .square:          troughOffset = 0.5
+            case .sawtooth:        troughOffset = 0.0
+            }
+            return Int(floor(t - troughOffset))
+        case .keyframe:
+            guard driver.loopMode == .loop || driver.loopMode == .pingPong,
+                  let lastFrame = driver.keyframes.map(\.frame).max(), lastFrame > 0
+            else { return 0 }
+            let period = driver.loopMode == .pingPong ? Double(lastFrame) * 2 : Double(lastFrame)
+            return Int(floor(elapsedFrames / period))
+        case .constant, .jitter, .noise:
+            return 0
+        }
+    }
+
+    /// Golden-ratio-based mix so adjacent cycle indices produce well-distributed,
+    /// uncorrelated seeds rather than merely incrementing by one each cycle.
+    static func combineSeed(_ seed: Int, _ cycleIndex: Int) -> Int {
+        var h = UInt64(bitPattern: Int64(seed))
+            ^ (UInt64(bitPattern: Int64(cycleIndex)) &* 0x9E3779B97F4A7C15)
+        h ^= h >> 33; h &*= 0xff51afd7ed558ccd
+        h ^= h >> 33; h &*= 0xc4ceb9fe1a85ec53
+        h ^= h >> 33
+        return Int(truncatingIfNeeded: h)
     }
 
     /// Runs structural mutation up to `phase` generations, where `phase` is a

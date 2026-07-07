@@ -192,7 +192,12 @@ struct EvolutionInspector: View {
             isCollapsed: $phaseDriverCollapsed
         )
         .loomHelp("Animates the generation reveal over playback time. Off (default): the full generation count above is always shown. On: this driver's value is the current position in [0, generationCount] — e.g. a keyframe track from 0 at frame 0 to generationCount at some later frame reveals one generation at a time as it grows, tweening each extrude/split into view rather than popping it in.")
-        .padding(.bottom, 2)
+
+        InspectorField("Vary seed per cycle") {
+            Toggle("", isOn: bindEV(\.varySeedPerCycle)).labelsHidden()
+        }
+        .loomHelp("When the Reveal driver loops (Oscillator, or Keyframe with Loop/Ping-pong), each full cycle uses a different effective seed, so it mutates a new shape each time rather than replaying the identical growth. Has no effect while Reveal is off, or with a one-shot (non-looping) Keyframe track — there's no restart point to vary between. The seed field above is unaffected; this only changes what the engine derives from it internally.")
+            .padding(.bottom, 2)
     }
 
     // MARK: - Generational: extrude operator
