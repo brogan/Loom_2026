@@ -199,6 +199,35 @@ public enum ExtensionEngine {
         return result
     }
 
+    /// Extrude a single edge outward, returning the resulting 4-segment quad.
+    /// Same math as the `.extrude` operation type above, exposed per-edge (rather
+    /// than per-pass) so `GenerationalEvolutionEngine`'s extrude mutation operator
+    /// (Specs/GeometricLifecycle.md §4.4.2) can extrude a contiguous *run* of edges
+    /// as a set of neighboring quads sharing endpoints, reusing this rather than
+    /// duplicating the outward-normal/bow/width math.
+    static func extrudeEdge(
+        _ polygon: Polygon2D,
+        segIdx:    Int,
+        distance:  Double,
+        width:     Double = 1.0,
+        curvature: Double = 0.0
+    ) -> Polygon2D? {
+        let segCount = polygon.points.count / 4
+        guard segCount > 0, segIdx < segCount else { return nil }
+        let base = segIdx * 4
+        guard base + 3 < polygon.points.count else { return nil }
+        let a0 = polygon.points[base], a1 = polygon.points[base + 3]
+        let dx = a1.x - a0.x, dy = a1.y - a0.y
+        let len = sqrt(dx * dx + dy * dy)
+        let outwardNormal = Vector2D(
+            x: len > 1e-12 ? -dy / len : 0.0,
+            y: len > 1e-12 ?  dx / len : 0.0
+        )
+        let params = ExtensionParams(operationType: .extrude, extrusionWidth: width, extrusionCurvature: curvature)
+        return extrudeSegment(polygon, segIdx: segIdx, distance: distance,
+                               params: params, outwardNormal: outwardNormal)
+    }
+
     private static func extrudeSegment(
         _ polygon:       Polygon2D,
         segIdx:          Int,

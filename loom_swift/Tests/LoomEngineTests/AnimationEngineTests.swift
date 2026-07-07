@@ -101,7 +101,7 @@ final class KeyframeTransformTests: XCTestCase {
 
     func testAtLastKeyframe() {
         var rng = SystemRandomNumberGenerator()
-        let t = TransformAnimator.transform(for: animation, elapsedFrames: Double(150)/30.0, using: &rng)
+        let t = TransformAnimator.transform(for: animation, elapsedFrames: Double(150), using: &rng)
         XCTAssertEqual(t.positionOffset, .zero)
         XCTAssertEqual(t.scale, Vector2D(x: 1, y: 1))
         XCTAssertEqual(t.rotation, 0, accuracy: 1e-9)
@@ -110,7 +110,7 @@ final class KeyframeTransformTests: XCTestCase {
     func testAtMidpointFirstSegment() {
         // Cycle 25: halfway between KF0 and KF1, easeInOutQuad(0.5) = 0.5.
         var rng = SystemRandomNumberGenerator()
-        let t = TransformAnimator.transform(for: animation, elapsedFrames: Double(25)/30.0, using: &rng)
+        let t = TransformAnimator.transform(for: animation, elapsedFrames: Double(25), using: &rng)
         XCTAssertEqual(t.positionOffset.x, 25, accuracy: 1e-9)
         XCTAssertEqual(t.positionOffset.y, 0,  accuracy: 1e-9)
         XCTAssertEqual(t.scale.x, 0.75, accuracy: 1e-9)
@@ -121,14 +121,14 @@ final class KeyframeTransformTests: XCTestCase {
         // Cycle 200 wraps to normalised 0.
         var rng = SystemRandomNumberGenerator()
         let t0 = TransformAnimator.transform(for: animation, elapsedFrames: 0, using: &rng)
-        let t1 = TransformAnimator.transform(for: animation, elapsedFrames: Double(200)/30.0, using: &rng)
+        let t1 = TransformAnimator.transform(for: animation, elapsedFrames: Double(200), using: &rng)
         XCTAssertEqual(t0, t1)
     }
 
     func testHoldAfterLastKeyframe() {
         // Cycle 180 is past the last keyframe (150); should hold at KF3.
         var rng = SystemRandomNumberGenerator()
-        let t = TransformAnimator.transform(for: animation, elapsedFrames: Double(180)/30.0, using: &rng)
+        let t = TransformAnimator.transform(for: animation, elapsedFrames: Double(180), using: &rng)
         XCTAssertEqual(t.positionOffset, .zero)
         XCTAssertEqual(t.scale, Vector2D(x: 1, y: 1))
         XCTAssertEqual(t.rotation, 0, accuracy: 1e-9)
@@ -172,14 +172,14 @@ final class MorphKeyframeTests: XCTestCase {
 
     func testAtCycle50() {
         var rng = SystemRandomNumberGenerator()
-        let t = TransformAnimator.transform(for: animation, elapsedFrames: Double(50)/30.0, using: &rng)
+        let t = TransformAnimator.transform(for: animation, elapsedFrames: Double(50), using: &rng)
         XCTAssertEqual(t.morphAmount, 2.0, accuracy: 1e-9)
     }
 
     func testAtCycle25Midpoint() {
         // Linear easing, halfway between 1.0 and 2.0 → 1.5.
         var rng = SystemRandomNumberGenerator()
-        let t = TransformAnimator.transform(for: animation, elapsedFrames: Double(25)/30.0, using: &rng)
+        let t = TransformAnimator.transform(for: animation, elapsedFrames: Double(25), using: &rng)
         XCTAssertEqual(t.morphAmount, 1.5, accuracy: 1e-9)
     }
 
@@ -188,7 +188,7 @@ final class MorphKeyframeTests: XCTestCase {
         // n = 75 % 198 = 75; 75 < 100 → 75.
         // Between KF0(0) and KF1(50)? No, 75 > 50 → hold at last KF → morphAmount=2.0.
         var rng = SystemRandomNumberGenerator()
-        let t = TransformAnimator.transform(for: animation, elapsedFrames: Double(75)/30.0, using: &rng)
+        let t = TransformAnimator.transform(for: animation, elapsedFrames: Double(75), using: &rng)
         XCTAssertEqual(t.morphAmount, 2.0, accuracy: 1e-9)
     }
 
@@ -197,7 +197,7 @@ final class MorphKeyframeTests: XCTestCase {
         // 73 is past KF1(50) → hold at KF1 → morphAmount=2.0.
         // Actually 73 > 50, so hold at last KF.
         var rng = SystemRandomNumberGenerator()
-        let t = TransformAnimator.transform(for: animation, elapsedFrames: Double(125)/30.0, using: &rng)
+        let t = TransformAnimator.transform(for: animation, elapsedFrames: Double(125), using: &rng)
         XCTAssertEqual(t.morphAmount, 2.0, accuracy: 1e-9)
     }
 }

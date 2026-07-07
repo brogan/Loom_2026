@@ -169,13 +169,13 @@ final class SpriteSceneAdvanceTests: XCTestCase {
     }
 
     func testKeyframeRectTransformNonIdentityAfterCycles() throws {
-        // After 26 advance calls (cycle 25 was evaluated at cycle 0 draw), the
-        // keyframe_rect transform should reflect the keyframe values at cycle 25.
-        // The sprite starts computing transform for drawCycle=0, so after 26 advances
-        // the last computed transform used drawCycle=25.
+        // advanceInstance adds deltaTime to elapsedTime and evaluates the transform
+        // from that *already-updated* value within the same call — so N calls of
+        // dt=1/30 at 30fps lands exactly on elapsedFrames=N, not N-1. 25 calls lands
+        // exactly on cycle 25 (halfway between KF0 and KF1, easeInOutQuad(0.5)=0.5).
         var scene = try makeScene()
         var rng   = SystemRandomNumberGenerator()
-        for _ in 0..<26 { scene.advance(deltaTime: 1.0/30.0, targetFPS: 30.0, using: &rng) }
+        for _ in 0..<25 { scene.advance(deltaTime: 1.0/30.0, targetFPS: 30.0, using: &rng) }
 
         let inst = try XCTUnwrap(scene.instances.first { $0.def.name == "keyframe_rect" })
         // At cycle 25, easeInOutQuad(0.5) = 0.5, so positionOffset.x ≈ 25
@@ -187,7 +187,10 @@ final class SpriteSceneAdvanceTests: XCTestCase {
         // morphTarget_saw: KF0 at drawCycle=0 has morphAmount=1.0
         var scene = try makeScene()
         var rng   = SystemRandomNumberGenerator()
-        scene.advance(deltaTime: 1.0/30.0, targetFPS: 30.0, using: &rng)  // computes transform for cycle 0
+        // deltaTime: 0 keeps elapsedTime at 0, landing exactly on elapsedFrames=0 —
+        // see testKeyframeRectTransformNonIdentityAfterCycles for why a nonzero dt
+        // would evaluate at cycle 1, not cycle 0.
+        scene.advance(deltaTime: 0, targetFPS: 30.0, using: &rng)
 
         let inst = try XCTUnwrap(scene.instances.first { $0.def.name == "morphTarget_saw" })
         XCTAssertEqual(inst.state.transform.morphAmount, 1.0, accuracy: 1e-9)

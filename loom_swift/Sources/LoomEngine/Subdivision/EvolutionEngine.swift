@@ -34,6 +34,11 @@ public enum EvolutionEngine {
                                          targetFPS: targetFPS,
                                          spriteIndex: spriteIndex,
                                          allSets: allSets)
+            case .generational:
+                // Operates on materialized [Polygon2D], not SubdivisionParams —
+                // dispatched separately by GenerationalEvolutionEngine at its own
+                // pipeline position (see SpriteScene.swift). No-op here.
+                break
             }
         }
     }

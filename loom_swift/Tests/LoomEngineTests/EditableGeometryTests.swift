@@ -78,7 +78,7 @@ final class EditableGeometryTests: XCTestCase {
                     innerRadius: 1.0,
                     scaleX: 1.0,
                     scaleY: 1.0,
-                    rotationRadians: -.pi / 2.0
+                    rotationRadians: .pi / 2.0
                 )
             )
         )
@@ -139,9 +139,15 @@ final class EditableGeometryTests: XCTestCase {
         XCTAssertEqual(editable.segments.count, 4)
         XCTAssertEqual(runtime.type, .spline)
         XCTAssertEqual(runtime.points.count, 16)
-        assertVec(runtime.points[0], Vector2D(x: 0, y: 0.2))
+        // Note: the factory's "top"/"bottom" local variable names are misleading —
+        // "top" is actually placed at y = centre.y - radiusY (below centre in this
+        // Y-UP convention) and "bottom" at + radiusY (above). Purely a naming quirk
+        // with no visual effect (an oval is symmetric regardless of which boundary
+        // point is index 0); not fixed here since it's out of scope and risk-free
+        // to leave. These expected values match what the factory actually emits.
+        assertVec(runtime.points[0], Vector2D(x: 0, y: -0.2))
         assertVec(runtime.points[3], Vector2D(x: 0.3, y: 0))
-        assertVec(runtime.points[15], Vector2D(x: 0, y: 0.2))
+        assertVec(runtime.points[15], Vector2D(x: 0, y: -0.2))
     }
 
     func testMovingSharedAnchorUpdatesEverySegmentReference() throws {
@@ -151,8 +157,8 @@ final class EditableGeometryTests: XCTestCase {
         editable.setPointPosition(id: sharedAnchorID, to: Vector2D(x: 2, y: 3))
         let runtime = try editable.toPolygon2D()
 
-        assertVec(runtime.points[3], Vector2D(x: 2, y: -3))
-        assertVec(runtime.points[4], Vector2D(x: 2, y: -3))
+        assertVec(runtime.points[3], Vector2D(x: 2, y: 3))
+        assertVec(runtime.points[4], Vector2D(x: 2, y: 3))
     }
 
     func testMovingAnchorMovesAttachedControlsBySameDelta() throws {
@@ -168,12 +174,12 @@ final class EditableGeometryTests: XCTestCase {
         editable.moveAnchorWithAttachedControls(id: movedAnchorID, to: Vector2D(x: 0.0, y: 0.0))
         let runtime = try editable.toPolygon2D()
 
-        assertVec(runtime.points[1], Vector2D(x: -0.1, y: 0.3))
+        assertVec(runtime.points[1], Vector2D(x: -0.1, y: -0.3))
         assertVec(runtime.points[2], Vector2D(x: -0.2, y: 0.0))
         assertVec(runtime.points[3], Vector2D(x: 0.0, y: 0.0))
         assertVec(runtime.points[4], Vector2D(x: 0.0, y: 0.0))
-        assertVec(runtime.points[5], Vector2D(x: 0.0, y: -0.2))
-        assertVec(runtime.points[6], Vector2D(x: 0.3, y: -0.1))
+        assertVec(runtime.points[5], Vector2D(x: 0.0, y: 0.2))
+        assertVec(runtime.points[6], Vector2D(x: 0.3, y: 0.1))
     }
 
     func testMovingControlPointLeavesAnchorsUntouched() throws {
@@ -184,7 +190,7 @@ final class EditableGeometryTests: XCTestCase {
         let runtime = try editable.toPolygon2D()
 
         assertVec(runtime.points[0], Vector2D(x: 0, y: 0))
-        assertVec(runtime.points[1], Vector2D(x: 0.4, y: -0.5))
+        assertVec(runtime.points[1], Vector2D(x: 0.4, y: 0.5))
         assertVec(runtime.points[3], Vector2D(x: 1, y: 0))
     }
 
@@ -199,12 +205,12 @@ final class EditableGeometryTests: XCTestCase {
         editable.translateSegment(id: editable.segments[0].id, by: Vector2D(x: 0.1, y: 0.2))
         let runtime = try editable.toPolygon2D()
 
-        assertVec(runtime.points[0], Vector2D(x: -0.2, y: 0.1))
-        assertVec(runtime.points[1], Vector2D(x: 0.0, y: 0.1))
-        assertVec(runtime.points[2], Vector2D(x: 0.2, y: 0.1))
-        assertVec(runtime.points[3], Vector2D(x: 0.4, y: 0.1))
-        assertVec(runtime.points[5], Vector2D(x: 0.4, y: -0.1))
-        assertVec(runtime.points[14], Vector2D(x: -0.2, y: -0.1))
+        assertVec(runtime.points[0], Vector2D(x: -0.2, y: -0.1))
+        assertVec(runtime.points[1], Vector2D(x: 0.0, y: -0.1))
+        assertVec(runtime.points[2], Vector2D(x: 0.2, y: -0.1))
+        assertVec(runtime.points[3], Vector2D(x: 0.4, y: -0.1))
+        assertVec(runtime.points[5], Vector2D(x: 0.4, y: 0.1))
+        assertVec(runtime.points[14], Vector2D(x: -0.2, y: 0.1))
     }
 
     func testSegmentsTouchingSelectedSegmentIncludesAdjacentEdges() throws {
@@ -258,9 +264,9 @@ final class EditableGeometryTests: XCTestCase {
 
         XCTAssertEqual(result.anchorIDs.count, 3)
         XCTAssertEqual(result.segments.count, 3)
-        assertVec(runtime.points[0], Vector2D(x: 0, y: -1))
-        assertVec(runtime.points[1], Vector2D(x: 1.0 / 3.0, y: -2.0 / 3.0))
-        assertVec(runtime.points[2], Vector2D(x: 2.0 / 3.0, y: -1.0 / 3.0))
+        assertVec(runtime.points[0], Vector2D(x: 0, y: 1))
+        assertVec(runtime.points[1], Vector2D(x: 1.0 / 3.0, y: 2.0 / 3.0))
+        assertVec(runtime.points[2], Vector2D(x: 2.0 / 3.0, y: 1.0 / 3.0))
         assertVec(runtime.points[3], Vector2D(x: 1, y: 0))
     }
 
@@ -284,8 +290,8 @@ final class EditableGeometryTests: XCTestCase {
         XCTAssertEqual(curve.segments.count, 1)
         XCTAssertEqual(runtime.type, .openSpline)
         assertVec(runtime.points[0], Vector2D(x: 1, y: 0))
-        assertVec(runtime.points[1], Vector2D(x: 0.7, y: -0.8))
-        assertVec(runtime.points[2], Vector2D(x: 0.2, y: -0.4))
+        assertVec(runtime.points[1], Vector2D(x: 0.7, y: 0.8))
+        assertVec(runtime.points[2], Vector2D(x: 0.2, y: 0.4))
         assertVec(runtime.points[3], Vector2D(x: 0, y: 0))
     }
 
@@ -302,8 +308,8 @@ final class EditableGeometryTests: XCTestCase {
 
         XCTAssertEqual(runtime.type, .openSpline)
         XCTAssertEqual(curve.segments.count, 3)
-        assertVec(runtime.points[0], Vector2D(x: 1, y: -1))
-        assertVec(runtime.points[11], Vector2D(x: 0, y: -1))
+        assertVec(runtime.points[0], Vector2D(x: 1, y: 1))
+        assertVec(runtime.points[11], Vector2D(x: 0, y: 1))
     }
 
     func testClosingOpenCurveCreatesClosedPolygon() throws {
@@ -319,7 +325,7 @@ final class EditableGeometryTests: XCTestCase {
         XCTAssertEqual(runtime.type, .spline)
         XCTAssertEqual(polygon.segments.count, 3)
         assertVec(runtime.points[8], Vector2D(x: 0, y: 0))
-        assertVec(runtime.points[11], Vector2D(x: 0, y: -1))
+        assertVec(runtime.points[11], Vector2D(x: 0, y: 1))
     }
 
     func testAnchorClicksBecomeEditableClosedPolygonWithInferredControls() throws {
@@ -334,11 +340,11 @@ final class EditableGeometryTests: XCTestCase {
 
         XCTAssertEqual(editable.segments.count, 3)
         XCTAssertEqual(editable.points.count, 9)
-        assertVec(runtime.points[0], Vector2D(x: -0.2, y: 0.2))
-        assertVec(runtime.points[1], Vector2D(x: -0.033333333333333354, y: 0.13333333333333333))
-        assertVec(runtime.points[2], Vector2D(x: 0.1333333333333333, y: 0.06666666666666668))
+        assertVec(runtime.points[0], Vector2D(x: -0.2, y: -0.2))
+        assertVec(runtime.points[1], Vector2D(x: -0.033333333333333354, y: -0.13333333333333333))
+        assertVec(runtime.points[2], Vector2D(x: 0.1333333333333333, y: -0.06666666666666668))
         assertVec(runtime.points[3], Vector2D(x: 0.3, y: 0.0))
-        assertVec(runtime.points[11], Vector2D(x: -0.2, y: 0.2))
+        assertVec(runtime.points[11], Vector2D(x: -0.2, y: -0.2))
     }
 
     func testDocumentEnsuresActiveLayer() {
@@ -454,7 +460,7 @@ final class EditableGeometryTests: XCTestCase {
         let decoded = try EditableGeometryJSONLoader.decode(from: data)
 
         XCTAssertTrue(json.contains("\"schema\" : \"loom.editableGeometry\""))
-        XCTAssertTrue(json.contains("\"schemaVersion\" : 1"))
+        XCTAssertTrue(json.contains("\"schemaVersion\" : 2"))
         XCTAssertEqual(decoded, document)
     }
 
@@ -664,7 +670,7 @@ final class EditableGeometryTests: XCTestCase {
         XCTAssertEqual(decoded.layers[0].points.count, 1)
         XCTAssertEqual(runtime.count, 1)
         XCTAssertEqual(runtime[0].type, .point)
-        assertVec(runtime[0].points[0], Vector2D(x: 0.2, y: 0.3))
+        assertVec(runtime[0].points[0], Vector2D(x: 0.2, y: -0.3))
     }
 
     func testDocumentWeldGroupsMergeAndRoundTripThroughJSON() throws {

@@ -1,6 +1,7 @@
 # Geometric Lifecycle — Spec
 
-**Status**: Phases 0–6 complete; Phase 7 (Fulguration) pending  
+**Status**: Phases 0–6 complete; Phase 7 (Fulguration) and Phase 8 (Evolution:
+generational artificial-life) pending  
 **Affects**: LoomEngine, Loom (studio), subdivision tab architecture
 
 ---
@@ -214,6 +215,116 @@ Convergence pressure and momentum drift compose: a form can drift stochastically
 while also being pulled toward a target, so the drift becomes increasingly constrained
 as pressure rises.
 
+### 4.4 Generational evolution (artificial life) — planned
+
+#### 4.4.1 What it is
+
+A third `EvolutionParams.operationType` case, `.generational`, distinct in kind from
+momentum drift and convergence pressure: those two *perturb parameters*
+(`SubdivisionParams` fields) that the pipeline then subdivides once; generational
+evolution instead *iteratively mutates the polygon itself*, across N generations, each
+generation operating on the actual materialized output of the previous one and judged
+by a fitness measure before deciding whether to keep mutating. It's a minimal
+artificial-life system: random structural variation, a success criterion, and
+selection — applied to geometry instead of organisms.
+
+Each shape subject to a generational-evolution pass has:
+- `generationCount: Int` — how many generations to run.
+- A weighted/random choice of **mutation operator** per generation.
+- A **fitness measure** each resulting generation is judged by.
+- A **lock rule**: once a generation is judged successful, it stops mutating (and may
+  be duplicated/grafted) rather than continuing to be mutated by further generations.
+
+#### 4.4.2 Mutation operators
+
+- **Contiguous edge extrusion** — one or more adjacent edges pushed outward by a
+  distance sampled from a range each generation (RPSR — random probability within a
+  specified range). Structurally the same move as Extension's edge extrusion (§3.3),
+  but applied per-generation to a shape that already carries prior generations' changes,
+  rather than once to the base form.
+- **Edge split + outward displacement** — split one or more edges, then move one or
+  more of the new points outward from the current polygon boundary by an RPSR distance.
+  Genuinely new (no existing operator does this): it's a structural mutation, not a
+  static transform, since where the "outward" direction and the pre-split shape are
+  depend on everything that happened in prior generations.
+- **Duplicate-and-graft** — copy a contiguous sub-portion of the current boundary
+  (a run of vertices/edges) and attach the copy elsewhere on the shape. Needs an
+  attachment rule (nearest edge, a symmetric position across the shape's axis, or a
+  driven/random vertex) — left as an open detail for the first prototype.
+- **Subdivision cycle** — run one pass of `SubdivisionEngine.process` on the current
+  polygon as a mutation step. This does *not* require reordering the five-stage
+  pipeline (Involution → Extension → Evolution → Fulguration → Dissolution) — it's an
+  internal function call within Evolution's own generation loop, operating on
+  `[Polygon2D]` directly, exactly as Extension's engine already calls into geometry
+  helpers internally.
+- **Operator selection** — a per-generation weighted random pick across the above
+  (`operatorWeights: [GenerationOperator: Double]`, seeded), so the user can bias
+  toward mostly-extrusion, mostly-grafting, an even mix, or a fixed single operator
+  by zeroing the others' weights.
+
+#### 4.4.3 Fitness and selection
+
+- **Symmetry score** — reflect the current polygon across a candidate mirror axis
+  (best-fit, or user-specified) and measure vertex/edge deviation from that reflection;
+  lower deviation scores higher. A `symmetryTarget: Double` (0 = reward asymmetry,
+  1 = reward symmetry) lets the user pick either end of the scale rather than always
+  maximizing regularity.
+- **Reference-shape similarity** — compare the evolving shape against a small library
+  of reference polygons (built-in primitives like square/isosceles-triangle, or
+  shapes the user has created/selected from their own project) using coarse
+  descriptors (vertex count, edge-length variance, interior-angle variance) as a cheap
+  first pass; a full scale/rotation-invariant registration (Procrustes-style) is a
+  possible later refinement if the coarse measure doesn't discriminate well enough.
+- **Combined fitness** — a weighted sum of whichever measures are active.
+- **Lock rule** — once a generation's fitness crosses `successThreshold`, the shape
+  stops being mutated by extrusion/splitting/subdivision. `lockMode` decides what
+  happens next: `.hold` (carry forward unchanged for any remaining generations) or
+  `.graft` (duplicate the locked shape onto itself or another lineage rather than
+  continuing to mutate it — connects back to the duplicate-and-graft operator above).
+
+#### 4.4.4 Architecture: state, determinism, and cost
+
+This is the part worth being precise about, since Evolution's other two operation
+types were deliberately built closed-form/stateless (§4.1) and this one structurally
+cannot be:
+
+- **Not closed-form.** Generation N depends on generation N−1's actual materialized
+  polygon and its measured fitness — there is no formula that computes generation 47
+  without having produced generations 1–46. Momentum drift and convergence pressure
+  don't have this dependency (their "memory" is of a noise seed, not of prior
+  geometry), which is what let them stay O(1)/instantly-seekable.
+- **Still fully deterministic and free of persistent state**, in the sense that
+  matters architecturally: given `(baseShape, seed, generationCount, operatorWeights,
+  fitnessRule)`, re-simulating from generation 0 produces the identical result every
+  time. Nothing is incrementally mutated frame-by-frame during playback — the whole
+  chain is recomputed within a single evaluation. This is the same category as
+  subdivision depth or Extension's `branchDepth`/`extrusionGenerations`: recursive and
+  O(N) to reach depth/generation N, but not "state" in the sense that broke seeking or
+  required save/restore. `GenerationalEvolutionEngine.process(polygon:, seed:,
+  generations:, operators:, fitness:) -> Polygon2D` walks the chain once per call;
+  memoizing the result per shape-instance (invalidated on any input change) is a valid
+  performance optimization, never a correctness requirement.
+- **A hard complexity budget is required**, not optional. Duplicate-and-graft and the
+  subdivision-cycle operator both multiply vertex/polygon count per generation.
+  Extension hit exactly this failure mode at branch depth 8 (~87,000 polygons before
+  the fix) and had to thread a budget counter through the recursion (§3.2 note); the
+  generation loop needs the same discipline — a `maxVertexBudget` (or equivalent) that
+  stops mutation once exceeded, from the first implementation, not added after an
+  incident.
+- **Lineage growth needs its own cap.** If duplicate-and-graft or `.graft` lock mode
+  produces more than one independent descendant, each descendant runs its own
+  generation chain onward — a small population, not a single path. `maxLineages`
+  bounds this the same way `maxVertexBudget` bounds per-shape complexity.
+
+#### 4.4.5 Suggested build order
+
+Start with only extrusion and edge-split as operators, symmetry as the only fitness
+measure, and both caps enforced from the outset. Add duplicate-and-graft and
+reference-shape matching afterward — they're the two riskiest pieces (grafting for
+uncontrolled complexity growth, reference-matching for metric quality), and validating
+the generation/fitness/lock loop on the simpler pair first makes it much easier to
+tell whether problems come from the core loop or from those two additions.
+
 ---
 
 ## 5. Fulguration
@@ -399,6 +510,23 @@ list/expand/collapse/reorder UI pattern is shared.
 A sprite with only the Involution subtab populated behaves exactly as current Loom
 sprites do — backwards compatibility is preserved.
 
+**Update (2026-07-07) — left-panel mode tab bar removed.** The Inv/Ext/Evo/Ful/Dis
+button bar at the top of the Transform tab's left panel (`lifecycleTabBar` in
+`SubdivisionTabView`) has been removed, along with the matching gate in
+`InspectorPanel` and the `LifecycleTab` enum / `AppController.lifecycleTab` property
+that backed it. It was dead weight: switching between the five modes is already
+handled directly in the right-hand inspector (`SubdivisionInspector`), which lists
+Involution/Extension/Evolution/Fulguration/Dissolution as separate collapsible
+sections — each with its own add/duplicate/delete controls for that mode's passes —
+with a single field editor beneath for whichever pass is currently selected. The left
+panel's sprite tree and transform-set list are now shown unconditionally, with no
+top-level mode switch gating them.
+
+`SubdivisionInspector`'s body is now explicitly split into two parts: a top section
+(`transformSetSection`) covering set info plus the five per-mode pass lists, and a
+bottom section (`selectedTransformationFields`) showing the fields for whichever
+transformation is currently selected, separated by a `Divider`.
+
 ---
 
 ## 9. Open Curves Across the Lifecycle
@@ -465,14 +593,74 @@ full transformation pipeline. A phased rename is in progress:
 - Quick Pipeline Setup: "Subdivision set" → "Transform set"
 
 **Phase B — QPS type awareness (complete):**
-- `recommendedQuickSetupSubdivSetName` already returns "None" for open-curve sources
-  (via `sourceSupportsSubdivision` returning `false` for `curveSets`).
-- `makePipeline` now detects `folder == "curveSets"` and creates
+- `makePipeline` detects `folder == "curveSets"` and creates
   `ShapeDef(sourceType: .openCurveSet, openCurveSetName: geoName)` instead of a
   polygon set shape. `pipelineExists` updated accordingly.
-- When creating a new transformation set from QPS for a closed-polygon source, a QUAD
-  subdivision param is added as the default. For open-curve sources, no default param is
-  added (the set starts empty; the user adds curve refinement passes via the inspector).
+
+**Update (2026-07-07) — QPS default-pass generalized to all five modes, both source types.**
+Previously `sourceSupportsSubdivision` returned `false` for `folder == "curveSets"`,
+so `recommendedQuickSetupSubdivSetName` forced "None" for open-curve sources — no
+transform set was created by default at all, unlike closed polygons which always got
+a recommended set name plus an automatic QUAD subdivision param. Fixed:
+`sourceSupportsSubdivision` now returns `true` for `curveSets` too, so open curves get
+a real recommended transform-set name by default, matching closed polygons.
+
+Quick Pipeline Setup's "Transform" phase now has a **Mode** picker
+(`QuickSetupDefaultMode` in `InspectorPanel.swift`) offering Involution / Extension /
+Evolution / Dissolution / None (Fulguration omitted — unimplemented). It controls what
+default pass is seeded into a **newly-created** transform set only (has no effect if
+the named set already exists):
+- **Involution** — `SubdivisionParams(.quad)` for closed polygons, `CurveRefinementParams`
+  for open curves (this replaces the old hardcoded default and is still the QPS default
+  mode).
+- **Extension** — `ExtensionParams` with `operationType: .extrude` for closed polygons,
+  `.branch` for open curves (the two are mutually exclusive per §3/Phase 4 — the wrong
+  pairing silently no-ops, so QPS always sets the correct one for the source type).
+- **Evolution** — `EvolutionParams` (momentum drift). Only offered for closed-polygon
+  sources: `EvolutionEngine` exclusively mutates `SubdivisionParams` fields, which
+  `SubdivisionEngine` bypasses entirely for `.openSpline` polygons, so it would have no
+  visible effect on an open curve. Excluded from the picker for `curveSets` sources.
+- **Dissolution** — `DissolutionParams` (entropy/collapse). Works for both source types
+  (open curves get a simpler uniform centroid-shrink entropy vs. closed polygons' full
+  anchor-smoothing/circle-fit, per §6.2 — same engine, degraded fidelity, not absent).
+
+The left-panel Transform Sets tree (`SubdivisionTabView.setsTree`) previously summarized
+a set's size using `set.params.count` alone (closed-polygon subdivision only), so a
+newly-created open-curve/Extension/Evolution/Dissolution-only default set looked empty
+("0", "No params — use + to add") despite having a real pass. Fixed with a
+`totalPassCount` helper summing all six pass arrays; the empty-state message now
+distinguishes "no passes at all" from "passes exist, see right panel" (since this tree
+still only renders `params` rows in detail — full per-type row rendering in the left
+tree remains future work, not covered by this fix).
+
+The right-inspector top section (`SubdivisionInspector.transformSetSection`, see §1 note
+above) already reflects any newly-seeded pass live, since it reads directly from the same
+`SubdivisionParamsSet` arrays. Each mode's section header also now shows a small circle,
+filled green when that mode has at least one pass configured.
+
+**Bugfix (2026-07-07) — stale pass selection shadowed other modes' inspectors.**
+`SubdivisionInspector.selectedTransformationFields` picks which bottom-section editor
+to show via an `if/else if` priority chain (Dissolution → Evolution → Extension →
+Segment Extraction → Curve Refinement → Subdivision — first non-nil
+`selected*ParamIndex` wins). Each mini-list's selection binding was hand-nil-ing only
+the *other* indices it happened to know about at the time it was written, which in
+practice meant only the indices **below** itself in that priority chain. E.g.
+selecting a Subdivision pass cleared `selectedCurveRefinementParamIndex` but not
+Evolution/Extension/Dissolution/Segment Extraction; selecting an Extension pass
+cleared everything below it but not Evolution or Dissolution above it. Once any
+higher-priority mode's pass had ever been selected, its index was never cleared by
+selecting a lower-priority mode's pass afterward, so the bottom section kept showing
+that higher-priority mode's editor forever — reported as "clicking Subdivision or
+Extension after Evolution has been selected always shows the Evolution inspector, no
+matter what's clicked." The `add*Param` functions had the identical bug (each only
+nil'd a partial list when auto-selecting the newly-created pass).
+
+Fixed by centralizing the invariant in one place: `selectPass(_:_:)` clears all six
+`selected*ParamIndex` properties unconditionally, then sets the one requested. Every
+mini-list's selection binding and every `add*Param` function now routes through it
+instead of hand-maintaining its own partial clear-list. This closes the whole class of
+bug for good — adding a future mode's selection index can't reintroduce it, since
+there's no per-list clear-list left to forget to update.
 
 **Phase C — Mode selection (future):**
 - Add `activeModes: Set<LifecycleMode>` to `SubdivisionParamsSet` / future
@@ -480,6 +668,47 @@ full transformation pipeline. A phased rename is in progress:
 - UI: mode-selection control in set header; collapse stages whose mode is not active.
 - This gives users an explicit, discoverable way to say "this set uses curve refinement
   only" or "this set uses subdivision + dissolution".
+
+**Update (2026-07-07) — left-panel/right-panel CRUD split, "pass" terminology.**
+Two more single-mode-era leftovers, both in the Transform tab's left panel
+(`SubdivisionTabView`):
+
+1. `addSet()` created every new transform set with a default `SubdivisionParams()`
+   (Quad) already in it — the left panel's only affordance for adding *any* pass was a
+   "Params" toolbar row that exclusively created closed-polygon subdivision passes, a
+   relic of the era before Extension/Evolution/Dissolution/Curve Refinement/Segment
+   Extraction existed. This was also the immediate cause of the QPS-recommended-name
+   confusion documented above. Fixed: `addSet()` now creates an empty
+   `SubdivisionParamsSet(name:)` with no default pass, matching how every other mode's
+   "add" already behaves.
+2. The left panel's "Params" toolbar row (add/delete/duplicate/rename) and the
+   per-set expand-to-see-params tree (`expandedSets`, per-param rows, hidden-param
+   eye toggle, a separate rename sheet) were removed entirely. This was the *only*
+   place any individual pass could be added, deleted, duplicated, or renamed outside
+   the right panel — every other mode (Extension/Evolution/Dissolution/Curve
+   Refinement/Segment Extraction) already did this exclusively via its own mini-list
+   in `SubdivisionInspector`. Renaming already worked via each pass's inline "Name"
+   field in the bottom-section editor once selected (`paramEditor`,
+   `CurveRefinementInspector`, `ExtensionInspector`, etc.), making the left panel's
+   separate rename sheet a second, redundant path. The left panel (`setRow`) now
+   just shows a set's name and total pass count across all six pass arrays
+   (`totalPassCount`); selecting a set loads it into the right panel, where all pass
+   CRUD for all five modes now lives consistently.
+3. `SubdivisionInspector.paramsList` (the Subdivision entry under Involution) gained
+   the add/delete/duplicate controls every other mode's mini-list already had. Adding
+   a pass is a **dropdown of `SubdivisionType` options** (Quad/Tri/Bord/Split/Star/etc.,
+   `addSubdivisionParamMenu`) rather than a plain "+" that silently always created
+   Quad — the user picks the algorithm at creation time instead of getting a default
+   they then have to notice and change.
+4. **Terminology**: "pass" is now the single term used for an individual configured
+   item within any of the five lifecycle modes, in all user-facing text (buttons,
+   help strings, empty-state messages, counts) — matching what Extension/Evolution/
+   Dissolution/Curve Refinement/Segment Extraction already used; "param"/"params" no
+   longer appears in Subdivision's UI strings either. The underlying Swift symbols
+   (`SubdivisionParams`, `SubdivisionParamsSet.params`, `selectedSubdivisionParamIndex`,
+   etc.) are intentionally left as-is — renaming those is Phase D below, deferred
+   because it touches Codable keys and dozens of call sites project-wide; the fix
+   here was scoped to what users actually read.
 
 **Phase D — Data model rename (future):**
 - `SubdivisionParamsSet` → `TransformationSet`
@@ -653,6 +882,132 @@ is frame-level state, not per-polygon state. The proximity trigger requires comp
 nearest-point distances between two `[Polygon2D]` sets per frame — O(m×n) naively;
 a bounding-box pre-check reduces practical cost to O(1) for non-overlapping sets.
 
+### Phase 8 — Evolution: generational artificial-life system (in progress)
+
+`EvolutionParams.operationType` (§4.4) is `.momentumDrift` | `.convergencePressure` |
+`.generational`. Engine for the third: `GenerationalEvolutionEngine`, operating on
+`[Polygon2D]` directly rather than perturbing `SubdivisionParams` fields the way
+momentum drift/convergence pressure do.
+
+**Build order (recommended):** extrusion + edge-split operators only, symmetry-only
+fitness, hard vertex-budget and generation-count caps enforced from the start.
+Duplicate-and-graft and reference-shape similarity matching follow once the core
+generate/measure/lock loop is validated — see §4.4.5 for why those two are deferred.
+
+**Not closed-form, still stateless in the sense that matters:** see §4.4.4. No
+per-sprite mutable state persists across rendered frames; the full generation chain
+is recomputed from `(baseShape, seed, generationCount, operatorWeights, fitnessRule)`
+on each evaluation, same category as subdivision depth or Extension's `branchDepth`.
+
+**Engine (prototyped 2026-07-07):** `GenerationalEvolutionEngine` in the `loom_swift`
+package. `process(polygons:params:) -> [Polygon2D]` runs `generationCount`
+generations, each applying a weighted-random choice of extrude or split to one
+eligible (`.spline`) polygon, with the vertex budget enforced every generation (a
+generation that would exceed budget is rejected outright, chain stops there).
+- **Extrude operator** reuses `ExtensionEngine`'s existing outward-quad math exactly
+  rather than reimplementing it: an internal `ExtensionEngine.extrudeEdge(_:segIdx:distance:width:curvature:)`
+  wraps the same `extrudeSegment` the `.extrude` operation type already uses, exposed
+  per-edge so a contiguous *run* of edges (RPSR-sampled run length, RPSR distance) can
+  be extruded as a set of neighboring quads sharing endpoints — same compound-growth
+  model as Extension (§3.3), confirmed to match how the geometry editor's own
+  interactive extrude tool works (`AppController.performGeometryDisplacementExtrude` /
+  `makeExtrudeQuad`: welds a new quad's edge to the source rather than growing the
+  source polygon's own boundary).
+- **Split operator** reuses `BezierMath.split(seg:t:)` — the same de Casteljau
+  primitive the geometry editor's edge-insert tool uses
+  (`AppController.splitPolygonSegment`) — to insert a new anchor at t=0.5 on a
+  randomly-chosen edge, then displaces *only that anchor* (not its flanking control
+  points) outward along the direction from `BezierMath.centreSpline` (anchor-only
+  centre, matching Dissolution's `.centroid` target) by an RPSR distance. Leaving the
+  control points in place pulls the boundary into a rounded spike rather than a sharp
+  corner.
+- Randomness (operator choice, target polygon, run length, distance, split edge) all
+  comes from `SubdivisionEngine.centreHash(seed:cycle:)` — deliberately *not*
+  `DoubleDriver`, which is a per-frame animation primitive; generation index is a
+  structural axis, not playback time, so the two shouldn't be conflated (see the doc
+  comment on `EvolutionParams`).
+
+**Data model + pipeline wiring (complete, 2026-07-07):** the generational fields
+(`generationCount`, `extrudeWeight`/`splitWeight`, `extrudeRunLengthMin/Max`,
+`extrudeDistanceMin/Max`, `splitDisplacementMin/Max`, `generationSeed`,
+`maxVertexBudget`) live flat on `EvolutionParams` alongside the momentum-drift/
+convergence-pressure fields, matching how `ExtensionParams`/`DissolutionParams`
+already carry all their modes' fields on one struct gated by `operationType`. The
+short-lived standalone `GenerationalEvolutionParams` struct from the prototype was
+deleted; `GenerationalEvolutionEngine.process` now takes `EvolutionParams` directly,
+plus a `process(polygons:passes:[EvolutionParams])` convenience overload that filters
+to enabled `.generational` passes and chains them in order (mirroring
+`DissolutionEngine.apply`'s array-taking convention).
+
+Pipeline position: `EvolutionEngine.apply` (step 2a, before Subdivision) treats
+`.generational` as a no-op — it only knows how to mutate `SubdivisionParams`, and
+`.generational` needs materialized geometry that doesn't exist yet at that point.
+`GenerationalEvolutionEngine.process(polygons:passes:)` instead runs at a new step 2e
+in `SpriteScene.swift`, after Extension (2d) and before Dissolution (renumbered 2f) —
+operating on the fully-composed per-frame geometry, consistent with "the set of
+polygons that compose the shape" from the original design note. The same step was
+added to `SubdivisionTabView.swift`'s `bakeSelectedSet()`/`saveSelectedSetAsSVG()` in
+the Loom_Swift_Integration app so baking and SVG export match live rendering.
+
+Verified with 11 `GenerationalEvolutionEngineTests` checks (up from the prototype's 8):
+disabled/zero-generation no-ops, extrude-only polygon-count growth, split-only
+point-count growth with no new polygons, split displacement direction/magnitude,
+same-seed determinism, different-seed variation, budget-cap enforcement, the
+`passes:` overload ignoring non-`.generational` and disabled passes, and multi-pass
+chaining producing the same result as sequential calls. All 461 tests in
+`LoomEngineTests` pass (the prototype-era `ExportTests.swift` breakage and ~56 other
+pre-existing failures found along the way have since been fixed in separate work).
+
+**Inspector UI (complete, 2026-07-07):** `EvolutionInspector`'s Operation-type picker
+switched from segmented to menu style (three options no longer fit segmented
+cleanly) and gained a "Generational: iteratively mutates..." line in its help text.
+Three new sections appear when Generational is selected: **Generations**
+(count/seed/vertex budget), **Extrude** (weight, run-length range, distance range),
+**Split** (weight, displacement range). `SubdivisionInspector`'s "add evolution pass"
+button became a type-picker menu (mirroring Subdivision's algorithm dropdown)
+instead of always defaulting to Momentum Drift, since the three operation types are
+different enough in kind that a silent default would be misleading.
+
+**Animated reveal (complete, 2026-07-07):** a `generationPhase: DoubleDriver` field
+on `EvolutionParams` (disabled by default — the full `generationCount` is always
+applied statically, unchanged from before this existed) maps playback time to a
+continuous position in `[0, generationCount]`:
+- The integer part is how many generations are fully applied — unchanged mechanics
+  from before.
+- The fractional part scales the **in-progress** generation's operator magnitude
+  (extrude distance or split displacement) from 0 up to its full sampled value,
+  holding the target polygon/edge choice fixed — the same mutation that would happen
+  at full strength, just growing in rather than popping in. `GenerationalEvolutionEngine.process`
+  gained a `phase: Double?` parameter (`nil` = old static behavior, used by all
+  pre-existing callers/tests unchanged) and `applyExtrude`/`applySplit` gained a
+  `strength` multiplier on the sampled distance.
+- `GenerationalEvolutionEngine.process(polygons:passes:elapsedFrames:targetFPS:spriteIndex:)`
+  evaluates each pass's own `generationPhase` driver via the standard
+  `DriverEvaluator.evaluate` (the same mechanism camera pan/zoom/opacity already
+  use) — this is the one place playback time deliberately *does* drive the
+  generational engine, unlike the internal per-generation randomness (§ note in
+  `EvolutionParams`'s doc comment on why those two shouldn't be conflated).
+- Fully consistent with the determinism model (§4.4.4): phase is just a continuous
+  generalization of the discrete generation count, the whole chain still recomputes
+  from scratch given `(baseShape, seed, params, phase)`, and scrubbing backward or
+  looping an oscillator/keyframe driver "de-evolves" cleanly — no ratchet effect.
+- Inspector: a `DoubleDriverEditor` "Reveal" section under Generations, same widget
+  already used for Convergence Pressure.
+- Help doc (`Resources/help.html`): new "Evolution — Generational" section with
+  step-by-step guides for both a static evolved shape and an animated reveal
+  (discrete vs. tweened), and a full parameter reference table.
+
+Verified with 7 additional `GenerationalEvolutionEngineTests` (18 total, up from 11):
+nil-phase matches static full-count, zero-phase is a no-op, integer phase matches
+an equivalent static `generationCount`, fractional phase scales extrude distance and
+split displacement by the exact predicted amount, and the `passes:` overload both
+evaluates an enabled driver and falls back correctly when disabled. All 468 tests
+in `LoomEngineTests` pass; both packages build clean.
+
+**Not yet done:** duplicate-and-graft, subdivision-cycle-as-operator, fitness
+measures, lock/graft selection, budget cap on *lineage* count (moot until grafting
+exists), an easing curve option for the tween (currently linear).
+
 ---
 
 ## 13. Open Questions
@@ -665,9 +1020,16 @@ a bounding-box pre-check reduces practical cost to O(1) for non-overlapping sets
    The data-model rename (Phase D: `SubdivisionParamsSet` → `TransformationSet`) is still
    deferred pending a migration strategy.
 
-2. **Evolution state and determinism (resolved).** No per-sprite state is accumulated.
-   Drift at frame N is a closed-form weighted sum over a bounded history window
-   (constant time, fully seekable). Verified via Phase 5 implementation.
+2. **Evolution state and determinism (resolved for momentum drift/convergence
+   pressure).** No per-sprite state is accumulated. Drift at frame N is a closed-form
+   weighted sum over a bounded history window (constant time, fully seekable).
+   Verified via Phase 5 implementation. The planned generational sub-mode (§4.4,
+   Phase 8) is a *different* case: it cannot be closed-form (generation N depends on
+   N−1's materialized geometry and measured fitness), but is still fully
+   deterministic and free of persistent state — the whole generation chain is
+   recomputed per evaluation from its inputs, same category as subdivision depth or
+   Extension's `branchDepth` (recursive and O(N), not O(1), but nothing incrementally
+   mutated across rendered frames). See §4.4.4.
 
 3. **Fulguration and the render pipeline.** The current render loop evaluates all
    sprite polygon sets unconditionally. A Fulguration condition check requires a

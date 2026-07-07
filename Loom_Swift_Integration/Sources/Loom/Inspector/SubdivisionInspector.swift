@@ -37,62 +37,97 @@ struct SubdivisionInspector: View {
             return AnyView(EmptyView())
         }
         return AnyView(VStack(alignment: .leading, spacing: 0) {
-            setHeader(set: set, setIdx: setIdx)
+            // ── TOP SECTION: Transform set info + per-mode add/remove ─────
+            transformSetSection(set: set, setIdx: setIdx)
 
-            // ── 1. INVOLUTION ─────────────────────────────────────────────
-            InspectorSection("Involution", isCollapsed: $involutionCollapsed,
-                             isHighlighted: true) {
-                paramsList(set: set, setIdx: setIdx)
-                curveRefinementList(set: set, setIdx: setIdx)
-                segmentExtractionList(set: set, setIdx: setIdx)
-            }
+            Divider().padding(.vertical, 4)
 
-            // ── 2. EXTENSION ──────────────────────────────────────────────
-            InspectorSection("Extension", isCollapsed: $extStageCollapsed,
-                             isHighlighted: true) {
-                extensionPassesContent(set: set, setIdx: setIdx)
-            }
-
-            // ── 3. EVOLUTION ──────────────────────────────────────────────
-            InspectorSection("Evolution", isCollapsed: $evolutionCollapsed,
-                             isHighlighted: true) {
-                evolutionPassesContent(set: set, setIdx: setIdx)
-            }
-
-            // ── 4. FULGURATION ────────────────────────────────────────────
-            InspectorSection("Fulguration", isCollapsed: $fulgurationCollapsed) {
-                lifecyclePlaceholder(
-                    "Conditional geometry via triggers.",
-                    detail: "Global-parameter and proximity-based emergence. Phase 7.")
-            }
-
-            // ── 5. DISSOLUTION ────────────────────────────────────────────
-            InspectorSection("Dissolution", isCollapsed: $dissolutionCollapsed,
-                             isHighlighted: true) {
-                dissolutionPassesContent(set: set, setIdx: setIdx)
-            }
-
-            // ── Param editor (shown below the stage list) ─────────────────
-            if let disIdx = controller.selectedDissolutionParamIndex {
-                DissolutionInspector(setIdx: setIdx, disIdx: disIdx)
-                    .environmentObject(controller)
-            } else if let evIdx = controller.selectedEvolutionParamIndex {
-                EvolutionInspector(setIdx: setIdx, evIdx: evIdx)
-                    .environmentObject(controller)
-            } else if let exIdx = controller.selectedExtensionParamIndex {
-                ExtensionInspector(setIdx: setIdx, exIdx: exIdx)
-                    .environmentObject(controller)
-            } else if let seIdx = controller.selectedSegmentExtractionParamIndex {
-                SegmentExtractionInspector(setIdx: setIdx, seIdx: seIdx)
-                    .environmentObject(controller)
-            } else if let crIdx = controller.selectedCurveRefinementParamIndex {
-                CurveRefinementInspector(setIdx: setIdx, crIdx: crIdx)
-                    .environmentObject(controller)
-            } else if let paramIdx = controller.selectedSubdivisionParamIndex,
-                      let param = set.params[safe: paramIdx] {
-                paramEditor(param: param, setIdx: setIdx, paramIdx: paramIdx)
-            }
+            // ── BOTTOM SECTION: fields for the selected transformation ───
+            selectedTransformationFields(set: set, setIdx: setIdx)
         })
+    }
+
+    /// Top section: set name/summary plus one collapsible list per lifecycle
+    /// mode (Involution/Extension/Evolution/Fulguration/Dissolution), each
+    /// with its own add/duplicate/delete controls for that mode's passes.
+    @ViewBuilder
+    private func transformSetSection(set: SubdivisionParamsSet, setIdx: Int) -> some View {
+        setHeader(set: set, setIdx: setIdx)
+
+        InspectorSection("Involution", isCollapsed: $involutionCollapsed,
+                         isHighlighted: true,
+                         trailing: { passIndicator(hasPasses:
+                            !set.params.isEmpty || !set.curveRefinement.isEmpty || !set.segmentExtraction.isEmpty) }) {
+            paramsList(set: set, setIdx: setIdx)
+            curveRefinementList(set: set, setIdx: setIdx)
+            segmentExtractionList(set: set, setIdx: setIdx)
+        }
+
+        InspectorSection("Extension", isCollapsed: $extStageCollapsed,
+                         isHighlighted: true,
+                         trailing: { passIndicator(hasPasses: !set.extensionPasses.isEmpty) }) {
+            extensionPassesContent(set: set, setIdx: setIdx)
+        }
+
+        InspectorSection("Evolution", isCollapsed: $evolutionCollapsed,
+                         isHighlighted: true,
+                         trailing: { passIndicator(hasPasses: !set.evolutionPasses.isEmpty) }) {
+            evolutionPassesContent(set: set, setIdx: setIdx)
+        }
+
+        InspectorSection("Fulguration", isCollapsed: $fulgurationCollapsed,
+                         trailing: { passIndicator(hasPasses: false) }) {
+            lifecyclePlaceholder(
+                "Conditional geometry via triggers.",
+                detail: "Global-parameter and proximity-based emergence. Phase 7.")
+        }
+
+        InspectorSection("Dissolution", isCollapsed: $dissolutionCollapsed,
+                         isHighlighted: true,
+                         trailing: { passIndicator(hasPasses: !set.dissolutionPasses.isEmpty) }) {
+            dissolutionPassesContent(set: set, setIdx: setIdx)
+        }
+    }
+
+    /// Small circle in a lifecycle-mode section header: filled green when
+    /// that mode has at least one pass/param configured, hollow otherwise.
+    private func passIndicator(hasPasses: Bool) -> some View {
+        Circle()
+            .fill(hasPasses ? Color.green : Color.clear)
+            .overlay(Circle().stroke(hasPasses ? Color.clear : Color.secondary.opacity(0.4), lineWidth: 1))
+            .frame(width: 7, height: 7)
+            .help(hasPasses ? "Has passes configured" : "No passes configured")
+    }
+
+    /// Bottom section: the field editor for whichever transformation is
+    /// currently selected in the top section (at most one at a time).
+    @ViewBuilder
+    private func selectedTransformationFields(set: SubdivisionParamsSet, setIdx: Int) -> some View {
+        if let disIdx = controller.selectedDissolutionParamIndex {
+            DissolutionInspector(setIdx: setIdx, disIdx: disIdx)
+                .environmentObject(controller)
+        } else if let evIdx = controller.selectedEvolutionParamIndex {
+            EvolutionInspector(setIdx: setIdx, evIdx: evIdx)
+                .environmentObject(controller)
+        } else if let exIdx = controller.selectedExtensionParamIndex {
+            ExtensionInspector(setIdx: setIdx, exIdx: exIdx)
+                .environmentObject(controller)
+        } else if let seIdx = controller.selectedSegmentExtractionParamIndex {
+            SegmentExtractionInspector(setIdx: setIdx, seIdx: seIdx)
+                .environmentObject(controller)
+        } else if let crIdx = controller.selectedCurveRefinementParamIndex {
+            CurveRefinementInspector(setIdx: setIdx, crIdx: crIdx)
+                .environmentObject(controller)
+        } else if let paramIdx = controller.selectedSubdivisionParamIndex,
+                  let param = set.params[safe: paramIdx] {
+            paramEditor(param: param, setIdx: setIdx, paramIdx: paramIdx)
+        } else {
+            Text("Select a transformation above to edit its fields.")
+                .font(.system(size: 11))
+                .foregroundStyle(.tertiary)
+                .padding(.horizontal, 12)
+                .padding(.vertical, 8)
+        }
     }
 
     // Placeholder content for stages not yet implemented
@@ -107,6 +142,25 @@ struct SubdivisionInspector: View {
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 8)
+    }
+
+    // MARK: - Pass selection
+
+    /// At most one pass (across all six mini-lists) is selected at a time, so
+    /// the bottom section knows unambiguously which editor to show. Each
+    /// mini-list's selection binding must route through this rather than
+    /// hand-nil-ing a partial list of "other" indices — that approach only
+    /// clears indices *below* itself in `selectedTransformationFields`'s
+    /// priority chain, leaving a higher-priority stale selection (e.g.
+    /// Evolution) permanently shadowing whatever is clicked afterwards.
+    private func selectPass(_ keyPath: ReferenceWritableKeyPath<AppController, Int?>, _ newVal: Int?) {
+        controller.selectedSubdivisionParamIndex       = nil
+        controller.selectedCurveRefinementParamIndex   = nil
+        controller.selectedSegmentExtractionParamIndex = nil
+        controller.selectedExtensionParamIndex         = nil
+        controller.selectedEvolutionParamIndex         = nil
+        controller.selectedDissolutionParamIndex       = nil
+        controller[keyPath: keyPath] = newVal
     }
 
     // MARK: - Set header
@@ -164,18 +218,45 @@ struct SubdivisionInspector: View {
                     .foregroundStyle(.secondary)
                     .padding(.horizontal, 12)
                     .padding(.vertical, 8)
+            } else if set.params.isEmpty {
+                HStack {
+                    Text("No subdivision passes")
+                        .font(.caption2)
+                        .foregroundStyle(.tertiary)
+                    Spacer()
+                    addSubdivisionParamMenu(setIdx: setIdx)
+                }
+                .padding(.horizontal, 12)
+                .padding(.vertical, 6)
             } else {
                 InspectorPickList(
                     items: set.params,
                     labelFor: { $0.name.isEmpty ? "(unnamed)" : $0.name },
                     selection: Binding(
                         get: { controller.selectedSubdivisionParamIndex },
-                        set: { newVal in
-                            controller.selectedSubdivisionParamIndex = newVal
-                            if newVal != nil { controller.selectedCurveRefinementParamIndex = nil }
-                        }
+                        set: { newVal in selectPass(\.selectedSubdivisionParamIndex, newVal) }
                     )
                 )
+                HStack(spacing: 4) {
+                    addSubdivisionParamMenu(setIdx: setIdx)
+                    if let paramIdx = controller.selectedSubdivisionParamIndex {
+                        Button(action: { deleteSubdivisionParam(setIdx: setIdx, paramIdx: paramIdx) }) {
+                            Image(systemName: "minus.circle").font(.system(size: 13))
+                        }
+                        .buttonStyle(.plain)
+                        .foregroundStyle(.secondary)
+                        .help("Delete selected subdivision pass")
+                        Button(action: { duplicateSubdivisionParam(setIdx: setIdx, paramIdx: paramIdx) }) {
+                            Image(systemName: "plus.square.on.square").font(.system(size: 12))
+                        }
+                        .buttonStyle(.plain)
+                        .foregroundStyle(.secondary)
+                        .help("Duplicate selected subdivision pass")
+                    }
+                    Spacer()
+                }
+                .padding(.horizontal, 12)
+                .padding(.vertical, 4)
             }
         }
         .onChange(of: controller.selectedSubdivisionIndex) { _, _ in
@@ -186,6 +267,57 @@ struct SubdivisionInspector: View {
             controller.selectedEvolutionParamIndex         = nil
             controller.selectedDissolutionParamIndex       = nil
         }
+    }
+
+    /// Dropdown of subdivision algorithm types — replaces a plain "+" that
+    /// always defaulted to Quad regardless of what the user actually wanted.
+    private func addSubdivisionParamMenu(setIdx: Int) -> some View {
+        Menu {
+            ForEach(SubdivisionType.allCases, id: \.self) { type in
+                Button(type.shortName) { addSubdivisionParam(setIdx: setIdx, type: type) }
+            }
+        } label: {
+            Image(systemName: "plus.circle").font(.system(size: 13))
+        }
+        .menuStyle(.borderlessButton)
+        .fixedSize()
+        .foregroundStyle(.secondary)
+        .help("Add subdivision pass")
+    }
+
+    private func addSubdivisionParam(setIdx: Int, type: SubdivisionType) {
+        guard let cfg = controller.projectConfig,
+              setIdx < cfg.subdivisionConfig.paramsSets.count else { return }
+        let newParam = SubdivisionParams(subdivisionType: type)
+        controller.updateProjectConfig { config in
+            config.subdivisionConfig.paramsSets[setIdx].params.append(newParam)
+        }
+        let newIdx = (controller.projectConfig?.subdivisionConfig.paramsSets[setIdx].params.count ?? 1) - 1
+        selectPass(\.selectedSubdivisionParamIndex, newIdx)
+    }
+
+    private func deleteSubdivisionParam(setIdx: Int, paramIdx: Int) {
+        guard let cfg = controller.projectConfig,
+              setIdx < cfg.subdivisionConfig.paramsSets.count,
+              paramIdx < cfg.subdivisionConfig.paramsSets[setIdx].params.count
+        else { return }
+        controller.updateProjectConfig { config in
+            config.subdivisionConfig.paramsSets[setIdx].params.remove(at: paramIdx)
+        }
+        let remaining = controller.projectConfig?.subdivisionConfig.paramsSets[safe: setIdx]?.params.count ?? 0
+        controller.selectedSubdivisionParamIndex = remaining > 0 ? min(paramIdx, remaining - 1) : nil
+    }
+
+    private func duplicateSubdivisionParam(setIdx: Int, paramIdx: Int) {
+        guard let cfg = controller.projectConfig,
+              setIdx < cfg.subdivisionConfig.paramsSets.count,
+              paramIdx < cfg.subdivisionConfig.paramsSets[setIdx].params.count
+        else { return }
+        let copy = cfg.subdivisionConfig.paramsSets[setIdx].params[paramIdx]
+        controller.updateProjectConfig { config in
+            config.subdivisionConfig.paramsSets[setIdx].params.insert(copy, at: paramIdx + 1)
+        }
+        controller.selectedSubdivisionParamIndex = paramIdx + 1
     }
 
     // MARK: - Curve refinement mini-list
@@ -209,14 +341,7 @@ struct SubdivisionInspector: View {
                     labelFor: { $0.name.isEmpty ? "(unnamed)" : $0.name },
                     selection: Binding(
                         get: { controller.selectedCurveRefinementParamIndex },
-                        set: { newVal in
-                            controller.selectedCurveRefinementParamIndex    = newVal
-                            if newVal != nil {
-                                controller.selectedSubdivisionParamIndex       = nil
-                                controller.selectedSegmentExtractionParamIndex = nil
-                                controller.selectedExtensionParamIndex         = nil
-                            }
-                        }
+                        set: { newVal in selectPass(\.selectedCurveRefinementParamIndex, newVal) }
                     )
                 )
                 HStack(spacing: 4) {
@@ -260,8 +385,7 @@ struct SubdivisionInspector: View {
             config.subdivisionConfig.paramsSets[setIdx].curveRefinement.append(newParam)
         }
         let newIdx = (controller.projectConfig?.subdivisionConfig.paramsSets[setIdx].curveRefinement.count ?? 1) - 1
-        controller.selectedCurveRefinementParamIndex = newIdx
-        controller.selectedSubdivisionParamIndex     = nil
+        selectPass(\.selectedCurveRefinementParamIndex, newIdx)
     }
 
     private func deleteCurveRefinementParam(setIdx: Int, crIdx: Int) {
@@ -310,13 +434,7 @@ struct SubdivisionInspector: View {
                     labelFor: { $0.name.isEmpty ? "(unnamed)" : $0.name },
                     selection: Binding(
                         get: { controller.selectedSegmentExtractionParamIndex },
-                        set: { newVal in
-                            controller.selectedSegmentExtractionParamIndex = newVal
-                            if newVal != nil {
-                                controller.selectedSubdivisionParamIndex      = nil
-                                controller.selectedCurveRefinementParamIndex  = nil
-                            }
-                        }
+                        set: { newVal in selectPass(\.selectedSegmentExtractionParamIndex, newVal) }
                     )
                 )
                 HStack(spacing: 4) {
@@ -360,10 +478,7 @@ struct SubdivisionInspector: View {
             config.subdivisionConfig.paramsSets[setIdx].segmentExtraction.append(newParam)
         }
         let newIdx = (controller.projectConfig?.subdivisionConfig.paramsSets[setIdx].segmentExtraction.count ?? 1) - 1
-        controller.selectedSegmentExtractionParamIndex = newIdx
-        controller.selectedSubdivisionParamIndex       = nil
-        controller.selectedCurveRefinementParamIndex   = nil
-        controller.selectedExtensionParamIndex         = nil
+        selectPass(\.selectedSegmentExtractionParamIndex, newIdx)
     }
 
     private func deleteSegmentExtractionParam(setIdx: Int, seIdx: Int) {
@@ -411,14 +526,7 @@ struct SubdivisionInspector: View {
                 labelFor: { $0.name.isEmpty ? "(unnamed)" : $0.name },
                 selection: Binding(
                     get: { controller.selectedExtensionParamIndex },
-                    set: { newVal in
-                        controller.selectedExtensionParamIndex = newVal
-                        if newVal != nil {
-                            controller.selectedSubdivisionParamIndex       = nil
-                            controller.selectedCurveRefinementParamIndex   = nil
-                            controller.selectedSegmentExtractionParamIndex = nil
-                        }
-                    }
+                    set: { newVal in selectPass(\.selectedExtensionParamIndex, newVal) }
                 )
             )
             HStack(spacing: 4) {
@@ -461,10 +569,7 @@ struct SubdivisionInspector: View {
             config.subdivisionConfig.paramsSets[setIdx].extensionPasses.append(newParam)
         }
         let newIdx = (controller.projectConfig?.subdivisionConfig.paramsSets[setIdx].extensionPasses.count ?? 1) - 1
-        controller.selectedExtensionParamIndex         = newIdx
-        controller.selectedSubdivisionParamIndex       = nil
-        controller.selectedCurveRefinementParamIndex   = nil
-        controller.selectedSegmentExtractionParamIndex = nil
+        selectPass(\.selectedExtensionParamIndex, newIdx)
     }
 
     private func deleteExtensionParam(setIdx: Int, exIdx: Int) {
@@ -502,7 +607,7 @@ struct SubdivisionInspector: View {
                     .font(.caption2)
                     .foregroundStyle(.tertiary)
                 Spacer()
-                addEvolutionButton(setIdx: setIdx)
+                addEvolutionMenu(setIdx: setIdx)
             }
             .padding(.horizontal, 12)
             .padding(.vertical, 6)
@@ -512,19 +617,11 @@ struct SubdivisionInspector: View {
                 labelFor: { $0.name.isEmpty ? "(unnamed)" : $0.name },
                 selection: Binding(
                     get: { controller.selectedEvolutionParamIndex },
-                    set: { newVal in
-                        controller.selectedEvolutionParamIndex = newVal
-                        if newVal != nil {
-                            controller.selectedSubdivisionParamIndex       = nil
-                            controller.selectedCurveRefinementParamIndex   = nil
-                            controller.selectedSegmentExtractionParamIndex = nil
-                            controller.selectedExtensionParamIndex         = nil
-                        }
-                    }
+                    set: { newVal in selectPass(\.selectedEvolutionParamIndex, newVal) }
                 )
             )
             HStack(spacing: 4) {
-                addEvolutionButton(setIdx: setIdx)
+                addEvolutionMenu(setIdx: setIdx)
                 if let evIdx = controller.selectedEvolutionParamIndex {
                     Button(action: { deleteEvolutionParam(setIdx: setIdx, evIdx: evIdx) }) {
                         Image(systemName: "minus.circle").font(.system(size: 13))
@@ -546,28 +643,33 @@ struct SubdivisionInspector: View {
         }
     }
 
-    private func addEvolutionButton(setIdx: Int) -> some View {
-        Button(action: { addEvolutionParam(setIdx: setIdx) }) {
+    /// Dropdown of operation types — momentum drift, convergence pressure, and
+    /// generational are structurally distinct enough (params-perturbation vs.
+    /// artificial-life polygon mutation) that defaulting silently to one would
+    /// be misleading; the user picks up front, same as Subdivision's algorithm menu.
+    private func addEvolutionMenu(setIdx: Int) -> some View {
+        Menu {
+            ForEach(EvolutionOperationType.allCases, id: \.self) { type in
+                Button(type.rawValue) { addEvolutionParam(setIdx: setIdx, type: type) }
+            }
+        } label: {
             Image(systemName: "plus.circle").font(.system(size: 13))
         }
-        .buttonStyle(.plain)
+        .menuStyle(.borderlessButton)
+        .fixedSize()
         .foregroundStyle(.secondary)
         .help("Add evolution pass")
     }
 
-    private func addEvolutionParam(setIdx: Int) {
+    private func addEvolutionParam(setIdx: Int, type: EvolutionOperationType) {
         guard let cfg = controller.projectConfig,
               setIdx < cfg.subdivisionConfig.paramsSets.count else { return }
-        let newParam = EvolutionParams()
+        let newParam = EvolutionParams(operationType: type)
         controller.updateProjectConfig { config in
             config.subdivisionConfig.paramsSets[setIdx].evolutionPasses.append(newParam)
         }
         let newIdx = (controller.projectConfig?.subdivisionConfig.paramsSets[setIdx].evolutionPasses.count ?? 1) - 1
-        controller.selectedEvolutionParamIndex         = newIdx
-        controller.selectedSubdivisionParamIndex       = nil
-        controller.selectedCurveRefinementParamIndex   = nil
-        controller.selectedSegmentExtractionParamIndex = nil
-        controller.selectedExtensionParamIndex         = nil
+        selectPass(\.selectedEvolutionParamIndex, newIdx)
     }
 
     private func deleteEvolutionParam(setIdx: Int, evIdx: Int) {
@@ -603,16 +705,7 @@ struct SubdivisionInspector: View {
                 labelFor: { $0.name.isEmpty ? "(unnamed)" : $0.name },
                 selection: Binding(
                     get: { controller.selectedDissolutionParamIndex },
-                    set: { newVal in
-                        controller.selectedDissolutionParamIndex = newVal
-                        if newVal != nil {
-                            controller.selectedSubdivisionParamIndex       = nil
-                            controller.selectedCurveRefinementParamIndex   = nil
-                            controller.selectedSegmentExtractionParamIndex = nil
-                            controller.selectedExtensionParamIndex         = nil
-                            controller.selectedEvolutionParamIndex         = nil
-                        }
-                    }
+                    set: { newVal in selectPass(\.selectedDissolutionParamIndex, newVal) }
                 )
             )
             HStack(spacing: 4) {
@@ -655,12 +748,7 @@ struct SubdivisionInspector: View {
             config.subdivisionConfig.paramsSets[setIdx].dissolutionPasses.append(newParam)
         }
         let newIdx = (controller.projectConfig?.subdivisionConfig.paramsSets[setIdx].dissolutionPasses.count ?? 1) - 1
-        controller.selectedDissolutionParamIndex       = newIdx
-        controller.selectedSubdivisionParamIndex       = nil
-        controller.selectedCurveRefinementParamIndex   = nil
-        controller.selectedSegmentExtractionParamIndex = nil
-        controller.selectedExtensionParamIndex         = nil
-        controller.selectedEvolutionParamIndex         = nil
+        selectPass(\.selectedDissolutionParamIndex, newIdx)
     }
 
     private func deleteDissolutionParam(setIdx: Int, disIdx: Int) {

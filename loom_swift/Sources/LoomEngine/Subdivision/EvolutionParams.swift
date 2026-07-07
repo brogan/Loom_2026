@@ -3,6 +3,13 @@ import Foundation
 public enum EvolutionOperationType: String, Codable, CaseIterable, Equatable, Sendable {
     case momentumDrift       = "Momentum Drift"
     case convergencePressure = "Convergence Pressure"
+    /// Structural mutation across generations (artificial life) — see
+    /// Specs/GeometricLifecycle.md §4.4. Unlike the other two, this operates on
+    /// materialized `[Polygon2D]` geometry, not `SubdivisionParams` fields, so it
+    /// is a no-op in `EvolutionEngine.apply` and is instead dispatched by
+    /// `GenerationalEvolutionEngine` at its own point in the render pipeline
+    /// (after Extension, before Dissolution — see `SpriteScene.swift`).
+    case generational        = "Generational"
 }
 
 public enum DriftTarget: String, Codable, CaseIterable, Equatable, Sendable {
@@ -39,6 +46,35 @@ public struct EvolutionParams: Equatable, Codable, Sendable {
     public var convergenceMode:          ConvergenceMode
     public var convergenceDuration:      Double         // frames for one oscillate/loop cycle
 
+    // Generational (operationType == .generational) — see GenerationalEvolutionEngine.
+    // Randomness (operator choice, target polygon, run length, distance) is drawn from
+    // SubdivisionEngine.centreHash(seed:cycle:) keyed on generationSeed — deliberately
+    // not DoubleDriver, which is a per-frame animation primitive; generation index is
+    // a structural axis, not playback time.
+    public var generationCount:       Int      // how many generations to run
+    public var extrudeWeight:         Double   // relative selection weight; 0 excludes the operator
+    public var splitWeight:           Double
+    public var extrudeRunLengthMin:   Int      // contiguous edges extruded together, RPSR
+    public var extrudeRunLengthMax:   Int
+    public var extrudeDistanceMin:    Double   // RPSR outward distance
+    public var extrudeDistanceMax:    Double
+    public var splitDisplacementMin:  Double   // RPSR outward displacement of the new split anchor
+    public var splitDisplacementMax:  Double
+    public var generationSeed:        Int
+    public var maxVertexBudget:       Int      // hard cap on total vertex count; required, not optional
+
+    /// Optional per-frame animation of the reveal: maps playback time to a
+    /// continuous position in [0, generationCount] via the standard DoubleDriver
+    /// machinery (unlike the operator randomness above, this genuinely is playback
+    /// time, so DoubleDriver is the right tool here). When `enabled` is false
+    /// (the default), the full `generationCount` is always applied statically —
+    /// existing behavior is unchanged. When enabled, the integer part of the
+    /// evaluated value is how many generations are fully applied; the fractional
+    /// part scales the in-progress generation's extrude/split magnitude from 0 to
+    /// its full sampled distance, tweening that generation's mutation into view
+    /// rather than having it pop in. See GenerationalEvolutionEngine.
+    public var generationPhase: DoubleDriver
+
     public init(
         name:                     String                  = "",
         enabled:                  Bool                    = true,
@@ -51,7 +87,19 @@ public struct EvolutionParams: Equatable, Codable, Sendable {
         convergenceTargetSetName: String                  = "",
         convergencePressure:      DoubleDriver            = .constant(0.5),
         convergenceMode:          ConvergenceMode         = .hold,
-        convergenceDuration:      Double                  = 120.0
+        convergenceDuration:      Double                  = 120.0,
+        generationCount:          Int                     = 5,
+        extrudeWeight:            Double                  = 1.0,
+        splitWeight:              Double                  = 1.0,
+        extrudeRunLengthMin:      Int                     = 1,
+        extrudeRunLengthMax:      Int                     = 2,
+        extrudeDistanceMin:       Double                  = 0.05,
+        extrudeDistanceMax:       Double                  = 0.2,
+        splitDisplacementMin:     Double                  = 0.05,
+        splitDisplacementMax:     Double                  = 0.2,
+        generationSeed:           Int                     = 0,
+        maxVertexBudget:          Int                     = 512,
+        generationPhase:          DoubleDriver            = DoubleDriver()
     ) {
         self.name                     = name
         self.enabled                  = enabled
@@ -65,6 +113,18 @@ public struct EvolutionParams: Equatable, Codable, Sendable {
         self.convergencePressure      = convergencePressure
         self.convergenceMode          = convergenceMode
         self.convergenceDuration      = convergenceDuration
+        self.generationCount          = generationCount
+        self.extrudeWeight            = extrudeWeight
+        self.splitWeight              = splitWeight
+        self.extrudeRunLengthMin      = extrudeRunLengthMin
+        self.extrudeRunLengthMax      = extrudeRunLengthMax
+        self.extrudeDistanceMin       = extrudeDistanceMin
+        self.extrudeDistanceMax       = extrudeDistanceMax
+        self.splitDisplacementMin     = splitDisplacementMin
+        self.splitDisplacementMax     = splitDisplacementMax
+        self.generationSeed           = generationSeed
+        self.maxVertexBudget          = maxVertexBudget
+        self.generationPhase          = generationPhase
     }
 
     // MARK: - Codable
@@ -73,6 +133,10 @@ public struct EvolutionParams: Equatable, Codable, Sendable {
         case name, enabled, operationType
         case driftTarget, driftMomentum, driftNoiseStrength, driftNoiseFrequency, driftSeed
         case convergenceTargetSetName, convergencePressure, convergenceMode, convergenceDuration
+        case generationCount, extrudeWeight, splitWeight
+        case extrudeRunLengthMin, extrudeRunLengthMax, extrudeDistanceMin, extrudeDistanceMax
+        case splitDisplacementMin, splitDisplacementMax, generationSeed, maxVertexBudget
+        case generationPhase
     }
 
     public init(from decoder: Decoder) throws {
@@ -89,5 +153,17 @@ public struct EvolutionParams: Equatable, Codable, Sendable {
         convergencePressure      = try c.decodeIfPresent(DoubleDriver.self,            forKey: .convergencePressure)      ?? .constant(0.5)
         convergenceMode          = try c.decodeIfPresent(ConvergenceMode.self,         forKey: .convergenceMode)          ?? .hold
         convergenceDuration      = try c.decodeIfPresent(Double.self,                  forKey: .convergenceDuration)      ?? 120.0
+        generationCount          = try c.decodeIfPresent(Int.self,                     forKey: .generationCount)          ?? 5
+        extrudeWeight            = try c.decodeIfPresent(Double.self,                  forKey: .extrudeWeight)            ?? 1.0
+        splitWeight              = try c.decodeIfPresent(Double.self,                  forKey: .splitWeight)              ?? 1.0
+        extrudeRunLengthMin      = try c.decodeIfPresent(Int.self,                     forKey: .extrudeRunLengthMin)      ?? 1
+        extrudeRunLengthMax      = try c.decodeIfPresent(Int.self,                     forKey: .extrudeRunLengthMax)      ?? 2
+        extrudeDistanceMin       = try c.decodeIfPresent(Double.self,                  forKey: .extrudeDistanceMin)       ?? 0.05
+        extrudeDistanceMax       = try c.decodeIfPresent(Double.self,                  forKey: .extrudeDistanceMax)       ?? 0.2
+        splitDisplacementMin     = try c.decodeIfPresent(Double.self,                  forKey: .splitDisplacementMin)     ?? 0.05
+        splitDisplacementMax     = try c.decodeIfPresent(Double.self,                  forKey: .splitDisplacementMax)     ?? 0.2
+        generationSeed           = try c.decodeIfPresent(Int.self,                     forKey: .generationSeed)           ?? 0
+        maxVertexBudget          = try c.decodeIfPresent(Int.self,                     forKey: .maxVertexBudget)          ?? 512
+        generationPhase          = try c.decodeIfPresent(DoubleDriver.self,            forKey: .generationPhase)          ?? DoubleDriver()
     }
 }

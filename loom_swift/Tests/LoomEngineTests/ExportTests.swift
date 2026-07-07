@@ -137,7 +137,7 @@ final class VideoExporterTests: XCTestCase {
         let url      = tempURL(ext: "mov")
         defer { cleanup(url) }
 
-        let settings = VideoExporter.Settings(fps: 30, duration: 1.0, outputURL: url)
+        let settings = VideoExporter.Settings(fps: 30, endFrame: 30, outputURL: url)
         try await exporter.export(engine: engine, settings: settings)
 
         XCTAssertTrue(FileManager.default.fileExists(atPath: url.path),
@@ -150,7 +150,7 @@ final class VideoExporterTests: XCTestCase {
         let url      = tempURL(ext: "mov")
         defer { cleanup(url) }
 
-        let settings = VideoExporter.Settings(fps: 30, duration: 1.0, outputURL: url)
+        let settings = VideoExporter.Settings(fps: 30, endFrame: 30, outputURL: url)
         try await exporter.export(engine: engine, settings: settings)
 
         let attrs = try FileManager.default.attributesOfItem(atPath: url.path)
@@ -161,35 +161,41 @@ final class VideoExporterTests: XCTestCase {
     // MARK: Settings.totalFrames
 
     func testTotalFramesAt30fps1s() {
-        let s = VideoExporter.Settings(fps: 30, duration: 1.0,
+        let s = VideoExporter.Settings(fps: 30, endFrame: 30,
                                        outputURL: URL(fileURLWithPath: "/dev/null"))
         XCTAssertEqual(s.totalFrames, 30)
     }
 
     func testTotalFramesAt24fps3s() {
-        let s = VideoExporter.Settings(fps: 24, duration: 3.0,
+        let s = VideoExporter.Settings(fps: 24, endFrame: 72,
                                        outputURL: URL(fileURLWithPath: "/dev/null"))
         XCTAssertEqual(s.totalFrames, 72)
     }
 
     func testTotalFramesMinimumIsOne() {
-        let s = VideoExporter.Settings(fps: 30, duration: 0.0,
+        let s = VideoExporter.Settings(fps: 30, endFrame: 0,
                                        outputURL: URL(fileURLWithPath: "/dev/null"))
         XCTAssertEqual(s.totalFrames, 1)
     }
 
     // MARK: Engine frame count after export
 
+    /// `VideoExporter.export` steps the engine with `dt = 1/settings.fps` per frame;
+    /// `Engine.update` converts `dt` to project-frame units via the project's own
+    /// `targetFPS`. "N video frames == N project frames" only holds when the export
+    /// fps matches the project's fps, so `settings.fps` is set from the engine's own
+    /// config here rather than a hardcoded 30 (Test_052 defaults to targetFPS 24).
     func testEngineAdvancedByTotalFrames() async throws {
         let engine   = try Engine(projectDirectory: fixtureDir052)
         let exporter = VideoExporter()
         let url      = tempURL(ext: "mov")
         defer { cleanup(url) }
 
-        let settings = VideoExporter.Settings(fps: 30, duration: 1.0, outputURL: url)
+        let fps      = Int(engine.globalConfig.targetFPS)
+        let settings = VideoExporter.Settings(fps: fps, endFrame: 30, outputURL: url)
         try await exporter.export(engine: engine, settings: settings)
 
-        // export drives engine.update 30 times for 1s at 30fps.
+        // export drives engine.update 30 times, matching the project's own fps.
         XCTAssertEqual(engine.currentFrame, 30,
                        "export should have advanced the engine by totalFrames")
     }
@@ -203,7 +209,7 @@ final class VideoExporterTests: XCTestCase {
         defer { cleanup(url) }
 
         var callCount = 0
-        let settings  = VideoExporter.Settings(fps: 30, duration: 1.0, outputURL: url)
+        let settings  = VideoExporter.Settings(fps: 30, endFrame: 30, outputURL: url)
         try await exporter.export(engine: engine, settings: settings) { _ in
             callCount += 1
         }
@@ -219,7 +225,7 @@ final class VideoExporterTests: XCTestCase {
         defer { cleanup(url) }
 
         var lastProgress = 0.0
-        let settings     = VideoExporter.Settings(fps: 30, duration: 1.0, outputURL: url)
+        let settings     = VideoExporter.Settings(fps: 30, endFrame: 30, outputURL: url)
         try await exporter.export(engine: engine, settings: settings) { p in
             lastProgress = p
         }
@@ -235,7 +241,7 @@ final class VideoExporterTests: XCTestCase {
         defer { cleanup(url) }
 
         var values   = [Double]()
-        let settings = VideoExporter.Settings(fps: 30, duration: 1.0, outputURL: url)
+        let settings = VideoExporter.Settings(fps: 30, endFrame: 30, outputURL: url)
         try await exporter.export(engine: engine, settings: settings) { p in
             values.append(p)
         }
@@ -254,7 +260,7 @@ final class VideoExporterTests: XCTestCase {
         let url      = tempURL(ext: "mov")
         defer { cleanup(url) }
 
-        let settings = VideoExporter.Settings(fps: 30, duration: 1.0, outputURL: url)
+        let settings = VideoExporter.Settings(fps: 30, endFrame: 30, outputURL: url)
         try await exporter.export(engine: engine, settings: settings)
 
         let asset    = AVURLAsset(url: url)
@@ -270,7 +276,7 @@ final class VideoExporterTests: XCTestCase {
         let url      = tempURL(ext: "mov")
         defer { cleanup(url) }
 
-        let settings = VideoExporter.Settings(fps: 30, duration: 1.0, outputURL: url)
+        let settings = VideoExporter.Settings(fps: 30, endFrame: 30, outputURL: url)
         try await exporter.export(engine: engine, settings: settings)
 
         let asset  = AVURLAsset(url: url)
@@ -284,7 +290,7 @@ final class VideoExporterTests: XCTestCase {
         let url      = tempURL(ext: "mov")
         defer { cleanup(url) }
 
-        let settings = VideoExporter.Settings(fps: 30, duration: 1.0, outputURL: url)
+        let settings = VideoExporter.Settings(fps: 30, endFrame: 30, outputURL: url)
         try await exporter.export(engine: engine, settings: settings)
 
         let asset    = AVURLAsset(url: url)
@@ -308,7 +314,7 @@ final class VideoExporterTests: XCTestCase {
         try "placeholder".write(to: url, atomically: true, encoding: .utf8)
         XCTAssertTrue(FileManager.default.fileExists(atPath: url.path))
 
-        let settings = VideoExporter.Settings(fps: 30, duration: 1.0, outputURL: url)
+        let settings = VideoExporter.Settings(fps: 30, endFrame: 30, outputURL: url)
         try await exporter.export(engine: engine, settings: settings)
 
         // Verify the file is now a valid video (much larger than the placeholder).

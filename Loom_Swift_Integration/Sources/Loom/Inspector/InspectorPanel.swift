@@ -47,15 +47,11 @@ struct InspectorPanel: View {
                 placeholderText("Select a geometry set.")
             }
         case .subdivision:
-            if controller.lifecycleTab == .involution {
-                if controller.selectedSubdivisionIndex != nil {
-                    SubdivisionInspector()
-                        .environmentObject(controller)
-                } else {
-                    placeholderText("Select a sprite or subdivision set to edit params.")
-                }
+            if controller.selectedSubdivisionIndex != nil {
+                SubdivisionInspector()
+                    .environmentObject(controller)
             } else {
-                placeholderText("\(controller.lifecycleTab.fullName) — coming soon.")
+                placeholderText("Select a sprite or subdivision set to edit params.")
             }
         case .sprites:
             if controller.selectedSpriteID != nil {
@@ -2571,6 +2567,18 @@ private struct QuickSetupLayerOption: Identifiable, Hashable {
     let layerID: UUID?
 }
 
+/// Which lifecycle mode's default pass to seed into a newly-created transform
+/// set from Quick Pipeline Setup. Fulguration is omitted (not yet implemented).
+private enum QuickSetupDefaultMode: String, CaseIterable {
+    case none        = "None"
+    case involution  = "Involution"
+    case extend      = "Extension"
+    case evolution   = "Evolution"
+    case dissolution = "Dissolution"
+
+    var displayName: String { rawValue }
+}
+
 private struct QuickSetupSection: View {
     @EnvironmentObject private var controller: AppController
     let folder:  String
@@ -2584,6 +2592,7 @@ private struct QuickSetupSection: View {
     @State private var qsSpriteName:      String      = ""
     @State private var qsRendererName:    String      = ""
     @State private var qsRendererMode:    RendererMode = .filled
+    @State private var qsTransformMode:   QuickSetupDefaultMode = .involution
 
     var body: some View {
         VStack(spacing: 0) {
@@ -2620,6 +2629,18 @@ private struct QuickSetupSection: View {
             .loomHelp("Root name used to auto-generate names for the shape, sprite, and renderer. Seeded from the geometry filename or selected layer name.")
             Divider().padding(.vertical, 4)
             pipelinePhaseHeader(.subdivision)
+            InspectorField("Mode") {
+                Picker("", selection: $qsTransformMode) {
+                    ForEach(availableTransformModes, id: \.self) { mode in
+                        Text(mode.displayName).tag(mode)
+                    }
+                }
+                .labelsHidden()
+                .pickerStyle(.menu)
+                .font(.system(size: 11))
+                .frame(maxWidth: .infinity)
+            }
+            .loomHelp("Which lifecycle mode's default pass to seed into a newly-created transform set. Involution adds subdivision (closed polygons) or curve refinement (open curves); Extension adds edge extrusion (closed) or branching (open); Evolution adds momentum drift (closed polygons only — has no visible effect on open curves); Dissolution adds entropy/collapse. 'None' creates the set empty. Has no effect if the named transform set below already exists.")
             InspectorField("Transform set") {
                 comboField($qsSubdivSetName, options: subdivisionSetOptions)
             }
@@ -2708,6 +2729,7 @@ private struct QuickSetupSection: View {
         .onChange(of: sourceIsCleanParametricRegularPolygon) { _, isCleanParametricRegularPolygon in
             if isCleanParametricRegularPolygon {
                 qsSubdivSetName = Self.noSubdivisionName
+                qsTransformMode = .none
                 qsRendererMode = .stroked
             }
         }
@@ -2860,18 +2882,28 @@ private struct QuickSetupSection: View {
 
             if !subdivSetName.isEmpty,
                !cfg.subdivisionConfig.paramsSets.contains(where: { $0.name == subdivSetName }) {
-                if folder == "curveSets" {
-                    let defaultRefinement = CurveRefinementParams(name: "\(geoName)_refine_1")
-                    cfg.subdivisionConfig.paramsSets.append(
-                        SubdivisionParamsSet(name: subdivSetName, params: [],
-                                             curveRefinement: [defaultRefinement])
-                    )
-                } else {
-                    let param = SubdivisionParams(name: "\(geoName)_quad_1", subdivisionType: .quad)
-                    cfg.subdivisionConfig.paramsSets.append(
-                        SubdivisionParamsSet(name: subdivSetName, params: [param])
-                    )
+                var newSet = SubdivisionParamsSet(name: subdivSetName)
+                let isOpenCurve = folder == "curveSets"
+                switch qsTransformMode {
+                case .none:
+                    break
+                case .involution:
+                    if isOpenCurve {
+                        newSet.curveRefinement = [CurveRefinementParams(name: "\(geoName)_refine_1")]
+                    } else {
+                        newSet.params = [SubdivisionParams(name: "\(geoName)_quad_1", subdivisionType: .quad)]
+                    }
+                case .extend:
+                    newSet.extensionPasses = [ExtensionParams(
+                        name: "\(geoName)_ext_1",
+                        operationType: isOpenCurve ? .branch : .extrude
+                    )]
+                case .evolution:
+                    newSet.evolutionPasses = [EvolutionParams(name: "\(geoName)_evo_1")]
+                case .dissolution:
+                    newSet.dissolutionPasses = [DissolutionParams(name: "\(geoName)_dis_1")]
                 }
+                cfg.subdivisionConfig.paramsSets.append(newSet)
             }
 
             let shape: ShapeDef
@@ -2980,6 +3012,9 @@ private struct QuickSetupSection: View {
         guard !geoName.isEmpty else { return }
         // Seed base name from the geo stem on first load only (never overwrite after user edits it).
         setIfNeeded(&qsBaseName, stem, overwrite: false)
+        if overwrite || !availableTransformModes.contains(qsTransformMode) {
+            qsTransformMode = recommendedQuickSetupTransformMode
+        }
         setIfNeeded(&qsSubdivSetName, recommendedQuickSetupSubdivSetName, overwrite: overwrite)
         setIfNeeded(&qsSpriteSetName, recommendedSpriteSetName, overwrite: overwrite)
         setIfNeeded(&qsSpriteName, recommendedSpriteName, overwrite: overwrite)
@@ -3051,6 +3086,21 @@ private struct QuickSetupSection: View {
         }
         return sourceSupportsSubdivision ? recommendedSubdivSetName : Self.noSubdivisionName
     }
+    /// Lifecycle modes offered in the Quick Pipeline Setup "Mode" picker for
+    /// the current source. Evolution is omitted for open curves — it only
+    /// mutates SubdivisionParams, which SubdivisionEngine bypasses entirely
+    /// for .openSpline, so it would have no visible effect there.
+    private var availableTransformModes: [QuickSetupDefaultMode] {
+        folder == "curveSets"
+            ? [.none, .involution, .extend, .dissolution]
+            : QuickSetupDefaultMode.allCases
+    }
+    private var recommendedQuickSetupTransformMode: QuickSetupDefaultMode {
+        if sourceIsCleanParametricRegularPolygon || !sourceSupportsSubdivision {
+            return .none
+        }
+        return .involution
+    }
     private var recommendedShapeSetName: String { "\(baseStem)_Shapes" }
     private var recommendedShapeName: String { "\(sourceNameStem)_Shape" }
     private var recommendedSpriteSetName: String { stem }
@@ -3110,7 +3160,7 @@ private struct QuickSetupSection: View {
     }
 
     private var sourceSupportsSubdivision: Bool {
-        if folder == "regularPolygons" {
+        if folder == "regularPolygons" || folder == "curveSets" {
             return true
         }
         guard folder == "polygonSets" else {

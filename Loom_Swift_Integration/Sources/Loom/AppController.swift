@@ -270,7 +270,6 @@ final class AppController: ObservableObject, @unchecked Sendable {
     @Published var geometryEditorWeldTolerance:   Double = 0.5
     @Published var geometryEditorAutoWeldSegmentIDs: Set<EditableGeometryID> = []
     @Published var selectedGeometryEditorLayerID: UUID?   = nil
-    @Published var lifecycleTab:                  LifecycleTab = .involution
     @Published var selectedSubdivisionIndex:           Int?    = nil
     @Published var selectedSubdivisionParamIndex:      Int?    = nil   // within selected set
     @Published var selectedCurveRefinementParamIndex:  Int?    = nil   // curve refinement param within selected set

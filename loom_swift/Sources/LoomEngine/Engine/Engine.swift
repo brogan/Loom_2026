@@ -11,9 +11,9 @@ import AppKit
 /// ### Typical usage — export / testing
 /// ```swift
 /// let engine = try Engine(projectDirectory: projectURL)
-/// let loop   = ExportFrameLoop(fps: 30)
+/// let loop   = ExportFrameLoop(fps: engine.globalConfig.targetFPS)  // match the project's fps
 /// engine.start(with: loop)
-/// loop.run(frameCount: 90)           // advance 3 seconds
+/// loop.run(frameCount: 90)           // advance 90 project frames
 /// let image = engine.makeFrame()     // render the current state
 /// engine.stop()
 /// ```
@@ -34,11 +34,18 @@ import AppKit
 /// when used with `DisplayLinkFrameLoop`).
 ///
 /// ### Delta-time and frame counting
-/// `update(deltaTime:)` currently maps each call to one frame advance, making
-/// `currentFrame` a reliable integer frame counter regardless of `deltaTime`.
-/// The `deltaTime` parameter is reserved for future time-based animation
-/// (e.g., slow-motion / speed-scaling) and is forwarded through the call chain
-/// so it can be consumed there without an API change.
+/// `deltaTime` is **real elapsed seconds**, not a frame count. `update(deltaTime:)`
+/// forwards it to `LoomEngine.advance`, which converts it to project-frame units by
+/// multiplying by the project's own `globalConfig.targetFPS`: each call advances
+/// `currentFrame`'s underlying clock by `deltaTime * targetFPS`, and `currentFrame`
+/// is that clock floored to an `Int`. This is genuine time-based accumulation, not a
+/// per-call counter — passing `deltaTime = 1.0 / targetFPS` advances exactly one
+/// project frame *for that project's own targetFPS*; a mismatched fps assumption
+/// (e.g. a hardcoded `1.0/30` against a project authored at a different rate)
+/// silently advances by a fractional, non-1 amount per call. Drive `ExportFrameLoop`
+/// and any manual `update(deltaTime:)` calls with the project's actual
+/// `globalConfig.targetFPS`, not an assumed constant, unless deliberately performing
+/// frame-rate conversion.
 public final class Engine: @unchecked Sendable {
 
     // MARK: - Stored state
@@ -114,11 +121,11 @@ public final class Engine: @unchecked Sendable {
 
     // MARK: - Per-frame
 
-    /// Advance the engine one frame.
+    /// Advance the engine's animation clock by `deltaTime` real seconds.
     ///
-    /// `deltaTime` is the elapsed time since the previous call (in seconds).
-    /// It is forwarded to `LoomEngine.advance(deltaTime:)` for time-based
-    /// keyframe interpolation.
+    /// See the class-level "Delta-time and frame counting" section: this is
+    /// time-based, not a flat +1-frame-per-call counter. Forwarded to
+    /// `LoomEngine.advance(deltaTime:)`.
     public func update(deltaTime: Double) {
         loomEngine.advance(deltaTime: deltaTime)
     }

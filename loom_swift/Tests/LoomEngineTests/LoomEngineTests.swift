@@ -49,9 +49,13 @@ final class LoomEngineAdvanceTests: XCTestCase {
 
     func testSubFrameAdvanceDoesNotRaceProjectFrameClock() throws {
         var engine = try LoomEngine(projectDirectory: fixtureDir052)
-        engine.advance(deltaTime: 1.0 / 60.0)
+        // Half of one project frame's worth of real time, derived from the
+        // fixture's own targetFPS rather than a hardcoded fps assumption (Test_052
+        // defaults to 24, not 30) — see Engine.update's doc comment.
+        let halfFrame = 1.0 / (engine.globalConfig.targetFPS * 2.0)
+        engine.advance(deltaTime: halfFrame)
         XCTAssertEqual(engine.currentFrame, 0)
-        engine.advance(deltaTime: 1.0 / 60.0)
+        engine.advance(deltaTime: halfFrame)
         XCTAssertEqual(engine.currentFrame, 1)
     }
 

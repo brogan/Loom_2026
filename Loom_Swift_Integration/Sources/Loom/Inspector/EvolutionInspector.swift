@@ -15,15 +15,25 @@ struct EvolutionInspector: View {
     @AppStorage("evinsp.driftCollapsed")       private var driftCollapsed     = false
     @AppStorage("evinsp.convergeCollapsed")    private var convergenceCollapsed = false
     @AppStorage("evinsp.pressureCollapsed")    private var pressureDriverCollapsed = true
+    @AppStorage("evinsp.generationsCollapsed") private var generationsCollapsed = false
+    @AppStorage("evinsp.extrudeOpCollapsed")   private var extrudeOpCollapsed  = false
+    @AppStorage("evinsp.splitOpCollapsed")     private var splitOpCollapsed    = false
+    @AppStorage("evinsp.phaseDriverCollapsed") private var phaseDriverCollapsed = true
 
     var body: some View {
         generalSection
         operationSection
-        if bindEV(\.operationType).wrappedValue == .momentumDrift {
+        switch bindEV(\.operationType).wrappedValue {
+        case .momentumDrift:
             driftSection
-        } else {
+        case .convergencePressure:
             convergenceSection
             convergencePressureDriverSection
+        case .generational:
+            generationsSection
+            generationPhaseDriverSection
+            extrudeOperatorSection
+            splitOperatorSection
         }
     }
 
@@ -54,10 +64,10 @@ struct EvolutionInspector: View {
                     }
                 }
                 .labelsHidden()
-                .pickerStyle(.segmented)
+                .pickerStyle(.menu)
                 .frame(maxWidth: 200)
             }
-            .loomHelp("Momentum Drift: applies closed-form noise-driven drift to a chosen subdivision parameter. Convergence Pressure: gradually lerps subdivision params toward a target set.")
+            .loomHelp("Momentum Drift: applies closed-form noise-driven drift to a chosen subdivision parameter. Convergence Pressure: gradually lerps subdivision params toward a target set. Generational: iteratively mutates the actual polygon geometry across generations (extrude/split), an artificial-life system distinct from the other two — see Specs/GeometricLifecycle.md §4.4.")
         }
     }
 
@@ -148,6 +158,86 @@ struct EvolutionInspector: View {
         .padding(.bottom, 2)
     }
 
+    // MARK: - Generational: generations & budget
+
+    private var generationsSection: some View {
+        InspectorSection("Generations", isCollapsed: $generationsCollapsed) {
+            InspectorField("Count") {
+                FloatEntryField(value: intAsDoubleBinding(\.generationCount), width: 50, fractionDigits: 0)
+            }
+            .loomHelp("How many generations to run. Each generation applies exactly one mutation operator (extrude or split, chosen by weight) to one eligible closed polygon in the set.")
+
+            InspectorField("Seed") {
+                FloatEntryField(value: intAsDoubleBinding(\.generationSeed), width: 60, fractionDigits: 0)
+            }
+            .loomHelp("Deterministic seed. The same seed and parameters always produce the identical generation history — change it for a different evolutionary path.")
+
+            InspectorField("Vertex budget") {
+                FloatEntryField(value: intAsDoubleBinding(\.maxVertexBudget), width: 70, fractionDigits: 0)
+            }
+            .loomHelp("Hard cap on total vertex count across all polygons in the set. Required, not optional — extrusion and splitting both grow vertex count every generation; without a cap, high generation counts risk runaway complexity. A generation that would exceed this budget is rejected and the chain stops there.")
+        }
+    }
+
+    /// Maps playback time to a position in [0, generationCount]. Disabled by
+    /// default — the full generationCount is applied statically every frame,
+    /// unchanged from before this existed. Enable to animate the reveal: the
+    /// integer part is how many generations are fully applied; the fractional
+    /// part tweens the in-progress generation's extrude/split magnitude in from 0.
+    @ViewBuilder
+    private var generationPhaseDriverSection: some View {
+        DoubleDriverEditor(
+            label: "Reveal",
+            driver: bindEVDriver(\.generationPhase),
+            isCollapsed: $phaseDriverCollapsed
+        )
+        .loomHelp("Animates the generation reveal over playback time. Off (default): the full generation count above is always shown. On: this driver's value is the current position in [0, generationCount] — e.g. a keyframe track from 0 at frame 0 to generationCount at some later frame reveals one generation at a time as it grows, tweening each extrude/split into view rather than popping it in.")
+        .padding(.bottom, 2)
+    }
+
+    // MARK: - Generational: extrude operator
+
+    private var extrudeOperatorSection: some View {
+        InspectorSection("Extrude", isCollapsed: $extrudeOpCollapsed) {
+            InspectorField("Weight") {
+                FloatEntryField(value: bindEV(\.extrudeWeight), width: 60)
+            }
+            .loomHelp("Relative selection weight for the extrude operator each generation. Set to 0 to exclude extrusion entirely (split-only evolution).")
+
+            InspectorField("Run length") {
+                FloatEntryField(value: intAsDoubleBinding(\.extrudeRunLengthMin), width: 40, fractionDigits: 0)
+                Text("–").foregroundStyle(.secondary)
+                FloatEntryField(value: intAsDoubleBinding(\.extrudeRunLengthMax), width: 40, fractionDigits: 0)
+            }
+            .loomHelp("Range of contiguous edges extruded together as one generation's mutation, resampled each generation. A run of neighboring quads sharing endpoints — same compound-growth model as Extension's edge extrusion.")
+
+            InspectorField("Distance") {
+                FloatEntryField(value: bindEV(\.extrudeDistanceMin), width: 50)
+                Text("–").foregroundStyle(.secondary)
+                FloatEntryField(value: bindEV(\.extrudeDistanceMax), width: 50)
+            }
+            .loomHelp("Outward extrusion distance, resampled from this range each generation (RPSR).")
+        }
+    }
+
+    // MARK: - Generational: split operator
+
+    private var splitOperatorSection: some View {
+        InspectorSection("Split", isCollapsed: $splitOpCollapsed) {
+            InspectorField("Weight") {
+                FloatEntryField(value: bindEV(\.splitWeight), width: 60)
+            }
+            .loomHelp("Relative selection weight for the split operator each generation. Set to 0 to exclude splitting entirely (extrude-only evolution).")
+
+            InspectorField("Displacement") {
+                FloatEntryField(value: bindEV(\.splitDisplacementMin), width: 50)
+                Text("–").foregroundStyle(.secondary)
+                FloatEntryField(value: bindEV(\.splitDisplacementMax), width: 50)
+            }
+            .loomHelp("How far the new anchor point (from splitting a random edge) is displaced outward from the shape's centre, resampled each generation (RPSR). Only the anchor moves — its flanking control points stay put, pulling the boundary into a rounded spike rather than a sharp break.")
+        }
+    }
+
     // MARK: - Binding helpers
 
     private func bindEV<T>(_ kp: WritableKeyPath<EvolutionParams, T>) -> Binding<T> {
@@ -171,6 +261,16 @@ struct EvolutionInspector: View {
 
     private func bindEVInt(_ kp: WritableKeyPath<EvolutionParams, Int>) -> Binding<Int> {
         bindEV(kp)
+    }
+
+    /// `FloatEntryField` only takes `Binding<Double>`; this adapts an `Int` field
+    /// the same way the existing `driftSeed` field below does.
+    private func intAsDoubleBinding(_ kp: WritableKeyPath<EvolutionParams, Int>) -> Binding<Double> {
+        let b = bindEVInt(kp)
+        return Binding(
+            get: { Double(b.wrappedValue) },
+            set: { b.wrappedValue = Int($0.rounded()) }
+        )
     }
 
     private func bindEVDriver(_ kp: WritableKeyPath<EvolutionParams, DoubleDriver>) -> Binding<DoubleDriver> {

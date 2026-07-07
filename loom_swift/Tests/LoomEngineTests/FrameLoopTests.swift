@@ -142,25 +142,37 @@ final class EngineInitTests: XCTestCase {
 
 final class EngineUpdateTests: XCTestCase {
 
+    /// `deltaTime` is real elapsed seconds; `advance` converts it to project-frame
+    /// units via `globalConfig.targetFPS` (see `Engine.update` doc comment). Passing
+    /// exactly `1.0 / targetFPS` therefore advances exactly one project frame,
+    /// *for this project's own fps* — the fixture's `targetFPS` is read here rather
+    /// than hardcoded, since a literal `1.0/30` only gives +1 frame when the fixture
+    /// happens to be authored at 30fps (Test_052 is not; it defaults to 24).
     func testUpdateAdvancesFrameCount() throws {
         let engine = try Engine(projectDirectory: fixtureDir052)
-        engine.update(deltaTime: 1.0 / 30)
+        engine.update(deltaTime: 1.0 / engine.globalConfig.targetFPS)
         XCTAssertEqual(engine.currentFrame, 1)
     }
 
     func testThirtyUpdatesAdvancesThirtyFrames() throws {
         let engine = try Engine(projectDirectory: fixtureDir052)
-        for _ in 0..<30 { engine.update(deltaTime: 1.0 / 30) }
+        let dt = 1.0 / engine.globalConfig.targetFPS
+        for _ in 0..<30 { engine.update(deltaTime: dt) }
         XCTAssertEqual(engine.currentFrame, 30)
     }
 
-    /// deltaTime value should not affect the integer frame counter.
-    func testDeltaTimeValueIrrelevantToFrameCount() throws {
+    /// Any deltaTime that sums (via `dt * targetFPS`) to the same whole number of
+    /// project frames should land on that frame — not "any deltaTime is ignored":
+    /// deltaTime is real time and genuinely scales frame advancement (see
+    /// `Engine.update`'s doc comment). This checks two very different per-call
+    /// deltas that both land exactly on frame 2 for this project's targetFPS.
+    func testDeltaTimeSplitAcrossCallsStillReachesExpectedFrame() throws {
         let engine = try Engine(projectDirectory: fixtureDir052)
+        let fps = engine.globalConfig.targetFPS
         engine.update(deltaTime: 0.0)
-        engine.update(deltaTime: 999.0)
+        engine.update(deltaTime: 2.0 / fps)
         XCTAssertEqual(engine.currentFrame, 2,
-                       "frame count increments by 1 per update, regardless of deltaTime")
+                       "0 seconds then 2 frames' worth of real time should land on frame 2")
     }
 }
 
@@ -200,9 +212,14 @@ final class EngineRenderTests: XCTestCase {
 
 final class EngineExportLoopIntegrationTests: XCTestCase {
 
+    /// `ExportFrameLoop(fps:)` must match the driven project's own `targetFPS` for
+    /// "N ticks == N project frames" to hold (each tick delivers `dt = 1/fps`, and
+    /// `Engine.update` converts `dt` to project-frame units via the project's own
+    /// `targetFPS` — see `Engine.update`'s doc comment). Test_052 has no explicit
+    /// `TargetFPS` override and so defaults to 24, not 30.
     func testEngineAdvancesViaExportLoop() throws {
         let engine = try Engine(projectDirectory: fixtureDir052)
-        let loop   = ExportFrameLoop(fps: 30)
+        let loop   = ExportFrameLoop(fps: engine.globalConfig.targetFPS)
         engine.start(with: loop)
         loop.run(frameCount: 30)
         XCTAssertEqual(engine.currentFrame, 30,
@@ -211,7 +228,7 @@ final class EngineExportLoopIntegrationTests: XCTestCase {
 
     func testStopAfterLoopProducesNoFurtherAdvances() throws {
         let engine = try Engine(projectDirectory: fixtureDir052)
-        let loop   = ExportFrameLoop(fps: 30)
+        let loop   = ExportFrameLoop(fps: engine.globalConfig.targetFPS)
         engine.start(with: loop)
         loop.run(frameCount: 10)
         engine.stop()
@@ -223,8 +240,8 @@ final class EngineExportLoopIntegrationTests: XCTestCase {
 
     func testReplacingLoopStopsOldOne() throws {
         let engine = try Engine(projectDirectory: fixtureDir052)
-        let loop1  = ExportFrameLoop(fps: 30)
-        let loop2  = ExportFrameLoop(fps: 30)
+        let loop1  = ExportFrameLoop(fps: engine.globalConfig.targetFPS)
+        let loop2  = ExportFrameLoop(fps: engine.globalConfig.targetFPS)
 
         engine.start(with: loop1)
         loop1.run(frameCount: 5)

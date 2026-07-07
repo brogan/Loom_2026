@@ -352,7 +352,7 @@ final class SubdivisionTypeTests: XCTestCase {
     }
 
     func testAllCasesCount() {
-        XCTAssertEqual(SubdivisionType.allCases.count, 19)
+        XCTAssertEqual(SubdivisionType.allCases.count, 20)
     }
 
     func testOutputCountSquare() {
@@ -571,8 +571,12 @@ final class SubdivisionEngineTests: XCTestCase {
     }
 
     func testOutputCountMatchesExpected() {
-        // Cross-check: actual output count == SubdivisionType.outputCount(sidesTotal:4)
-        for type in SubdivisionType.allCases {
+        // Cross-check: actual output count == SubdivisionType.outputCount(sidesTotal:4).
+        // .custom is excluded: its outputCount is a mere placeholder ("approximate;
+        // exact count depends on algorithm") and with no customAlgorithm attached,
+        // SubdivisionEngine correctly produces 0 children — there's nothing for this
+        // cross-check to verify without a concrete custom algorithm supplied.
+        for type in SubdivisionType.allCases where type != .custom {
             let actual   = subdivideSquare(type: type).count
             let expected = type.outputCount(sidesTotal: 4)
             XCTAssertEqual(actual, expected, "\(type): actual \(actual) ≠ expected \(expected)")

@@ -1536,7 +1536,20 @@ public struct SpriteScene: @unchecked Sendable {
             )
         }
 
-        // 2e. Dissolution (entropy and collapse applied to output geometry)
+        // 2e. Generational evolution (structural mutation across generations —
+        // artificial life; operates on the fully-composed geometry, unlike the
+        // momentum-drift/convergence-pressure evolution types applied at 2a).
+        if activeInstance.evolutionParams.contains(where: { $0.enabled && $0.operationType == .generational }) {
+            subdivided = GenerationalEvolutionEngine.process(
+                polygons:      subdivided,
+                passes:        activeInstance.evolutionParams,
+                elapsedFrames: elapsedFrames,
+                targetFPS:     targetFPS,
+                spriteIndex:   spriteIndex
+            )
+        }
+
+        // 2f. Dissolution (entropy and collapse applied to output geometry)
         if !activeInstance.dissolutionParams.isEmpty {
             subdivided = DissolutionEngine.apply(
                 polygons:      subdivided,

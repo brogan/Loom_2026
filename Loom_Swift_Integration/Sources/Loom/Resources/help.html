@@ -305,6 +305,7 @@
   <a class="nav-link nav-sub" href="#extension-extrude">Extrude (closed)</a>
   <a class="nav-link nav-sub" href="#evolution-drift">Evolution — Momentum Drift</a>
   <a class="nav-link nav-sub" href="#evolution-convergence">Evolution — Convergence Pressure</a>
+  <a class="nav-link nav-sub" href="#evolution-generational">Evolution — Generational</a>
   <a class="nav-link nav-sub" href="#dissolution-entropy">Dissolution — Entropy</a>
   <a class="nav-link nav-sub" href="#dissolution-collapse">Dissolution — Collapse</a>
   <a class="nav-link" href="#rendering">Rendering</a>
@@ -428,6 +429,7 @@
   <div class="toc-entry sub"><a href="#extension-extrude">Extrude (closed)</a><span class="toc-fill"></span></div>
   <div class="toc-entry sub"><a href="#evolution-drift">Evolution — Momentum Drift</a><span class="toc-fill"></span></div>
   <div class="toc-entry sub"><a href="#evolution-convergence">Evolution — Convergence Pressure</a><span class="toc-fill"></span></div>
+  <div class="toc-entry sub"><a href="#evolution-generational">Evolution — Generational</a><span class="toc-fill"></span></div>
   <div class="toc-entry sub"><a href="#dissolution-entropy">Dissolution — Entropy</a><span class="toc-fill"></span></div>
   <div class="toc-entry sub"><a href="#dissolution-collapse">Dissolution — Collapse</a><span class="toc-fill"></span></div>
   <div class="toc-entry"><a href="#rendering">Rendering</a><span class="toc-fill"></span></div>
@@ -2773,6 +2775,50 @@
   </table>
 
   <div class="tip"><strong>Combining Momentum Drift and Convergence Pressure:</strong> Add both a Momentum Drift pass and a Convergence Pressure pass to the same transform set. Start pressure at 0 and ramp it slowly over many frames. Initially the geometry wanders freely under drift; as pressure rises, it is gradually reined in toward the target — the drift does not stop but its excursions become increasingly constrained. This is the "starts random, accumulates into a trajectory, gets focused" pattern that is the core of the Evolution lifecycle stage.</div>
+
+  <h3 id="evolution-generational">Evolution — Generational</h3>
+  <p>Generational evolution is a small artificial-life system: instead of perturbing subdivision parameters like Momentum Drift and Convergence Pressure do, it iteratively mutates the actual polygon geometry across a fixed number of <em>generations</em>. Each generation applies exactly one mutation operator — <strong>Extrude</strong> (push one or more contiguous edges outward, adding a new connected quad) or <strong>Split</strong> (insert a new point on a random edge and displace it outward, growing a spike) — to one eligible closed polygon in the set, chosen by weighted probability. Every generation builds on the previous one's output, so the shape's history compounds: a spike added in generation 3 can itself be extruded or split in generation 7.</p>
+
+  <div class="note"><strong>Deterministic, not closed-form:</strong> unlike Momentum Drift and Convergence Pressure, generation N genuinely depends on generation N−1's materialized geometry, so there is no formula that jumps straight to an arbitrary generation — the chain is recomputed from generation 0 every time it's needed. It is still fully deterministic and free of any state that persists between rendered frames: the same seed and parameters always reproduce the identical generation history, computed fresh each time from scratch. Scrubbing the timeline backward, or looping a Reveal driver (below), "de-evolves" cleanly — there is no ratchet.</div>
+
+  <h4>Step-by-step: growing a shape over generations</h4>
+  <ol class="steps">
+    <li>Select a transform set applied to a closed-polygon sprite. In the <strong>Evolution</strong> section of the inspector, click <strong>+</strong> and choose <strong>Generational</strong> from the type menu.</li>
+    <li>Under <strong>Generations</strong>, set <strong>Count</strong> to <strong>8</strong> and leave <strong>Seed</strong> at 0 — every generation's mutation is derived from this seed, so changing it produces a completely different evolutionary path.</li>
+    <li>Leave <strong>Vertex budget</strong> at its default. This is a hard cap on total point count across the whole set; extrusion and splitting both add points every generation, so a generation that would exceed the budget is rejected outright rather than producing runaway complexity.</li>
+    <li>Under <strong>Extrude</strong>, set <strong>Weight</strong> to <strong>1.0</strong> and leave <strong>Run length</strong> at <strong>1–2</strong> and <strong>Distance</strong> at <strong>0.05–0.2</strong>. Under <strong>Split</strong>, set <strong>Weight</strong> to <strong>0</strong> to get an extrude-only evolution for this first pass — a shape that sprouts flap-like extensions.</li>
+    <li>Play back or bake the set. Every frame shows the fully-evolved 8th generation, since the Reveal driver is off by default — see below to animate the growth instead of seeing it fully-formed immediately.</li>
+    <li>Once the extrude-only version looks right, try <strong>Split Weight: 1.0, Extrude Weight: 0.3</strong> for a mix dominated by spiky growth with occasional flaps, or equal weights for an even mix.</li>
+  </ol>
+
+  <h4>Step-by-step: animating the reveal (discrete or tweened)</h4>
+  <p>By default the full generation count is applied statically on every frame — the shape doesn't change over time. To watch it evolve, enable the <strong>Reveal</strong> driver under the Generations section.</p>
+  <ol class="steps">
+    <li>With a Generational pass selected, expand <strong>Reveal</strong> and enable the driver.</li>
+    <li>Set the driver's mode to <strong>Keyframe</strong>, with a keyframe at frame 0 valued 0, and a second keyframe at (for example) frame 240 valued 8 (matching Generations → Count). Playing back now reveals one generation at a time as the frame advances from 0 to 240.</li>
+    <li>The reveal is <strong>tweened</strong> automatically: at frame 150 (partway between the two keyframes), the generation in progress at that moment shows its extrude/split mutation growing smoothly toward full size — a flap mid-extrusion, or a spike partway to its final displacement — rather than popping in fully-formed the instant its generation is reached. Earlier generations are already fully settled; later ones haven't started.</li>
+    <li>For a discrete "one generation at a time" look instead of a smooth grow-in, use the same keyframe setup but keep each generation's <strong>Distance</strong>/<strong>Displacement</strong> range narrow (e.g. a fixed 0.15–0.15) — the tween still happens, but a small, fast-settling range makes each step read as more of a "pop" than a visible grow.</li>
+    <li>For a form that evolves and resets indefinitely, set the driver's mode to <strong>Oscillator</strong> or use <strong>Loop</strong> keyframes instead of a one-shot ramp — the shape will grow to full generation count then restart from nothing.</li>
+    <li>Scrub the timeline freely in either direction — because the whole chain recomputes from generation 0 each time, moving backward correctly un-grows the shape rather than getting stuck at its most-evolved state.</li>
+  </ol>
+
+  <h4>Generational parameter reference and safe input values</h4>
+  <table>
+    <thead><tr><th>Parameter</th><th>Safe range</th><th>Effect</th></tr></thead>
+    <tbody>
+      <tr><td>Count</td><td>2–30</td><td>How many generations to run. Each one applies exactly one operator to one eligible polygon. Higher counts compound complexity fast, especially with Extrude — watch the vertex budget.</td></tr>
+      <tr><td>Seed</td><td>any integer</td><td>Deterministic seed for the entire generation history — which polygon is targeted, which operator fires, which edges are chosen, and the sampled distance/displacement each generation. Change it for a completely different evolutionary path with the same settings.</td></tr>
+      <tr><td>Vertex budget</td><td>128–2000</td><td>Hard cap on total point count across every polygon in the set. Required, not optional: a generation whose result would exceed this is rejected and the chain stops there, so runaway growth from high generation counts or aggressive extrusion can't produce degenerate geometry or a frozen app.</td></tr>
+      <tr><td>Extrude Weight</td><td>0–1 (relative)</td><td>Selection weight for the extrude operator each generation, relative to Split Weight. 0 excludes extrusion entirely. Weights need not sum to 1 — only their ratio matters.</td></tr>
+      <tr><td>Extrude Run length</td><td>1–3</td><td>Range of contiguous edges extruded together as one generation's mutation (resampled each generation). 1 = a single flap per generation; higher values produce wider, multi-edge growths.</td></tr>
+      <tr><td>Extrude Distance</td><td>0.02–0.3</td><td>Range for the outward extrusion distance, resampled each generation. Keep the upper bound modest relative to the base shape's size, or a handful of generations can dwarf the original form.</td></tr>
+      <tr><td>Split Weight</td><td>0–1 (relative)</td><td>Selection weight for the split operator each generation, relative to Extrude Weight. 0 excludes splitting entirely.</td></tr>
+      <tr><td>Split Displacement</td><td>0.02–0.3</td><td>Range for how far the new point (from splitting a random edge) is displaced outward from the shape's centre, resampled each generation. Only the new point moves — its neighbouring control points stay put, which pulls the boundary into a rounded spike rather than a sharp corner.</td></tr>
+      <tr><td>Reveal</td><td>—</td><td>Optional DoubleDriver mapping playback time to a position in [0, Count]. Disabled (default): the full Count is always applied. Enabled: the integer part is how many generations are fully applied; the fractional part tweens the in-progress generation's operator magnitude in from zero. Keyframe mode gives explicit control over pacing; Oscillator/Loop modes produce a repeating grow-and-reset cycle.</td></tr>
+    </tbody>
+  </table>
+
+  <div class="tip"><strong>Generational + Dissolution:</strong> Generational evolution runs after Extension and before Dissolution in the pipeline, so a shape can grow across generations and then erode or collapse. Try an extrude-heavy Generational pass (Count 10, growing a spiky silhouette) paired with a Dissolution Entropy pass targeting Smoothed — the shape sprouts extensions while simultaneously softening, producing organic growth that never quite holds a sharp edge.</div>
 </section>
 
 <!-- ────────────────────────────────────────────────── -->

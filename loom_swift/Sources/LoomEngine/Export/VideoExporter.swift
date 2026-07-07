@@ -9,7 +9,7 @@ import Foundation
 ///
 /// ```swift
 /// let exporter = VideoExporter()
-/// let settings = VideoExporter.Settings(fps: 30, duration: 5.0, outputURL: url)
+/// let settings = VideoExporter.Settings(fps: 30, endFrame: 150, outputURL: url)
 /// try await exporter.export(engine: engine, settings: settings) { progress in
 ///     print("Export progress: \(Int(progress * 100))%")
 /// }

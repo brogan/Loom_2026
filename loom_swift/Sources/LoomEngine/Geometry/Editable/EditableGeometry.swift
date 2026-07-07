@@ -88,6 +88,12 @@ public struct EditableRegularPolygonParameters: Codable, Equatable, Sendable {
     public var innerRadius: Double
     public var scaleX: Double
     public var scaleY: Double
+    /// Default `.pi / 2.0` places vertex 0 straight up (`+Y`), matching the
+    /// Y-UP convention both the editor and runtime use (see the `Vector2D`
+    /// editor/runtime extension above). Do not "fix" this back to `-.pi / 2.0` —
+    /// that was the value before the Y-axis-flip fix (commit `ed0f3234`), when a
+    /// compensating negation elsewhere made it *look* correct; without that
+    /// negation it points vertex 0 straight down instead.
     public var rotationRadians: Double
 
     public init(
@@ -97,7 +103,7 @@ public struct EditableRegularPolygonParameters: Codable, Equatable, Sendable {
         innerRadius: Double = 1.0,
         scaleX: Double = 1.0,
         scaleY: Double = 1.0,
-        rotationRadians: Double = -.pi / 2.0
+        rotationRadians: Double = .pi / 2.0
     ) {
         self.sides = sides
         self.centre = centre
@@ -256,7 +262,7 @@ public struct EditableClosedPolygon: Codable, Equatable, Identifiable, Sendable 
         innerRadius: Double = 1.0,
         scaleX: Double = 1.0,
         scaleY: Double = 1.0,
-        rotationRadians: Double = -.pi / 2.0
+        rotationRadians: Double = .pi / 2.0
     ) throws {
         let parameters = EditableRegularPolygonParameters(
             sides: sides,
