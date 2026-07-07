@@ -146,82 +146,96 @@ public final class VideoExporter {
             engine.update(deltaTime: dt)
         }
 
-        for frameIndex in 0..<totalFrames {
+        // Wrapped in do/catch so any mid-loop failure can call writer.cancelWriting()
+        // before propagating. Per AVAssetWriter's documented contract, releasing the
+        // writer without calling cancelWriting() after a failed/abandoned session can
+        // leave its VideoToolbox encoder session un-torn-down — which was silently
+        // true here before this fix. A dangling encoder session from one failed
+        // export can then cause the *next* export attempt to fail immediately (the
+        // hardware encoder XPC service has a limited number of concurrent sessions),
+        // which is indistinguishable from the original failure without this cleanup.
+        do {
+            for frameIndex in 0..<totalFrames {
 
-            // 1. Advance the engine one frame.
-            engine.update(deltaTime: dt)
+                // 1. Advance the engine one frame.
+                engine.update(deltaTime: dt)
 
-            // 2. Render to a CGImage (correctly oriented, bottom-left origin).
-            guard let cgImage = engine.makeFrame() else { continue }
+                // 2. Render to a CGImage (correctly oriented, bottom-left origin).
+                guard let cgImage = engine.makeFrame() else { continue }
 
-            // 3. Allocate a pixel buffer from the pool.
-            var pixelBuffer: CVPixelBuffer?
-            guard CVPixelBufferPoolCreatePixelBuffer(nil, pool, &pixelBuffer) == kCVReturnSuccess,
-                  let pb = pixelBuffer else { continue }
+                // 3. Allocate a pixel buffer from the pool.
+                var pixelBuffer: CVPixelBuffer?
+                guard CVPixelBufferPoolCreatePixelBuffer(nil, pool, &pixelBuffer) == kCVReturnSuccess,
+                      let pb = pixelBuffer else { continue }
 
-            // 4. Draw the CGImage into the pixel buffer.
-            //    Engine.makeFrame() returns a CGImage that is already in top-left
-            //    raster order (the Y-flip is applied inside renderImpl).  Drawing it
-            //    directly into a plain CGContext (no extra transform) maps:
-            //      image row 0 → CGContext y=0 (bottom) → buffer offset 0 → video row 0 (top) ✓
-            //    A second Y-flip would re-invert the image and produce upside-down video.
-            CVPixelBufferLockBaseAddress(pb, [])
-            if let baseAddress = CVPixelBufferGetBaseAddress(pb) {
-                let bytesPerRow = CVPixelBufferGetBytesPerRow(pb)
-                let bitmapInfo  = CGImageAlphaInfo.premultipliedFirst.rawValue
-                               | CGBitmapInfo.byteOrder32Little.rawValue
-                if let ctx = CGContext(
-                    data:             baseAddress,
-                    width:            w,
-                    height:           h,
-                    bitsPerComponent: 8,
-                    bytesPerRow:      bytesPerRow,
-                    space:            CGColorSpaceCreateDeviceRGB(),
-                    bitmapInfo:       bitmapInfo
-                ) {
-                    ctx.draw(cgImage, in: CGRect(x: 0, y: 0, width: w, height: h))
+                // 4. Draw the CGImage into the pixel buffer.
+                //    Engine.makeFrame() returns a CGImage that is already in top-left
+                //    raster order (the Y-flip is applied inside renderImpl).  Drawing it
+                //    directly into a plain CGContext (no extra transform) maps:
+                //      image row 0 → CGContext y=0 (bottom) → buffer offset 0 → video row 0 (top) ✓
+                //    A second Y-flip would re-invert the image and produce upside-down video.
+                CVPixelBufferLockBaseAddress(pb, [])
+                if let baseAddress = CVPixelBufferGetBaseAddress(pb) {
+                    let bytesPerRow = CVPixelBufferGetBytesPerRow(pb)
+                    let bitmapInfo  = CGImageAlphaInfo.premultipliedFirst.rawValue
+                                   | CGBitmapInfo.byteOrder32Little.rawValue
+                    if let ctx = CGContext(
+                        data:             baseAddress,
+                        width:            w,
+                        height:           h,
+                        bitsPerComponent: 8,
+                        bytesPerRow:      bytesPerRow,
+                        space:            CGColorSpaceCreateDeviceRGB(),
+                        bitmapInfo:       bitmapInfo
+                    ) {
+                        ctx.draw(cgImage, in: CGRect(x: 0, y: 0, width: w, height: h))
+                    }
                 }
-            }
-            CVPixelBufferUnlockBaseAddress(pb, [])
+                CVPixelBufferUnlockBaseAddress(pb, [])
 
-            // 5. Wait until the writer can accept a new sample.
-            //    Even with expectsMediaDataInRealTime = false, AVFoundation can
-            //    apply backpressure while it processes its internal encode queue.
-            //    Task.yield() returns control to the Swift concurrency runtime so
-            //    AVFoundation's internal processing can make progress.
-            //    Also bail out if the writer has already failed — without this,
-            //    a failed writer can leave isReadyForMoreMediaData permanently
-            //    false and this loop would spin forever instead of surfacing
-            //    the error.
-            while !writerInput.isReadyForMoreMediaData {
-                if writer.status == .failed {
+                // 5. Wait until the writer can accept a new sample.
+                //    Even with expectsMediaDataInRealTime = false, AVFoundation can
+                //    apply backpressure while it processes its internal encode queue.
+                //    Task.yield() returns control to the Swift concurrency runtime so
+                //    AVFoundation's internal processing can make progress.
+                //    Also bail out if the writer has already failed — without this,
+                //    a failed writer can leave isReadyForMoreMediaData permanently
+                //    false and this loop would spin forever instead of surfacing
+                //    the error.
+                while !writerInput.isReadyForMoreMediaData {
+                    if writer.status == .failed {
+                        throw VideoExporterError.writeFailed(
+                            frameIndex: frameIndex, totalFrames: totalFrames, underlying: writer.error
+                        )
+                    }
+                    await Task.yield()
+                }
+
+                // 6. Append pixel buffer with presentation timestamp. append's Bool
+                //    result and the writer's status must both be checked here — this
+                //    is the only point at which a mid-export failure (disk full,
+                //    encoder session lost, etc.) is actually detectable. Ignoring it
+                //    (as this used to) makes the loop plough through every remaining
+                //    frame reporting fake progress, so a failure at frame 40 of 3600
+                //    only surfaces after the other 3560 frames were rendered for
+                //    nothing, with no indication of when or why it actually broke.
+                let pts = CMTime(value: CMTimeValue(frameIndex),
+                                 timescale: CMTimeScale(fps))
+                let appended = adaptor.append(pb, withPresentationTime: pts)
+                guard appended, writer.status != .failed else {
                     throw VideoExporterError.writeFailed(
                         frameIndex: frameIndex, totalFrames: totalFrames, underlying: writer.error
                     )
                 }
-                await Task.yield()
-            }
 
-            // 6. Append pixel buffer with presentation timestamp. append's Bool
-            //    result and the writer's status must both be checked here — this
-            //    is the only point at which a mid-export failure (disk full,
-            //    encoder session lost, etc.) is actually detectable. Ignoring it
-            //    (as this used to) makes the loop plough through every remaining
-            //    frame reporting fake progress, so a failure at frame 40 of 3600
-            //    only surfaces after the other 3560 frames were rendered for
-            //    nothing, with no indication of when or why it actually broke.
-            let pts = CMTime(value: CMTimeValue(frameIndex),
-                             timescale: CMTimeScale(fps))
-            let appended = adaptor.append(pb, withPresentationTime: pts)
-            guard appended, writer.status != .failed else {
-                throw VideoExporterError.writeFailed(
-                    frameIndex: frameIndex, totalFrames: totalFrames, underlying: writer.error
-                )
+                // 7. Report progress: value in (0, 1].
+                let p = Double(frameIndex + 1) / Double(totalFrames)
+                progress?(p)
             }
-
-            // 7. Report progress: value in (0, 1].
-            let p = Double(frameIndex + 1) / Double(totalFrames)
-            progress?(p)
+        } catch {
+            writer.cancelWriting()
+            try? FileManager.default.removeItem(at: settings.outputURL)
+            throw error
         }
 
         // ── Finish writing ───────────────────────────────────────────────────
