@@ -189,14 +189,35 @@ public final class VideoExporter {
             //    apply backpressure while it processes its internal encode queue.
             //    Task.yield() returns control to the Swift concurrency runtime so
             //    AVFoundation's internal processing can make progress.
+            //    Also bail out if the writer has already failed — without this,
+            //    a failed writer can leave isReadyForMoreMediaData permanently
+            //    false and this loop would spin forever instead of surfacing
+            //    the error.
             while !writerInput.isReadyForMoreMediaData {
+                if writer.status == .failed {
+                    throw VideoExporterError.writeFailed(
+                        frameIndex: frameIndex, totalFrames: totalFrames, underlying: writer.error
+                    )
+                }
                 await Task.yield()
             }
 
-            // 6. Append pixel buffer with presentation timestamp.
+            // 6. Append pixel buffer with presentation timestamp. append's Bool
+            //    result and the writer's status must both be checked here — this
+            //    is the only point at which a mid-export failure (disk full,
+            //    encoder session lost, etc.) is actually detectable. Ignoring it
+            //    (as this used to) makes the loop plough through every remaining
+            //    frame reporting fake progress, so a failure at frame 40 of 3600
+            //    only surfaces after the other 3560 frames were rendered for
+            //    nothing, with no indication of when or why it actually broke.
             let pts = CMTime(value: CMTimeValue(frameIndex),
                              timescale: CMTimeScale(fps))
-            adaptor.append(pb, withPresentationTime: pts)
+            let appended = adaptor.append(pb, withPresentationTime: pts)
+            guard appended, writer.status != .failed else {
+                throw VideoExporterError.writeFailed(
+                    frameIndex: frameIndex, totalFrames: totalFrames, underlying: writer.error
+                )
+            }
 
             // 7. Report progress: value in (0, 1].
             let p = Double(frameIndex + 1) / Double(totalFrames)
@@ -211,14 +232,44 @@ public final class VideoExporter {
         }
 
         if let error = writer.error {
-            throw error
+            throw VideoExporterError.writeFailed(
+                frameIndex: totalFrames - 1, totalFrames: totalFrames, underlying: error
+            )
         }
     }
 }
 
 // MARK: - VideoExporterError
 
-public enum VideoExporterError: Error {
+public enum VideoExporterError: Error, LocalizedError {
     /// The `AVAssetWriter` could not be configured as required.
     case setupFailed(String)
+
+    /// A frame failed to write to the asset writer — either detected mid-loop
+    /// (append returned false, or the writer's status went `.failed`) or at
+    /// `finishWriting` (in which case `frameIndex` is `totalFrames - 1`, the
+    /// exact frame isn't recoverable at that point). `underlying` is
+    /// `AVAssetWriter.error` at the time of failure, when available; its
+    /// `NSUnderlyingErrorKey` chain (disk space, encoder session, etc.) is
+    /// surfaced too, since the top-level AVFoundation message alone is often
+    /// a generic "The operation could not be completed."
+    case writeFailed(frameIndex: Int, totalFrames: Int, underlying: Error?)
+
+    public var errorDescription: String? {
+        switch self {
+        case .setupFailed(let message):
+            return message
+        case .writeFailed(let frameIndex, let totalFrames, let underlying):
+            var message = "Video export failed while writing frame \(frameIndex + 1) of \(totalFrames)."
+            if let underlying {
+                message += " " + underlying.localizedDescription
+                var probe: Error? = (underlying as NSError).userInfo[NSUnderlyingErrorKey] as? Error
+                while let inner = probe {
+                    message += " (\(inner.localizedDescription))"
+                    probe = (inner as NSError).userInfo[NSUnderlyingErrorKey] as? Error
+                }
+            }
+            return message
+        }
+    }
 }
