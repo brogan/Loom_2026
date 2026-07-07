@@ -49,7 +49,11 @@ struct FloatEntryField: View {
     }
 
     private func commit() {
-        guard let d = Double(text) else { return }
+        // formatted(_:) below inserts thousands separators for display (e.g.
+        // "1,234"); without stripping them back out here, pasting a value copied
+        // from this same field's own display — or from anywhere else formatted
+        // the same way — would fail to parse and silently leave `value` unchanged.
+        guard let d = Double(sanitizedForParsing(text)) else { return }
         value = d
         onCommit?(d)
         text = formatted(value)
@@ -57,6 +61,62 @@ struct FloatEntryField: View {
 
     private func formatted(_ d: Double) -> String {
         d.formatted(.number.precision(.fractionLength(0...fractionDigits)))
+    }
+}
+
+private func sanitizedForParsing(_ s: String) -> String {
+    s.trimmingCharacters(in: .whitespacesAndNewlines)
+        .replacingOccurrences(of: ",", with: "")
+}
+
+/// Like `FloatEntryField` but for `Int` values that may span the full 64-bit range —
+/// e.g. hash-derived seeds. Bridging such a value through `Double` for editing (as
+/// `FloatEntryField` does) silently loses precision beyond ~15-17 significant
+/// digits and rounds it to a *different* integer, defeating the point of pasting
+/// in an exact seed to reproduce a specific result. Parses/formats `Int` natively,
+/// no floating-point step at all.
+struct IntEntryField: View {
+    @Binding var value: Int
+    var width: CGFloat
+    var fontSize: CGFloat = 12
+    var help: String = ""
+    var onCommit: ((Int) -> Void)? = nil
+
+    @State private var text = ""
+    @State private var isEditing = false
+    @FocusState private var focused: Bool
+
+    var body: some View {
+        TextField("", text: $text)
+            .textFieldStyle(.squareBorder)
+            .font(.system(size: fontSize, design: .monospaced))
+            .frame(width: width)
+            .focused($focused)
+            .onAppear { text = String(value) }
+            .onChange(of: text) { _, _ in
+                if focused { isEditing = true }
+            }
+            .onChange(of: value) { _, newVal in
+                if !isEditing { text = String(newVal) }
+            }
+            .onChange(of: focused) { _, isFocused in
+                if !isFocused {
+                    commit()
+                    isEditing = false
+                }
+            }
+            .onSubmit {
+                commit()
+                isEditing = false
+            }
+            .loomHelp(help)
+    }
+
+    private func commit() {
+        guard let i = Int(sanitizedForParsing(text)) else { return }
+        value = i
+        onCommit?(i)
+        text = String(value)
     }
 }
 

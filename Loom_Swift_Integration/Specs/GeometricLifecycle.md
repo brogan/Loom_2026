@@ -1072,6 +1072,43 @@ Verified with 3 additional tests (27 total) for `effectiveSeed`: matches
 driver is disabled even with varying on, and matches `combineSeed` of the current
 cycle when varying is genuinely active. All 477 tests in `LoomEngineTests` pass.
 
+**Bugfix (2026-07-07) — pasting a large seed silently failed.** Reported after
+using the live seed readout above: copying a huge `effectiveSeed` (e.g.
+`-3239489724241199657`, from `combineSeed`'s splitmix64-style mixing, which
+routinely produces values across the full `Int` range) into the Seed field and
+turning off "Vary seed per cycle" still played back the old (default `0`) seed
+rather than the pasted one. Two independent bugs, both in the shared
+`FloatEntryField` component (`Sources/Loom/Inspector/InspectorComponents.swift`),
+not in the engine:
+
+1. `FloatEntryField.formatted(_:)` displays large numbers with thousands
+   separators (e.g. `"1,234"`), but `commit()` parsed the raw text with
+   `Double(text)`, which rejects comma-grouped strings and returns `nil` —
+   `commit()` then silently no-ops, leaving the stored value (and the visible
+   `text`, confusingly still showing what was typed) unchanged. This affected
+   *any* value ≥ 1000 in *any* field using this shared component, not just
+   seeds. Fixed generally: `commit()` now strips thousands separators/whitespace
+   before parsing.
+2. Even with (1) fixed, `generationSeed`/`driftSeed` were edited via
+   `intAsDoubleBinding`, bridging through `Double` for the text field. `Double`
+   only exactly represents integers up to 2^53 (~9×10¹⁵) — a 19-digit seed like
+   the one above (~3.2×10¹⁸) silently rounds to a *different* integer on the
+   round trip, defeating the entire point of pasting an exact seed to reproduce
+   a specific result. Fixed by adding `IntEntryField` — parses/formats `Int`
+   natively with no floating-point step at all — and switching
+   `EvolutionInspector`'s `generationSeed` and `driftSeed` fields to it. Other
+   `Int` fields in the same inspector (`generationCount`, `extrudeRunLengthMin/Max`,
+   `maxVertexBudget`) stay on the `Double`-bridged `FloatEntryField` — they're
+   small user-chosen values (2–2000 range) well within `Double`'s exact-integer
+   range, so there's no precision risk there, and no reason to touch working code.
+
+Not fixed (out of scope for this bug report, flagged for awareness): other
+`Int` seed-like fields elsewhere in the app (`branchSeed`, `entropySeed`, etc.)
+share the same `Double`-bridging pattern and would have the identical precision
+bug *if* a similarly huge value were ever pasted into them — none of them
+currently have a "live huge-value readout" feature feeding them, so the practical
+risk is low, but the pattern is worth remembering if that changes.
+
 **Not yet done:** duplicate-and-graft, subdivision-cycle-as-operator, fitness
 measures, lock/graft selection, budget cap on *lineage* count (moot until grafting
 exists), an easing curve option for the tween (currently linear).

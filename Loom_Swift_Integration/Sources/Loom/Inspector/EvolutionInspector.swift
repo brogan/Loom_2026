@@ -102,11 +102,7 @@ struct EvolutionInspector: View {
             .loomHelp("Temporal noise rate in cycles per frame. 0.02 = one full noise cycle every 50 frames. Lower values = slower, broader drift; higher values = rapid, jittery changes.")
 
             InspectorField("Seed") {
-                let b = bindEVInt(\.driftSeed)
-                FloatEntryField(value: Binding(
-                    get: { Double(b.wrappedValue) },
-                    set: { b.wrappedValue = Int($0.rounded()) }
-                ), width: 60, fractionDigits: 0)
+                IntEntryField(value: bindEVInt(\.driftSeed), width: 60)
             }
             .loomHelp("Deterministic seed for the drift noise. Change to produce a different drift trajectory without altering the shape of the motion.")
         }
@@ -168,9 +164,9 @@ struct EvolutionInspector: View {
             .loomHelp("How many generations to run. Each generation applies exactly one mutation operator (extrude or split, chosen by weight) to one eligible closed polygon in the set.")
 
             InspectorField("Seed") {
-                FloatEntryField(value: intAsDoubleBinding(\.generationSeed), width: 60, fractionDigits: 0)
+                IntEntryField(value: bindEVInt(\.generationSeed), width: 140)
             }
-            .loomHelp("Deterministic seed. The same seed and parameters always produce the identical generation history — change it for a different evolutionary path.")
+            .loomHelp("Deterministic seed. The same seed and parameters always produce the identical generation history — change it for a different evolutionary path. Paste the value from the Global tab's Evolution Seed readout here (with Vary seed per cycle off) to reproduce a generation you liked exactly — this field handles the full range of values that readout can show, unlike a typical decimal field.")
 
             InspectorField("Vertex budget") {
                 FloatEntryField(value: intAsDoubleBinding(\.maxVertexBudget), width: 70, fractionDigits: 0)
