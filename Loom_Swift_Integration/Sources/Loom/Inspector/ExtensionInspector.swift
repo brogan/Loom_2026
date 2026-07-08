@@ -14,8 +14,9 @@ struct ExtensionInspector: View {
     @AppStorage("extinsp.opCollapsed")      private var opCollapsed       = false
     @AppStorage("extinsp.branchCollapsed")  private var branchCollapsed   = false
     @AppStorage("extinsp.extrudeCollapsed") private var extrudeCollapsed  = false
-    @AppStorage("extinsp.angleCollapsed")   private var angleCollapsed    = true
-    @AppStorage("extinsp.distCollapsed")    private var distCollapsed     = true
+    @AppStorage("extinsp.angleCollapsed")       private var angleCollapsed       = true
+    @AppStorage("extinsp.distCollapsed")        private var distCollapsed        = true
+    @AppStorage("extinsp.directionalCollapsed") private var directionalCollapsed = true
 
     var body: some View {
         generalSection
@@ -26,6 +27,7 @@ struct ExtensionInspector: View {
         } else {
             extrudeSection
             extrudeDistanceDriverSection
+            directionalSelectorSection
         }
     }
 
@@ -134,7 +136,7 @@ struct ExtensionInspector: View {
                 .pickerStyle(.segmented)
                 .frame(maxWidth: 160)
             }
-            .loomHelp("All Edges: extrude every segment of the polygon. Longest Edge: extrude only the single longest segment — useful for directional growth.")
+            .loomHelp("All Edges: extrude every segment of the polygon. Longest Edge: extrude only the single longest segment. Combine with the Directional Selector below to further restrict candidates by which way they face — e.g. only edges pointing up.")
 
             InspectorField("Width") {
                 FloatEntryField(value: bindEX(\.extrusionWidth), width: 60)
@@ -164,6 +166,15 @@ struct ExtensionInspector: View {
             isCollapsed: $distCollapsed
         )
         .padding(.bottom, 2)
+    }
+
+    @ViewBuilder
+    private var directionalSelectorSection: some View {
+        DirectionalSelectorEditor(
+            label: "Directional Selector",
+            selector: bindEX(\.directionalSelector),
+            isCollapsed: $directionalCollapsed
+        )
     }
 
     // MARK: - Binding helpers

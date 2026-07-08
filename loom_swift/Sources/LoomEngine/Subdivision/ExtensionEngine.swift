@@ -162,25 +162,21 @@ public enum ExtensionEngine {
         let segCount = polygon.points.count / 4
         guard segCount > 0 else { return [] }
 
-        let segIndices: [Int]
+        var segIndices: [Int]
         switch params.extrusionTarget {
         case .allEdges:    segIndices = Array(0..<segCount)
         case .longestEdge: segIndices = [longestSegmentIndex(polygon)]
+        }
+        if params.directionalSelector.enabled {
+            segIndices = segIndices.filter { params.directionalSelector.accepts(outwardNormal(of: polygon, segIdx: $0)) }
         }
 
         let maxGenerations = max(1, min(6, params.extrusionGenerations))
         var result: [Polygon2D] = []
 
         for segIdx in segIndices {
-            let base = segIdx * 4
-            guard base + 3 < polygon.points.count else { continue }
-            let a0 = polygon.points[base], a1 = polygon.points[base + 3]
-            let dx = a1.x - a0.x, dy = a1.y - a0.y
-            let len = sqrt(dx * dx + dy * dy)
-            let outwardNormal = Vector2D(
-                x: len > 1e-12 ? -dy / len : 0.0,
-                y: len > 1e-12 ?  dx / len : 0.0
-            )
+            let normal = outwardNormal(of: polygon, segIdx: segIdx)
+            guard normal != .zero else { continue }
 
             var currentPoly     = polygon
             var currentSegIdx   = segIdx
@@ -189,7 +185,7 @@ public enum ExtensionEngine {
             for _ in 0..<maxGenerations {
                 let ext = extrudeSegment(currentPoly, segIdx: currentSegIdx,
                                           distance: currentDistance, params: params,
-                                          outwardNormal: outwardNormal)
+                                          outwardNormal: normal)
                 result.append(ext)
                 currentPoly     = ext
                 currentSegIdx   = 2  // outer face is always segment 2 in the extruded polygon
@@ -214,18 +210,11 @@ public enum ExtensionEngine {
     ) -> Polygon2D? {
         let segCount = polygon.points.count / 4
         guard segCount > 0, segIdx < segCount else { return nil }
-        let base = segIdx * 4
-        guard base + 3 < polygon.points.count else { return nil }
-        let a0 = polygon.points[base], a1 = polygon.points[base + 3]
-        let dx = a1.x - a0.x, dy = a1.y - a0.y
-        let len = sqrt(dx * dx + dy * dy)
-        let outwardNormal = Vector2D(
-            x: len > 1e-12 ? -dy / len : 0.0,
-            y: len > 1e-12 ?  dx / len : 0.0
-        )
+        let normal = outwardNormal(of: polygon, segIdx: segIdx)
+        guard normal != .zero else { return nil }
         let params = ExtensionParams(operationType: .extrude, extrusionWidth: width, extrusionCurvature: curvature)
         return extrudeSegment(polygon, segIdx: segIdx, distance: distance,
-                               params: params, outwardNormal: outwardNormal)
+                               params: params, outwardNormal: normal)
     }
 
     private static func extrudeSegment(
@@ -276,6 +265,23 @@ public enum ExtensionEngine {
     }
 
     // MARK: - Helpers
+
+    /// Outward normal of segment `segIdx` — the edge-direction vector (segment's
+    /// end anchor minus its start anchor) rotated 90°, normalized. `.zero` for a
+    /// degenerate (zero-length) edge or an out-of-range index; callers should treat
+    /// `.zero` as "no sensible direction, skip this edge" rather than a real
+    /// direction pointing along `+x`. Shared by `extrudePolygon`, `extrudeEdge`,
+    /// and `DirectionalSelector` filtering (Specs/GeometricLifecycle.md §14) —
+    /// previously this exact formula was duplicated inline at each call site.
+    static func outwardNormal(of polygon: Polygon2D, segIdx: Int) -> Vector2D {
+        let base = segIdx * 4
+        guard base >= 0, base + 3 < polygon.points.count else { return .zero }
+        let a0 = polygon.points[base], a1 = polygon.points[base + 3]
+        let dx = a1.x - a0.x, dy = a1.y - a0.y
+        let len = sqrt(dx * dx + dy * dy)
+        guard len > 1e-12 else { return .zero }
+        return Vector2D(x: -dy / len, y: dx / len)
+    }
 
     private static func longestSegmentIndex(_ polygon: Polygon2D) -> Int {
         let n = polygon.points.count / 4

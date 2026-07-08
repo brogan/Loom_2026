@@ -2724,6 +2724,16 @@
   <h4>Animating extrusion distance</h4>
   <p>Extrude Distance supports a <strong>DoubleDriver</strong>. A slow oscillator on distance (amplitude 0.02–0.08, period 2–4 seconds) makes polygon walls breathe in and out, creating a pulsating cell structure. Negative distance values push walls inward rather than outward — ensure <strong>Width</strong> is set to a value that prevents self-intersection when going negative.</p>
 
+  <h4 id="extension-directional">Constraining extrusion to a direction</h4>
+  <p>The <strong>Directional Selector</strong> (below the Extrude fields) further restricts which edges are eligible on top of Target — e.g. "only the edge(s) facing up," regardless of which index that happens to be on a given shape. This answers a question index-based selection can't: "the top edge" isn't edge 0 or edge 2, it's whichever edge's outward-facing direction matches — so the same setting works on a square, a triangle, or an irregular polygon alike.</p>
+  <ol class="steps">
+    <li>Expand <strong>Directional Selector</strong> and enable it.</li>
+    <li><strong>Basis</strong>: leave at <strong>Outward Normal</strong> for closed polygons (Extrude's usual case).</li>
+    <li><strong>Target angle</strong>: the direction to match, in degrees. 90° = straight up, 0° = right, 180° = left, -90° = straight down.</li>
+    <li><strong>Tolerance</strong>: how far off Target angle an edge's direction can be and still qualify. Start around 20° — narrow enough to select one edge on a square without also catching its neighbours (90° away), wide enough to tolerate the shape not being perfectly axis-aligned.</li>
+  </ol>
+  <div class="note">If Tolerance is too tight for the shape in question, zero edges may qualify — Extrude then simply produces no additional geometry for that pass, rather than an error. Widen Tolerance or check Target angle against the shape's actual orientation if nothing appears.</div>
+
   <div class="tip"><strong>Combining Branch and Extrude:</strong> Branch and Extrude are separate Extension passes and can both be enabled in the same transform set. They run independently on their respective polygon types — Branch on open curves, Extrude on closed polygons. A common pattern: draw an open curve tree (Branch pass) alongside a subdivided polygon mesh (Extrude pass) in the same sprite so that the branching organic structure and the extruded rigid structure share the same transform and renderer.</div>
 
   <h3 id="evolution-drift">Evolution — Momentum Drift</h3>
@@ -2853,6 +2863,10 @@
       <tr><td>Vary seed per cycle</td><td>—</td><td>Only meaningful with a looping Reveal driver (Oscillator, or Keyframe with Loop/Ping-pong). Off (default): every cycle replays the identical growth. On: each full cycle derives a different effective seed from the base Seed field, so it mutates a fresh shape each time rather than repeating. No effect with Reveal off or a one-shot Keyframe track.</td></tr>
     </tbody>
   </table>
+
+  <h4>Constraining growth to a direction</h4>
+  <p>The <strong>Directional Selector</strong> section restricts which edges the Extrude and Split operators may target by outward-normal direction — the same mechanism and same field meanings as <a href="#extension-directional">Extension's Directional Selector</a>. With it enabled and Target angle set to "up," a shape only grows extensions/spikes from its upward-facing edges each generation, however many generations run — useful for e.g. a form that visibly grows tendrils in one general direction rather than uniformly outward in all directions.</p>
+  <div class="note">If no edge on the current shape qualifies (Tolerance too tight, or the shape has genuinely rotated out of range), that generation simply does nothing rather than erroring — the shape carries forward unchanged to the next generation.</div>
 
   <div class="tip"><strong>Generational + Dissolution:</strong> Generational evolution runs after Extension and before Dissolution in the pipeline, so a shape can grow across generations and then erode or collapse. Try an extrude-heavy Generational pass (Count 10, growing a spiky silhouette) paired with a Dissolution Entropy pass targeting Smoothed — the shape sprouts extensions while simultaneously softening, producing organic growth that never quite holds a sharp edge.</div>
 </section>

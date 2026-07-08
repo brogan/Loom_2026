@@ -433,4 +433,78 @@ final class GenerationalEvolutionEngineTests: XCTestCase {
             GenerationalEvolutionEngine.revealCycleIndex(for: driver, elapsedFrames: 4.5, targetFPS: 8)
         )
     }
+
+    // MARK: - Directional selector (Specs/GeometricLifecycle.md §14)
+
+    func testDirectionalSelectorRestrictsExtrudeTargetEdge() {
+        let square = makeSquare()
+        // Ground truth taken from the engine's own computed normal rather than an
+        // assumed winding convention, so this test is correct regardless of which
+        // way the fixture happens to wind.
+        let seg0Normal = ExtensionEngine.outwardNormal(of: square, segIdx: 0)
+
+        var params = EvolutionParams(
+            operationType: .generational, generationCount: 1,
+            extrudeWeight: 1.0, splitWeight: 0.0,
+            extrudeRunLengthMin: 1, extrudeRunLengthMax: 1,
+            generationSeed: 42, maxVertexBudget: 10_000
+        )
+        params.directionalSelector = DirectionalSelector(enabled: true, targetAngle: seg0Normal.angle, tolerance: 0.2)
+
+        let result = GenerationalEvolutionEngine.process(polygons: [square], params: params)
+        XCTAssertEqual(result.count, 2, "exactly one quad should be extruded, from the matching edge")
+        let addedQuad = result[1]
+        XCTAssertEqual(addedQuad.points[0], square.points[0], "extruded quad's inner face should coincide with segment 0")
+        XCTAssertEqual(addedQuad.points[3], square.points[3])
+    }
+
+    func testDirectionalSelectorNoMatchLeavesPolygonUnchangedForExtrude() {
+        let square = makeSquare()
+        let seg0Normal = ExtensionEngine.outwardNormal(of: square, segIdx: 0)
+        // Exactly between two adjacent segments' normals (90° apart on a square) —
+        // with a tight tolerance, no segment's normal falls inside the cone.
+        var params = EvolutionParams(
+            operationType: .generational, generationCount: 3,
+            extrudeWeight: 1.0, splitWeight: 0.0,
+            generationSeed: 42, maxVertexBudget: 10_000
+        )
+        params.directionalSelector = DirectionalSelector(enabled: true, targetAngle: seg0Normal.angle + .pi / 4, tolerance: 0.05)
+
+        let result = GenerationalEvolutionEngine.process(polygons: [square], params: params)
+        XCTAssertEqual(result, [square], "no edge matches the directional filter, so every generation should no-op")
+    }
+
+    func testDirectionalSelectorRestrictsSplitTargetEdge() {
+        let square = makeSquare()
+        let seg2Normal = ExtensionEngine.outwardNormal(of: square, segIdx: 2)
+
+        var params = EvolutionParams(
+            operationType: .generational, generationCount: 1,
+            extrudeWeight: 0.0, splitWeight: 1.0,
+            splitDisplacementMin: 0.1, splitDisplacementMax: 0.1,
+            generationSeed: 7, maxVertexBudget: 10_000
+        )
+        params.directionalSelector = DirectionalSelector(enabled: true, targetAngle: seg2Normal.angle, tolerance: 0.2)
+
+        let result = GenerationalEvolutionEngine.process(polygons: [square], params: params)
+        XCTAssertEqual(result.count, 1, "split never adds polygons")
+        let originalAnchors = Set((0..<4).map { square.points[$0 * 4] })
+        let resultAnchors = (0..<(result[0].points.count / 4)).map { result[0].points[$0 * 4] }
+        let newAnchors = resultAnchors.filter { !originalAnchors.contains($0) }
+        XCTAssertEqual(newAnchors.count, 1, "exactly one split should have occurred")
+    }
+
+    func testDirectionalSelectorNoMatchLeavesPolygonUnchangedForSplit() {
+        let square = makeSquare()
+        let seg2Normal = ExtensionEngine.outwardNormal(of: square, segIdx: 2)
+        var params = EvolutionParams(
+            operationType: .generational, generationCount: 3,
+            extrudeWeight: 0.0, splitWeight: 1.0,
+            generationSeed: 7, maxVertexBudget: 10_000
+        )
+        params.directionalSelector = DirectionalSelector(enabled: true, targetAngle: seg2Normal.angle + .pi / 4, tolerance: 0.05)
+
+        let result = GenerationalEvolutionEngine.process(polygons: [square], params: params)
+        XCTAssertEqual(result, [square], "no edge matches the directional filter, so every generation should no-op")
+    }
 }

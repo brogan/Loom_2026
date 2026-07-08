@@ -60,6 +60,23 @@ public struct Vector2D: Equatable, Hashable, Codable, Sendable {
         return sqrt(dx * dx + dy * dy)
     }
 
+    /// Angle from the positive X axis, radians, atan2 convention (range `(-π, π]`).
+    /// With this type's Y-up convention, `0` points right (+x/east) and `.pi / 2`
+    /// points up (+y/north).
+    public var angle: Double { atan2(y, x) }
+
+    /// Unit vector in the same direction, or `.zero` if this vector's length is
+    /// ~0 (there is no direction to normalize).
+    public func normalized() -> Vector2D {
+        let len = length
+        guard len > 1e-12 else { return .zero }
+        return Vector2D(x: x / len, y: y / len)
+    }
+
+    public func dot(_ other: Vector2D) -> Double {
+        x * other.x + y * other.y
+    }
+
     // MARK: - Operators
 
     public static func + (lhs: Vector2D, rhs: Vector2D) -> Vector2D {

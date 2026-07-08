@@ -63,6 +63,12 @@ public struct EvolutionParams: Equatable, Codable, Sendable {
     public var generationSeed:        Int
     public var maxVertexBudget:       Int      // hard cap on total vertex count; required, not optional
 
+    /// Restricts which edges the extrude/split operators may target by outward-
+    /// normal direction (Specs/GeometricLifecycle.md §14) — e.g. "only the top
+    /// edge(s)". Disabled by default: every edge is eligible, unchanged from
+    /// before this existed. See `GenerationalEvolutionEngine.eligibleSegments`.
+    public var directionalSelector: DirectionalSelector
+
     /// Optional per-frame animation of the reveal: maps playback time to a
     /// continuous position in [0, generationCount] via the standard DoubleDriver
     /// machinery (unlike the operator randomness above, this genuinely is playback
@@ -108,7 +114,8 @@ public struct EvolutionParams: Equatable, Codable, Sendable {
         generationSeed:           Int                     = 0,
         maxVertexBudget:          Int                     = 512,
         generationPhase:          DoubleDriver            = DoubleDriver(),
-        varySeedPerCycle:         Bool                    = false
+        varySeedPerCycle:         Bool                    = false,
+        directionalSelector:      DirectionalSelector     = DirectionalSelector()
     ) {
         self.name                     = name
         self.enabled                  = enabled
@@ -135,6 +142,7 @@ public struct EvolutionParams: Equatable, Codable, Sendable {
         self.maxVertexBudget          = maxVertexBudget
         self.generationPhase          = generationPhase
         self.varySeedPerCycle         = varySeedPerCycle
+        self.directionalSelector      = directionalSelector
     }
 
     // MARK: - Codable
@@ -146,7 +154,7 @@ public struct EvolutionParams: Equatable, Codable, Sendable {
         case generationCount, extrudeWeight, splitWeight
         case extrudeRunLengthMin, extrudeRunLengthMax, extrudeDistanceMin, extrudeDistanceMax
         case splitDisplacementMin, splitDisplacementMax, generationSeed, maxVertexBudget
-        case generationPhase, varySeedPerCycle
+        case generationPhase, varySeedPerCycle, directionalSelector
     }
 
     public init(from decoder: Decoder) throws {
@@ -176,5 +184,6 @@ public struct EvolutionParams: Equatable, Codable, Sendable {
         maxVertexBudget          = try c.decodeIfPresent(Int.self,                     forKey: .maxVertexBudget)          ?? 512
         generationPhase          = try c.decodeIfPresent(DoubleDriver.self,            forKey: .generationPhase)          ?? DoubleDriver()
         varySeedPerCycle         = try c.decodeIfPresent(Bool.self,                    forKey: .varySeedPerCycle)         ?? false
+        directionalSelector      = try c.decodeIfPresent(DirectionalSelector.self,     forKey: .directionalSelector)      ?? DirectionalSelector()
     }
 }

@@ -1043,6 +1043,12 @@ renamed to match. Help doc updated: nav, TOC, and section heading all say "Trans
 Tab"; Curve Refinement, Segment Extraction, Branch, and Extrude all have full
 step-by-step sections with parameter tables and safe-value guidance.
 
+**Update (2026-07-09) — directional edge selection.** `ExtensionParams.directionalSelector`
+further restricts `extrusionTarget`'s candidates by outward-normal direction — see
+§14. Also factored the previously-duplicated inline outward-normal formula into one
+`ExtensionEngine.outwardNormal(of:segIdx:)`, reused by `extrudePolygon`, `extrudeEdge`,
+and the new filter.
+
 ### Phase 5 — Evolution: momentum drift + convergence pressure (complete)
 
 `EvolutionParams` on `SubdivisionParamsSet.evolutionPasses: [EvolutionParams]`. Engine:
@@ -1471,6 +1477,14 @@ risk is low, but the pattern is worth remembering if that changes.
 measures, lock/graft selection, budget cap on *lineage* count (moot until grafting
 exists), an easing curve option for the tween (currently linear).
 
+**Update (2026-07-09) — directional edge selection.** `EvolutionParams.directionalSelector`
+restricts which edge the extrude/split operators may target by outward-normal
+direction (§14) — reuses `ExtensionEngine.outwardNormal` via a new
+`GenerationalEvolutionEngine.eligibleSegments` helper rather than a separate
+implementation. Verified with 4 new tests (restricts target edge / no-op when no
+edge qualifies, for both operators); all 27 pre-existing tests in this file needed
+no changes.
+
 ---
 
 ## 13. Open Questions
@@ -1560,3 +1574,104 @@ exists), an easing curve option for the tween (currently linear).
    but may need reworking once two or three specific couplings exist side by side.
    No decision has been made — flagged here so it isn't lost, not to be resolved
    until there's a concrete second stage genuinely needing it.
+
+---
+
+## 14. Directional Selection
+
+### 14.1 What it is
+
+Raised 2026-07-09: can a transformation be constrained to a *portion* of a shape —
+"just the top edge of a square" — or to a *direction* — "only grow vertically
+upward," or on an open curve, "only where the tangent falls within some angle
+range"? Before this, every mode's edge/vertex selection was either positional/index
+(Extension's `.longestEdge`, PTP's `whichSpike` "CORNERS"/"MIDDLES") or magnitude
+(longest edge by length) or pure random (Generational Evolution's hash-picked edge)
+— nothing tested *which way something faces*. Index-based selection ("edge 2") only
+picks the intended edge by coincidence, for one specific known shape; it doesn't
+generalize. Direction-based selection does: "the edge(s) whose outward normal points
+within 20° of straight up" finds the right edge on *any* polygon, and is the same
+underlying test whether the question is "the top edge" or "vertically upward" —
+they're the same constraint, just phrased two ways. On a curve, the equivalent is
+tangent angle instead of normal angle.
+
+### 14.2 `DirectionalSelector`
+
+A single shared primitive (`Sources/LoomEngine/Subdivision/DirectionalSelector.swift`)
+rather than a bespoke filter per mode — the same reuse principle already applied to
+`DoubleDriver` and the two-track phase/seed pattern (§6.6, §5.9) rather than
+reinventing a similar mechanism for each mode that needs it:
+
+```swift
+struct DirectionalSelector {
+    var enabled:     Bool             // false by default — every candidate eligible, unchanged
+    var targetAngle: Double           // radians, atan2 convention: 0 = +x, π/2 = +y (up, Y-up engine)
+    var tolerance:   Double           // half-width of the acceptance cone, radians
+    var basis:       DirectionalBasis // .outwardNormal (closed polygons) | .tangent (open curves)
+}
+```
+
+`accepts(_ direction: Vector2D) -> Bool` is the whole interface: true unconditionally
+when `enabled` is false; otherwise true when `direction`'s angle is within
+`tolerance` of `targetAngle` (wrapped correctly across the ±π boundary); true for a
+near-zero-length `direction` (a degenerate edge has no direction to test — treated
+as "not excluded by this filter," not as a false match for a real direction).
+
+**Prerequisite math added, not previously present:** `Vector2D` had no `.angle`
+(atan2), `.normalized()`, or `.dot(_:)` — every call site that needed a direction or
+angle hand-rolled it inline. Added directly to `Vector2D.swift` since nothing
+downstream (this selector, or any future directional feature) can be built without
+them.
+
+### 14.3 Where it's wired in (2026-07-09)
+
+Two modes, chosen because both already compute the exact vector this selector
+needs to test — the filter only had to intercept an existing computation, not
+introduce a new one:
+
+- **Extension** (`ExtensionParams.directionalSelector`) — applied in
+  `ExtensionEngine.extrudePolygon` as an additional filter on the candidate segment
+  indices *after* `extrusionTarget`'s existing `.allEdges`/`.longestEdge` selection,
+  so the two compose ("the longest edge, but only if it also faces the required
+  direction" is a legitimate, and correctly empty-able, combination).
+- **Generational Evolution** (`EvolutionParams.directionalSelector`) — applied in
+  `GenerationalEvolutionEngine.eligibleSegments`, restricting which edge the extrude
+  operator's run may *start* from and which edge the split operator may target. A
+  contiguous extrude run still grows contiguously from its (now direction-filtered)
+  start point exactly as before, which can spill onto non-eligible neighboring edges
+  as `runLength` grows past 1 — treated as intentional ("a run growing from a
+  qualifying edge"), not a leak to close.
+
+**Byte-for-byte unchanged when disabled**, not just "approximately the same": both
+integrations replace an old `Int(roll * Double(segCount)) % segCount` index
+computation with `eligibleSegs[Int(roll * Double(eligibleSegs.count))]`, and
+`eligibleSegs == Array(0..<segCount)` whenever the selector is off — the same roll
+value produces the identical index either way. All 27 pre-existing
+`GenerationalEvolutionEngineTests` needed zero changes to keep passing.
+
+**Shared normal computation.** `ExtensionEngine`'s outward-normal formula
+(edge-direction vector rotated 90°, normalized) was previously duplicated inline at
+three call sites (`extrudePolygon`, `extrudeEdge`, and — now — the directional
+filter itself). Factored into one internal `ExtensionEngine.outwardNormal(of:segIdx:)`
+used by all three, and reused directly by `GenerationalEvolutionEngine.eligibleSegments`
+rather than a fourth copy of the same math.
+
+### 14.4 Not yet wired in
+
+- **Involution's `whichSpike`** (`PTPTransformSet.swift`) is a raw `String`
+  ("ALL"/"CORNERS"/"MIDDLES"), not an enum, and its selection is purely
+  positional over pre-built anchor pairs — no normal/direction concept exists there
+  at all yet. Adopting `DirectionalSelector` here is plausible but untouched so far.
+- **Dissolution's Partial Loss** selects whole *polygons* from a subdivided set, not
+  edges of one polygon — "directional" for that case can't mean "outward normal" (a
+  whole polygon doesn't have a single one); it would need a different selector kind,
+  most likely "polygon centroid position relative to the set's bounding box." Related
+  to, but not a drop-in extension of, the edge-based selector above.
+- **"Direction of effect" as distinct from "which edges are eligible"** — forcing an
+  operator's displacement to point in a fixed direction (e.g. "any edge, but always
+  push it upward") regardless of that edge's own normal — was named explicitly in
+  the motivating discussion but not built. Extension's width/curvature math currently
+  assumes displacement runs *along* the edge's own outward normal; decoupling the two
+  needs rework there, not just a filter.
+
+---

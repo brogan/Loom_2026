@@ -31,6 +31,12 @@ public struct ExtensionParams: Equatable, Codable, Sendable {
     public var extrusionGenerations: Int         // recursive outer-face extrusion levels
     public var extrusionTarget:      ExtrusionTarget
 
+    /// Further restricts extrusionTarget's candidate edges by outward-normal
+    /// direction (Specs/GeometricLifecycle.md §14) — e.g. "only the edge(s) facing
+    /// up" on top of ".allEdges". Disabled by default (every candidate from
+    /// extrusionTarget is eligible, unchanged from before this existed).
+    public var directionalSelector: DirectionalSelector
+
     public init(
         name:                String              = "",
         enabled:             Bool                = true,
@@ -46,7 +52,8 @@ public struct ExtensionParams: Equatable, Codable, Sendable {
         extrusionWidth:      Double              = 1.0,
         extrusionCurvature:  Double              = 0.0,
         extrusionGenerations: Int               = 1,
-        extrusionTarget:     ExtrusionTarget     = .allEdges
+        extrusionTarget:     ExtrusionTarget     = .allEdges,
+        directionalSelector: DirectionalSelector = DirectionalSelector()
     ) {
         self.name                = name
         self.enabled             = enabled
@@ -63,6 +70,7 @@ public struct ExtensionParams: Equatable, Codable, Sendable {
         self.extrusionCurvature  = extrusionCurvature
         self.extrusionGenerations = extrusionGenerations
         self.extrusionTarget     = extrusionTarget
+        self.directionalSelector = directionalSelector
     }
 
     // MARK: - Codable
@@ -72,7 +80,7 @@ public struct ExtensionParams: Equatable, Codable, Sendable {
         case branchAngle, branchAngleJitter, branchScaleRatio
         case branchDepth, branchCount, branchProbability, branchSeed
         case extrusionDistance, extrusionWidth, extrusionCurvature
-        case extrusionGenerations, extrusionTarget
+        case extrusionGenerations, extrusionTarget, directionalSelector
     }
 
     public init(from decoder: Decoder) throws {
@@ -92,5 +100,6 @@ public struct ExtensionParams: Equatable, Codable, Sendable {
         extrusionCurvature   = try c.decodeIfPresent(Double.self,          forKey: .extrusionCurvature)   ?? 0.0
         extrusionGenerations = try c.decodeIfPresent(Int.self,             forKey: .extrusionGenerations) ?? 1
         extrusionTarget      = try c.decodeIfPresent(ExtrusionTarget.self, forKey: .extrusionTarget)      ?? .allEdges
+        directionalSelector  = try c.decodeIfPresent(DirectionalSelector.self, forKey: .directionalSelector) ?? DirectionalSelector()
     }
 }

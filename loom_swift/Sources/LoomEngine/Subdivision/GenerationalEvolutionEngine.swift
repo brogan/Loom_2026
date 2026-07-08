@@ -199,6 +199,23 @@ public enum GenerationalEvolutionEngine {
         }
     }
 
+    // MARK: - Directional selection (Specs/GeometricLifecycle.md §14)
+
+    /// Segment indices of `polygon` whose outward normal passes `selector` — every
+    /// segment index when the selector is disabled, so behavior is byte-for-byte
+    /// unchanged from before this existed (the roll that used to index `0..<segCount`
+    /// directly now indexes this array, which equals `0..<segCount` in that case).
+    /// Reused by both `applyExtrude` (run start point) and `applySplit` (split
+    /// edge) so one directional constraint governs both operators consistently.
+    /// Reuses `ExtensionEngine.outwardNormal` rather than recomputing the same
+    /// edge-normal formula a third time.
+    private static func eligibleSegments(of polygon: Polygon2D, selector: DirectionalSelector) -> [Int] {
+        let segCount = polygon.points.count / 4
+        guard segCount > 0 else { return [] }
+        guard selector.enabled else { return Array(0..<segCount) }
+        return (0..<segCount).filter { selector.accepts(ExtensionEngine.outwardNormal(of: polygon, segIdx: $0)) }
+    }
+
     // MARK: - Extrude operator
 
     /// Extrudes a contiguous run of edges on the target polygon by an RPSR distance
@@ -218,14 +235,21 @@ public enum GenerationalEvolutionEngine {
         let segCount = polygon.points.count / 4
         guard segCount > 0 else { return polygons }
 
+        let eligibleSegs = eligibleSegments(of: polygon, selector: params.directionalSelector)
+        guard !eligibleSegs.isEmpty else { return polygons }
+
         let seed = params.generationSeed
         let lo = min(params.extrudeRunLengthMin, params.extrudeRunLengthMax)
         let hi = max(params.extrudeRunLengthMin, params.extrudeRunLengthMax)
         let runLenRoll = SubdivisionEngine.centreHash(seed: seed, cycle: cycleBase + 3)
         let runLength  = min(segCount, lo + Int(runLenRoll * Double(hi - lo + 1)))
 
+        // The run's *start* is restricted to an eligible (direction-filtered) edge;
+        // it then grows contiguously from there exactly as before, which can spill
+        // onto neighboring non-eligible edges as runLength grows past 1 — treated
+        // as intentional (a run "growing from" a qualifying edge), not a leak.
         let startRoll = SubdivisionEngine.centreHash(seed: seed, cycle: cycleBase + 4)
-        let startSeg  = Int(startRoll * Double(segCount)) % segCount
+        let startSeg  = eligibleSegs[min(eligibleSegs.count - 1, Int(startRoll * Double(eligibleSegs.count)))]
 
         let distLo = min(params.extrudeDistanceMin, params.extrudeDistanceMax)
         let distHi = max(params.extrudeDistanceMin, params.extrudeDistanceMax)
@@ -268,9 +292,12 @@ public enum GenerationalEvolutionEngine {
         let segCount = polygon.points.count / 4
         guard segCount > 0 else { return polygons }
 
+        let eligibleSegs = eligibleSegments(of: polygon, selector: params.directionalSelector)
+        guard !eligibleSegs.isEmpty else { return polygons }
+
         let seed = params.generationSeed
         let segRoll = SubdivisionEngine.centreHash(seed: seed, cycle: cycleBase + 6)
-        let segIdx  = Int(segRoll * Double(segCount)) % segCount
+        let segIdx  = eligibleSegs[min(eligibleSegs.count - 1, Int(segRoll * Double(eligibleSegs.count)))]
 
         let distLo = min(params.splitDisplacementMin, params.splitDisplacementMax)
         let distHi = max(params.splitDisplacementMin, params.splitDisplacementMax)

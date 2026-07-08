@@ -19,6 +19,7 @@ struct EvolutionInspector: View {
     @AppStorage("evinsp.extrudeOpCollapsed")   private var extrudeOpCollapsed  = false
     @AppStorage("evinsp.splitOpCollapsed")     private var splitOpCollapsed    = false
     @AppStorage("evinsp.phaseDriverCollapsed") private var phaseDriverCollapsed = true
+    @AppStorage("evinsp.directionalCollapsed") private var directionalCollapsed = true
 
     var body: some View {
         generalSection
@@ -34,6 +35,7 @@ struct EvolutionInspector: View {
             generationPhaseDriverSection
             extrudeOperatorSection
             splitOperatorSection
+            directionalSelectorSection
         }
     }
 
@@ -237,6 +239,18 @@ struct EvolutionInspector: View {
             }
             .loomHelp("How far the new anchor point (from splitting a random edge) is displaced outward from the shape's centre, resampled each generation (RPSR). Only the anchor moves — its flanking control points stay put, pulling the boundary into a rounded spike rather than a sharp break.")
         }
+    }
+
+    // MARK: - Generational: directional selector
+
+    @ViewBuilder
+    private var directionalSelectorSection: some View {
+        DirectionalSelectorEditor(
+            label: "Directional Selector",
+            selector: bindEV(\.directionalSelector),
+            isCollapsed: $directionalCollapsed
+        )
+        .loomHelp("Restricts which edges Extrude/Split may target by outward-normal direction — e.g. only edges facing up. Applies to both operators' target-edge choice. Off (default): every edge is eligible, unchanged.")
     }
 
     // MARK: - Binding helpers

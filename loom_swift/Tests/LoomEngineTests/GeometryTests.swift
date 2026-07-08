@@ -63,6 +63,58 @@ final class GeometryTests: XCTestCase {
         assertVec2(Vector2D.zero, Vector2D(x: 0, y: 0))
     }
 
+    // MARK: - Vector2D: angle / normalized / dot
+
+    func testVector2DAngleEast() {
+        assertEq(Vector2D(x: 1, y: 0).angle, 0)
+    }
+
+    func testVector2DAngleNorth() {
+        assertEq(Vector2D(x: 0, y: 1).angle, .pi / 2)
+    }
+
+    func testVector2DAngleWest() {
+        assertEq(Vector2D(x: -1, y: 0).angle, .pi)
+    }
+
+    func testVector2DAngleSouth() {
+        // atan2 convention: south is -π/2, not 3π/2.
+        assertEq(Vector2D(x: 0, y: -1).angle, -.pi / 2)
+    }
+
+    func testVector2DNormalizedUnitLength() {
+        let v = Vector2D(x: 3, y: 4).normalized()
+        assertEq(v.length, 1.0)
+        assertVec2(v, Vector2D(x: 0.6, y: 0.8))
+    }
+
+    func testVector2DNormalizedPreservesAngle() {
+        let v = Vector2D(x: 5, y: 5)
+        assertEq(v.normalized().angle, v.angle)
+    }
+
+    func testVector2DNormalizedZeroVectorReturnsZero() {
+        assertVec2(Vector2D.zero.normalized(), .zero)
+    }
+
+    func testVector2DDotPerpendicularIsZero() {
+        let a = Vector2D(x: 1, y: 0)
+        let b = Vector2D(x: 0, y: 1)
+        assertEq(a.dot(b), 0)
+    }
+
+    func testVector2DDotParallelEqualsProductOfLengths() {
+        let a = Vector2D(x: 3, y: 0)
+        let b = Vector2D(x: 5, y: 0)
+        assertEq(a.dot(b), 15)
+    }
+
+    func testVector2DDotOppositeIsNegative() {
+        let a = Vector2D(x: 2, y: 0)
+        let b = Vector2D(x: -2, y: 0)
+        assertEq(a.dot(b), -4)
+    }
+
     // MARK: - Vector2D: transforms
 
     func testVector2DTranslate() {
