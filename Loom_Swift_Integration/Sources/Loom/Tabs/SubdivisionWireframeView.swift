@@ -37,6 +37,7 @@ struct SubdivisionWireframeView: View {
             let segmentExtraction = inputs.segmentExtraction
             let extensionPasses   = inputs.extensionPasses
             let evolutionPasses   = inputs.evolutionPasses
+            let fulgurationPasses = inputs.fulgurationPasses
             let dissolutionPasses = inputs.dissolutionPasses
             let result: [Polygon2D] = await Task.detached(priority: .userInitiated) {
                 var rng = SeededRNG()
@@ -54,6 +55,10 @@ struct SubdivisionWireframeView: View {
                 }
                 if !extensionPasses.isEmpty {
                     subdivided = ExtensionEngine.process(polygons: subdivided, paramSet: extensionPasses)
+                }
+                if !fulgurationPasses.isEmpty {
+                    subdivided = FulgurationEngine.apply(polygons: subdivided, passes: fulgurationPasses,
+                                                         elapsedFrames: 0, spriteIndex: 0)
                 }
                 if !dissolutionPasses.isEmpty {
                     subdivided = DissolutionEngine.apply(polygons: subdivided, passes: dissolutionPasses,
@@ -76,6 +81,7 @@ struct SubdivisionWireframeView: View {
         let segmentExtraction: [SegmentExtractionParams]
         let extensionPasses:   [ExtensionParams]
         let evolutionPasses:   [EvolutionParams]
+        let fulgurationPasses: [FulgurationParams]
         let dissolutionPasses: [DissolutionParams]
     }
 
@@ -93,6 +99,7 @@ struct SubdivisionWireframeView: View {
                                   segmentExtraction: paramSet.segmentExtraction,
                                   extensionPasses: paramSet.extensionPasses,
                                   evolutionPasses: paramSet.evolutionPasses,
+                                  fulgurationPasses: paramSet.fulgurationPasses,
                                   dissolutionPasses: paramSet.dissolutionPasses)
     }
 

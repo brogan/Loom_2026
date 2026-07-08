@@ -1,7 +1,7 @@
 # Geometric Lifecycle — Spec
 
-**Status**: Phases 0–6 complete; Phase 7 (Fulguration) and Phase 8 (Evolution:
-generational artificial-life) pending  
+**Status**: Phases 0–6 complete; Phase 7 (Fulguration) V1 complete, V2 pending; Phase 8
+(Evolution: generational artificial-life) in progress (core loop complete, see below)  
 **Affects**: LoomEngine, Loom (studio), subdivision tab architecture
 
 ---
@@ -708,24 +708,25 @@ Base geometry
      ↓
 [Fulguration]  — geometry variation (V2, §5.8) — NOT YET IMPLEMENTED
      ↓
-[Fulguration]  — frame-cycle/threshold/proximity trigger; transform variation;
-                 grow-shrink development (§5.3–5.7) — NOT YET IMPLEMENTED
+[Fulguration]  — frame-cycle trigger; transform variation; grow-shrink development
+                 (§5.3–5.5, V1 complete). Threshold/proximity triggers (§5.6–5.7) V2.
      ↓
 [Dissolution]  — entropy; collapse; contraction anchor; partial loss; drift
      ↓
 Render
 ```
 
-This is the actual current pipeline order in `SpriteScene.swift` (steps 2a through 2f),
+This is the actual current pipeline order in `SpriteScene.swift` (steps 2a through 2g),
 not just the conceptual grouping — Evolution appears twice because its two mechanisms
 operate at fundamentally different points: momentum drift/convergence pressure perturb
 *parameters* before subdivision runs, while generational evolution mutates
-*materialized geometry* after Extension, alongside Dissolution. Fulguration has no
-engine at all yet (§12 Phase 7, pending), and once built will have the same two-natured
-split Evolution already has (§5.8's geometry variation perturbs params at the same point
-as momentum drift; §5.3–5.7's trigger/transform/development operates on composed
-geometry at the same point as generational evolution and Dissolution) — the diagram
-shows both slots where it will land.
+*materialized geometry* after Extension, alongside Dissolution. Fulguration V1 (step
+2f) has the same shape as generational evolution and Dissolution — a `FulgurationEngine.apply`
+call operating on the fully composed `[Polygon2D]` output, step 2f, between
+Generational Evolution (2e) and Dissolution (renumbered 2g). Fulguration's V2
+pre-subdivision geometry variation (§5.8, not yet built) will land at the *other* slot
+in the diagram, alongside momentum drift — the same two-natured split Evolution
+already has.
 
 Each stage is optional. The output of each stage is the input to the next. **The
 pipeline order is fixed for predictable composition, and this is deliberate for now**:
@@ -1157,25 +1158,63 @@ the single-polygon no-op, drift distance/rotation bounds and centroid preservati
 deferred as a materially larger step than the above), and any cross-stage coupling
 (e.g. dissolution phase driven by Evolution's generation count — see §13).
 
-### Phase 7 — Fulguration: triggers (pending)
+### Phase 7 — Fulguration: triggers (V1 complete, V2 pending)
 
 Scoped 2026-07-08 into V1/V2 — see §5.2–§5.10 for the full design. `FulgurationParams`
 on `SubdivisionParamsSet.fulgurationPasses: [FulgurationParams]`, matching the
 `*Passes` array convention Extension/Evolution/Dissolution already use. Engine:
-`FulgurationEngine`.
+`FulgurationEngine`. Inspector: `FulgurationInspector` wired into `SubdivisionInspector`.
 
-**V1 (planned first slice, §5.3–§5.5):** frame-cycle trigger (independently
+**V1 (complete, 2026-07-08, §5.3–§5.5):** frame-cycle trigger (independently
 RPSR-resampled interval/hold per cycle, §5.3), per-cycle rigid transform variation
 (translation/scale/rotation, §5.4), and `.instant`/`.growShrink` development modes
 using `Polygon2D.scaled(by:around:)` directly (§5.5 — the same primitive Dissolution's
 Brief collapse already calls, no cross-engine coupling needed). Fully self-contained:
-no dependency on any other sprite's state, no render-ordering concerns. Pipeline
-position: step 2e.5 in `SpriteScene.swift`, after Generational Evolution (2e) and
-before Dissolution (2f) — a visibility gate plus rigid transform plus scale-envelope
-applied to the fully composed geometry, same point in the pipeline the original spec
-diagram already reserved for Fulguration.
+no dependency on any other sprite's state, no render-ordering concerns.
 
-**V2 (§5.6–§5.8, in order):** threshold-relative trigger against global/driver/audio
+Pipeline position: step 2f in `SpriteScene.swift`, after Generational Evolution (2e)
+and before Dissolution (renumbered 2g) — a visibility gate plus rigid transform plus
+scale-envelope applied to the fully composed geometry, same point in the pipeline the
+original spec diagram reserved for Fulguration. Also wired into
+`SubdivisionTabView.swift`'s `bakeSelectedSet()`/`saveSelectedSetAsSVG()` and
+`SubdivisionWireframeView.swift`'s preview, matching how Dissolution and Generational
+Evolution were wired into those same three call sites.
+
+**Implementation notes:**
+- The cycle-walk (`FulgurationEngine.resolveVisibility`) enumerates cycles from index
+  0 — hidden interval, then held interval, repeating — summing each cycle's
+  independently-sampled durations until the running total exceeds `elapsedFrames`.
+  Capped at 100,000 iterations, the same cap Collapse's probability trigger uses, so a
+  pathological config (near-zero interval/hold) can't hang. O(cycles-so-far), not
+  O(1) — same non-closed-form-but-stateless category as Generational Evolution (§4.4.4),
+  confirmed by test (`testLargeElapsedFramesWithTightCycleCompletesWithoutHanging`).
+- `spriteIndex` is folded into the seed (`cycleSeed &+ spriteIndex &* 2_654_435_761`,
+  the same constant Dissolution's Collapse probability trigger already uses) so
+  sprites sharing one `FulgurationParams` preset don't flash in lockstep.
+- The rigid transform (§5.4) and development scale envelope (§5.5) are applied around
+  one shared **group centroid** — the unweighted average of every polygon's own
+  centroid in the pass's array — rather than each polygon's individual centre, so a
+  multi-polygon flash reads as one object appearing/growing/rotating together, not
+  each member moving independently (that's what Dissolution's Drift is for).
+- Development factor: `.instant` is always `1.0` for the whole hold window;
+  `.growShrink` ramps `0→1` over `growInDuration` and `1→0` over `shrinkOutDuration`,
+  with both clamped (`growIn = min(growInDuration, holdDuration)`,
+  `shrinkOut = min(shrinkOutDuration, holdDuration - growIn)`) so they can never
+  overlap or exceed a given cycle's actual sampled hold duration, even if configured
+  larger than any plausible hold.
+
+Verified with 17 `FulgurationEngineTests`: disabled-pass and empty-polygon no-ops,
+exact hidden/visible cycle-boundary frames (using fixed `intervalMin == intervalMax`/
+`holdMin == holdMax` so RPSR sampling degenerates to a known value, making boundary
+frames precisely predictable rather than statistical), determinism for repeated calls,
+different `spriteIndex` values sampling a different transform, translation/scale
+bounds, grow-in/shrink-out ramping at the exact predicted linear factor at several
+points through the hold window, the clamp behavior when durations exceed the hold,
+`apply(passes:)` chaining with early short-circuit on a hidden pass, and the cycle-scan
+cap not hanging on a tight (1-frame interval/hold) configuration at 5,000 elapsed
+frames. All 521 tests in `LoomEngineTests` pass; both packages build clean.
+
+**Not yet done (V2, §5.6–§5.8):** threshold-relative trigger against global/driver/audio
 sources first (cheap, reuses `DriverEvaluator` exactly as Convergence Pressure does),
 then `.spriteMetric` sources reading the referenced sprite's *previous* frame's
 resolved geometry (deliberately, to avoid a cross-sprite render-ordering dependency —

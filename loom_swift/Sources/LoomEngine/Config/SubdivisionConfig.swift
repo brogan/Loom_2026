@@ -10,6 +10,7 @@ public struct SubdivisionParamsSet: Equatable, Codable, Sendable {
     public var segmentExtraction:  [SegmentExtractionParams]
     public var extensionPasses:    [ExtensionParams]
     public var evolutionPasses:    [EvolutionParams]
+    public var fulgurationPasses:  [FulgurationParams]
     public var dissolutionPasses:  [DissolutionParams]
 
     public init(
@@ -19,6 +20,7 @@ public struct SubdivisionParamsSet: Equatable, Codable, Sendable {
         segmentExtraction:  [SegmentExtractionParams]  = [],
         extensionPasses:    [ExtensionParams]          = [],
         evolutionPasses:    [EvolutionParams]          = [],
+        fulgurationPasses:  [FulgurationParams]        = [],
         dissolutionPasses:  [DissolutionParams]        = []
     ) {
         self.name               = name
@@ -27,11 +29,12 @@ public struct SubdivisionParamsSet: Equatable, Codable, Sendable {
         self.segmentExtraction  = segmentExtraction
         self.extensionPasses    = extensionPasses
         self.evolutionPasses    = evolutionPasses
+        self.fulgurationPasses  = fulgurationPasses
         self.dissolutionPasses  = dissolutionPasses
     }
 
     private enum CodingKeys: String, CodingKey {
-        case name, params, curveRefinement, segmentExtraction, extensionPasses, evolutionPasses, dissolutionPasses
+        case name, params, curveRefinement, segmentExtraction, extensionPasses, evolutionPasses, fulgurationPasses, dissolutionPasses
     }
 
     public init(from decoder: Decoder) throws {
@@ -43,6 +46,7 @@ public struct SubdivisionParamsSet: Equatable, Codable, Sendable {
             segmentExtraction:  try c.decodeIfPresent([SegmentExtractionParams].self,  forKey: .segmentExtraction) ?? [],
             extensionPasses:    try c.decodeIfPresent([ExtensionParams].self,          forKey: .extensionPasses)   ?? [],
             evolutionPasses:    try c.decodeIfPresent([EvolutionParams].self,          forKey: .evolutionPasses)   ?? [],
+            fulgurationPasses:  try c.decodeIfPresent([FulgurationParams].self,        forKey: .fulgurationPasses) ?? [],
             dissolutionPasses:  try c.decodeIfPresent([DissolutionParams].self,        forKey: .dissolutionPasses) ?? []
         )
     }

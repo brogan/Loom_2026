@@ -45,6 +45,11 @@ public struct SpriteInstance: Sendable {
     /// Empty when the set has no evolution entries.
     public var evolutionParams: [EvolutionParams]
 
+    /// Ordered fulguration passes (frame-cycle visibility/transform/development)
+    /// applied to output polygons after Generational Evolution, before Dissolution.
+    /// Empty when the set has no fulguration entries.
+    public var fulgurationParams: [FulgurationParams]
+
     /// Ordered dissolution passes applied to output polygons after all other pipeline stages.
     /// Empty when the set has no dissolution entries.
     public var dissolutionParams: [DissolutionParams]
@@ -94,6 +99,7 @@ public struct SpriteInstance: Sendable {
         segmentExtractionParams: [SegmentExtractionParams] = [],
         extensionParams: [ExtensionParams] = [],
         evolutionParams: [EvolutionParams] = [],
+        fulgurationParams: [FulgurationParams] = [],
         dissolutionParams: [DissolutionParams] = [],
         sequencePolygons: [[Polygon2D]] = [],
         variantPolygons: [[Polygon2D]] = [],
@@ -113,6 +119,7 @@ public struct SpriteInstance: Sendable {
         self.segmentExtractionParams = segmentExtractionParams
         self.extensionParams         = extensionParams
         self.evolutionParams         = evolutionParams
+        self.fulgurationParams       = fulgurationParams
         self.dissolutionParams       = dissolutionParams
         self.sequencePolygons        = sequencePolygons
         self.variantPolygons        = variantPolygons

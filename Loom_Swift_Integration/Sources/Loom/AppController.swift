@@ -276,6 +276,7 @@ final class AppController: ObservableObject, @unchecked Sendable {
     @Published var selectedSegmentExtractionParamIndex: Int?   = nil   // segment extraction param within selected set
     @Published var selectedExtensionParamIndex:         Int?   = nil   // extension param within selected set
     @Published var selectedEvolutionParamIndex:         Int?   = nil   // evolution param within selected set
+    @Published var selectedFulgurationParamIndex:       Int?   = nil   // fulguration param within selected set
     @Published var selectedDissolutionParamIndex:       Int?   = nil   // dissolution param within selected set
     @Published var selectedSpriteID:              String? = nil
     @Published var selectedTimelineKF:            TimelineKFSelection? = nil

@@ -76,10 +76,9 @@ struct SubdivisionInspector: View {
         }
 
         InspectorSection("Fulguration", isCollapsed: $fulgurationCollapsed,
-                         trailing: { passIndicator(hasPasses: false) }) {
-            lifecyclePlaceholder(
-                "Conditional geometry via triggers.",
-                detail: "Global-parameter and proximity-based emergence. Phase 7.")
+                         isHighlighted: true,
+                         trailing: { passIndicator(hasPasses: !set.fulgurationPasses.isEmpty) }) {
+            fulgurationPassesContent(set: set, setIdx: setIdx)
         }
 
         InspectorSection("Dissolution", isCollapsed: $dissolutionCollapsed,
@@ -105,6 +104,9 @@ struct SubdivisionInspector: View {
     private func selectedTransformationFields(set: SubdivisionParamsSet, setIdx: Int) -> some View {
         if let disIdx = controller.selectedDissolutionParamIndex {
             DissolutionInspector(setIdx: setIdx, disIdx: disIdx)
+                .environmentObject(controller)
+        } else if let fulIdx = controller.selectedFulgurationParamIndex {
+            FulgurationInspector(setIdx: setIdx, fulIdx: fulIdx)
                 .environmentObject(controller)
         } else if let evIdx = controller.selectedEvolutionParamIndex {
             EvolutionInspector(setIdx: setIdx, evIdx: evIdx)
@@ -159,6 +161,7 @@ struct SubdivisionInspector: View {
         controller.selectedSegmentExtractionParamIndex = nil
         controller.selectedExtensionParamIndex         = nil
         controller.selectedEvolutionParamIndex         = nil
+        controller.selectedFulgurationParamIndex       = nil
         controller.selectedDissolutionParamIndex       = nil
         controller[keyPath: keyPath] = newVal
     }
@@ -189,6 +192,7 @@ struct SubdivisionInspector: View {
         if set.segmentExtraction.count > 0 { parts.append("\(set.segmentExtraction.count) extract") }
         if set.extensionPasses.count > 0 { parts.append("\(set.extensionPasses.count) ext") }
         if set.evolutionPasses.count   > 0 { parts.append("\(set.evolutionPasses.count) evol") }
+        if set.fulgurationPasses.count > 0 { parts.append("\(set.fulgurationPasses.count) ful") }
         if set.dissolutionPasses.count > 0 { parts.append("\(set.dissolutionPasses.count) dis") }
         return parts.isEmpty ? "none" : parts.joined(separator: ", ")
     }
@@ -265,6 +269,7 @@ struct SubdivisionInspector: View {
             controller.selectedSegmentExtractionParamIndex = nil
             controller.selectedExtensionParamIndex         = nil
             controller.selectedEvolutionParamIndex         = nil
+            controller.selectedFulgurationParamIndex       = nil
             controller.selectedDissolutionParamIndex       = nil
         }
     }
@@ -683,6 +688,97 @@ struct SubdivisionInspector: View {
         }
         let remaining = controller.projectConfig?.subdivisionConfig.paramsSets[safe: setIdx]?.evolutionPasses.count ?? 0
         controller.selectedEvolutionParamIndex = remaining > 0 ? min(evIdx, remaining - 1) : nil
+    }
+
+    // MARK: - Fulguration passes mini-list
+
+    @ViewBuilder
+    private func fulgurationPassesContent(set: SubdivisionParamsSet, setIdx: Int) -> some View {
+        if set.fulgurationPasses.isEmpty {
+            HStack {
+                Text("No fulguration passes")
+                    .font(.caption2)
+                    .foregroundStyle(.tertiary)
+                Spacer()
+                addFulgurationButton(setIdx: setIdx)
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 6)
+        } else {
+            InspectorPickList(
+                items: set.fulgurationPasses,
+                labelFor: { $0.name.isEmpty ? "(unnamed)" : $0.name },
+                selection: Binding(
+                    get: { controller.selectedFulgurationParamIndex },
+                    set: { newVal in selectPass(\.selectedFulgurationParamIndex, newVal) }
+                )
+            )
+            HStack(spacing: 4) {
+                addFulgurationButton(setIdx: setIdx)
+                if let fulIdx = controller.selectedFulgurationParamIndex {
+                    Button(action: { deleteFulgurationParam(setIdx: setIdx, fulIdx: fulIdx) }) {
+                        Image(systemName: "minus.circle").font(.system(size: 13))
+                    }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(.secondary)
+                    .help("Delete selected fulguration pass")
+                    Button(action: { duplicateFulgurationParam(setIdx: setIdx, fulIdx: fulIdx) }) {
+                        Image(systemName: "plus.square.on.square").font(.system(size: 12))
+                    }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(.secondary)
+                    .help("Duplicate selected fulguration pass")
+                }
+                Spacer()
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 4)
+        }
+    }
+
+    private func addFulgurationButton(setIdx: Int) -> some View {
+        Button(action: { addFulgurationParam(setIdx: setIdx) }) {
+            Image(systemName: "plus.circle").font(.system(size: 13))
+        }
+        .buttonStyle(.plain)
+        .foregroundStyle(.secondary)
+        .help("Add fulguration pass")
+    }
+
+    private func addFulgurationParam(setIdx: Int) {
+        guard let cfg = controller.projectConfig,
+              setIdx < cfg.subdivisionConfig.paramsSets.count else { return }
+        let newParam = FulgurationParams()
+        controller.updateProjectConfig { config in
+            config.subdivisionConfig.paramsSets[setIdx].fulgurationPasses.append(newParam)
+        }
+        let newIdx = (controller.projectConfig?.subdivisionConfig.paramsSets[setIdx].fulgurationPasses.count ?? 1) - 1
+        selectPass(\.selectedFulgurationParamIndex, newIdx)
+    }
+
+    private func deleteFulgurationParam(setIdx: Int, fulIdx: Int) {
+        guard let cfg = controller.projectConfig,
+              setIdx < cfg.subdivisionConfig.paramsSets.count,
+              fulIdx < cfg.subdivisionConfig.paramsSets[setIdx].fulgurationPasses.count
+        else { return }
+        _ = cfg
+        controller.updateProjectConfig { config in
+            config.subdivisionConfig.paramsSets[setIdx].fulgurationPasses.remove(at: fulIdx)
+        }
+        let remaining = controller.projectConfig?.subdivisionConfig.paramsSets[safe: setIdx]?.fulgurationPasses.count ?? 0
+        controller.selectedFulgurationParamIndex = remaining > 0 ? min(fulIdx, remaining - 1) : nil
+    }
+
+    private func duplicateFulgurationParam(setIdx: Int, fulIdx: Int) {
+        guard let cfg = controller.projectConfig,
+              setIdx < cfg.subdivisionConfig.paramsSets.count,
+              fulIdx < cfg.subdivisionConfig.paramsSets[setIdx].fulgurationPasses.count
+        else { return }
+        let copy = cfg.subdivisionConfig.paramsSets[setIdx].fulgurationPasses[fulIdx]
+        controller.updateProjectConfig { config in
+            config.subdivisionConfig.paramsSets[setIdx].fulgurationPasses.insert(copy, at: fulIdx + 1)
+        }
+        controller.selectedFulgurationParamIndex = fulIdx + 1
     }
 
     // MARK: - Dissolution passes mini-list

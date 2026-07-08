@@ -306,6 +306,7 @@
   <a class="nav-link nav-sub" href="#evolution-drift">Evolution — Momentum Drift</a>
   <a class="nav-link nav-sub" href="#evolution-convergence">Evolution — Convergence Pressure</a>
   <a class="nav-link nav-sub" href="#evolution-generational">Evolution — Generational</a>
+  <a class="nav-link nav-sub" href="#fulguration-cycle">Fulguration — Frame Cycle</a>
   <a class="nav-link nav-sub" href="#dissolution-entropy">Dissolution — Entropy</a>
   <a class="nav-link nav-sub" href="#dissolution-collapse">Dissolution — Collapse</a>
   <a class="nav-link nav-sub" href="#dissolution-contraction">Dissolution — Contraction Anchor</a>
@@ -434,6 +435,7 @@
   <div class="toc-entry sub"><a href="#evolution-drift">Evolution — Momentum Drift</a><span class="toc-fill"></span></div>
   <div class="toc-entry sub"><a href="#evolution-convergence">Evolution — Convergence Pressure</a><span class="toc-fill"></span></div>
   <div class="toc-entry sub"><a href="#evolution-generational">Evolution — Generational</a><span class="toc-fill"></span></div>
+  <div class="toc-entry sub"><a href="#fulguration-cycle">Fulguration — Frame Cycle</a><span class="toc-fill"></span></div>
   <div class="toc-entry sub"><a href="#dissolution-entropy">Dissolution — Entropy</a><span class="toc-fill"></span></div>
   <div class="toc-entry sub"><a href="#dissolution-collapse">Dissolution — Collapse</a><span class="toc-fill"></span></div>
   <div class="toc-entry sub"><a href="#dissolution-contraction">Dissolution — Contraction Anchor</a><span class="toc-fill"></span></div>
@@ -2854,6 +2856,33 @@
 
   <div class="tip"><strong>Generational + Dissolution:</strong> Generational evolution runs after Extension and before Dissolution in the pipeline, so a shape can grow across generations and then erode or collapse. Try an extrude-heavy Generational pass (Count 10, growing a spiky silhouette) paired with a Dissolution Entropy pass targeting Smoothed — the shape sprouts extensions while simultaneously softening, producing organic growth that never quite holds a sharp edge.</div>
 </section>
+
+<!-- ────────────────────────────────────────────────── -->
+<h3 id="fulguration-cycle">Fulguration — Frame Cycle</h3>
+<p>Fulguration makes a form appear and disappear conditionally rather than existing continuously. This first version (V1) is self-contained — no dependency on any other sprite — cycling a form on and off, varying its placement each time it appears, and optionally giving it a brief grow-in/shrink-out rather than a hard pop. A more relational form of Fulguration (triggered by another sprite's geometry, or by two sprites' proximity) is planned for a later version.</p>
+<p>Each cycle's hidden interval and visible hold duration are independently resampled, so the rhythm of flashes doesn't repeat identically — this is fully deterministic and seekable, computed fresh from the Seed for any frame, not accumulated as playback state.</p>
+<ol>
+  <li>In the Transform tab inspector, select a transform set and expand the <strong>Fulguration</strong> stage section.</li>
+  <li>Click <strong>+</strong> to add a fulguration pass. Select it to open the Fulguration inspector.</li>
+  <li>Under <strong>Frame Cycle</strong>, set <strong>Interval</strong> (how long the form stays hidden between appearances) and <strong>Hold</strong> (how long it stays visible once triggered). Each is a range — a new value is sampled from it every cycle.</li>
+  <li>Set <strong>Seed</strong> to get a different rhythm and, combined with Transform Variation below, a different placement each time.</li>
+  <li>Under <strong>Transform Variation</strong>, set <strong>Translation</strong>, <strong>Scale</strong>, and <strong>Rotation</strong> ranges if each appearance should look placed/sized/rotated a little differently. Leave Scale at 1–1 and the others at 0 for a form that always appears in the same place, same size.</li>
+  <li>Under <strong>Development</strong>, choose <strong>Instant</strong> for a hard on/off, or <strong>Grow / Shrink</strong> for a brief scale ramp in and out at the edges of each appearance.</li>
+</ol>
+<table>
+  <thead><tr><th>Parameter</th><th>Safe range</th><th>Effect</th></tr></thead>
+  <tbody>
+    <tr><td>Interval</td><td>10–200 fr</td><td>Range of frames hidden before the next appearance, resampled each cycle. At 24fps, 30–90 gives roughly one flash every 1.25–3.75 seconds. Narrow the range (equal min/max) for a fixed rhythm; widen it for irregular timing.</td></tr>
+    <tr><td>Hold</td><td>2–60 fr</td><td>Range of frames visible once triggered, resampled each cycle. Short holds (under 10 frames) read as a flash; longer holds let the form linger.</td></tr>
+    <tr><td>Seed</td><td>any integer</td><td>Deterministic seed for interval/hold sampling and the transform variation below. Change for a different rhythm and placement pattern. Sprites sharing one Fulguration preset automatically flash out of sync with each other — the sprite's own index is folded in alongside this seed.</td></tr>
+    <tr><td>Translation</td><td>0–0.3</td><td>Maximum per-cycle offset from the sprite's normal placement, canvas-normalized units. Direction is resampled each cycle. 0 = always appears in its normal place.</td></tr>
+    <tr><td>Scale</td><td>0.5–1.5</td><td>Per-cycle scale range around 1.0, resampled each cycle. 1–1 = every appearance is the same size.</td></tr>
+    <tr><td>Rotation</td><td>0–1 rad</td><td>Maximum per-cycle rotation, resampled each cycle. 0 = no rotation variation.</td></tr>
+    <tr><td>Mode</td><td>—</td><td><strong>Instant:</strong> fully present for the whole Hold window, then gone — cheapest, sharpest flash. <strong>Grow / Shrink:</strong> scale ramps in at the start of the hold window and out at the end, so the appearance briefly develops rather than popping.</td></tr>
+    <tr><td>Grow-in / Shrink-out</td><td>2–15 fr</td><td>Grow / Shrink mode only. Frames spent ramping scale in from zero / back out to zero, around the flash's own centre. Automatically clamped so the two never overlap even if their combined duration would exceed a particular cycle's sampled Hold.</td></tr>
+  </tbody>
+</table>
+<div class="tip"><strong>Fulguration + Dissolution:</strong> Fulguration runs after Generational Evolution and before Dissolution, so a form can flash into being, briefly develop, and then also erode or collapse via a separate Dissolution pass on the same set. Try a short Hold (6–10 frames) with Grow / Shrink development for the flash itself, alongside a Dissolution Entropy pass with a fast Rate — each appearance looks like it briefly ignites and starts to dissolve before it's gone.</div>
 
 <!-- ────────────────────────────────────────────────── -->
 <h3 id="dissolution-entropy">Dissolution — Entropy</h3>

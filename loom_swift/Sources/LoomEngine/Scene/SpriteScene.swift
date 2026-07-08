@@ -272,6 +272,7 @@ public struct SpriteScene: @unchecked Sendable {
         let segmentExtractionParams: [SegmentExtractionParams]
         let extensionParams:         [ExtensionParams]
         let evolutionParams:         [EvolutionParams]
+        let fulgurationParams:       [FulgurationParams]
         let dissolutionParams:       [DissolutionParams]
         if paramsName.isEmpty || paramsName.caseInsensitiveCompare("none") == .orderedSame {
             subdivParams             = []
@@ -279,6 +280,7 @@ public struct SpriteScene: @unchecked Sendable {
             segmentExtractionParams  = []
             extensionParams          = []
             evolutionParams          = []
+            fulgurationParams        = []
             dissolutionParams        = []
         } else {
             let resolvedSet          = config.subdivisionConfig.paramsSet(named: paramsName)
@@ -287,6 +289,7 @@ public struct SpriteScene: @unchecked Sendable {
             segmentExtractionParams  = resolvedSet?.segmentExtraction ?? []
             extensionParams          = resolvedSet?.extensionPasses ?? []
             evolutionParams          = resolvedSet?.evolutionPasses ?? []
+            fulgurationParams        = resolvedSet?.fulgurationPasses ?? []
             dissolutionParams        = resolvedSet?.dissolutionPasses ?? []
         }
 
@@ -380,6 +383,7 @@ public struct SpriteScene: @unchecked Sendable {
             segmentExtractionParams: segmentExtractionParams,
             extensionParams:         extensionParams,
             evolutionParams:         evolutionParams,
+            fulgurationParams:       fulgurationParams,
             dissolutionParams:       dissolutionParams,
             sequencePolygons:        sequencePolygons,
             variantPolygons:        variantPolygons,
@@ -1549,7 +1553,18 @@ public struct SpriteScene: @unchecked Sendable {
             )
         }
 
-        // 2f. Dissolution (entropy and collapse applied to output geometry)
+        // 2f. Fulguration (frame-cycle visibility gate, transform variation, and
+        // brief grow-in/shrink-out development — V1, see Specs/GeometricLifecycle.md §5).
+        if !activeInstance.fulgurationParams.isEmpty {
+            subdivided = FulgurationEngine.apply(
+                polygons:      subdivided,
+                passes:        activeInstance.fulgurationParams,
+                elapsedFrames: elapsedFrames,
+                spriteIndex:   spriteIndex
+            )
+        }
+
+        // 2g. Dissolution (entropy and collapse applied to output geometry)
         if !activeInstance.dissolutionParams.isEmpty {
             subdivided = DissolutionEngine.apply(
                 polygons:      subdivided,

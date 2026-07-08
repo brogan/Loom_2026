@@ -265,7 +265,8 @@ struct SubdivisionTabView: View {
     /// sets don't read as empty in this tree.
     private func totalPassCount(_ set: SubdivisionParamsSet) -> Int {
         set.params.count + set.curveRefinement.count + set.segmentExtraction.count
-            + set.extensionPasses.count + set.evolutionPasses.count + set.dissolutionPasses.count
+            + set.extensionPasses.count + set.evolutionPasses.count + set.fulgurationPasses.count
+            + set.dissolutionPasses.count
     }
 
     // MARK: - Sets toolbar
@@ -557,6 +558,10 @@ struct SubdivisionTabView: View {
             result = GenerationalEvolutionEngine.process(polygons: result, passes: paramSet.evolutionPasses,
                                                           elapsedFrames: 0, targetFPS: 24, spriteIndex: 0)
         }
+        if !paramSet.fulgurationPasses.isEmpty {
+            result = FulgurationEngine.apply(polygons: result, passes: paramSet.fulgurationPasses,
+                                              elapsedFrames: 0, spriteIndex: 0)
+        }
         if !paramSet.dissolutionPasses.isEmpty {
             result = DissolutionEngine.apply(polygons: result, passes: paramSet.dissolutionPasses,
                                               elapsedFrames: 0, spriteIndex: 0)
@@ -663,6 +668,10 @@ struct SubdivisionTabView: View {
         if paramSet2.evolutionPasses.contains(where: { $0.enabled && $0.operationType == .generational }) {
             result = GenerationalEvolutionEngine.process(polygons: result, passes: paramSet2.evolutionPasses,
                                                           elapsedFrames: 0, targetFPS: 24, spriteIndex: 0)
+        }
+        if !paramSet2.fulgurationPasses.isEmpty {
+            result = FulgurationEngine.apply(polygons: result, passes: paramSet2.fulgurationPasses,
+                                              elapsedFrames: 0, spriteIndex: 0)
         }
         if !paramSet2.dissolutionPasses.isEmpty {
             result = DissolutionEngine.apply(polygons: result, passes: paramSet2.dissolutionPasses,
