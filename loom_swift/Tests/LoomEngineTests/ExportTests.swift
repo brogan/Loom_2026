@@ -302,6 +302,51 @@ final class VideoExporterTests: XCTestCase {
         XCTAssertEqual(size.height, 1080, accuracy: 1)
     }
 
+    // MARK: Pre-flight resolution check
+
+    /// Canvas size is `(width, height) × qualityMultiple`; a modest base canvas at a
+    /// high Quality setting can exceed H.264's hardware encoder limit even though the
+    /// export sheet's "Size" field never shows the inflated number. Without a pre-flight
+    /// check this fails deep inside VideoToolbox with an undocumented OSStatus and no
+    /// indication that Quality is the cause — this test locks in the guard that catches
+    /// it before the asset writer is ever touched.
+    func testExportThrowsSetupFailedWhenResolutionExceedsH264Limit() async throws {
+        let tempProjectDir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("LoomExportResTest_\(UUID().uuidString)")
+        try FileManager.default.copyItem(at: fixtureDir052, to: tempProjectDir)
+        defer { try? FileManager.default.removeItem(at: tempProjectDir) }
+
+        // Test_052's base canvas is 1080×1080; QualityMultiple 5 → 5400×5400,
+        // which exceeds H.264's 4096px-per-side limit.
+        let configURL = tempProjectDir.appendingPathComponent("configuration/global_config.xml")
+        let xml = try String(contentsOf: configURL, encoding: .utf8)
+            .replacingOccurrences(of: "<QualityMultiple>1</QualityMultiple>",
+                                   with: "<QualityMultiple>5</QualityMultiple>")
+        try xml.write(to: configURL, atomically: true, encoding: .utf8)
+
+        let engine   = try Engine(projectDirectory: tempProjectDir)
+        let exporter = VideoExporter()
+        let url      = tempURL(ext: "mov")
+        defer { cleanup(url) }
+
+        let settings = VideoExporter.Settings(fps: 30, endFrame: 5, codec: .h264, outputURL: url)
+
+        do {
+            try await exporter.export(engine: engine, settings: settings)
+            XCTFail("expected VideoExporterError.setupFailed for a resolution exceeding H.264's limit")
+        } catch let error as VideoExporterError {
+            guard case .setupFailed(let message) = error else {
+                XCTFail("expected .setupFailed, got \(error)")
+                return
+            }
+            XCTAssertTrue(message.contains("5400"), "message should name the actual (post-Quality) resolution: \(message)")
+            XCTAssertTrue(message.contains("Quality"), "message should point at the Quality multiplier as the likely cause: \(message)")
+        }
+
+        XCTAssertFalse(FileManager.default.fileExists(atPath: url.path),
+                       "no output file should be left behind when the pre-flight check rejects the export")
+    }
+
     // MARK: Overwrite existing file
 
     func testExportOverwritesExistingFile() async throws {

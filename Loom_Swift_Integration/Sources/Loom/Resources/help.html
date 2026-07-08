@@ -4065,6 +4065,7 @@
     <li>Click <strong>Export…</strong>, choose a destination file, and wait for the progress indicator to complete.</li>
   </ol>
   <div class="note">The exported video resolution is canvas size × Quality multiplier. Higher quality values increase render time and file size but do not change the frame range or frame rate. ProRes 4444 produces larger files but preserves alpha and is better for compositing workflows.</div>
+  <div class="note"><strong>Quality and codec limits:</strong> H.264 and HEVC hardware encoders have a fixed maximum frame size (H.264: 4096px per side; HEVC: 8192px per side). Because the export resolution is canvas size × Quality, a high Quality setting on an otherwise modest canvas can silently exceed this — for example a 1920 × 1080 canvas at 5× Quality exports at 9600 × 5400px, well past the H.264 limit. Loom checks this before starting and reports the resulting resolution and which setting to lower, rather than failing deep inside the encoder with an unhelpful low-level error. If you hit this, lower Quality for the video export, reduce the canvas size, or switch to a codec with a higher limit.</div>
   <div class="note">There is no hard limit on frame count — multi-thousand-frame exports at 1080p and above are expected to work. If an export does fail partway through, the error message names the exact frame it failed on and the underlying reason (for example, insufficient disk space), rather than a generic failure at the very end.</div>
 
   <h3 id="export-frame-range">Frame range</h3>

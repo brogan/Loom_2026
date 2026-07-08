@@ -96,6 +96,28 @@ public final class VideoExporter {
         let fps         = settings.fps
         let totalFrames = settings.totalFrames
 
+        // ── Pre-flight resolution check ──────────────────────────────────────
+        // H.264 and HEVC hardware encoders on macOS have fixed maximum frame
+        // dimensions. Exceeding them doesn't degrade gracefully — VideoToolbox
+        // fails immediately with an undocumented internal OSStatus (-10279
+        // observed) that gives no indication of the real cause, and it does so
+        // on every attempt regardless of frame count or app restart. `canvasSize`
+        // already has the project's Quality multiplier baked in, so a modest
+        // base canvas at a high Quality setting can silently produce an export
+        // resolution far larger than the "Size" field in the export sheet
+        // suggests — check and fail with a clear message before ever touching
+        // the asset writer.
+        if let maxDimension = Self.maxSupportedDimension(for: settings.codec),
+           w > maxDimension || h > maxDimension {
+            let quality = engine.globalConfig.qualityMultiple
+            throw VideoExporterError.setupFailed(
+                "Export resolution \(w)×\(h)px exceeds the \(maxDimension)px-per-side limit "
+                + "of \(settings.codec.rawValue) encoding on this Mac. This size already includes "
+                + "the project's Quality multiplier (\(quality)×) — lower Quality in the Global "
+                + "tab, reduce the canvas size, or choose a different codec, then retry."
+            )
+        }
+
         // ── Clean up any pre-existing file ───────────────────────────────────
         try? FileManager.default.removeItem(at: settings.outputURL)
 
@@ -249,6 +271,23 @@ public final class VideoExporter {
             throw VideoExporterError.writeFailed(
                 frameIndex: totalFrames - 1, totalFrames: totalFrames, underlying: error
             )
+        }
+    }
+
+    // MARK: - Codec limits
+
+    /// Maximum supported width/height (in pixels) for `codec`, or `nil` if unknown/unbounded.
+    ///
+    /// H.264 and HEVC are backed by fixed-capability hardware encoder blocks on Apple
+    /// Silicon; these figures are the documented/observed per-side ceilings. ProRes has
+    /// no such hard limit (it isn't restricted to a dedicated hardware encoder block in
+    /// the same way), so it is left unchecked here — a real failure there still surfaces
+    /// through the normal write-failure path with AVFoundation's own diagnostic.
+    private static func maxSupportedDimension(for codec: AVVideoCodecType) -> Int? {
+        switch codec {
+        case .h264: return 4096
+        case .hevc: return 8192
+        default:    return nil
         }
     }
 }
