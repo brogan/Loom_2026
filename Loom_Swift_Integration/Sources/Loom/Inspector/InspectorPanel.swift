@@ -2568,12 +2568,13 @@ private struct QuickSetupLayerOption: Identifiable, Hashable {
 }
 
 /// Which lifecycle mode's default pass to seed into a newly-created transform
-/// set from Quick Pipeline Setup. Fulguration is omitted (not yet implemented).
+/// set from Quick Pipeline Setup.
 private enum QuickSetupDefaultMode: String, CaseIterable {
     case none        = "None"
     case involution  = "Involution"
     case extend      = "Extension"
     case evolution   = "Evolution"
+    case fulguration = "Fulguration"
     case dissolution = "Dissolution"
 
     var displayName: String { rawValue }
@@ -2640,7 +2641,7 @@ private struct QuickSetupSection: View {
                 .font(.system(size: 11))
                 .frame(maxWidth: .infinity)
             }
-            .loomHelp("Which lifecycle mode's default pass to seed into a newly-created transform set. Involution adds subdivision (closed polygons) or curve refinement (open curves); Extension adds edge extrusion (closed) or branching (open); Evolution adds momentum drift (closed polygons only — has no visible effect on open curves); Dissolution adds entropy/collapse. 'None' creates the set empty. Has no effect if the named transform set below already exists.")
+            .loomHelp("Which lifecycle mode's default pass to seed into a newly-created transform set. Involution adds subdivision (closed polygons) or curve refinement (open curves); Extension adds edge extrusion (closed) or branching (open); Evolution adds momentum drift (closed polygons only — has no visible effect on open curves); Fulguration adds a frame-cycle visibility/transform pass (either source type); Dissolution adds entropy/collapse. 'None' creates the set empty. Has no effect if the named transform set below already exists.")
             InspectorField("Transform set") {
                 comboField($qsSubdivSetName, options: subdivisionSetOptions)
             }
@@ -2900,6 +2901,8 @@ private struct QuickSetupSection: View {
                     )]
                 case .evolution:
                     newSet.evolutionPasses = [EvolutionParams(name: "\(geoName)_evo_1")]
+                case .fulguration:
+                    newSet.fulgurationPasses = [FulgurationParams(name: "\(geoName)_ful_1")]
                 case .dissolution:
                     newSet.dissolutionPasses = [DissolutionParams(name: "\(geoName)_dis_1")]
                 }
@@ -3089,10 +3092,13 @@ private struct QuickSetupSection: View {
     /// Lifecycle modes offered in the Quick Pipeline Setup "Mode" picker for
     /// the current source. Evolution is omitted for open curves — it only
     /// mutates SubdivisionParams, which SubdivisionEngine bypasses entirely
-    /// for .openSpline, so it would have no visible effect there.
+    /// for .openSpline, so it would have no visible effect there. Fulguration
+    /// (V1: frame-cycle visibility/transform/development) operates on the fully
+    /// composed output geometry regardless of polygon type, so — like
+    /// Dissolution — it's offered for both source types.
     private var availableTransformModes: [QuickSetupDefaultMode] {
         folder == "curveSets"
-            ? [.none, .involution, .extend, .dissolution]
+            ? [.none, .involution, .extend, .fulguration, .dissolution]
             : QuickSetupDefaultMode.allCases
     }
     private var recommendedQuickSetupTransformMode: QuickSetupDefaultMode {

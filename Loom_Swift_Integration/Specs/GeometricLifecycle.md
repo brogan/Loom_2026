@@ -852,9 +852,9 @@ a real recommended transform-set name by default, matching closed polygons.
 
 Quick Pipeline Setup's "Transform" phase now has a **Mode** picker
 (`QuickSetupDefaultMode` in `InspectorPanel.swift`) offering Involution / Extension /
-Evolution / Dissolution / None (Fulguration omitted — unimplemented). It controls what
-default pass is seeded into a **newly-created** transform set only (has no effect if
-the named set already exists):
+Evolution / Fulguration / Dissolution / None. It controls what default pass is seeded
+into a **newly-created** transform set only (has no effect if the named set already
+exists):
 - **Involution** — `SubdivisionParams(.quad)` for closed polygons, `CurveRefinementParams`
   for open curves (this replaces the old hardcoded default and is still the QPS default
   mode).
@@ -865,6 +865,11 @@ the named set already exists):
   sources: `EvolutionEngine` exclusively mutates `SubdivisionParams` fields, which
   `SubdivisionEngine` bypasses entirely for `.openSpline` polygons, so it would have no
   visible effect on an open curve. Excluded from the picker for `curveSets` sources.
+- **Fulguration** — `FulgurationParams` (frame-cycle visibility/transform/development,
+  §5.3–§5.5). Works for both source types, like Dissolution — V1 operates on the fully
+  composed output geometry regardless of polygon type.
+  **Update (2026-07-09):** added to the picker; originally omitted when this section
+  was written because Fulguration had no engine yet.
 - **Dissolution** — `DissolutionParams` (entropy/collapse). Works for both source types
   (open curves get a simpler uniform centroid-shrink entropy vs. closed polygons' full
   anchor-smoothing/circle-fit, per §6.2 — same engine, degraded fidelity, not absent).
