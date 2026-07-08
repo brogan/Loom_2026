@@ -31,19 +31,37 @@ struct SubdivisionInspector: View {
     @AppStorage("subinsp.ptwScaleDriverCollapsed")   private var ptwScaleDriverCollapsed     = true
     @AppStorage("subinsp.ptwRotDriverCollapsed")     private var ptwRotDriverCollapsed       = true
 
+    // Persisted top-pane height (points) for the resizable split below. Follows the
+    // same @AppStorage Double convention as e.g. CyclePreviewPanel's bgBrightness —
+    // not a *Collapsed Bool like the rest of this file's storage keys, since it's a
+    // continuous size rather than a toggle.
+    @AppStorage("subinsp.topPaneHeight") private var topPaneHeight: Double = 320
+
+    // Two independently-scrollable panes (set info/mode passes on top, selected
+    // pass's fields on the bottom) with a deliberately prominent divider — plain
+    // VSplitView's native NSSplitView divider read as too subtle to notice as a
+    // grab affordance, so this is a hand-rolled GeometryReader/DragGesture split
+    // instead (ResizableSplitPane below) with a thick bar and a visible grip icon.
+    // Requires InspectorPanel to give SubdivisionInspector the full available height
+    // (bypassing its usual single shared ScrollView) — see
+    // InspectorPanel.isSubdivisionSplitView — since dividing space between two
+    // children needs a bounded height; nested inside another ScrollView it would
+    // just take its ideal (unclipped, non-independently-scrolling) size instead.
     var body: some View {
         let setIdx = controller.selectedSubdivisionIndex ?? 0
         guard let set = controller.projectConfig?.subdivisionConfig.paramsSets[safe: setIdx] else {
             return AnyView(EmptyView())
         }
-        return AnyView(VStack(alignment: .leading, spacing: 0) {
-            // ── TOP SECTION: Transform set info + per-mode add/remove ─────
-            transformSetSection(set: set, setIdx: setIdx)
-
-            Divider().padding(.vertical, 4)
-
-            // ── BOTTOM SECTION: fields for the selected transformation ───
-            selectedTransformationFields(set: set, setIdx: setIdx)
+        return AnyView(ResizableSplitPane(topHeight: $topPaneHeight, minTop: 120, minBottom: 120) {
+            ScrollView {
+                transformSetSection(set: set, setIdx: setIdx)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+        } bottom: {
+            ScrollView {
+                selectedTransformationFields(set: set, setIdx: setIdx)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
         })
     }
 
@@ -224,9 +242,6 @@ struct SubdivisionInspector: View {
                     .padding(.vertical, 8)
             } else if set.params.isEmpty {
                 HStack {
-                    Text("No subdivision passes")
-                        .font(.caption2)
-                        .foregroundStyle(.tertiary)
                     Spacer()
                     addSubdivisionParamMenu(setIdx: setIdx)
                 }
@@ -332,9 +347,6 @@ struct SubdivisionInspector: View {
         InspectorSection("Curve Refinement") {
             if set.curveRefinement.isEmpty {
                 HStack {
-                    Text("No refinement passes")
-                        .font(.caption2)
-                        .foregroundStyle(.tertiary)
                     Spacer()
                     addCurveRefinementButton(setIdx: setIdx)
                 }
@@ -425,9 +437,6 @@ struct SubdivisionInspector: View {
         InspectorSection("Segment Extraction") {
             if set.segmentExtraction.isEmpty {
                 HStack {
-                    Text("No extraction passes")
-                        .font(.caption2)
-                        .foregroundStyle(.tertiary)
                     Spacer()
                     addSegmentExtractionButton(setIdx: setIdx)
                 }
@@ -517,9 +526,6 @@ struct SubdivisionInspector: View {
     private func extensionPassesContent(set: SubdivisionParamsSet, setIdx: Int) -> some View {
         if set.extensionPasses.isEmpty {
             HStack {
-                Text("No extension passes")
-                    .font(.caption2)
-                    .foregroundStyle(.tertiary)
                 Spacer()
                 addExtensionButton(setIdx: setIdx)
             }
@@ -608,9 +614,6 @@ struct SubdivisionInspector: View {
     private func evolutionPassesContent(set: SubdivisionParamsSet, setIdx: Int) -> some View {
         if set.evolutionPasses.isEmpty {
             HStack {
-                Text("No evolution passes")
-                    .font(.caption2)
-                    .foregroundStyle(.tertiary)
                 Spacer()
                 addEvolutionMenu(setIdx: setIdx)
             }
@@ -696,9 +699,6 @@ struct SubdivisionInspector: View {
     private func fulgurationPassesContent(set: SubdivisionParamsSet, setIdx: Int) -> some View {
         if set.fulgurationPasses.isEmpty {
             HStack {
-                Text("No fulguration passes")
-                    .font(.caption2)
-                    .foregroundStyle(.tertiary)
                 Spacer()
                 addFulgurationButton(setIdx: setIdx)
             }
@@ -787,9 +787,6 @@ struct SubdivisionInspector: View {
     private func dissolutionPassesContent(set: SubdivisionParamsSet, setIdx: Int) -> some View {
         if set.dissolutionPasses.isEmpty {
             HStack {
-                Text("No dissolution passes")
-                    .font(.caption2)
-                    .foregroundStyle(.tertiary)
                 Spacer()
                 addDissolutionButton(setIdx: setIdx)
             }

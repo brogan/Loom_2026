@@ -9,25 +9,51 @@ struct InspectorPanel: View {
     @EnvironmentObject private var controller: AppController
 
     var body: some View {
-        ScrollView {
+        // SubdivisionInspector manages its own two independently-scrollable panes
+        // (VSplitView, drag-resizable) — that needs a bounded height to divide
+        // between its children, so it's given the full panel height directly rather
+        // than being nested inside the shared ScrollView every other tab uses (a
+        // VSplitView inside an unconstrained-height ScrollView would just take its
+        // ideal/unclipped content size instead of actually splitting and scrolling).
+        if isSubdivisionSplitView {
             VStack(alignment: .leading, spacing: 0) {
-                if controller.selectedTimelineKF != nil {
-                    KeyframeInspector()
-                        .environmentObject(controller)
-                }
-                if controller.selectedRendererTimelineKF != nil {
-                    KeyframeInspector()
-                        .environmentObject(controller)
-                }
-                if controller.selectedCameraKF != nil {
-                    CameraKeyframeInspector()
-                        .environmentObject(controller)
-                }
-                inspectorContent
+                keyframeOverlays
+                SubdivisionInspector()
+                    .environmentObject(controller)
+                    .frame(maxHeight: .infinity)
             }
-            .frame(maxWidth: .infinity, alignment: .leading)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
+            .background(Color(nsColor: .windowBackgroundColor))
+        } else {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 0) {
+                    keyframeOverlays
+                    inspectorContent
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .background(Color(nsColor: .windowBackgroundColor))
         }
-        .background(Color(nsColor: .windowBackgroundColor))
+    }
+
+    private var isSubdivisionSplitView: Bool {
+        controller.selectedTab == .subdivision && controller.selectedSubdivisionIndex != nil
+    }
+
+    @ViewBuilder
+    private var keyframeOverlays: some View {
+        if controller.selectedTimelineKF != nil {
+            KeyframeInspector()
+                .environmentObject(controller)
+        }
+        if controller.selectedRendererTimelineKF != nil {
+            KeyframeInspector()
+                .environmentObject(controller)
+        }
+        if controller.selectedCameraKF != nil {
+            CameraKeyframeInspector()
+                .environmentObject(controller)
+        }
     }
 
     @ViewBuilder
@@ -47,12 +73,10 @@ struct InspectorPanel: View {
                 placeholderText("Select a geometry set.")
             }
         case .subdivision:
-            if controller.selectedSubdivisionIndex != nil {
-                SubdivisionInspector()
-                    .environmentObject(controller)
-            } else {
-                placeholderText("Select a sprite or subdivision set to edit params.")
-            }
+            // isSubdivisionSplitView (checked in body) already covers the
+            // selectedSubdivisionIndex != nil case via its own dedicated layout;
+            // this branch only runs for the placeholder (no selection yet).
+            placeholderText("Select a sprite or subdivision set to edit params.")
         case .sprites:
             if controller.selectedSpriteID != nil {
                 SpritesInspector()
