@@ -308,6 +308,10 @@
   <a class="nav-link nav-sub" href="#evolution-generational">Evolution — Generational</a>
   <a class="nav-link nav-sub" href="#dissolution-entropy">Dissolution — Entropy</a>
   <a class="nav-link nav-sub" href="#dissolution-collapse">Dissolution — Collapse</a>
+  <a class="nav-link nav-sub" href="#dissolution-contraction">Dissolution — Contraction Anchor</a>
+  <a class="nav-link nav-sub" href="#dissolution-partial-loss">Dissolution — Partial Loss</a>
+  <a class="nav-link nav-sub" href="#dissolution-drift">Dissolution — Drift</a>
+  <a class="nav-link nav-sub" href="#dissolution-driver">Dissolution — Driver</a>
   <a class="nav-link" href="#rendering">Rendering</a>
   <a class="nav-link nav-sub" href="#rendering-modes">Render Modes</a>
   <a class="nav-link nav-sub" href="#rendering-brush">Brushes &amp; Stamps</a>
@@ -432,6 +436,10 @@
   <div class="toc-entry sub"><a href="#evolution-generational">Evolution — Generational</a><span class="toc-fill"></span></div>
   <div class="toc-entry sub"><a href="#dissolution-entropy">Dissolution — Entropy</a><span class="toc-fill"></span></div>
   <div class="toc-entry sub"><a href="#dissolution-collapse">Dissolution — Collapse</a><span class="toc-fill"></span></div>
+  <div class="toc-entry sub"><a href="#dissolution-contraction">Dissolution — Contraction Anchor</a><span class="toc-fill"></span></div>
+  <div class="toc-entry sub"><a href="#dissolution-partial-loss">Dissolution — Partial Loss</a><span class="toc-fill"></span></div>
+  <div class="toc-entry sub"><a href="#dissolution-drift">Dissolution — Drift</a><span class="toc-fill"></span></div>
+  <div class="toc-entry sub"><a href="#dissolution-driver">Dissolution — Driver</a><span class="toc-fill"></span></div>
   <div class="toc-entry"><a href="#rendering">Rendering</a><span class="toc-fill"></span></div>
   <div class="toc-entry sub"><a href="#rendering-modes">Render Modes</a><span class="toc-fill"></span></div>
   <div class="toc-entry sub"><a href="#rendering-brush">Brushes &amp; Stamps</a><span class="toc-fill"></span></div>
@@ -2909,6 +2917,62 @@
   </tbody>
 </table>
 <div class="tip"><strong>Entropy → Collapse composition:</strong> Enable both Entropy and Collapse in the same dissolution pass. Set Entropy Rate to 0.005 and Collapse to Frame count at 300 frames. The form erodes for 300 frames then vanishes. With After = Loop, this creates a repeating lifecycle: the form begins complex, simplifies, collapses, and reappears. Adjust the ratio of entropy rate to collapse frame to control how much simplicity has accumulated by the time collapse fires — at 0.005 rate and 300 frames the form is roughly 78% decayed when it collapses.</div>
+
+<!-- ────────────────────────────────────────────────── -->
+<h3 id="dissolution-contraction">Dissolution — Contraction Anchor</h3>
+<p>Non-spline shapes' Entropy shrink and Collapse's Brief shrink previously always scaled uniformly toward the polygon's centroid. <strong>Anchor</strong> lets that shrink target an edge midpoint or a vertex instead, so the shape visibly pulls to one side as it contracts rather than collapsing evenly in place. Does not affect closed-curve (spline) Entropy, which already has its own Smoothed/Centroid/Circle target above.</p>
+<ol>
+  <li>In the Dissolution inspector, expand the <strong>Contraction</strong> section.</li>
+  <li>Choose an <strong>Anchor</strong>: <em>Centroid</em> (default) keeps the shrink symmetric. <em>Edge</em> shrinks toward one edge's midpoint. <em>Vertex</em> shrinks toward one vertex.</li>
+  <li>The specific edge/vertex chosen is seeded by the <strong>Seed</strong> field in the Driver section below, and stays fixed for a given shape — it does not change frame to frame.</li>
+</ol>
+<div class="tip"><strong>Off-centre implosion:</strong> Set Collapse to Brief with a long Duration (60+ frames) and Anchor to Edge. Instead of shrinking evenly toward the middle, the form visibly gets pulled toward one side before vanishing — reads as being "sucked" out of frame rather than imploding in place.</div>
+
+<!-- ────────────────────────────────────────────────── -->
+<h3 id="dissolution-partial-loss">Dissolution — Partial Loss</h3>
+<p>Collapse is all-or-nothing for the polygon set it applies to — the whole set survives or is gone together. Partial Loss instead prunes a <em>fraction</em> of the polygons in a subdivided set, so a many-polygon shape can lose some of its members while the rest continue on. Has no effect on a single-polygon shape — use Collapse for that.</p>
+<ol>
+  <li>In the Dissolution inspector, expand the <strong>Partial Loss</strong> section and enable <strong>Enabled</strong>.</li>
+  <li>Set <strong>Max fraction</strong> — the fraction of polygons pruned at full strength. 0.3 means up to 30% of the set's polygons are removed.</li>
+  <li>By default (Driver's Phase off), the max fraction is pruned statically every frame — a fixed, stable subset is always missing. Enable the <strong>Phase</strong> driver in the Driver section below to grow the loss in gradually over playback time instead.</li>
+  <li>Change <strong>Seed</strong> (in the Driver section) to choose a different subset of polygons to lose.</li>
+</ol>
+<table>
+  <thead><tr><th>Parameter</th><th>Safe range</th><th>Effect</th></tr></thead>
+  <tbody>
+    <tr><td>Enabled</td><td>—</td><td>When on, a Seed-determined subset of the set's polygons is pruned outright. No effect when the pass's polygon set has only one member.</td></tr>
+    <tr><td>Max fraction</td><td>0.0–1.0</td><td>Fraction of polygons pruned at full Phase progress (or always, if Phase is off). 0.3 = up to 30%; 1.0 = every polygon becomes eligible for pruning.</td></tr>
+  </tbody>
+</table>
+<div class="tip"><strong>Partial Loss + Subdivision:</strong> Apply to a set with many subdivided polygons (a QUAD subdivision at depth 3+ produces dozens). Max fraction 0.4 with Phase animated via a slow Keyframe ramp from 0 to 1 makes the shape progressively lose pieces over time — a decaying honeycomb rather than a single form shrinking or vanishing.</div>
+
+<!-- ────────────────────────────────────────────────── -->
+<h3 id="dissolution-drift">Dissolution — Drift</h3>
+<p>Surviving polygons can translate and/or rotate away from their original placement — each polygon drifts in one consistent direction (seeded, stable across frames), not a random wander frame to frame.</p>
+<ol>
+  <li>In the Dissolution inspector, expand the <strong>Drift</strong> section and enable <strong>Enabled</strong>.</li>
+  <li>Set <strong>Distance</strong> — maximum per-polygon translation at full strength, in canvas-normalized units.</li>
+  <li>Set <strong>Rotation</strong> — maximum per-polygon rotation at full strength, in radians. Leave at 0 for translation only.</li>
+  <li>As with Partial Loss, the Driver section's <strong>Phase</strong> (if enabled) scales drift in gradually over playback time; off (default) applies full distance/rotation statically.</li>
+</ol>
+<table>
+  <thead><tr><th>Parameter</th><th>Safe range</th><th>Effect</th></tr></thead>
+  <tbody>
+    <tr><td>Distance</td><td>0.0–0.5</td><td>Maximum per-polygon translation at full Phase progress. Direction is chosen once per polygon (seeded) — it doesn't change over time, only its magnitude does if Phase is animated.</td></tr>
+    <tr><td>Rotation</td><td>0.0–1.0 rad</td><td>Maximum per-polygon rotation at full Phase progress, about each polygon's own centre. 0 = translation only.</td></tr>
+  </tbody>
+</table>
+<div class="tip"><strong>Drift + Partial Loss:</strong> Combine both in one pass — Partial Loss thins out a subdivided set while Drift scatters the survivors outward. Together they read as a form disintegrating and its pieces flying apart, rather than uniformly eroding in place.</div>
+
+<h3 id="dissolution-driver">Dissolution — Driver (Phase &amp; Seed)</h3>
+<p>Partial Loss and Drift share a two-track driver system with Evolution's Generational mode (see <a href="#evolution-generational">Evolution — Generational</a>): a <strong>Phase</strong> driver controlling how much is applied, and a <strong>Seed</strong> controlling which polygons/directions are chosen.</p>
+<ol>
+  <li>In the Dissolution inspector, expand the <strong>Driver</strong> section.</li>
+  <li><strong>Seed</strong> determines Contraction's edge/vertex choice, Partial Loss's pruning, and Drift's per-shape direction. Change it for a different pattern without altering any other parameter.</li>
+  <li><strong>Phase</strong> is off by default — Partial Loss and Drift are then always applied at full strength (their own Enabled toggles gate them, not Phase). Enable Phase (an Oscillator or Keyframe track is typical) to animate a progress value from 0 to 1 instead, growing the loss/drift in over time rather than having it present from frame one.</li>
+  <li><strong>Vary seed per cycle</strong> — when Phase loops (Oscillator, or Keyframe with Loop/Ping-pong), each full cycle uses a different effective seed, so a different set of polygons is lost or a different drift direction is chosen each time rather than repeating identically. Has no effect while Phase is off, or with a one-shot Keyframe track.</li>
+</ol>
+<div class="note">This mirrors Generational Evolution's Reveal driver and Vary-seed-per-cycle toggle exactly (same underlying mechanism, reused directly) — if that workflow is already familiar, this one behaves identically.</div>
 
 <!-- ────────────────────────────────────────────────── -->
 <section id="lights">

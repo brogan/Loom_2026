@@ -1555,6 +1555,7 @@ public struct SpriteScene: @unchecked Sendable {
                 polygons:      subdivided,
                 passes:        activeInstance.dissolutionParams,
                 elapsedFrames: elapsedFrames,
+                targetFPS:     targetFPS,
                 spriteIndex:   spriteIndex
             )
         }

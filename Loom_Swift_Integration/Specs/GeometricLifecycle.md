@@ -470,6 +470,88 @@ Dissolution operates on the whole form over time. They are complementary: visibi
 rules govern *which* polygons within a generation are rendered at a given frame;
 dissolution governs *how* the form as a whole changes over its lifetime.
 
+### 6.6 The two-track driver system
+
+Dissolution mirrors Generational Evolution's split (§4.4.4, §4.4's doc-comment
+distinction) between two independent axes, rather than growing entropy/collapse's
+own bespoke progress math to cover the newer mechanics below:
+
+- **`dissolutionPhase: DoubleDriver`** — the "how much" track. An optional per-frame
+  animation of overall progress in `[0, 1]`. Disabled by default, in which case Partial
+  Loss and Drift (§6.8, §6.9) are always applied at full strength — their own
+  `*Enabled` flags gate them, not phase — matching `generationPhase`'s same
+  disabled-means-static-full-effect default. Enabling it (an Oscillator or Keyframe
+  track, typically) tweens the loss/drift in over playback time instead of having it
+  present from frame one.
+- **`dissolutionSeed: Int` / `varySeedPerCycle: Bool`** — the "which" track. Seeds all
+  deterministic structural choices (contraction anchor point, which polygons are lost,
+  per-polygon drift direction). `varySeedPerCycle` reuses
+  `GenerationalEvolutionEngine.revealCycleIndex`/`combineSeed` directly rather than
+  reimplementing cycle-counting and seed-mixing a second time — when the phase driver
+  loops, each cycle gets a different effective seed, so a different set of polygons is
+  lost or a different drift direction is chosen each time instead of an identical repeat.
+
+Entropy and Collapse (§6.2–§6.3) are untouched by this system — they keep their own
+frame-count-based progress math exactly as before. The two-track system is additive,
+covering only the three mechanics below plus contraction anchor choice.
+
+### 6.7 Contraction anchor
+
+Both non-spline entropy shrink (the `default:` branch for `.line`/`.oval`/`.point`
+types — `.spline` already has its own richer per-anchor `entropyTarget`) and Collapse's
+Brief-mode shrink previously always scaled uniformly toward the polygon's centroid.
+`contractionAnchor: ContractionAnchor` generalizes the target:
+
+- `.centroid` (default) — symmetric shrink in place, unchanged existing behavior
+- `.edge` — shrinks toward one edge's midpoint, chosen once per polygon (seeded by
+  `dissolutionSeed`, stable across frames — it doesn't jump between edges frame to
+  frame)
+- `.vertex` — shrinks toward one vertex, chosen the same way
+
+Edge/vertex anchoring makes a shrink read as pulling to one side rather than
+collapsing evenly in place — a step toward the "contract inward from an edge or a
+calculated point" idea raised when scoping this phase.
+
+### 6.8 Partial loss
+
+Collapse is all-or-nothing for a given pass — the whole polygon set it's applied to
+either survives or is gone. Partial Loss instead prunes a *fraction* of the polygons
+in a subdivided set, so a many-polygon shape can lose some of its members while the
+rest continue on:
+
+- `partialLossEnabled: Bool`
+- `partialLossMaxFraction: Double` — fraction of polygons pruned at full
+  `dissolutionPhase` progress (or always, if that driver is off), chosen
+  deterministically per polygon index via `dissolutionSeed`
+
+No-op when the pass's polygon array has only one member — pruning "a fraction of one
+shape" isn't meaningful; use Collapse for that case.
+
+### 6.9 Drift
+
+Surviving polygons can translate and/or rotate away from their original placement:
+
+- `driftEnabled: Bool`
+- `driftDistance: Double` — max per-polygon translation at full phase progress,
+  canvas-normalized units
+- `driftRotation: Double` — max per-polygon rotation at full phase progress, radians
+
+Direction and rotation are chosen once per polygon (seeded, stable across frames) —
+each polygon drifts one consistent way, it does not wander randomly frame to frame.
+
+### 6.10 Not yet implemented
+
+From the ideas raised when scoping this phase, two remain deliberately deferred as a
+materially different order of complexity from the above:
+
+- **Closed polygon → open curve** (losing an edge to become an `.openSpline`). The
+  type system already supports the target representation and downstream engines
+  (`CurveRefinementEngine`, `SegmentExtractionEngine`, `ExtensionEngine`) already
+  operate on `.openSpline`, but the closed→open conversion itself doesn't exist yet.
+- **Edge fragmentation** (one edge breaking into several displaced fragments — a
+  genuine 1→N topology split, structurally similar to how Subdivision already does
+  1→N, but a new kind of operator rather than an extension of an existing one).
+
 ---
 
 ## 7. The Pipeline
@@ -477,22 +559,40 @@ dissolution governs *how* the form as a whole changes over its lifetime.
 ```
 Base geometry
      ↓
+[Evolution]    — momentum drift; convergence pressure (mutates params, not geometry yet)
+     ↓
 [Involution]   — closed: subdivision (QUAD/TRI/BORD/SPLIT/STAR)
                — open: curve refinement; segment extraction
      ↓
 [Extension]    — branching (open/closed); edge extrusion (closed)
      ↓
-[Evolution]    — momentum drift; convergence pressure
+[Evolution]    — generational (artificial-life mutation of materialized geometry)
      ↓
-[Fulguration]  — global-parameter trigger; proximity trigger
+[Fulguration]  — global-parameter trigger; proximity trigger — NOT YET IMPLEMENTED
      ↓
-[Dissolution]  — entropy; collapse
+[Dissolution]  — entropy; collapse; contraction anchor; partial loss; drift
      ↓
 Render
 ```
 
-Each stage is optional. The output of each stage is the input to the next. The pipeline
-order is fixed for predictable composition; within each stage, operations can be stacked.
+This is the actual current pipeline order in `SpriteScene.swift` (steps 2a through 2f),
+not just the conceptual grouping — Evolution appears twice because its two mechanisms
+operate at fundamentally different points: momentum drift/convergence pressure perturb
+*parameters* before subdivision runs, while generational evolution mutates
+*materialized geometry* after Extension, alongside Dissolution. Fulguration has no
+engine at all yet (§12 Phase 7, pending) — the diagram shows where it will slot in once
+built.
+
+Each stage is optional. The output of each stage is the input to the next. **The
+pipeline order is fixed for predictable composition, and this is deliberate for now**:
+within each stage, multiple stacked passes run serially and cumulatively (5 stacked
+Subdivision passes each consume the previous pass's output — this is literally how
+subdivision "generations" are built — and all 5 complete before Extension or any later
+stage ever sees the geometry). No stage currently has visibility into another stage's
+*resolved runtime state* — every stage receives the same raw `elapsedFrames`/
+`targetFPS`/`spriteIndex`, not e.g. Dissolution reading Evolution's current generation
+count. See §13's open question on cross-stage interaction for why this is expected to
+change eventually, and why it's deferred rather than built now.
 
 ---
 
@@ -870,6 +970,49 @@ frame, seeded per-anchor and per-sprite.
 Resolved identically to Evolution: closed-form modular arithmetic on frame count
 eliminates the need for stored state without changing the observable behavior.
 
+**Driver system + three new mechanics (complete, 2026-07-08):** see §6.6–§6.10 for
+the full design. Summary of what changed:
+
+- `DissolutionParams` gained `dissolutionPhase: DoubleDriver`, `dissolutionSeed: Int`,
+  `varySeedPerCycle: Bool` — the same two-track pattern as `EvolutionParams`'
+  `generationPhase`/`generationSeed`/`varySeedPerCycle`, and `DissolutionEngine`
+  gained a public `effectiveSeed(for:elapsedFrames:targetFPS:)` that delegates to
+  `GenerationalEvolutionEngine.revealCycleIndex`/`combineSeed` directly (same module)
+  rather than re-deriving cycle-counting and seed-mixing a second time.
+- `contractionAnchor: ContractionAnchor` (`.centroid` default / `.edge` / `.vertex`)
+  generalizes the shrink target previously hardcoded to centroid in non-spline
+  entropy and Collapse's Brief mode. Picking an anchor point is itself seeded and
+  polygon-index-stable (`anchorPoint(for:anchor:seed:polygonIndex:)`), so a shape
+  contracts toward the same edge/vertex every frame rather than jumping around.
+- `partialLossEnabled`/`partialLossMaxFraction` prune a fraction of a subdivided
+  set's polygons rather than collapsing the whole set together — a no-op below two
+  polygons.
+- `driftEnabled`/`driftDistance`/`driftRotation` apply a per-polygon rigid
+  translation/rotation, direction chosen once per polygon (seeded) and scaled by
+  `dissolutionPhase`'s progress.
+- `DissolutionEngine.apply` gained a `targetFPS` parameter (defaulted to `30` so the
+  three static/bake call sites in `Loom_Swift_Integration` — `SubdivisionTabView`
+  ×2, `SubdivisionWireframeView` — compile unchanged; `SpriteScene.swift`'s live-render
+  call site passes the real value).
+- `DissolutionInspector` gained four sections: **Contraction** (anchor picker),
+  **Driver** (seed field via `IntEntryField`, the Phase `DoubleDriverEditor`, vary-seed
+  toggle — mirroring `EvolutionInspector`'s `generationPhaseDriverSection`), **Partial
+  Loss**, **Drift**.
+
+Verified with 26 new `DissolutionEngineTests` (previously zero tests existed for this
+engine, despite Phase 6 predating this work — added baseline entropy/collapse
+regression coverage alongside the new-mechanic tests as a safety net for the shared
+`contractTo`/`anchorPoint` refactor): centroid-anchor regression, edge/vertex anchor
+symmetry-breaking and convergence, partial-loss fraction/phase/seed behavior including
+the single-polygon no-op, drift distance/rotation bounds and centroid preservation,
+`effectiveSeed` parity with `GenerationalEvolutionEngine.combineSeed`, and
+`varySeedPerCycle` producing different partial-loss outcomes across reveal cycles. All
+504 tests in `LoomEngineTests` pass; both packages build clean.
+
+**Not yet done:** closed polygon → open curve, edge fragmentation (§6.10 — both
+deferred as a materially larger step than the above), and any cross-stage coupling
+(e.g. dissolution phase driven by Evolution's generation count — see §13).
+
 ### Phase 7 — Fulguration: triggers (pending)
 
 Condition-check pre-pass in the render pipeline. Global-parameter trigger.
@@ -1163,3 +1306,38 @@ exists), an easing curve option for the tween (currently linear).
    frame. At typical sprite counts this is negligible. At very high sprite counts
    (hundreds of named sprites) it may be worth lazy-evaluating: only update the
    drift state for sprites that are visible in the current frame.
+
+7. **Serial pipeline now, parallel/cross-stage interaction later (deliberately
+   deferred, 2026-07-08).** All five modes currently run in a fixed serial order
+   (§7) — stacking N passes of one stage (e.g. 5 Subdivision passes) means all N
+   complete before the next stage type ever sees the geometry, and no stage can see
+   another stage's *resolved runtime state* (Dissolution can't read what generation
+   Evolution landed on this frame; every stage only gets the same raw
+   `elapsedFrames`/`targetFPS`/`spriteIndex`). This was a deliberate scoping decision
+   when building Dissolution's driver system (§6.6): get all five modes solid and
+   working serially first, then revisit interaction.
+
+   The motivating example: a dissolution factor that *increases as Evolution's
+   generation count increases*, so late generations start showing entropy/collapse/
+   drift — decay as a function of evolutionary age, not just elapsed frame count.
+   More generally, once Fulguration exists (Phase 7), its trigger state is an
+   obvious candidate to feed Dissolution too (a Fulguration-triggered event
+   accelerating nearby dissolution, for instance).
+
+   This is *not yet built* — today, `dissolutionPhase` only reads
+   `elapsedFrames`/`targetFPS`/`spriteIndex`, the same inputs every other stage
+   reads independently. Enabling real cross-stage coupling needs new plumbing:
+   `SpriteScene.renderInstance` already has both `activeInstance.evolutionParams`
+   and `activeInstance.dissolutionParams` in scope at the point Dissolution runs
+   (step 2f, after Generational Evolution's step 2e), so threading a resolved value
+   — e.g. `GenerationalEvolutionEngine`'s current phase/generation count for a named
+   pass — through as a new parameter to `DissolutionEngine.apply` is straightforward
+   in principle. The open design questions are less about feasibility and more about
+   shape: does every stage need a generic "read a named upstream value" mechanism
+   (a small per-frame shared context passed through the whole pipeline), or are
+   coupling points added one at a time as specific features are built (as sketched
+   above)? The former is more general but risks premature abstraction before there's
+   a second or third concrete use case to generalize from; the latter is simpler now
+   but may need reworking once two or three specific couplings exist side by side.
+   No decision has been made — flagged here so it isn't lost, not to be resolved
+   until there's a concrete second stage genuinely needing it.

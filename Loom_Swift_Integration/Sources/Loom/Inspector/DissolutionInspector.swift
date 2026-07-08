@@ -10,14 +10,22 @@ struct DissolutionInspector: View {
     let setIdx: Int
     let disIdx: Int
 
-    @AppStorage("disinsp.generalCollapsed")  private var generalCollapsed  = false
-    @AppStorage("disinsp.entropyCollapsed")  private var entropyCollapsed  = false
-    @AppStorage("disinsp.collapseCollapsed") private var collapseCollapsed = false
+    @AppStorage("disinsp.generalCollapsed")     private var generalCollapsed     = false
+    @AppStorage("disinsp.entropyCollapsed")     private var entropyCollapsed     = false
+    @AppStorage("disinsp.collapseCollapsed")    private var collapseCollapsed    = false
+    @AppStorage("disinsp.contractionCollapsed") private var contractionCollapsed = true
+    @AppStorage("disinsp.driverCollapsed")      private var driverCollapsed      = true
+    @AppStorage("disinsp.partialLossCollapsed") private var partialLossCollapsed = true
+    @AppStorage("disinsp.driftCollapsed")       private var driftCollapsed       = true
 
     var body: some View {
         generalSection
+        contractionSection
         entropySection
         collapseSection
+        dissolutionDriverSection
+        partialLossSection
+        driftSection
     }
 
     // MARK: - General
@@ -155,6 +163,85 @@ struct DissolutionInspector: View {
         }
     }
 
+    // MARK: - Contraction anchor
+
+    private var contractionSection: some View {
+        InspectorSection("Contraction", isCollapsed: $contractionCollapsed) {
+            InspectorField("Anchor") {
+                Picker("", selection: bindDIS(\.contractionAnchor)) {
+                    ForEach(ContractionAnchor.allCases, id: \.self) { a in
+                        Text(a.rawValue.capitalized).tag(a)
+                    }
+                }
+                .labelsHidden()
+                .pickerStyle(.segmented)
+                .frame(maxWidth: 200)
+            }
+            .loomHelp("Where non-spline shapes and Collapse's Brief shrink scale toward. Centroid: symmetric shrink in place (default). Edge: shrinks toward one edge's midpoint, chosen per shape and held stable. Vertex: shrinks toward one vertex. Edge and Vertex make the shrink read as pulling to one side rather than collapsing evenly — does not affect closed-curve Entropy, which already has its own Centroid/Smoothed/Circle target above.")
+        }
+    }
+
+    // MARK: - Dissolution driver (two-track: phase + seed)
+
+    private var dissolutionDriverSection: some View {
+        InspectorSection("Driver", isCollapsed: $driverCollapsed) {
+            InspectorField("Seed") {
+                IntEntryField(value: bindDISInt(\.dissolutionSeed), width: 140)
+            }
+            .loomHelp("Deterministic seed for Contraction's edge/vertex choice, Partial Loss's pruning, and Drift's per-shape direction. Change for a different pattern without altering any other parameter.")
+
+            DoubleDriverEditor(
+                label: "Phase",
+                driver: bindDISDriver(\.dissolutionPhase),
+                isCollapsed: .constant(false)
+            )
+            .loomHelp("Animates Partial Loss and Drift's overall strength over playback time, as a progress value in [0, 1]. Off (default): both are always applied at full strength when enabled below. On: this driver's value is the current progress — e.g. a keyframe track from 0 to 1 grows the loss/drift in gradually rather than having it present from frame one.")
+
+            InspectorField("Vary seed per cycle") {
+                Toggle("", isOn: bindDIS(\.varySeedPerCycle)).labelsHidden()
+            }
+            .loomHelp("When the Phase driver loops (Oscillator, or Keyframe with Loop/Ping-pong), each full cycle uses a different effective seed, so a different set of shapes is lost or a different drift direction is chosen each time rather than repeating identically. Has no effect while Phase is off, or with a one-shot Keyframe track.")
+        }
+    }
+
+    // MARK: - Partial loss
+
+    private var partialLossSection: some View {
+        InspectorSection("Partial Loss", isCollapsed: $partialLossCollapsed) {
+            InspectorField("Enabled") {
+                Toggle("", isOn: bindDIS(\.partialLossEnabled)).labelsHidden()
+            }
+            .loomHelp("When on, a fraction of the polygons in a subdivided set are pruned outright — the set loses some of its members rather than every shape shrinking or vanishing together. No effect on a single-polygon shape; use Collapse for that.")
+
+            InspectorField("Max fraction") {
+                FloatEntryField(value: bindDIS(\.partialLossMaxFraction), width: 60)
+            }
+            .loomHelp("Fraction of polygons pruned at full Phase progress (or always, if the Driver's Phase is off). 0.3 means up to 30% of the set's polygons are removed, chosen deterministically by Seed.")
+        }
+    }
+
+    // MARK: - Drift
+
+    private var driftSection: some View {
+        InspectorSection("Drift", isCollapsed: $driftCollapsed) {
+            InspectorField("Enabled") {
+                Toggle("", isOn: bindDIS(\.driftEnabled)).labelsHidden()
+            }
+            .loomHelp("When on, surviving polygons translate and/or rotate away from their original placement — each shape drifts in one consistent direction (seeded, stable across frames), not a random wander.")
+
+            InspectorField("Distance") {
+                FloatEntryField(value: bindDIS(\.driftDistance), width: 60)
+            }
+            .loomHelp("Maximum per-polygon translation distance at full Phase progress (or always, if the Driver's Phase is off), in canvas-normalized units.")
+
+            InspectorField("Rotation") {
+                FloatEntryField(value: bindDIS(\.driftRotation), width: 60)
+                Text("rad").font(.system(size: 11)).foregroundStyle(.secondary)
+            }
+            .loomHelp("Maximum per-polygon rotation at full Phase progress, in radians. 0 = translation only.")
+        }
+    }
+
     // MARK: - Binding helpers
 
     private func bindDIS<T>(_ kp: WritableKeyPath<DissolutionParams, T>) -> Binding<T> {
@@ -178,5 +265,23 @@ struct DissolutionInspector: View {
 
     private func bindDISInt(_ kp: WritableKeyPath<DissolutionParams, Int>) -> Binding<Int> {
         bindDIS(kp)
+    }
+
+    private func bindDISDriver(_ kp: WritableKeyPath<DissolutionParams, DoubleDriver>) -> Binding<DoubleDriver> {
+        let ctl = controller
+        return Binding(
+            get: {
+                ctl.projectConfig?.subdivisionConfig
+                    .paramsSets[safe: setIdx]?.dissolutionPasses[safe: disIdx]?[keyPath: kp] ?? .zero
+            },
+            set: { v in
+                ctl.updateProjectConfig { cfg in
+                    guard setIdx < cfg.subdivisionConfig.paramsSets.count,
+                          disIdx < cfg.subdivisionConfig.paramsSets[setIdx].dissolutionPasses.count
+                    else { return }
+                    cfg.subdivisionConfig.paramsSets[setIdx].dissolutionPasses[disIdx][keyPath: kp] = v
+                }
+            }
+        )
     }
 }
