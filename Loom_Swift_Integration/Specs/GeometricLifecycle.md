@@ -346,57 +346,195 @@ The term itself carries the image: the flash of lightning, something that appear
 instant and is gone. The conditions are the atmospheric charge; the appearance is the
 discharge.
 
-### 5.2 Global-parameter trigger
+### 5.2 Scope: V1 (self-contained) and V2 (relational)
 
-Geometry becomes visible when a specified global parameter crosses a threshold value.
-It holds for a specified duration, then disappears. The shape of the appearance and
-disappearance is parameterised.
+Scoped 2026-07-08 into two tiers, following the same "validate the simple core before the
+riskier pieces" build order already used for Generational Evolution (§4.4.5): the fully
+relational form (§5.1's "product of the relationship" ideal — geometry appearing from the
+*interaction* of two other sprites) is the eventual goal, but it depends on the harder,
+still-open questions in §5.9/§13.3–4 (cross-sprite render ordering, trigger-instance
+identity for overlapping firings). A self-contained V1 needs none of that:
+
+- **V1** (§5.3–5.5): a sprite's own transform pass appears and disappears on a
+  frame-count cycle, with per-appearance translation/scale/rotation variation and an
+  optional brief grow-in/shrink-out. No dependency on any other sprite's state.
+- **V2** (§5.6–5.8): triggering generalizes to global parameters, another named
+  sprite's resolved geometry (vertex/polygon count, bounding size), and true proximity
+  between two sprites; geometry variation extends to the actual subdivision/curve
+  parameters, not just a rigid transform.
+
+Everything below reuses existing engine vocabulary and math rather than introducing new
+primitives — RPSR sampling (Extension, Generational Evolution), a seeded-per-instance
+choice held stable across frames (Dissolution's contraction anchor, drift direction),
+and `Polygon2D.scaled(by:around:)` (already used directly by Dissolution's Brief collapse).
+
+### 5.3 V1 — Frame-cycle trigger
+
+The most self-contained possible trigger: independent of any other sprite or global
+parameter, a `FulgurationParams` pass simply cycles its owning geometry on and off.
+Structurally this is Dissolution's Collapse-loop (§6.3/Phase 6) inverted — a hidden
+interval, then a held/visible interval, repeating — except each cycle's interval and
+hold are *independently* RPSR-resampled rather than a fixed repeating period, so it
+can't reuse Collapse's `effectiveFrames mod period` shortcut directly (see §5.9).
 
 Parameters:
-- `triggerSource: TriggerSource` — the global parameter to monitor: frame phase (0–1
-  within a cycle), any DoubleDriver output, audio amplitude, audio beat phase, or a
-  named driver value
+- `intervalMin/Max: Int` — RPSR range for frames hidden before the next appearance
+- `holdMin/Max: Int` — RPSR range for frames visible once triggered
+- `cycleSeed: Int` — seeds interval/hold sampling for every cycle, and (§5.4) the
+  per-cycle transform variation; same seed drives both so a given seed always
+  reproduces the identical sequence of appearances
+
+### 5.4 V1 — Appearance transform variation
+
+Each appearance is one rigid transform applied to the whole flash (not per-polygon —
+that's what Dissolution's Drift is for), sampled once per cycle from `cycleSeed`
+combined with the cycle index (same pattern as Dissolution's per-polygon seeded
+choices, just keyed by cycle index instead of polygon index):
+
+- `translationRange: Double` — max per-cycle offset from the sprite's normal
+  placement, canvas-normalized units
+- `scaleMin/Max: Double` — per-cycle scale range around 1.0
+- `rotationRange: Double` — max per-cycle rotation, radians
+
+A given cycle's sampled transform is held fixed for that entire appearance — the flash
+doesn't drift or rotate continuously while visible, it appears already-transformed.
+
+### 5.5 V1 — Development: brief grow-in and shrink-out
+
+Rather than only an instant on/off pop, a flash can briefly develop and dissolve within
+its own hold window, addressing the "more than a single-frame flash" gap directly:
+
+- `developmentMode: FulgurationDevelopmentMode` — `.instant` (on for the full hold
+  duration, off — simplest possible, zero extra cost) or `.growShrink` (scale
+  ramps in and out at the edges of the hold window)
+- `growInDuration/shrinkOutDuration: Int` — frames at the start/end of the hold
+  window spent ramping scale from/to zero, using `Polygon2D.scaled(by:around:)`
+  around the polygon's centroid — the exact primitive Dissolution's Brief collapse
+  already calls, applied here in reverse for the grow-in half. No new geometry math,
+  and no coupling to a specific `DissolutionEngine` pass — `scaled(by:around:)` is a
+  general `Polygon2D` method already used directly by more than one engine.
+
+This is deliberately simpler than cross-referencing a named `DissolutionParams` pass by
+name (considered and set aside for V1): a cross-reference would need its own resolution
+step and could conflict with that pass's *own* independent trigger/timing running at the
+same time. Reusing just the shared low-level scale primitive avoids that entirely. A
+named cross-reference (letting a flash's development literally be "whatever entropy
+target Dissolution pass X uses") remains a reasonable V2+ enhancement once the simpler
+version is validated.
+
+### 5.6 V2 — Threshold-relative trigger
+
+Generalizes the original global-parameter trigger design to include another sprite's
+*resolved* geometry as a source, not only external/global values:
+
+- `triggerSource: TriggerSource` — `.framePhase` (0–1 within a cycle), `.driver(name:)`
+  (any DoubleDriver output), `.audioAmplitude`, `.audioBeatPhase`, or
+  `.spriteMetric(setName:, metric:)` — a named sprite's `.polygonCount`,
+  `.vertexCount`, `.boundingWidth`, or `.boundingHeight`
 - `triggerThreshold: Double` — the value at which the trigger fires
-- `triggerEdge: TriggerEdge` — `.rising` (fires when value crosses upward),
-  `.falling` (downward), `.both`
-- `holdDuration: Int` — frames to remain visible after triggering
-- `appearanceMode: AppearanceMode` — `.instant` (flash: on in one frame, off when
-  hold expires), `.fade` (brief linear fade in/out over N frames)
-- `refractory: Int` — minimum frames between successive triggers (prevents rapid
-  re-firing on noisy signals)
+- `triggerEdge: TriggerEdge` — `.rising`, `.falling`, `.both`
+- `holdMin/Max: Int` — RPSR range for frames visible once triggered (same as §5.3,
+  reused rather than a separate fixed `holdDuration`)
+- `refractory: Int` — minimum frames between successive triggers; the pragmatic V2
+  answer to overlapping firings (§5.9) — simpler than tracking concurrent
+  trigger-instances, at the cost of missing rapid successive events
 
-Multiple polygon sets can reference the same trigger source with the same threshold,
-producing simultaneous flashes across different parts of the scene.
+For `.spriteMetric`, the value read is the *referenced sprite's previous frame's*
+resolved geometry, not the current frame's — see §5.9 for why.
 
-### 5.3 Proximity trigger
+### 5.7 V2 — Proximity trigger
 
 Geometry appears when two specified polygon sets come within a defined distance of each
 other. The fulguration geometry exists *at the encounter* — not as a property of either
 parent but as the product of their relationship. It disappears when they separate beyond
-the threshold distance.
+the threshold distance. This is the fullest expression of §5.1's relational ideal, and
+the most expensive to evaluate cheaply — see §5.9.
 
 Parameters:
-- `proximitySetA: String` — name of the first polygon set
-- `proximitySetB: String` — name of the second polygon set
+- `proximitySetA` / `proximitySetB: String` — names of the two polygon sets
 - `proximityThreshold: DoubleDriver` — maximum distance between nearest points of the
   two sets at which the fulguration fires (can be driven, allowing the sensitivity to
   change over time)
 - `proximityGeometry: ProximityGeometry` — what appears: `.connectionLine` (a line
   between the nearest points), `.midpointForm` (a polygon centred at the midpoint
   of the two nearest points), `.customSet` (a named polygon set placed at the midpoint)
-- `appearanceMode: AppearanceMode` — same as global-parameter trigger
 
-The proximity trigger makes fulguration geometry a genuine *relational* object: it has
-no existence independent of the spatial relationship that produces it.
+### 5.8 V2 — Geometry variation per flash
 
-### 5.4 Architectural note
+Extends variation beyond the rigid transform (§5.4) to the actual subdivision/curve
+parameters, so each flash can be a genuinely different *shape*, not just a different
+placement of the same shape — reusing the exact field vocabulary Evolution's momentum
+drift already perturbs, rather than inventing a parallel one:
 
-Both trigger types require the engine to evaluate conditions *before* deciding whether
-to render the associated geometry. This is a new evaluation pattern: currently the engine
-renders all geometry unconditionally (visibility rules operate on the output polygons, not
-on whether the generation runs at all). Fulguration requires a pre-render condition
-check that can suppress entire polygon sets. The condition evaluation must be cheap
-(one comparison per set, not per polygon) and deterministic for replay.
+- `variationTargets: [DriftTarget]` — which field(s) vary each cycle: line ratio
+  X/Y/XY, CP normal X/Y, inset scale, inset rotation (closed polygons); the
+  equivalent curve-refinement fields (insertion count/distribution, CP mode/curvature)
+  for open curves
+- `variationRangeMin/Max: Double` per target — RPSR range, resampled fresh from
+  `cycleSeed` each cycle
+
+Architecturally this sits at a different pipeline point than §5.3–5.5: it perturbs
+`SubdivisionParams`/`CurveRefinementParams` *before* `SubdivisionEngine`/
+`CurveRefinementEngine` run (the same slot Evolution's momentum drift occupies, step 2a),
+whereas the visibility/transform/development mechanics of §5.3–5.5 operate on the fully
+composed output geometry (alongside Dissolution, step 2f). Fulguration ends up with the
+same two-natured shape Evolution already has (param-perturb at 2a, geometry-mutate/
+post-process at 2e/2f) rather than needing a new kind of pipeline composition.
+
+### 5.9 Architecture: state, determinism, and cost
+
+- **Frame-cycle trigger is not closed-form, but is still fully stateless** in the sense
+  that matters (same category as Generational Evolution, §4.4.4): because each cycle's
+  interval/hold is independently resampled, there's no fixed period to take a modular
+  remainder against. Finding which cycle `elapsedFrames` currently falls in means
+  enumerating cycles by index from 0, hash-sampling each one's (interval, hold) pair,
+  and summing until the running total exceeds `elapsedFrames` — O(cycles so far), not
+  O(1), recomputed fresh on every evaluation, nothing incrementally mutated across
+  rendered frames. This needs the same kind of scan cap Collapse's probability trigger
+  already uses (100,000 iterations, §6.3/Phase 6) so a pathological config (e.g.
+  `intervalMin/Max` near zero) can't hang. Memoizing the cycle list per pass (invalidated
+  on any parameter change) is a valid future optimization, never a correctness
+  requirement — same wording as §4.4.4 for Generational Evolution's chain.
+- **`.spriteMetric` reads the previous frame's resolved geometry, deliberately.**
+  Reading the *current* frame's value would require guaranteeing the referenced sprite
+  is fully resolved before the fulgurating sprite's trigger is evaluated — a
+  render-order dependency between sprites that doesn't exist anywhere else in the
+  engine today, and that gets genuinely hard the moment two sprites reference each
+  other (a cycle). One frame of lag sidesteps this entirely: every sprite still
+  resolves independently, in any order, exactly as today. The visible cost is a
+  single frame of latency on the trigger, imperceptible at typical frame rates.
+- **Proximity trigger cost** is the one piece that's a real algorithmic problem, not
+  just a data-availability one: nearest-point distance between two `[Polygon2D]` sets
+  is O(m×n) naively. A bounding-box pre-check (already noted in the original spec,
+  now retained as the concrete plan) reduces this to O(1) for the common case of two
+  sets that aren't already close, falling back to the full check only when boxes
+  already overlap or are near.
+- **Overlapping firings are not tracked as separate instances in V1 or V2.** `refractory`
+  (§5.6) suppresses re-triggering while a previous flash is still developing — simple,
+  cheap, and sufficient for a first version, at the cost of occasionally missing a
+  rapid successive event. True concurrent multi-instance firing (each with its own
+  local development clock) is deferred; it reopens the cross-mode polygon identity
+  question already flagged as unresolved in §13.4, and shouldn't be tackled until V1/V2
+  are validated and a concrete case actually needs it (same reasoning §4.4.5 gives for
+  deferring duplicate-and-graft).
+
+### 5.10 Suggested build order
+
+1. **V1** (§5.3–5.5): frame-cycle trigger, transform variation, instant and
+   grow-shrink development modes. Fully self-contained — no dependency on any other
+   sprite, no new render-ordering concerns, reuses `Polygon2D.scaled(by:around:)`
+   directly. This is the "not the most interesting, but something" starting point.
+2. **V2a**: threshold-relative trigger against global/driver/audio sources only
+   (§5.6, excluding `.spriteMetric`) — cheap, reuses `DriverEvaluator` exactly as
+   Convergence Pressure already does.
+3. **V2b**: `.spriteMetric` threshold source, previous-frame lag (§5.6, §5.9).
+4. **V2c**: proximity trigger with the bounding-box pre-check (§5.7, §5.9).
+5. **V2d**: pre-subdivision geometry variation (§5.8) — depends on nothing above,
+   could in principle be built in parallel with 2–4, but sequenced last here since
+   it's the piece least connected to what makes Fulguration distinctive (the
+   conditional appearance), more an extension of Evolution's existing drift concept
+   into a new trigger context.
+6. **Deferred beyond V2**: true concurrent multi-instance firing (§5.9's last point).
 
 ---
 
@@ -568,7 +706,10 @@ Base geometry
      ↓
 [Evolution]    — generational (artificial-life mutation of materialized geometry)
      ↓
-[Fulguration]  — global-parameter trigger; proximity trigger — NOT YET IMPLEMENTED
+[Fulguration]  — geometry variation (V2, §5.8) — NOT YET IMPLEMENTED
+     ↓
+[Fulguration]  — frame-cycle/threshold/proximity trigger; transform variation;
+                 grow-shrink development (§5.3–5.7) — NOT YET IMPLEMENTED
      ↓
 [Dissolution]  — entropy; collapse; contraction anchor; partial loss; drift
      ↓
@@ -580,8 +721,11 @@ not just the conceptual grouping — Evolution appears twice because its two mec
 operate at fundamentally different points: momentum drift/convergence pressure perturb
 *parameters* before subdivision runs, while generational evolution mutates
 *materialized geometry* after Extension, alongside Dissolution. Fulguration has no
-engine at all yet (§12 Phase 7, pending) — the diagram shows where it will slot in once
-built.
+engine at all yet (§12 Phase 7, pending), and once built will have the same two-natured
+split Evolution already has (§5.8's geometry variation perturbs params at the same point
+as momentum drift; §5.3–5.7's trigger/transform/development operates on composed
+geometry at the same point as generational evolution and Dissolution) — the diagram
+shows both slots where it will land.
 
 Each stage is optional. The output of each stage is the input to the next. **The
 pipeline order is fixed for predictable composition, and this is deliberate for now**:
@@ -636,7 +780,7 @@ transformation is currently selected, separated by a `Divider`.
 | Involution     | Curve refinement (insert driven anchor points, maintain gesture); segment extraction (break into independent sub-curves) |
 | Extension      | Branching from endpoints; growth/extension from ends (OpenCurves.md) |
 | Evolution      | Momentum drift and convergence pressure applied to control-point positions |
-| Fulguration    | Curves that appear at proximity encounters or global-parameter thresholds |
+| Fulguration    | Curves that appear on a frame-cycle (V1) or at proximity encounters/global-parameter thresholds (V2); per-flash variation of insertion count/curvature (V2, §5.8) |
 | Dissolution    | Entropy (control points converge to smoothed positions); collapse (curve disappears) |
 
 ---
@@ -1015,15 +1159,42 @@ deferred as a materially larger step than the above), and any cross-stage coupli
 
 ### Phase 7 — Fulguration: triggers (pending)
 
-Condition-check pre-pass in the render pipeline. Global-parameter trigger.
-Proximity trigger with `.connectionLine` geometry. Both require the new
-`FulgurationParams` model and the conditional rendering architecture.
+Scoped 2026-07-08 into V1/V2 — see §5.2–§5.10 for the full design. `FulgurationParams`
+on `SubdivisionParamsSet.fulgurationPasses: [FulgurationParams]`, matching the
+`*Passes` array convention Extension/Evolution/Dissolution already use. Engine:
+`FulgurationEngine`.
 
-**Architectural note:** Requires a pre-render condition evaluation pass that runs
-*before* `SubdivisionEngine` dispatch. The trigger state (firing / held / refractory)
-is frame-level state, not per-polygon state. The proximity trigger requires computing
-nearest-point distances between two `[Polygon2D]` sets per frame — O(m×n) naively;
-a bounding-box pre-check reduces practical cost to O(1) for non-overlapping sets.
+**V1 (planned first slice, §5.3–§5.5):** frame-cycle trigger (independently
+RPSR-resampled interval/hold per cycle, §5.3), per-cycle rigid transform variation
+(translation/scale/rotation, §5.4), and `.instant`/`.growShrink` development modes
+using `Polygon2D.scaled(by:around:)` directly (§5.5 — the same primitive Dissolution's
+Brief collapse already calls, no cross-engine coupling needed). Fully self-contained:
+no dependency on any other sprite's state, no render-ordering concerns. Pipeline
+position: step 2e.5 in `SpriteScene.swift`, after Generational Evolution (2e) and
+before Dissolution (2f) — a visibility gate plus rigid transform plus scale-envelope
+applied to the fully composed geometry, same point in the pipeline the original spec
+diagram already reserved for Fulguration.
+
+**V2 (§5.6–§5.8, in order):** threshold-relative trigger against global/driver/audio
+sources first (cheap, reuses `DriverEvaluator` exactly as Convergence Pressure does),
+then `.spriteMetric` sources reading the referenced sprite's *previous* frame's
+resolved geometry (deliberately, to avoid a cross-sprite render-ordering dependency —
+§5.9), then the proximity trigger with a bounding-box pre-check to keep the O(m×n)
+nearest-point cost practical, then pre-subdivision geometry variation (§5.8, the same
+pipeline slot as Evolution's momentum drift, step 2a) reusing `DriftTarget`'s exact
+field vocabulary rather than a new one.
+
+**Deferred beyond V2:** true concurrent multi-instance firing (§5.9) — `refractory`
+is the V1/V2 answer to overlapping triggers; tracking genuinely simultaneous
+independent flash instances reopens the cross-mode polygon identity question in §13.4
+and isn't worth taking on until a concrete case needs it.
+
+**Architectural notes carried over from the original spec, still accurate:** requires
+a pre-render condition evaluation pass (the trigger state — firing/held/refractory —
+is frame-level state, not per-polygon state); the frame-cycle trigger's cycle-walk is
+O(cycles so far) rather than O(1), same non-closed-form-but-stateless category as
+Generational Evolution (§4.4.4), and needs the same scan cap Collapse's probability
+trigger already uses.
 
 ### Phase 8 — Evolution: generational artificial-life system (in progress)
 
@@ -1279,12 +1450,16 @@ exists), an easing curve option for the tween (currently linear).
    Extension's `branchDepth` (recursive and O(N), not O(1), but nothing incrementally
    mutated across rendered frames). See §4.4.4.
 
-3. **Fulguration and the render pipeline.** The current render loop evaluates all
-   sprite polygon sets unconditionally. A Fulguration condition check requires a
-   pre-pass that may suppress some sets entirely. The condition evaluation must be
-   separated from the polygon-level processing and positioned before the SubdivisionEngine
-   dispatch. The trigger state (is it currently firing?) must be part of the per-frame
-   engine state, not per-polygon state.
+3. **Fulguration and the render pipeline (largely resolved by scoping, 2026-07-08).**
+   §5.2–§5.10 works through most of this: V1's frame-cycle trigger needs no cross-sprite
+   condition pre-pass at all (§5.3, Phase 7); V2's `.spriteMetric` trigger sidesteps the
+   render-ordering question by reading the referenced sprite's previous frame rather than
+   requiring a dependency-ordered evaluation pass (§5.9); the proximity trigger is the one
+   piece that still needs the O(m×n)-with-bounding-box-pre-check treatment originally
+   anticipated here. What's still genuinely open: true concurrent multi-instance firing
+   (§5.9's last point) does need frame-level trigger state (firing/held/refractory) beyond
+   what a stateless per-evaluation model provides, and is deferred beyond V1/V2 for exactly
+   that reason.
 
 4. **Cross-mode polygon identity.** A polygon produced by involution, extended by
    branching, drifted by evolution, and then collapsing under dissolution — at what
