@@ -385,7 +385,7 @@ final class GenerationalEvolutionEngineTests: XCTestCase {
             extrudeDistanceMin: 0.1, extrudeDistanceMax: 0.1,
             generationSeed: 3, maxVertexBudget: 10_000
         )
-        params.extrudeIncludeOpenCurves = false
+        params.includeOpenCurves = false
         let result = GenerationalEvolutionEngine.process(polygons: [curve], params: params)
         XCTAssertEqual(result, [curve], "off (default): an open curve must stay untouched even as the only polygon present")
     }
@@ -398,45 +398,70 @@ final class GenerationalEvolutionEngineTests: XCTestCase {
             extrudeDistanceMin: 0.1, extrudeDistanceMax: 0.1,
             generationSeed: 3, maxVertexBudget: 10_000
         )
-        params.extrudeIncludeOpenCurves = true
+        params.includeOpenCurves = true
         let result = GenerationalEvolutionEngine.process(polygons: [curve], params: params)
         XCTAssertEqual(result.count, 2, "one quad should be added to the open curve")
         XCTAssertEqual(result[0], curve, "the original curve is left unmodified — only a new quad is appended")
         XCTAssertEqual(result[1].type, .spline, "the added extrusion is a closed quad, same as for closed-polygon targets")
     }
 
-    func testSplitNeverTargetsOpenCurveEvenWithFlagOn() {
-        let curve = makeOpenCurve()
-        var params = EvolutionParams(
-            generationCount: 5, extrudeWeight: 0.0, splitWeight: 1.0,
-            splitDisplacementMin: 0.1, splitDisplacementMax: 0.1,
-            generationSeed: 3, maxVertexBudget: 10_000
-        )
-        params.extrudeIncludeOpenCurves = true
-        let result = GenerationalEvolutionEngine.process(polygons: [curve], params: params)
-        XCTAssertEqual(result, [curve],
-                       "Split's eligible set stays closed-only regardless of extrudeIncludeOpenCurves — with only an open curve present, every generation should no-op rather than target it")
+    /// Split gained open-curve support alongside Graft (this section, 2026-07-11)
+    /// — geometry-exact: the displaced split point matches independently-replicated
+    /// roll math, including the new `openCurveSafeOutward` per-edge side pick
+    /// (`sideSeed = seed &+ 725_827_609`, `cycle: cycleBase`) that substitutes for
+    /// the centroid-relative direction closed polygons use.
+    func testSplitTargetsOpenCurveExactlyWhenIncludeOpenCurvesIsOn() {
+        for seed in 0..<15 {
+            let curve = makeOpenCurve()
+            var params = EvolutionParams(
+                generationCount: 1, extrudeWeight: 0.0, splitWeight: 1.0,
+                splitDisplacementMin: 0.1, splitDisplacementMax: 0.1,
+                generationSeed: seed, maxVertexBudget: 10_000
+            )
+            params.includeOpenCurves = true
+            let result = GenerationalEvolutionEngine.process(polygons: [curve], params: params)
+            guard result.count == 1 else { return XCTFail("seed \(seed): split never adds a polygon") }
+            XCTAssertNotEqual(result[0], curve, "seed \(seed): the curve should have been split")
+
+            let segCount = curve.points.count / 4
+            let segRoll = SubdivisionEngine.centreHash(seed: seed, cycle: 6)  // cycleBase 0 + 6
+            let segIdx  = min(segCount - 1, Int(segRoll * Double(segCount)))
+            let base = segIdx * 4
+            let seg = Array(curve.points[base..<(base + 4)])
+            let splitPt = BezierMath.split(seg: seg, t: 0.5).left[3]  // default position, always the midpoint
+
+            let sideSeed = seed &+ 725_827_609
+            let sideRoll = SubdivisionEngine.centreHash(seed: sideSeed, cycle: 0)  // cycleBase 0
+            let baseNormal = ExtensionEngine.outwardNormal(of: curve, segIdx: segIdx)
+            let outward = sideRoll < 0.5 ? -baseNormal : baseNormal
+            let expected = Vector2D(x: splitPt.x + outward.x * 0.1, y: splitPt.y + outward.y * 0.1)
+
+            let newAnchor = result[0].points[base + 3]
+            XCTAssertEqual(newAnchor.distance(to: expected), 0, accuracy: 1e-9, "seed \(seed)")
+        }
     }
 
-    func testSplitNeverTargetsOpenCurveAcrossManySeedsWithBothOperatorsActive() {
-        // A closed polygon and an open curve both present, both operators enabled —
-        // Split must only ever affect the closed polygon, across many seeds.
+    func testSplitCanTargetEitherShapeInMixedSetWhenIncludeOpenCurvesIsOn() {
+        // A closed polygon and an open curve both present, includeOpenCurves on —
+        // Split should now be able to land on either, unlike before this section's
+        // work when it was always closed-only regardless of the flag.
         let square = makeSquare()
         let curve = makeOpenCurve()
-        for seedTry in 0..<25 {
+        var curveWasSplit = false
+        var squareWasSplit = false
+        for seedTry in 0..<40 {
             var params = EvolutionParams(
-                generationCount: 8, extrudeWeight: 1.0, splitWeight: 1.0,
-                extrudeRunLengthMin: 1, extrudeRunLengthMax: 1,
-                extrudeDistanceMin: 0.05, extrudeDistanceMax: 0.1,
-                splitDisplacementMin: 0.05, splitDisplacementMax: 0.1,
+                generationCount: 1, extrudeWeight: 0.0, splitWeight: 1.0,
+                splitDisplacementMin: 0.1, splitDisplacementMax: 0.1,
                 generationSeed: seedTry, maxVertexBudget: 10_000
             )
-            params.extrudeIncludeOpenCurves = true
+            params.includeOpenCurves = true
             let result = GenerationalEvolutionEngine.process(polygons: [square, curve], params: params)
-            let survivingCurve = result.first { $0.type == .openSpline }
-            XCTAssertEqual(survivingCurve?.points.count, curve.points.count,
-                           "seed \(seedTry): open curve's point count changed — Split must have targeted it, which should never happen")
+            if result.first(where: { $0.type == .openSpline })?.points.count != curve.points.count { curveWasSplit = true }
+            if result.first(where: { $0.type == .spline })?.points.count != square.points.count { squareWasSplit = true }
         }
+        XCTAssertTrue(curveWasSplit, "across 40 seeds, Split should target the open curve at least once")
+        XCTAssertTrue(squareWasSplit, "across 40 seeds, Split should also still target the closed polygon at least once")
     }
 
     func testExtrudeOnOpenCurveNeverWrapsRunPastCurveEnd() {
@@ -449,7 +474,7 @@ final class GenerationalEvolutionEngineTests: XCTestCase {
                 extrudeDistanceMin: 0.05, extrudeDistanceMax: 0.1,
                 generationSeed: seedTry, maxVertexBudget: 10_000
             )
-            params.extrudeIncludeOpenCurves = true
+            params.includeOpenCurves = true
 
             // Replicate applyExtrude's own startSeg roll (cycleBase=0 for
             // generation 0, cycleBase+4 is the start-segment slot) to compute the
@@ -472,7 +497,7 @@ final class GenerationalEvolutionEngineTests: XCTestCase {
             extrudeDistanceMin: 0.05, extrudeDistanceMax: 0.15,
             generationSeed: 11, maxVertexBudget: 10_000
         )
-        params.extrudeIncludeOpenCurves = true
+        params.includeOpenCurves = true
         let a = GenerationalEvolutionEngine.process(polygons: [curve], params: params)
         let b = GenerationalEvolutionEngine.process(polygons: [curve], params: params)
         XCTAssertEqual(a, b)
@@ -494,7 +519,7 @@ final class GenerationalEvolutionEngineTests: XCTestCase {
                 extrudeDistanceMin: distance, extrudeDistanceMax: distance,
                 generationSeed: seedTry, maxVertexBudget: 10_000
             )
-            params.extrudeIncludeOpenCurves = true
+            params.includeOpenCurves = true
             let result = GenerationalEvolutionEngine.process(polygons: [curve], params: params)
             guard result.count == 2 else { XCTFail("seed \(seedTry): expected a quad"); continue }
 
@@ -525,7 +550,7 @@ final class GenerationalEvolutionEngineTests: XCTestCase {
                 extrudeDistanceMin: distance, extrudeDistanceMax: distance,
                 generationSeed: seedTry, maxVertexBudget: 10_000
             )
-            params.extrudeIncludeOpenCurves = true
+            params.includeOpenCurves = true
 
             let startRoll = SubdivisionEngine.centreHash(seed: seedTry, cycle: 4)
             let startSeg  = min(segments - 1, Int(startRoll * Double(segments)))
@@ -569,9 +594,9 @@ final class GenerationalEvolutionEngineTests: XCTestCase {
             extrudeDistanceMin: 0.05, extrudeDistanceMax: 0.15,
             generationSeed: 21, maxVertexBudget: 10_000
         )
-        paramsOff.extrudeIncludeOpenCurves = false
+        paramsOff.includeOpenCurves = false
         var paramsOn = paramsOff
-        paramsOn.extrudeIncludeOpenCurves = true
+        paramsOn.includeOpenCurves = true
 
         let resultOff = GenerationalEvolutionEngine.process(polygons: [square], params: paramsOff)
         let resultOn  = GenerationalEvolutionEngine.process(polygons: [square], params: paramsOn)
@@ -590,7 +615,7 @@ final class GenerationalEvolutionEngineTests: XCTestCase {
             extrudeDistanceMin: 0.05, extrudeDistanceMax: 0.15,
             generationSeed: 8, maxVertexBudget: 10_000
         )
-        paramsExplicitOff.extrudeIncludeOpenCurves = true
+        paramsExplicitOff.includeOpenCurves = true
         paramsExplicitOff.extrudeOpenCurveBothSides = false
 
         let paramsUnset = paramsExplicitOff
@@ -615,7 +640,7 @@ final class GenerationalEvolutionEngineTests: XCTestCase {
                 extrudeDistanceMin: distance, extrudeDistanceMax: distance,
                 generationSeed: seedTry, maxVertexBudget: 10_000
             )
-            params.extrudeIncludeOpenCurves = true
+            params.includeOpenCurves = true
             params.extrudeOpenCurveBothSides = true
 
             let edgeSeed = seedTry &+ (1 &* 3_267_000_013)
@@ -657,7 +682,7 @@ final class GenerationalEvolutionEngineTests: XCTestCase {
                 extrudeDistanceMin: distance, extrudeDistanceMax: distance,
                 generationSeed: seedTry, maxVertexBudget: 10_000
             )
-            params.extrudeIncludeOpenCurves = true
+            params.includeOpenCurves = true
             params.extrudeOpenCurveBothSides = true
 
             let startRoll = SubdivisionEngine.centreHash(seed: seedTry, cycle: 4)
@@ -686,7 +711,7 @@ final class GenerationalEvolutionEngineTests: XCTestCase {
                 extrudeDistanceMin: distance, extrudeDistanceMax: distance,
                 generationSeed: seedTry, maxVertexBudget: 10_000
             )
-            params.extrudeIncludeOpenCurves = true
+            params.includeOpenCurves = true
             params.extrudeOpenCurveBothSides = true
             params.extrudeAngleRandomized = true
 
@@ -729,7 +754,7 @@ final class GenerationalEvolutionEngineTests: XCTestCase {
             extrudeDistanceMin: 0.05, extrudeDistanceMax: 0.15,
             generationSeed: 14, maxVertexBudget: 10_000
         )
-        paramsBothSidesOff.extrudeIncludeOpenCurves = true
+        paramsBothSidesOff.includeOpenCurves = true
         paramsBothSidesOff.extrudeOpenCurveBothSides = false
         var paramsBothSidesOn = paramsBothSidesOff
         paramsBothSidesOn.extrudeOpenCurveBothSides = true
@@ -1264,22 +1289,90 @@ final class GenerationalEvolutionEngineTests: XCTestCase {
         }
     }
 
-    func testGraftClosedOnlyEvenWhenExtrudeIncludeOpenCurvesIsOn() {
-        // With only an open curve present and extrudeIncludeOpenCurves on, the
-        // operator-first path's Graft branch must still use the closed-only
-        // eligible list (mirroring Split) — with nothing closed to target, every
-        // generation should no-op regardless of how many times graft is rolled.
-        for seed in 0..<10 {
+    /// Graft gained open-curve support alongside Split (this section, 2026-07-11)
+    /// — `.wholeEdge` targets an open curve exactly like a closed polygon's edge,
+    /// via the same roll-independent site-coincidence invariant the closed-polygon
+    /// version of this test already uses (`place()` guarantees the source site's
+    /// point lands exactly on the target's, regardless of which site/mirror/
+    /// edge-matching was rolled) — only the segIdx roll needs replicating.
+    func testGraftWholeEdgeTargetsOpenCurveWhenIncludeOpenCurvesIsOn() {
+        for seed in 0..<20 {
             let curve = makeOpenCurve()
             let params = EvolutionParams(
-                generationCount: 3, extrudeWeight: 0.0, splitWeight: 0.0,
-                extrudeIncludeOpenCurves: true,
+                generationCount: 1, extrudeWeight: 0.0, splitWeight: 0.0,
+                includeOpenCurves: true,
                 graftSidesMin: 4, graftSidesMax: 4, graftWeight: 1.0,
                 generationSeed: seed, maxVertexBudget: 10_000
             )
             let result = GenerationalEvolutionEngine.process(polygons: [curve], params: params)
-            XCTAssertEqual(result, [curve], "seed \(seed)")
+            guard result.count == 2 else { return XCTFail("seed \(seed): expected a grafted piece on the open curve") }
+            XCTAssertEqual(result[0], curve, "seed \(seed): .wholeEdge is non-destructive to the parent")
+
+            let segCount = curve.points.count / 4
+            let segIdx = graftTargetSegIdx(seed: seed, segCount: segCount)
+            let base = segIdx * 4
+            let a0 = curve.points[base]
+            let a1 = curve.points[base + 3]
+            let expectedMid = Vector2D(x: (a0.x + a1.x) / 2, y: (a0.y + a1.y) / 2)
+
+            let placedSites = AttachmentSiteExtractor.sites(of: result[1])
+            let closest = placedSites.map { $0.point.distance(to: expectedMid) }.min() ?? .infinity
+            XCTAssertEqual(closest, 0, accuracy: 1e-9, "seed \(seed)")
         }
+    }
+
+    func testGraftSinglePointTargetsOpenCurveWhenIncludeOpenCurvesIsOn() {
+        for seed in 0..<15 {
+            let curve = makeOpenCurve()
+            let params = EvolutionParams(
+                generationCount: 1, extrudeWeight: 0.0, splitWeight: 0.0,
+                includeOpenCurves: true,
+                graftSidesMin: 4, graftSidesMax: 4, graftWeight: 1.0,
+                graftAttachmentMode: .singlePoint, graftPointSource: .existingVertex,
+                generationSeed: seed, maxVertexBudget: 10_000
+            )
+            let result = GenerationalEvolutionEngine.process(polygons: [curve], params: params)
+            guard result.count == 2 else { return XCTFail("seed \(seed): expected a grafted piece on the open curve") }
+            XCTAssertEqual(result[0], curve, "seed \(seed): .existingVertex must not touch the parent curve")
+
+            let segCount = curve.points.count / 4
+            let segIdx = graftTargetSegIdx(seed: seed, segCount: segCount)
+            let expectedAnchor = curve.points[segIdx * 4]
+
+            let placedSites = AttachmentSiteExtractor.sites(of: result[1])
+            let closest = placedSites.map { $0.point.distance(to: expectedAnchor) }.min() ?? .infinity
+            XCTAssertEqual(closest, 0, accuracy: 1e-9, "seed \(seed)")
+        }
+    }
+
+    func testGraftCanTargetEitherShapeInMixedSetWhenIncludeOpenCurvesIsOn() {
+        // .wholeEdge is non-destructive to whichever shape it targets, so
+        // "which shape changed" can't tell targets apart here — replicate the
+        // targetRoll (cycleBase+1) directly instead, same as `graftTargetSegIdx`
+        // replicates the segIdx roll elsewhere in this file. Both polygons pass
+        // the eligible-list filter (square is .spline, curve is .openSpline with
+        // includeOpenCurves on, both ≥4 points), so `eligible == [0, 1]` exactly
+        // matches the array's own indices.
+        let square = makeSquare()
+        let curve = makeOpenCurve()
+        var curveWasGrafted = false
+        var squareWasGrafted = false
+        for seedTry in 0..<40 {
+            let params = EvolutionParams(
+                generationCount: 1, extrudeWeight: 0.0, splitWeight: 0.0,
+                includeOpenCurves: true,
+                graftSidesMin: 4, graftSidesMax: 4, graftWeight: 1.0,
+                generationSeed: seedTry, maxVertexBudget: 10_000
+            )
+            let result = GenerationalEvolutionEngine.process(polygons: [square, curve], params: params)
+            guard result.count == 3 else { continue }
+
+            let targetRoll = SubdivisionEngine.centreHash(seed: seedTry, cycle: 1)  // cycleBase 0 + 1
+            let targetIdx  = min(1, Int(targetRoll * 2.0))
+            if targetIdx == 0 { squareWasGrafted = true } else { curveWasGrafted = true }
+        }
+        XCTAssertTrue(curveWasGrafted, "across 40 seeds, Graft should target the open curve at least once")
+        XCTAssertTrue(squareWasGrafted, "across 40 seeds, Graft should also still target the closed polygon at least once")
     }
 
     func testGraftWeightZeroExcludesGraftFromSelection() {
@@ -1853,6 +1946,113 @@ final class GenerationalEvolutionEngineTests: XCTestCase {
 
         let a = GenerationalEvolutionEngine.process(polygons: [square], params: params)
         let b = GenerationalEvolutionEngine.process(polygons: [square], params: params)
+        XCTAssertEqual(a, b)
+    }
+
+    // MARK: - includeOpenCurves legacy-key decode migration
+
+    /// Existing saved projects (from before the Extrude-only toggle was
+    /// generalized to all three operators) only ever wrote the old JSON key.
+    /// Confirms they still load with open-curve support enabled rather than
+    /// silently resetting to the new field's `false` default.
+    func testIncludeOpenCurvesDecodesFromLegacyExtrudeKeyName() throws {
+        let json = #"{ "name": "legacy", "extrudeIncludeOpenCurves": true }"#.data(using: .utf8)!
+        let decoded = try JSONDecoder().decode(EvolutionParams.self, from: json)
+        XCTAssertTrue(decoded.includeOpenCurves)
+    }
+
+    func testIncludeOpenCurvesDefaultsFalseWhenNeitherKeyPresent() throws {
+        let json = #"{ "name": "fresh" }"#.data(using: .utf8)!
+        let decoded = try JSONDecoder().decode(EvolutionParams.self, from: json)
+        XCTAssertFalse(decoded.includeOpenCurves)
+    }
+
+    func testIncludeOpenCurvesPrefersNewKeyOverLegacyWhenBothPresent() throws {
+        // A project re-saved by a build that writes the new key — the new key
+        // should win even if a stale legacy key is also somehow still present.
+        let json = #"{ "name": "resaved", "includeOpenCurves": false, "extrudeIncludeOpenCurves": true }"#.data(using: .utf8)!
+        let decoded = try JSONDecoder().decode(EvolutionParams.self, from: json)
+        XCTAssertFalse(decoded.includeOpenCurves)
+    }
+
+    // MARK: - Graft reveal tween (strength)
+
+    /// `process(polygons:params:phase:)` never actually produces `strength == 0`
+    /// exactly through the public API (a `partial` of 0 short-circuits before
+    /// `applyGeneration` is even called — see its own `guard partial > 1e-9`), so
+    /// this compares an explicit half-strength phase against the fully-applied
+    /// (strength 1.0) result instead: every point of the half-strength piece must
+    /// sit exactly halfway between the anchor and the corresponding full-strength
+    /// point — a roll-independent invariant (both runs share every roll except the
+    /// final reveal-scale step, so point order/count/identity match exactly).
+    func testGraftWholeEdgeRevealTweensExactlyAtHalfStrength() {
+        for seed in 0..<10 {
+            let square = makeSquare()
+            let params = EvolutionParams(
+                generationCount: 1, extrudeWeight: 0.0, splitWeight: 0.0,
+                graftSidesMin: 4, graftSidesMax: 4, graftWeight: 1.0,
+                generationSeed: seed, maxVertexBudget: 10_000
+            )
+            let fullResult = GenerationalEvolutionEngine.process(polygons: [square], params: params)
+            let halfResult = GenerationalEvolutionEngine.process(polygons: [square], params: params, phase: 0.5)
+            guard fullResult.count == 2, halfResult.count == 2 else { return XCTFail("seed \(seed)") }
+            let fullPiece = fullResult[1], halfPiece = halfResult[1]
+            guard fullPiece.points.count == halfPiece.points.count else {
+                return XCTFail("seed \(seed): reveal tween must not change point structure")
+            }
+
+            let segCount = square.points.count / 4
+            let segIdx = graftTargetSegIdx(seed: seed, segCount: segCount)
+            let base = segIdx * 4
+            let a0 = square.points[base], a1 = square.points[base + 3]
+            let anchor = Vector2D(x: (a0.x + a1.x) / 2, y: (a0.y + a1.y) / 2)
+
+            for i in 0..<fullPiece.points.count {
+                let expectedHalf = Vector2D(x: anchor.x + (fullPiece.points[i].x - anchor.x) * 0.5,
+                                             y: anchor.y + (fullPiece.points[i].y - anchor.y) * 0.5)
+                XCTAssertEqual(halfPiece.points[i].distance(to: expectedHalf), 0, accuracy: 1e-9, "seed \(seed) point \(i)")
+            }
+        }
+    }
+
+    func testGraftSinglePointRevealTweensExactlyAtHalfStrength() {
+        for seed in 0..<10 {
+            let square = makeSquare()
+            let params = EvolutionParams(
+                generationCount: 1, extrudeWeight: 0.0, splitWeight: 0.0,
+                graftSidesMin: 4, graftSidesMax: 4, graftWeight: 1.0,
+                graftAttachmentMode: .singlePoint, graftPointSource: .existingVertex,
+                generationSeed: seed, maxVertexBudget: 10_000
+            )
+            let fullResult = GenerationalEvolutionEngine.process(polygons: [square], params: params)
+            let halfResult = GenerationalEvolutionEngine.process(polygons: [square], params: params, phase: 0.5)
+            guard fullResult.count == 2, halfResult.count == 2 else { return XCTFail("seed \(seed)") }
+            let fullPiece = fullResult[1], halfPiece = halfResult[1]
+            guard fullPiece.points.count == halfPiece.points.count else {
+                return XCTFail("seed \(seed): reveal tween must not change point structure")
+            }
+
+            let segCount = square.points.count / 4
+            let segIdx = graftTargetSegIdx(seed: seed, segCount: segCount)
+            let anchor = square.points[segIdx * 4]
+
+            for i in 0..<fullPiece.points.count {
+                let expectedHalf = Vector2D(x: anchor.x + (fullPiece.points[i].x - anchor.x) * 0.5,
+                                             y: anchor.y + (fullPiece.points[i].y - anchor.y) * 0.5)
+                XCTAssertEqual(halfPiece.points[i].distance(to: expectedHalf), 0, accuracy: 1e-9, "seed \(seed) point \(i)")
+            }
+        }
+    }
+
+    func testGraftRevealTweenIsDeterministic() {
+        let square = makeSquare()
+        let params = EvolutionParams(
+            generationCount: 1, extrudeWeight: 0.0, splitWeight: 0.0,
+            graftSidesMin: 4, graftSidesMax: 4, graftWeight: 1.0,
+            generationSeed: 5, maxVertexBudget: 10_000
+        )
+        let a = GenerationalEvolutionEngine.process(polygons: [square], params: params, phase: 0.3)
+        let b = GenerationalEvolutionEngine.process(polygons: [square], params: params, phase: 0.3)
         XCTAssertEqual(a, b)
     }
 }

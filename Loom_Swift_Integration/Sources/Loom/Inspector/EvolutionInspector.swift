@@ -165,7 +165,7 @@ struct EvolutionInspector: View {
             InspectorField("Count") {
                 FloatEntryField(value: intAsDoubleBinding(\.generationCount), width: 50, fractionDigits: 0)
             }
-            .loomHelp("How many generations to run. Each generation applies exactly one mutation operator (extrude or split, chosen by weight) to one eligible closed polygon in the set.")
+            .loomHelp("How many generations to run. Each generation applies exactly one mutation operator (Extrude, Split, or Graft, chosen by weight) to one eligible polygon in the set — closed only by default, or closed and open curves alike with Include Open Curves below.")
 
             InspectorField("Seed") {
                 IntEntryField(value: bindEVInt(\.generationSeed), width: 140)
@@ -176,6 +176,11 @@ struct EvolutionInspector: View {
                 FloatEntryField(value: intAsDoubleBinding(\.maxVertexBudget), width: 70, fractionDigits: 0)
             }
             .loomHelp("Hard cap on total vertex count across all polygons in the set. Required, not optional — extrusion and splitting both grow vertex count every generation; without a cap, high generation counts risk runaway complexity. A generation that would exceed this budget is rejected and the chain stops there.")
+
+            InspectorField("Include Open Curves") {
+                Toggle("", isOn: bindEV(\.includeOpenCurves)).labelsHidden()
+            }
+            .loomHelp("Off (default): every operator (Extrude, Split, Graft) only targets closed polygons. On: open curves also become eligible targets for all three. An open curve has no interior, so there's no single principled outward direction the way a closed polygon has — each eligible edge instead independently picks one of its two sides at random, per operator instance. See Extrude's own Both Sides toggle below for an open-curve-only extra.")
         }
     }
 
@@ -203,7 +208,7 @@ struct EvolutionInspector: View {
     // MARK: - Generational: extrude operator
 
     private var extrudeOperatorSection: some View {
-        let includeOpenCurves = bindEV(\.extrudeIncludeOpenCurves).wrappedValue
+        let includeOpenCurves = bindEV(\.includeOpenCurves).wrappedValue
 
         return InspectorSection("Extrude", isCollapsed: $extrudeOpCollapsed) {
             InspectorField("Weight") {
@@ -234,11 +239,6 @@ struct EvolutionInspector: View {
                 Toggle("", isOn: bindEV(\.extrudeAngleRandomized)).labelsHidden()
             }
             .loomHelp("Off (default): extrusion is exactly perpendicular to its edge. On: direction is randomized up to ±45° from perpendicular (45°–135° measured from the edge itself), resampled per edge.")
-
-            InspectorField("Include Open Curves") {
-                Toggle("", isOn: bindEV(\.extrudeIncludeOpenCurves)).labelsHidden()
-            }
-            .loomHelp("Off (default): Extrude only targets closed polygons — Generational Evolution's Split operator is unaffected either way, always closed-only. On: open curves also become eligible Extrude targets. An open curve has no interior, so there's no single principled outward direction the way a closed polygon has — each eligible edge instead independently picks one of its two sides at random.")
 
             if includeOpenCurves {
                 InspectorField("Both Sides") {
@@ -299,6 +299,13 @@ struct EvolutionInspector: View {
             }
             .loomHelp("Number of sides `n` of the primitive grafted on each generation, resampled from this range (RPSR). n≤2 degenerates to a bare line (no meaningful 2-sided polygon) — n=1 is a line by design, the most basic \"polygon.\" n≥3 is a plain regular n-gon; unlike Assembly Fulguration's fixed square/triangle/pentagon kit, any n is reachable.")
 
+            InspectorField("Scale") {
+                FloatEntryField(value: bindEV(\.graftScaleMin), width: 50)
+                Text("–").foregroundStyle(.secondary)
+                FloatEntryField(value: bindEV(\.graftScaleMax), width: 50)
+            }
+            .loomHelp("Uniform size multiplier for the grafted primitive, resampled each generation (RPSR) — set both ends equal for a fixed scale. Primitives are generated at a fixed unit size regardless of the target shape's own scale, so grafts can appear far too large or small without this; lower it to match small geometry. Independent of Distortion below, which only affects aspect ratio, not overall size. 1–1 (default).")
+
             InspectorField("Distortion") {
                 FloatEntryField(value: bindEV(\.graftDistortionMin), width: 50)
                 Text("–").foregroundStyle(.secondary)
@@ -313,7 +320,7 @@ struct EvolutionInspector: View {
                 }
                 .labelsHidden()
                 .pickerStyle(.segmented)
-                .frame(maxWidth: 220)
+                .frame(maxWidth: 160)
             }
             .loomHelp("Preserve Size: the grafted primitive keeps its own native scale at the joint (mismatched edge lengths — rougher, found-object). Match Length: additionally rescaled so its attachment edge/span matches the parent's exactly (clean joinery). No effect for Single Point attachment (a point has no length to match).")
 
@@ -324,8 +331,8 @@ struct EvolutionInspector: View {
                     Text("Partial Edge").tag(GraftAttachmentMode.partialEdge)
                 }
                 .labelsHidden()
-                .pickerStyle(.segmented)
-                .frame(maxWidth: 260)
+                .pickerStyle(.menu)
+                .frame(maxWidth: 150)
             }
             .loomHelp("Whole Edge: the primitive's chosen edge is matched exactly onto the parent's target edge — closest to Extrude. Single Point: only one coordinate is shared, leaving departure direction free — closest to Split/Branch. Partial Edge: matches a sub-span of the parent edge rather than the whole thing. All three exclude only the specific matched site from curvature/articulation below — every other edge is free.")
 
@@ -337,7 +344,7 @@ struct EvolutionInspector: View {
                     }
                     .labelsHidden()
                     .pickerStyle(.segmented)
-                    .frame(maxWidth: 220)
+                    .frame(maxWidth: 170)
                 }
                 .loomHelp("Existing Vertex (default): attaches from the target edge's own start anchor, touching nothing on the parent. Newly Inserted: splits the target edge first (reusing Split's own Position range below), undisplaced, then attaches from the new anchor — matches Split's own behavior.")
 
@@ -392,7 +399,7 @@ struct EvolutionInspector: View {
                 }
                 .labelsHidden()
                 .pickerStyle(.segmented)
-                .frame(maxWidth: 180)
+                .frame(maxWidth: 120)
             }
             .loomHelp("Jitter: each joint's displacement direction and magnitude are independently randomized. Zig Zag: displacement alternates side deterministically joint-to-joint, magnitude still randomized — a regular zigzag rather than a scatter.")
 

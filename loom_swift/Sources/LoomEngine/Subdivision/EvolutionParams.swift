@@ -129,21 +129,28 @@ public struct EvolutionParams: Equatable, Codable, Sendable {
     /// sampled per extruded edge.
     public var extrudeAngleRandomized: Bool
 
-    /// false (default): Extrude's target pool is closed polygons (`.spline`) only,
-    /// original/unchanged behavior — Split's target pool is unaffected either way,
-    /// always closed-only. true: `.openSpline` polygons also become eligible Extrude
-    /// targets (Specs/GeometricLifecycle.md §4.4.6). `ExtensionEngine.outwardNormal`
-    /// needs no change to support this — its rotate-90°-of-edge-direction formula
-    /// never actually depended on the polygon having an interior; it's just no
-    /// longer principled as "outward" for a curve, only as "one of its two sides."
-    public var extrudeIncludeOpenCurves: Bool
+    /// false (default): every operator's target pool is closed polygons (`.spline`)
+    /// only, original/unchanged behavior. true: `.openSpline` polygons also become
+    /// eligible targets for Extrude, Split, *and* Graft alike (Specs/
+    /// GeometricLifecycle.md §4.4.6) — a general, pass-wide toggle, not an
+    /// Extrude-specific one (renamed from `extrudeIncludeOpenCurves` when Split/Graft
+    /// gained the same support; the old JSON key is still accepted on decode, see
+    /// `init(from:)`, so existing saved projects keep working unchanged).
+    /// `ExtensionEngine.outwardNormal` needs no change to support this — its
+    /// rotate-90°-of-edge-direction formula never actually depended on the polygon
+    /// having an interior; it's just no longer principled as "outward" for a curve,
+    /// only as "one of its two sides" (see `GenerationalEvolutionEngine
+    /// .openCurveSafeOutward`, which all three operators now route through for
+    /// `.openSpline` targets).
+    public var includeOpenCurves: Bool
 
     /// false (default): each eligible curve edge extrudes on exactly one RPSR-chosen
     /// side (§4.4.6 step 2 — a per-edge coin-flip between the edge's two
     /// perpendiculars). true: a *second*, independent per-edge roll additionally
     /// decides whether that edge extrudes on one side or both — "one or more sides"
-    /// per §4.4.6's original framing. Has no effect on closed-polygon targets or when
-    /// `extrudeIncludeOpenCurves` is off.
+    /// per §4.4.6's original framing. Extrude-specific (Split/Graft have no "both
+    /// sides" analogue — Split makes one point, Graft attaches one piece). Has no
+    /// effect on closed-polygon targets or when `includeOpenCurves` is off.
     public var extrudeOpenCurveBothSides: Bool
 
     /// Where along the target edge the split occurs (de Casteljau t-parameter,
@@ -191,6 +198,17 @@ public struct EvolutionParams: Equatable, Codable, Sendable {
     /// distortion.
     public var graftDistortionMin: Double
     public var graftDistortionMax: Double
+
+    /// Uniform RPSR scale multiplier applied to each Graft primitive, on top of
+    /// (multiplied together with) the independent-axis Distortion above — Scale
+    /// controls overall size, Distortion controls aspect ratio, independently.
+    /// `AssemblyPrimitiveKit.plainPolygon`'s primitives are generated at a fixed
+    /// unit size (~radius 0.5) regardless of the target geometry's own scale, so
+    /// without this a graft can dwarf a small target shape with no way to correct
+    /// it. 1–1 (default) = unit size, unchanged from before this field existed
+    /// (equal min/max = a fixed, non-random scale).
+    public var graftScaleMin: Double
+    public var graftScaleMax: Double
 
     /// Relative selection weight alongside `extrudeWeight`/`splitWeight` (same
     /// three-way roll, widened from two). 0 (default) excludes Graft from
@@ -328,7 +346,7 @@ public struct EvolutionParams: Equatable, Codable, Sendable {
         extrudeDistanceMax:       Double                  = 0.2,
         extrudeAsymmetricSides:   Bool                    = false,
         extrudeAngleRandomized:   Bool                    = false,
-        extrudeIncludeOpenCurves: Bool                    = false,
+        includeOpenCurves:        Bool                    = false,
         extrudeOpenCurveBothSides: Bool                   = false,
         splitPositionMin:         Double                  = 0.5,
         splitPositionMax:         Double                  = 0.5,
@@ -340,6 +358,8 @@ public struct EvolutionParams: Equatable, Codable, Sendable {
         graftSidesMax:            Int                     = 4,
         graftDistortionMin:       Double                  = 1.0,
         graftDistortionMax:       Double                  = 1.0,
+        graftScaleMin:            Double                  = 1.0,
+        graftScaleMax:            Double                  = 1.0,
         graftWeight:              Double                  = 0.0,
         graftEdgeMatching:        AssemblyEdgeMatching    = .preserveSize,
         graftAttachmentMode:      GraftAttachmentMode     = .wholeEdge,
@@ -385,7 +405,7 @@ public struct EvolutionParams: Equatable, Codable, Sendable {
         self.extrudeDistanceMax       = extrudeDistanceMax
         self.extrudeAsymmetricSides   = extrudeAsymmetricSides
         self.extrudeAngleRandomized   = extrudeAngleRandomized
-        self.extrudeIncludeOpenCurves = extrudeIncludeOpenCurves
+        self.includeOpenCurves        = includeOpenCurves
         self.extrudeOpenCurveBothSides = extrudeOpenCurveBothSides
         self.splitPositionMin         = splitPositionMin
         self.splitPositionMax         = splitPositionMax
@@ -397,6 +417,8 @@ public struct EvolutionParams: Equatable, Codable, Sendable {
         self.graftSidesMax            = graftSidesMax
         self.graftDistortionMin       = graftDistortionMin
         self.graftDistortionMax       = graftDistortionMax
+        self.graftScaleMin            = graftScaleMin
+        self.graftScaleMax            = graftScaleMax
         self.graftWeight              = graftWeight
         self.graftEdgeMatching        = graftEdgeMatching
         self.graftAttachmentMode      = graftAttachmentMode
@@ -430,12 +452,14 @@ public struct EvolutionParams: Equatable, Codable, Sendable {
         case convergenceTargetSetName, convergencePressure, convergenceMode, convergenceDuration
         case generationCount, extrudeWeight, splitWeight
         case extrudeRunLengthMin, extrudeRunLengthMax, extrudeDistanceMin, extrudeDistanceMax
-        case extrudeAsymmetricSides, extrudeAngleRandomized, extrudeIncludeOpenCurves
+        case extrudeAsymmetricSides, extrudeAngleRandomized
+        case includeOpenCurves
         case extrudeOpenCurveBothSides
         case splitPositionMin, splitPositionMax
         case splitDisplacementMin, splitDisplacementMax, generationSeed, maxVertexBudget
         case splitBulgePinchMin, splitBulgePinchMax
         case graftSidesMin, graftSidesMax, graftDistortionMin, graftDistortionMax
+        case graftScaleMin, graftScaleMax
         case graftWeight, graftEdgeMatching
         case graftAttachmentMode, graftDepartureAngleMin, graftDepartureAngleMax, graftPointSource
         case graftPartialPositionMin, graftPartialPositionMax, graftPartialSpanMin, graftPartialSpanMax
@@ -443,6 +467,14 @@ public struct EvolutionParams: Equatable, Codable, Sendable {
         case graftArticulationCountMin, graftArticulationCountMax, graftArticulationPattern
         case graftArticulationAmountMin, graftArticulationAmountMax
         case generationPhase, varySeedPerCycle, directionalSelector
+    }
+
+    /// Not part of `CodingKeys` — a case here with no matching stored property
+    /// would break the compiler's automatic `Encodable` synthesis. Read via its
+    /// own separate keyed container over the same decoder, only as a decode-time
+    /// fallback for `includeOpenCurves` (see `init(from:)`); never written.
+    private enum LegacyCodingKeys: String, CodingKey {
+        case extrudeIncludeOpenCurves
     }
 
     public init(from decoder: Decoder) throws {
@@ -468,7 +500,19 @@ public struct EvolutionParams: Equatable, Codable, Sendable {
         extrudeDistanceMax       = try c.decodeIfPresent(Double.self,                  forKey: .extrudeDistanceMax)       ?? 0.2
         extrudeAsymmetricSides   = try c.decodeIfPresent(Bool.self,                    forKey: .extrudeAsymmetricSides)   ?? false
         extrudeAngleRandomized   = try c.decodeIfPresent(Bool.self,                    forKey: .extrudeAngleRandomized)   ?? false
-        extrudeIncludeOpenCurves = try c.decodeIfPresent(Bool.self,                    forKey: .extrudeIncludeOpenCurves) ?? false
+        // New key first; fall back to the pre-rename legacy key (via a separate
+        // keyed container — it isn't a case of the main CodingKeys, since a case
+        // with no matching stored property would break Encodable synthesis) so
+        // existing saved projects (which only ever wrote "extrudeIncludeOpenCurves")
+        // keep loading with open-curve support enabled, not silently reset to false.
+        if let v = try c.decodeIfPresent(Bool.self, forKey: .includeOpenCurves) {
+            includeOpenCurves = v
+        } else if let legacy = try? decoder.container(keyedBy: LegacyCodingKeys.self),
+                  let v = try legacy.decodeIfPresent(Bool.self, forKey: .extrudeIncludeOpenCurves) {
+            includeOpenCurves = v
+        } else {
+            includeOpenCurves = false
+        }
         extrudeOpenCurveBothSides = try c.decodeIfPresent(Bool.self,                   forKey: .extrudeOpenCurveBothSides) ?? false
         splitPositionMin         = try c.decodeIfPresent(Double.self,                  forKey: .splitPositionMin)         ?? 0.5
         splitPositionMax         = try c.decodeIfPresent(Double.self,                  forKey: .splitPositionMax)         ?? 0.5
@@ -480,6 +524,8 @@ public struct EvolutionParams: Equatable, Codable, Sendable {
         graftSidesMax            = try c.decodeIfPresent(Int.self,                     forKey: .graftSidesMax)            ?? 4
         graftDistortionMin       = try c.decodeIfPresent(Double.self,                  forKey: .graftDistortionMin)       ?? 1.0
         graftDistortionMax       = try c.decodeIfPresent(Double.self,                  forKey: .graftDistortionMax)       ?? 1.0
+        graftScaleMin            = try c.decodeIfPresent(Double.self,                  forKey: .graftScaleMin)            ?? 1.0
+        graftScaleMax            = try c.decodeIfPresent(Double.self,                  forKey: .graftScaleMax)            ?? 1.0
         graftWeight              = try c.decodeIfPresent(Double.self,                  forKey: .graftWeight)              ?? 0.0
         graftEdgeMatching        = try c.decodeIfPresent(AssemblyEdgeMatching.self,     forKey: .graftEdgeMatching)        ?? .preserveSize
         graftAttachmentMode      = try c.decodeIfPresent(GraftAttachmentMode.self,      forKey: .graftAttachmentMode)      ?? .wholeEdge

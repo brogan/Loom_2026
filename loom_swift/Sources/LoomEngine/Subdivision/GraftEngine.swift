@@ -3,17 +3,17 @@ import Foundation
 /// The n-gon Graft operator (Specs/GeometricLifecycle.md §4.4.8) — a generalization
 /// of Generational Evolution's Extrude/Split operators, parameterized by the number
 /// of sides of the primitive being grafted rather than two separately hand-built
-/// shapes. **Step 1 only** (§4.4.8.6): n-gon generation + distortion, proven in
-/// isolation. No attachment yet — `generatePrimitive` returns a freestanding piece
-/// in its own local frame, not yet placed against any parent geometry, and this
-/// isn't called from `GenerationalEvolutionEngine.applyGeneration` yet.
+/// shapes. `generatePrimitive` builds one freestanding piece (n-gon generation,
+/// distortion, overall scale) in its own local frame — attachment to the parent
+/// happens afterward, in `GenerationalEvolutionEngine`'s three `applyGraft*`
+/// functions.
 ///
 /// Deliberately reuses Assembly Fulguration's existing machinery (§5.12) rather
 /// than re-deriving it — `AssemblyPrimitiveKit.plainPolygon(sides:)` (relaxed from
 /// `private` to internal for this) already generates an arbitrary-sided plain
 /// polygon, and `.deformed` already applies the independent x/y "stretch and
 /// squash" this needs. The only new logic here is the n≤2→line degeneracy and the
-/// RPSR sampling of `n` and distortion from `EvolutionParams`.
+/// RPSR sampling of `n`, distortion, and overall scale from `EvolutionParams`.
 enum GraftEngine {
 
     /// One generated Graft primitive, before any attachment: the piece itself (in
@@ -65,7 +65,23 @@ enum GraftEngine {
         let sx = distLo + sxRoll * (distHi - distLo)
         let sy = distLo + syRoll * (distHi - distLo)
 
-        let piece = AssemblyPrimitiveKit.deformed(base, scaleX: sx, scaleY: sy)
+        // Uniform overall-size multiplier, independent of the per-axis distortion
+        // above — `plainPolygon`/`straightLine` are generated at a fixed unit size
+        // regardless of the target geometry's own scale, so without this a graft
+        // has no way to be sized down (or up) to match. Own salted seed rather than
+        // a fourth `rollBase+N` slot: `rollBase` is reused as the *cycle* argument
+        // on this distinct seed, so it can't collide with the sides/distortion
+        // rolls above (same `seed`, different cycles) or with any of the three
+        // attachment functions' own `cycleBase+6/7/8` rolls (same `graftSeed`
+        // passed in as this function's `seed`, but those are different cycles on
+        // it too, and this is a wholly different seed regardless).
+        let scaleLo = min(params.graftScaleMin, params.graftScaleMax)
+        let scaleHi = max(params.graftScaleMin, params.graftScaleMax)
+        let scaleSeed = seed &+ 812_374_601
+        let scaleRoll = SubdivisionEngine.centreHash(seed: scaleSeed, cycle: rollBase)
+        let scale = scaleLo + scaleRoll * (scaleHi - scaleLo)
+
+        let piece = AssemblyPrimitiveKit.deformed(base, scaleX: scale * sx, scaleY: scale * sy)
         return GeneratedPrimitive(piece: piece, sides: sides)
     }
 }

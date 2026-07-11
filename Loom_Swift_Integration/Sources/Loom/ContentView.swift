@@ -194,7 +194,7 @@ struct ContentView: View {
             InspectorPanel()
                 .environmentObject(controller)
                 .environmentObject(controller.audioController)
-                .frame(width: 280)
+                .frame(width: 320)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }

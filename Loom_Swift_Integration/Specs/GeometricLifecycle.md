@@ -420,15 +420,26 @@ uncontrolled complexity growth, reference-matching for metric quality), and vali
 the generation/fitness/lock loop on the simpler pair first makes it much easier to
 tell whether problems come from the core loop or from those two additions.
 
-#### 4.4.6 Open curves — side-extrude (complete, 2026-07-10)
+#### 4.4.6 Open curves — side-extrude, then widened to all three operators (complete, 2026-07-10; widened 2026-07-11)
 
-**Status:** all 5 steps implemented and tested.
+**2026-07-11 update:** raised directly by user request while debugging a pure-open-curve
+project where Split and Graft were silently no-ops — the Extrude-only scoping below
+turned out to be a real usability gap, not just an unfinished nice-to-have, once Graft
+(§4.4.8) existed as a third operator with the same problem. `extrudeIncludeOpenCurves`
+is renamed `EvolutionParams.includeOpenCurves` (general, not Extrude-specific; old
+JSON key still decoded for existing saved projects) and now gates Split and Graft's
+eligibility too, not just Extrude's. See "Widened to Split and Graft" at the end of
+this section for what changed and why the rest of this section's history is otherwise
+left as originally written.
+
+**Status:** all 5 original steps implemented and tested (Extrude-only, as scoped at the
+time); see the widening note at the end of this section for the 2026-07-11 follow-up.
 - **Step 1** (operator-first/per-operator-eligible-set restructuring):
-  `EvolutionParams.extrudeIncludeOpenCurves: Bool` (default `false`) gates it. With
-  it on, Extrude can target `.openSpline` polygons and a contiguous run correctly
+  `EvolutionParams.extrudeIncludeOpenCurves` (default `false`) gated it. With
+  it on, Extrude could target `.openSpline` polygons and a contiguous run correctly
   stops at an open curve's end instead of wrapping (folded into step 1 — see the
-  build-order note below). Split's eligibility is unaffected either way, always
-  closed-only.
+  build-order note below). Split's eligibility was unaffected either way, always
+  closed-only — see the widening note below for why that's no longer true.
 - **Step 2** (per-edge side roll): each edge of an eligible curve run now
   independently RPSR-picks one of `outwardNormal`'s two perpendiculars (`edgeSeed`
   cycle 3, the salted-per-edge namespace steps 1's asymmetry/angle rolls already
@@ -497,7 +508,9 @@ what that vector means geometrically.
   perpendicular direction, adding both resulting quads. Has no effect on closed-polygon
   targets, which keep using the single true-outward direction unaffected by this flag.
 
-**Why Split is deliberately excluded, not merely unfinished.**
+**Why Split is deliberately excluded, not merely unfinished (superseded 2026-07-11 —
+see "Widened to Split and Graft" below; kept as the original reasoning for why this
+was a deliberate scope cut at the time, not an oversight).**
 `GenerationalEvolutionEngine.applySplit` has no type guard today — nothing stops it
 from already running on an open curve if one reached it, using
 `BezierMath.centreSpline`'s anchor-average as a "centre"
@@ -553,6 +566,58 @@ that entirely rather than widening the stride and risking collisions.
    Curves** and (conditionally shown) **Both Sides** toggles; help.html's
    Generational Evolution table documents both.
 
+**Widened to Split and Graft (2026-07-11).** Split's original exclusion reasoning
+above no longer applied once it was revisited alongside Graft, which had the
+identical problem for the identical reason (built closed-only, no open-curve
+treatment ever designed). Both concerns from the original write-up were addressed
+directly rather than dismissed:
+- *"`applySplit`'s centroid-relative outward isn't a principled direction for an
+  open curve"* — true, and not attempted. Split's `outward` for a `.openSpline`
+  target now uses the same per-edge random-side pick Extrude already established
+  (§4.4.6 step 2) via a new shared helper, `openCurveSafeOutward`, rather than
+  `BezierMath.centreSpline`'s anchor-average. Closed-polygon targets keep the
+  original centroid-relative math completely unchanged.
+- *"Widening eligibility can't stay a single shared list, or Split becomes
+  open-curve-eligible as an accidental side effect"* — this concern is resolved
+  structurally rather than avoided: because Split (and now Graft) each got their
+  own deliberate, separately-designed open-curve treatment before eligibility was
+  widened, the widening is no longer "accidental." `GenerationalEvolutionEngine
+  .applyGeneration` actually *simplifies* back to a single shared eligible list
+  (one code path instead of two), with `includeOpenCurves` parameterizing the
+  type filter itself: `polygons[$0].type == .spline || (params.includeOpenCurves
+  && polygons[$0].type == .openSpline)`. Off (default) reduces to exactly
+  `type == .spline`, byte-for-byte identical to the pre-§4.4.6 original behavior.
+- **Graft's three attachment functions** (`applyGraftWholeEdge`/`SinglePoint`/
+  `PartialEdge`, §4.4.8) each had exactly one `ExtensionEngine.outwardNormal` call
+  for their own `outward`/`baseNormal` — routed through `openCurveSafeOutward` too,
+  each with its own salted-seed roll slot (`cycleBase + 8` on `graftSeed`, free on
+  every attachment mode). Nothing else in any of the three needed to change —
+  `eligibleSegments`, attachment-site construction, and `AssemblyFulgurationEngine
+  .place` were already type-agnostic.
+- **UI**: the toggle moved out of the Extrude section entirely, into
+  `EvolutionInspector`'s Generations section (Count/Seed/Vertex budget) as a
+  pass-wide **Include Open Curves** setting — it was never really an Extrude
+  concept, just implemented there first. Extrude's **Both Sides** toggle stays in
+  the Extrude section (genuinely Extrude-specific — Split makes one point, Graft
+  attaches one piece, neither has a "both sides" analogue).
+- **Panel width**: raised from this same investigation — the newer, denser Graft
+  UI section had several picker rows wider than the inspector panel's fixed
+  frame, clipping visibly. Bumped `InspectorPanel`'s fixed width 280→320pt and
+  right-sized Graft's oversized picker `maxWidth`s (one, Attachment, switched
+  from segmented to menu style to fit its three longer option labels) — unrelated
+  to the open-curve work itself but investigated and fixed in the same pass.
+- 8 new tests in `GenerationalEvolutionEngineTests.swift` replacing the 3 whose
+  premise ("Split/Graft never target an open curve") was intentionally reversed:
+  geometry-exact Split-on-open-curve (displaced point matches independently
+  replicated roll math including the new side pick), geometry-exact Graft
+  `.wholeEdge`/`.singlePoint`-on-open-curve (the same roll-independent
+  site-coincidence invariant the closed-polygon versions already use), two
+  mixed-set (one closed + one open) existence-proof sweeps confirming both
+  operators can now land on either shape type, and three Codable decode-migration
+  tests (legacy key alone, neither key, both keys with new-key-precedence)
+  protecting existing saved projects. Full suite at 671 tests, 0 failures; both
+  `loom_swift` and `Loom_Swift_Integration` build clean.
+
 #### 4.4.7 Open curves — curve grafting (V2, sketch only, deferred)
 
 The second half of the 2026-07-10 request — "generating further open curves from the
@@ -574,7 +639,7 @@ curve from an anchor point" is exactly §4.4.8's Graft operator at `n=1`,
 `attachmentMode: .singlePoint`. Kept here as the original narrower sketch; §4.4.8 is
 the fuller design and the one to build from.
 
-#### 4.4.8 The n-gon Graft operator (steps 1–6 complete, 2026-07-11)
+#### 4.4.8 The n-gon Graft operator (steps 1–6 complete; Scale + reveal tween follow-up complete, 2026-07-11)
 
 ##### 4.4.8.1 What it is, and what it subsumes
 
@@ -910,6 +975,48 @@ ships, not a blocking dependency for Graft's own first version.
 7. **Not this round:** generalizing Extrude/Split into Graft presets and retiring
    their separate implementations — the explicitly-deferred longer-term aim from
    §4.4.8.1, revisited once Graft is validated standalone.
+8. **Scale control + reveal tween (2026-07-11 follow-up, done).** Raised directly
+   by user request after testing steps 1–6 on a real project — grafted primitives
+   appeared far too large relative to the target geometry, with no way to correct
+   it, and Graft didn't respond to the Reveal driver's `strength` at all (a known
+   gap flagged since step 2 — Extrude/Split scale their own distance/displacement
+   by `strength`, Graft popped in fully every time).
+   - **Scale**: `AssemblyPrimitiveKit.plainPolygon`/`straightLine` generate at a
+     fixed unit size (~radius 0.5) regardless of the target's own scale — there
+     was previously no way to correct for a target shape much smaller (or
+     larger) than that. `EvolutionParams` gained `graftScaleMin/Max` (default
+     1–1, unchanged from before this field existed), a uniform RPSR multiplier
+     rolled in `GraftEngine.generatePrimitive` alongside the existing per-axis
+     Distortion and multiplied together with it (`scale * sx`, `scale * sy`) —
+     Scale controls overall size, Distortion controls aspect ratio,
+     independently. Own salted seed (`seed &+ 812_374_601`, reusing `rollBase`
+     itself as the *cycle* on that distinct seed) rather than a fourth
+     `rollBase+N` slot, sidestepping any risk of colliding with the three
+     attachment functions' own `cycleBase+6/7/8` rolls.
+   - **Reveal tween**: new `GenerationalEvolutionEngine.applyRevealScale`,
+     applied as the last step in all three attachment functions (after
+     placement and curvature/articulation) — scales the finished piece toward
+     `targetSite.point` (the exact coordinate `place()` already guarantees
+     coincidence at, for any attachment mode) by `strength`, so a graft now
+     visibly grows from its attachment point during a fractional-phase reveal
+     exactly like Extrude/Split already do, instead of popping in fully. A
+     no-op at `strength == 1.0` (a fully-applied generation), so this has zero
+     effect outside an active Reveal tween.
+   - **UI**: `EvolutionInspector`'s Graft section gained a **Scale** field
+     (Min–Max, positioned before Distortion — size rolled before shape
+     variation, matching `GraftEngine`'s own roll order) — no new UI needed for
+     the reveal tween since it reuses the existing Reveal driver Extrude/Split
+     already expose.
+   - 7 new tests: `GraftEngineTests.swift` gained geometry-exact scale-neutral/
+     uniform-multiplier/multiplicative-composition-with-distortion/range-bounds
+     coverage; `GenerationalEvolutionEngineTests.swift` gained geometry-exact
+     half-strength reveal tests for `.wholeEdge` and `.singlePoint` (every
+     point of the half-strength result sits exactly halfway between the
+     analytically-known anchor and the corresponding full-strength point — a
+     roll-independent invariant, since both runs share every roll except the
+     final reveal-scale step) plus a determinism test. Full suite at 678
+     tests, 0 failures; both `loom_swift` and `Loom_Swift_Integration` build
+     clean.
 
 ---
 

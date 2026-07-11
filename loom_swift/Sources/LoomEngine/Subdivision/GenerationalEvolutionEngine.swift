@@ -1,15 +1,16 @@
 import Foundation
 
 /// Prototype of the generational (artificial-life) evolution mode described in
-/// Specs/GeometricLifecycle.md §4.4. Only the extrude and split-and-displace
-/// mutation operators are implemented — no fitness measure or lock/graft selection
-/// yet (§4.4.5: validate the core generate loop on these two before adding the
-/// riskier pieces). Closed polygons (`.spline`) only, by default — Split remains
-/// closed-only unconditionally; Extrude can also target `.openSpline` polygons when
-/// `EvolutionParams.extrudeIncludeOpenCurves` is set (§4.4.6, complete): each eligible
-/// curve edge independently picks one of its two sides (there's no principled single
-/// "outward" for an open curve), and `extrudeOpenCurveBothSides` additionally lets an
-/// edge extrude both sides at once.
+/// Specs/GeometricLifecycle.md §4.4 — Extrude, Split, and the n-gon Graft operator
+/// (§4.4.8) — no fitness measure or lock selection yet (§4.4.5). Closed polygons
+/// (`.spline`) only, by default; `.openSpline` polygons also become eligible for
+/// all three operators when `EvolutionParams.includeOpenCurves` is set (§4.4.6,
+/// widened from Extrude-only to general). There's no principled single "outward"
+/// for an open curve, so every operator independently picks one of an eligible
+/// edge's two sides per instance — see `openCurveSafeOutward`, the shared helper
+/// all three route through. `extrudeOpenCurveBothSides` additionally lets an
+/// extruded edge grow on both sides at once — Extrude-specific, no Split/Graft
+/// analogue.
 public enum GenerationalEvolutionEngine {
 
     /// Per-side multiplier range for `EvolutionParams.extrudeAsymmetricSides` — each
@@ -199,69 +200,55 @@ public enum GenerationalEvolutionEngine {
         let seed = params.generationSeed
         let cycleBase = generation * 8
 
-        guard params.extrudeIncludeOpenCurves else {
-            // Original path — byte-for-byte unchanged from before §4.4.6/§4.4.8
-            // existed when graftWeight is 0 (the default): Target is drawn once
-            // from a single closed-only eligible list, then the operator is
-            // chosen; all three operators share that one target. Graft (§4.4.8)
-            // widens the two-way roll to three-way — totalWeight and opRoll's
-            // scale are identical to before whenever graftWeight is 0, so the
-            // extrude/split threshold boundary is unaffected.
-            let eligible = polygons.indices.filter { polygons[$0].type == .spline && polygons[$0].points.count >= 4 }
-            guard !eligible.isEmpty else { return polygons }
-
-            let targetRoll = SubdivisionEngine.centreHash(seed: seed, cycle: cycleBase + 1)
-            let targetIdx  = eligible[min(eligible.count - 1, Int(targetRoll * Double(eligible.count)))]
-
-            let totalWeight = max(params.extrudeWeight, 0) + max(params.splitWeight, 0) + max(params.graftWeight, 0)
-            guard totalWeight > 0 else { return polygons }
-            let opRoll = SubdivisionEngine.centreHash(seed: seed, cycle: cycleBase + 2) * totalWeight
-
-            if opRoll < params.extrudeWeight {
-                return applyExtrude(polygons, targetIdx: targetIdx, params: params, cycleBase: cycleBase, strength: strength)
-            } else if opRoll < params.extrudeWeight + params.splitWeight {
-                return applySplit(polygons, targetIdx: targetIdx, params: params, cycleBase: cycleBase, strength: strength)
-            } else {
-                return applyGraft(polygons, targetIdx: targetIdx, params: params, cycleBase: cycleBase, strength: strength)
-            }
-        }
-
-        // §4.4.6 path: operator chosen *first*, then the target is drawn from that
-        // operator's own eligible set — Extrude's includes open curves, Split's
-        // and Graft's stay closed-only always (Graft's §4.4.8.6 build order has
-        // not yet reached open-curve targets), so neither can end up targeting a
-        // curve as an accidental side effect of widening one shared eligible list.
-        // Only reached when extrudeIncludeOpenCurves is explicitly on, so this
-        // carries no determinism/regression risk for the (default) path above.
-        // Same cycleBase+1/+2 roll slots as the original path, just consumed in
-        // the other order — a new code path, not a reinterpretation of the old one.
-        let totalWeight = max(params.extrudeWeight, 0) + max(params.splitWeight, 0) + max(params.graftWeight, 0)
-        guard totalWeight > 0 else { return polygons }
-        let opRoll = SubdivisionEngine.centreHash(seed: seed, cycle: cycleBase + 2) * totalWeight
-        let useExtrude = opRoll < params.extrudeWeight
-        let useSplit = !useExtrude && opRoll < params.extrudeWeight + params.splitWeight
-
-        let eligible: [Int]
-        if useExtrude {
-            eligible = polygons.indices.filter {
-                (polygons[$0].type == .spline || polygons[$0].type == .openSpline)
-                    && polygons[$0].points.count >= 4
-            }
-        } else {
-            eligible = polygons.indices.filter { polygons[$0].type == .spline && polygons[$0].points.count >= 4 }
+        // Target is drawn once from a single eligible list, then the operator is
+        // chosen; all three operators share that one target. `includeOpenCurves`
+        // (Specs/GeometricLifecycle.md §4.4.6, widened to all three operators —
+        // was Extrude-only) parameterizes the type filter itself rather than
+        // branching into a separate code path per operator: when it's off (the
+        // default), `typeOK` reduces to exactly `type == .spline`, byte-for-byte
+        // identical to this engine's original closed-only-only behavior. Extrude,
+        // Split, and Graft each independently handle the "no principled single
+        // outward for an open curve" problem via `openCurveSafeOutward` below, so
+        // none of them needs its own eligible-set carve-out anymore.
+        let eligible = polygons.indices.filter {
+            let typeOK = polygons[$0].type == .spline
+                || (params.includeOpenCurves && polygons[$0].type == .openSpline)
+            return typeOK && polygons[$0].points.count >= 4
         }
         guard !eligible.isEmpty else { return polygons }
 
         let targetRoll = SubdivisionEngine.centreHash(seed: seed, cycle: cycleBase + 1)
         let targetIdx  = eligible[min(eligible.count - 1, Int(targetRoll * Double(eligible.count)))]
 
-        if useExtrude {
+        let totalWeight = max(params.extrudeWeight, 0) + max(params.splitWeight, 0) + max(params.graftWeight, 0)
+        guard totalWeight > 0 else { return polygons }
+        let opRoll = SubdivisionEngine.centreHash(seed: seed, cycle: cycleBase + 2) * totalWeight
+
+        if opRoll < params.extrudeWeight {
             return applyExtrude(polygons, targetIdx: targetIdx, params: params, cycleBase: cycleBase, strength: strength)
-        } else if useSplit {
+        } else if opRoll < params.extrudeWeight + params.splitWeight {
             return applySplit(polygons, targetIdx: targetIdx, params: params, cycleBase: cycleBase, strength: strength)
         } else {
             return applyGraft(polygons, targetIdx: targetIdx, params: params, cycleBase: cycleBase, strength: strength)
         }
+    }
+
+    /// For a closed polygon, `ExtensionEngine.outwardNormal` unchanged — that
+    /// formula's correctness as "outward" is a property of consistent polygon
+    /// winding, and this doesn't touch it. For an open curve, there's no single
+    /// principled "outward" (§4.4.6's original design note, from when only
+    /// Extrude supported open curves) — randomly picks one of the two sides
+    /// instead, matching Extrude's own established per-edge coin-flip exactly.
+    /// `seed`/`cycle` are caller-supplied so each call site's roll stays
+    /// independent of every other per-generation roll — see each caller's own
+    /// comment for its specific salt/slot choice.
+    private static func openCurveSafeOutward(
+        of polygon: Polygon2D, segIdx: Int, seed: Int, cycle: Int
+    ) -> Vector2D {
+        let base = ExtensionEngine.outwardNormal(of: polygon, segIdx: segIdx)
+        guard polygon.type == .openSpline, base != .zero else { return base }
+        let sideRoll = SubdivisionEngine.centreHash(seed: seed, cycle: cycle)
+        return sideRoll < 0.5 ? -base : base
     }
 
     // MARK: - Directional selection (Specs/GeometricLifecycle.md §14)
@@ -361,8 +348,8 @@ public enum GenerationalEvolutionEngine {
             // perpendicular the way a closed polygon does. Closed-polygon targets
             // never take this branch, so their one true-outward direction is
             // completely unaffected — `isOpenCurve` can only be true here when
-            // `extrudeIncludeOpenCurves` was on in the first place (§4.4.6 step 1
-            // gates eligibility upstream in applyGeneration).
+            // `includeOpenCurves` was on in the first place (gates eligibility
+            // upstream in applyGeneration).
             //
             // Step 3: when extrudeOpenCurveBothSides is also on, a second
             // independent per-edge roll (cycle 4) decides whether this edge
@@ -429,9 +416,13 @@ public enum GenerationalEvolutionEngine {
     /// Splits one edge of the target polygon (de Casteljau, same primitive the
     /// geometry editor's edge-insert tool uses — see `BezierMath.split` and
     /// `AppController.splitPolygonSegment`), then displaces the new anchor point
-    /// outward from the shape's centre by an RPSR distance scaled by `strength`
-    /// (1.0 = full sampled displacement; see `process(polygons:params:phase:)`).
-    /// By default only the anchor moves; the flanking control points stay where
+    /// outward by an RPSR distance scaled by `strength` (1.0 = full sampled
+    /// displacement; see `process(polygons:params:phase:)`). "Outward" is from the
+    /// shape's anchor-only centre for a closed polygon; for an open curve target
+    /// (only reachable when `EvolutionParams.includeOpenCurves` is on), there's no
+    /// principled centroid-relative direction, so each split instead randomly picks
+    /// one of its edge's two perpendicular sides — see `openCurveSafeOutward`. By
+    /// default only the anchor moves; the flanking control points stay where
     /// the split placed them, which pulls the boundary into a rounded spike rather
     /// than a sharp discontinuity, and tweens smoothly from the undisplaced split
     /// point as strength grows from 0. `splitBulgePinchMin/Max` (0–0 by default,
@@ -477,14 +468,27 @@ public enum GenerationalEvolutionEngine {
         let seg = Array(polygon.points[base..<(base + 4)])
         let (left, right) = BezierMath.split(seg: seg, t: splitT)
 
-        // Outward direction: from the shape's anchor-only centre (matches
-        // Dissolution's `.centroid` entropy target) to the new split point.
-        let centre    = BezierMath.centreSpline(polygon.points)
-        let splitPt   = left[3]  // == right[0]
-        let dir       = splitPt - centre
-        let dirLength = dir.length
-        guard dirLength > 1e-9 else { return polygons }
-        let outward   = Vector2D(x: dir.x / dirLength, y: dir.y / dirLength)
+        // Outward direction: for a closed polygon, from the shape's anchor-only
+        // centre (matches Dissolution's `.centroid` entropy target) to the new
+        // split point — unchanged. For an open curve, there's no principled
+        // centroid-relative "outward" the way there is for a closed polygon's
+        // interior (§4.4.6) — the same per-edge random-side pick Extrude already
+        // uses instead, via `openCurveSafeOutward`. Own salted seed (all 8
+        // cycleBase slots are already taken — see the posSeed comment above),
+        // cycleBase-folded so it still varies generation-to-generation.
+        let splitPt = left[3]  // == right[0]
+        let outward: Vector2D
+        if polygon.type == .openSpline {
+            let sideSeed = seed &+ 725_827_609
+            outward = openCurveSafeOutward(of: polygon, segIdx: segIdx, seed: sideSeed, cycle: cycleBase)
+            guard outward != .zero else { return polygons }
+        } else {
+            let centre    = BezierMath.centreSpline(polygon.points)
+            let dir       = splitPt - centre
+            let dirLength = dir.length
+            guard dirLength > 1e-9 else { return polygons }
+            outward = Vector2D(x: dir.x / dirLength, y: dir.y / dirLength)
+        }
         let displaced = Vector2D(x: splitPt.x + outward.x * distance,
                                   y: splitPt.y + outward.y * distance)
 
@@ -543,12 +547,9 @@ public enum GenerationalEvolutionEngine {
     /// `.singlePoint` never run in the same generation for the same target, so
     /// the two implementations freely reuse the same `cycleBase + 0/1/2/...`
     /// roll-slot numbering on `graftSeed` without colliding — only one branch
-    /// ever executes. `strength` (the reveal tween) is not yet applied to the
-    /// grafted piece by either mode — unlike Extrude/Split's distance/
-    /// displacement, an exact edge/point match has no obvious "partial"
-    /// analogue; a generation using this operator during a fractional-phase
-    /// reveal pops in fully rather than growing, a known gap left for a later
-    /// pass.
+    /// ever executes. `strength` (the reveal tween) grows the grafted piece from
+    /// the attachment point outward as it climbs from 0 to 1 — see
+    /// `applyRevealScale`, applied identically by all three attachment modes.
     private static func applyGraft(
         _ polygons: [Polygon2D],
         targetIdx:  Int,
@@ -601,7 +602,9 @@ public enum GenerationalEvolutionEngine {
         let edgeLength = edgeVector.length
         guard edgeLength > 1e-9 else { return polygons }
         let direction = Vector2D(x: edgeVector.x / edgeLength, y: edgeVector.y / edgeLength)
-        let outward   = ExtensionEngine.outwardNormal(of: polygon, segIdx: segIdx)
+        // cycleBase+8 on graftSeed — free on every attachment mode (wholeEdge only
+        // uses 0-5; singlePoint/partialEdge's own mode-specific rolls use 6/7).
+        let outward = openCurveSafeOutward(of: polygon, segIdx: segIdx, seed: graftSeed, cycle: cycleBase + 8)
         guard outward != .zero else { return polygons }
         let mid = Vector2D(x: (a0.x + a1.x) / 2, y: (a0.y + a1.y) / 2)
         let targetSite = AttachmentSite(point: mid, direction: direction, outward: outward, length: edgeLength)
@@ -631,9 +634,10 @@ public enum GenerationalEvolutionEngine {
         let detailed = applyGraftEdgeDetailing(
             placed, rootSiteIdx: sourceSiteIdx, graftSeed: graftSeed, cycleBase: cycleBase, params: params
         )
+        let revealed = applyRevealScale(detailed, anchor: targetSite.point, strength: strength)
 
         var result = polygons
-        result.append(detailed)
+        result.append(revealed)
         return result
     }
 
@@ -673,7 +677,9 @@ public enum GenerationalEvolutionEngine {
         let edgeVector = a1 - a0
         let edgeLength = edgeVector.length
         guard edgeLength > 1e-9 else { return polygons }
-        let baseNormal = ExtensionEngine.outwardNormal(of: polygon, segIdx: segIdx)
+        // cycleBase+8 on graftSeed — free alongside this mode's own 6/7 (departure
+        // angle / newlyInsertedPoint split position).
+        let baseNormal = openCurveSafeOutward(of: polygon, segIdx: segIdx, seed: graftSeed, cycle: cycleBase + 8)
         guard baseNormal != .zero else { return polygons }
         let tangent = Vector2D(x: edgeVector.x / edgeLength, y: edgeVector.y / edgeLength)
 
@@ -740,10 +746,11 @@ public enum GenerationalEvolutionEngine {
         let detailed = applyGraftEdgeDetailing(
             placed, rootSiteIdx: rootSiteIdx, graftSeed: graftSeed, cycleBase: cycleBase, params: params
         )
+        let revealed = applyRevealScale(detailed, anchor: targetSite.point, strength: strength)
 
         var result = polygons
         result[targetIdx] = polygon
-        result.append(detailed)
+        result.append(revealed)
         return result
     }
 
@@ -779,7 +786,9 @@ public enum GenerationalEvolutionEngine {
 
         let base = segIdx * 4
         let seg = Array(polygon.points[base..<(base + 4)])
-        let outward = ExtensionEngine.outwardNormal(of: polygon, segIdx: segIdx)
+        // cycleBase+8 on graftSeed — free alongside this mode's own 6/7 (partial
+        // span position/span).
+        let outward = openCurveSafeOutward(of: polygon, segIdx: segIdx, seed: graftSeed, cycle: cycleBase + 8)
         guard outward != .zero else { return polygons }
 
         // Sub-span of the parent edge: starts at t_start (own field, not
@@ -827,10 +836,35 @@ public enum GenerationalEvolutionEngine {
         let detailed = applyGraftEdgeDetailing(
             placed, rootSiteIdx: sourceSiteIdx, graftSeed: graftSeed, cycleBase: cycleBase, params: params
         )
+        let revealed = applyRevealScale(detailed, anchor: targetSite.point, strength: strength)
 
         var result = polygons
-        result.append(detailed)
+        result.append(revealed)
         return result
+    }
+
+    /// Tweens a fully-placed-and-detailed graft's reveal by scaling it toward
+    /// `anchor` (`targetSite.point` — the exact coordinate `place()` already
+    /// guarantees the piece is coincident with the parent at, regardless of
+    /// attachment mode) as `strength` climbs from 0 to 1, mirroring how Extrude/
+    /// Split already scale their own distance/displacement by `strength` (see
+    /// `process(polygons:params:phase:)`) — Graft previously ignored `strength`
+    /// entirely and popped in fully every time, a known gap from §4.4.8's own
+    /// build order, closed here. 1.0 (an already-fully-revealed generation) is a
+    /// no-op, so this has zero effect outside an active reveal tween. Applied as
+    /// the very last step, after curvature/articulation, so detail geometry (bow
+    /// amounts, joint displacement) is computed against the piece's true final
+    /// size and then grows in step with everything else, rather than needing its
+    /// own separate strength-awareness.
+    private static func applyRevealScale(_ piece: Polygon2D, anchor: Vector2D, strength: Double) -> Polygon2D {
+        guard strength < 1.0 - 1e-9 else { return piece }
+        let s = max(0.0, strength)
+        let scaledPoints = piece.points.map { p in
+            Vector2D(x: anchor.x + (p.x - anchor.x) * s, y: anchor.y + (p.y - anchor.y) * s)
+        }
+        return Polygon2D(points: scaledPoints, type: piece.type,
+                         pressures: piece.pressures, pressureProfiles: piece.pressureProfiles,
+                         visible: piece.visible)
     }
 
     // MARK: - Edge curvature and articulation (§4.4.8.4)

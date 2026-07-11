@@ -5,12 +5,18 @@ import XCTest
 /// attachment logic exists yet.
 final class GraftEngineTests: XCTestCase {
 
-    private func params(sidesMin: Int, sidesMax: Int, distortionMin: Double = 1.0, distortionMax: Double = 1.0) -> EvolutionParams {
+    private func params(
+        sidesMin: Int, sidesMax: Int,
+        distortionMin: Double = 1.0, distortionMax: Double = 1.0,
+        scaleMin: Double = 1.0, scaleMax: Double = 1.0
+    ) -> EvolutionParams {
         var p = EvolutionParams()
         p.graftSidesMin = sidesMin
         p.graftSidesMax = sidesMax
         p.graftDistortionMin = distortionMin
         p.graftDistortionMax = distortionMax
+        p.graftScaleMin = scaleMin
+        p.graftScaleMax = scaleMax
         return p
     }
 
@@ -104,6 +110,53 @@ final class GraftEngineTests: XCTestCase {
         let scaleX = result.piece.points[idx].x / undistorted.points[idx].x
         let scaleY = result.piece.points[idx].y / undistorted.points[idx].y
         XCTAssertNotEqual(scaleX, scaleY, accuracy: 1e-9)
+    }
+
+    // MARK: - Scale
+
+    func testDefaultScaleRangeIsNeutral() {
+        let p = params(sidesMin: 4, sidesMax: 4)  // scale defaults to 1-1
+        let undistorted = AssemblyPrimitiveKit.plainPolygon(sides: 4)
+        let result = GraftEngine.generatePrimitive(seed: 7, rollBase: 0, params: p)
+        XCTAssertEqual(result.piece, undistorted)
+    }
+
+    func testScaleAppliesUniformMultiplier() {
+        let p = params(sidesMin: 4, sidesMax: 4, scaleMin: 2.0, scaleMax: 2.0)
+        let undistorted = AssemblyPrimitiveKit.plainPolygon(sides: 4)
+        let result = GraftEngine.generatePrimitive(seed: 7, rollBase: 0, params: p)
+        for (orig, scaled) in zip(undistorted.points, result.piece.points) {
+            XCTAssertEqual(scaled.x, orig.x * 2.0, accuracy: 1e-9)
+            XCTAssertEqual(scaled.y, orig.y * 2.0, accuracy: 1e-9)
+        }
+    }
+
+    func testScaleComposesMultiplicativelyWithDistortion() {
+        // Both fixed (equal min/max) so the combined factor is exactly predictable:
+        // scale 2.0 * distortion 3.0 = 6.0 on every axis.
+        let p = params(sidesMin: 4, sidesMax: 4, distortionMin: 3.0, distortionMax: 3.0, scaleMin: 2.0, scaleMax: 2.0)
+        let undistorted = AssemblyPrimitiveKit.plainPolygon(sides: 4)
+        let result = GraftEngine.generatePrimitive(seed: 11, rollBase: 0, params: p)
+        for (orig, scaled) in zip(undistorted.points, result.piece.points) {
+            XCTAssertEqual(scaled.x, orig.x * 6.0, accuracy: 1e-9)
+            XCTAssertEqual(scaled.y, orig.y * 6.0, accuracy: 1e-9)
+        }
+    }
+
+    func testScaleRangeStaysWithinConfiguredBoundsAcrossManySeeds() {
+        let p = params(sidesMin: 4, sidesMax: 4, scaleMin: 0.5, scaleMax: 1.5)
+        let undistorted = AssemblyPrimitiveKit.plainPolygon(sides: 4)
+        // Distortion is neutral (1-1 default), so the ratio of any nonzero
+        // coordinate directly reveals the sampled scale factor.
+        guard let idx = undistorted.points.firstIndex(where: { abs($0.y) > 1e-6 }) else {
+            return XCTFail("fixture assumption broken")
+        }
+        for seedTry in 0..<30 {
+            let result = GraftEngine.generatePrimitive(seed: seedTry, rollBase: 0, params: p)
+            let ratio = result.piece.points[idx].y / undistorted.points[idx].y
+            XCTAssertGreaterThanOrEqual(ratio, 0.5 - 1e-9, "seed \(seedTry)")
+            XCTAssertLessThanOrEqual(ratio, 1.5 + 1e-9, "seed \(seedTry)")
+        }
     }
 
     // MARK: - Determinism
