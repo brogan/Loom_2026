@@ -3565,6 +3565,46 @@ final class AppController: ObservableObject, @unchecked Sendable {
         }
     }
 
+    /// Whole-document counterpart to `saveGeometryLayerAsSVG()` — every visible
+    /// layer's geometry (closed polygons/regular polygons, open curves, points)
+    /// combined into one SVG rather than just the active layer. Requested
+    /// alongside the per-layer path for an icon-export workflow (2026-07-09):
+    /// per-layer export already correctly handled all three geometry kinds (it
+    /// goes through `EditableGeometryDocument.runtimePolygons`, which resolves
+    /// closed/open/point geometry uniformly regardless of layer), so this only
+    /// needed a "no target layer" call to the same function, not new geometry
+    /// handling.
+    func saveGeometryDocumentAsSVG() {
+        guard let document = geometryEditorDocument,
+              let projectURL,
+              let config = projectConfig
+        else { return }
+
+        let polys = (try? document.runtimePolygons()) ?? []
+        guard !polys.isEmpty else {
+            appStatusMessage = "Nothing to export (document has no visible geometry)"
+            return
+        }
+
+        let svgsDir = projectURL.appendingPathComponent("svgs")
+        let docPart = LoomSVGWriter.safeStem(
+            document.name.isEmpty
+                ? (selectedGeometryKey?.components(separatedBy: "/").last ?? "geometry")
+                : document.name
+        )
+
+        do {
+            let w = Double(config.globalConfig.width)
+            let h = Double(config.globalConfig.height)
+            let url = try LoomSVGWriter.writeSVG(polygons: polys, stem: docPart, canvasSize: (w, h), to: svgsDir)
+            appStatusMessage = "SVG saved: \(url.lastPathComponent)"
+            LoomLogger.info("Geometry editor whole-document SVG saved: \(url.path)")
+        } catch {
+            appStatusMessage = "SVG export failed: \(error.localizedDescription)"
+            LoomLogger.error("Geometry editor whole-document SVG export failed", error: error)
+        }
+    }
+
     func reloadGeometryEditorDocumentFromDisk() {
         geometryEditorReloadNonce += 1
     }

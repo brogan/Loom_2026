@@ -31,38 +31,81 @@ struct SubdivisionInspector: View {
     @AppStorage("subinsp.ptwScaleDriverCollapsed")   private var ptwScaleDriverCollapsed     = true
     @AppStorage("subinsp.ptwRotDriverCollapsed")     private var ptwRotDriverCollapsed       = true
 
-    // Persisted top-pane height (points) for the resizable split below. Follows the
-    // same @AppStorage Double convention as e.g. CyclePreviewPanel's bgBrightness —
-    // not a *Collapsed Bool like the rest of this file's storage keys, since it's a
-    // continuous size rather than a toggle.
-    @AppStorage("subinsp.topPaneHeight") private var topPaneHeight: Double = 320
+    // Whether the top pane (set info/mode passes) is hidden in favor of giving the
+    // bottom pane (selected pass's fields) the whole panel. Plain @State, not
+    // @AppStorage — deliberately resets to false (both panes visible) every time
+    // this view is freshly created, i.e. every time the Transform tab is opened,
+    // rather than persisting a maximized state across tab switches or launches.
+    @State private var fieldsOnlyMode = false
 
-    // Two independently-scrollable panes (set info/mode passes on top, selected
-    // pass's fields on the bottom) with a deliberately prominent divider — plain
-    // VSplitView's native NSSplitView divider read as too subtle to notice as a
-    // grab affordance, so this is a hand-rolled GeometryReader/DragGesture split
-    // instead (ResizableSplitPane below) with a thick bar and a visible grip icon.
-    // Requires InspectorPanel to give SubdivisionInspector the full available height
-    // (bypassing its usual single shared ScrollView) — see
-    // InspectorPanel.isSubdivisionSplitView — since dividing space between two
-    // children needs a bounded height; nested inside another ScrollView it would
-    // just take its ideal (unclipped, non-independently-scrolling) size instead.
+    // A drag-resizable divider (GeometryReader/DragGesture, continuously mutating a
+    // stored height every pixel of the drag) was tried first and reported jerky,
+    // with both panes flashing during the drag — a known rough edge with nested
+    // ScrollViews under frequent frame-height changes in SwiftUI on macOS. Replaced
+    // with a discrete two-state toggle instead: only one layout transition happens
+    // per click, not a continuous stream of them, which sidesteps that whole class
+    // of problem. The GeometryReader below is still safe to use here — unlike the
+    // drag version, it's read once per layout pass (on resize/state change), never
+    // mutated continuously mid-gesture. Top pane gets at least half the available
+    // height (usually comfortably enough to show every mode's header, since only
+    // Involution/Extension start expanded — see the *Collapsed defaults above) and
+    // scrolls internally if a user expands enough sections to exceed it; bottom
+    // always gets whatever's left. Requires InspectorPanel to give
+    // SubdivisionInspector the full available height (bypassing its usual single
+    // shared ScrollView) — see InspectorPanel.isSubdivisionSplitView — since this
+    // needs a bounded parent height to divide up; nested inside another ScrollView
+    // it would just take its ideal (unclipped, non-independently-scrolling) size.
     var body: some View {
         let setIdx = controller.selectedSubdivisionIndex ?? 0
         guard let set = controller.projectConfig?.subdivisionConfig.paramsSets[safe: setIdx] else {
             return AnyView(EmptyView())
         }
-        return AnyView(ResizableSplitPane(topHeight: $topPaneHeight, minTop: 120, minBottom: 120) {
-            ScrollView {
-                transformSetSection(set: set, setIdx: setIdx)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-            }
-        } bottom: {
-            ScrollView {
-                selectedTransformationFields(set: set, setIdx: setIdx)
-                    .frame(maxWidth: .infinity, alignment: .leading)
+        return AnyView(GeometryReader { geo in
+            VStack(alignment: .leading, spacing: 0) {
+                if !fieldsOnlyMode {
+                    ScrollView {
+                        transformSetSection(set: set, setIdx: setIdx)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                    .frame(height: geo.size.height * 0.5)
+                }
+
+                fieldsOnlyToggle
+
+                ScrollView {
+                    selectedTransformationFields(set: set, setIdx: setIdx)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+                .frame(maxHeight: .infinity)
             }
         })
+    }
+
+    /// Always visible regardless of `fieldsOnlyMode`, so there's always a way back.
+    /// `.contentShape(Rectangle())` is required here — without it, a `Button` whose
+    /// label has padding/background but no opaque content filling that space is
+    /// only hit-testable where the icon/text glyphs actually render, not across the
+    /// full visual bar, making it fiddly to click. Any future button built from a
+    /// padded/backgrounded label (rather than a single solid control) needs the
+    /// same treatment.
+    private var fieldsOnlyToggle: some View {
+        Button(action: { fieldsOnlyMode.toggle() }) {
+            HStack(spacing: 4) {
+                Image(systemName: fieldsOnlyMode ? "chevron.down" : "chevron.up")
+                    .font(.system(size: 9, weight: .semibold))
+                Text(fieldsOnlyMode ? "Show Transform Sets" : "Maximize Fields")
+                    .font(.system(size: 10))
+            }
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 5)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .foregroundStyle(.secondary)
+        .background(Color(nsColor: .separatorColor).opacity(0.5))
+        .help(fieldsOnlyMode
+              ? "Show the transform sets and mode list above the field editor again"
+              : "Hide the transform sets/mode list and give the field editor the full panel")
     }
 
     /// Top section: set name/summary plus one collapsible list per lifecycle

@@ -1576,18 +1576,26 @@ private struct GeometryEditorShellInspector: View {
         }
     }
 
+    /// A `Menu` rather than a plain `Button` — exporting "whole file" (every
+    /// visible layer combined, requested 2026-07-09 for an icon-design workflow)
+    /// alongside the existing single-active-layer export needed a second action,
+    /// and a dropdown keeps that discoverable from one control instead of adding a
+    /// second toolbar icon.
     private var svgExportButton: some View {
         let disabled = controller.geometryEditorDocument == nil
-        return Button {
-            controller.saveGeometryLayerAsSVG()
+        return Menu {
+            Button("Export Active Layer as SVG") { controller.saveGeometryLayerAsSVG() }
+            Button("Export All Layers as SVG") { controller.saveGeometryDocumentAsSVG() }
         } label: {
             SVGExportIcon()
                 .frame(width: 24, height: 18)
+                .contentShape(Rectangle())
         }
-        .buttonStyle(.plain)
+        .menuStyle(.borderlessButton)
+        .fixedSize()
         .foregroundStyle(disabled ? Color.secondary.opacity(0.4) : Color.secondary)
         .disabled(disabled)
-        .help("Save active layer as SVG wireframe to svgs/")
+        .help("Save geometry as an SVG wireframe to svgs/ — active layer only, or every visible layer combined")
     }
 
     private var currentGeometryName: String {
