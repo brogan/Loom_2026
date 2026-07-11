@@ -232,7 +232,7 @@ struct SubdivisionInspector: View {
     private func setHeader(set: SubdivisionParamsSet, setIdx: Int) -> some View {
         InspectorSection("Transform Set") {
             InspectorField("Name") {
-                TextField("", text: bindSet(setIdx, \.name))
+                TextField("", text: renameSetBinding(setIdx))
                     .textFieldStyle(.squareBorder)
                     .font(.system(size: 12))
                     .frame(maxWidth: 120)
@@ -1685,6 +1685,45 @@ struct SubdivisionInspector: View {
     }
 
     // MARK: - Binding helpers
+
+    /// Unlike `bindSet(_:\.name)`, this cascades the rename to every shape
+    /// that references the set's *old* name (`ShapeDef.subdivisionParamsSetName`,
+    /// the field the Sprites tab's "Transform set" picker and this tab's own
+    /// Apply/preview mechanism both read/write) plus the Transform tab's own
+    /// in-progress preview, if it happens to be pointed at this set. Without
+    /// this, renaming a set silently orphans any sprite already assigned to
+    /// it — the shape keeps storing the pre-rename name, which no longer
+    /// matches anything, and the sprite reads back as unassigned everywhere
+    /// that looks it up by name.
+    private func renameSetBinding(_ setIdx: Int) -> Binding<String> {
+        let ctl = controller
+        return Binding(
+            get: {
+                ctl.projectConfig?.subdivisionConfig.paramsSets[safe: setIdx]?.name ?? ""
+            },
+            set: { newName in
+                ctl.updateProjectConfig { cfg in
+                    guard setIdx < cfg.subdivisionConfig.paramsSets.count else { return }
+                    let oldName = cfg.subdivisionConfig.paramsSets[setIdx].name
+                    cfg.subdivisionConfig.paramsSets[setIdx].name = newName
+                    guard oldName != newName else { return }
+                    for ssIdx in cfg.shapeConfig.library.shapeSets.indices {
+                        for sIdx in cfg.shapeConfig.library.shapeSets[ssIdx].shapes.indices
+                        where cfg.shapeConfig.library.shapeSets[ssIdx].shapes[sIdx].subdivisionParamsSetName == oldName {
+                            cfg.shapeConfig.library.shapeSets[ssIdx].shapes[sIdx].subdivisionParamsSetName = newName
+                        }
+                    }
+                }
+                // Keep the Transform tab's own in-progress preview pointed at
+                // this set under its new name too, if this is the set it was
+                // tracking — otherwise a rename made while previewing this
+                // set would immediately make `subdivPreviewSetName` stale.
+                if ctl.selectedSubdivisionIndex == setIdx, ctl.subdivPreviewSetName != newName {
+                    ctl.subdivPreviewSetName = newName
+                }
+            }
+        )
+    }
 
     private func bindSet<T>(_ setIdx: Int, _ kp: WritableKeyPath<SubdivisionParamsSet, T>) -> Binding<T> {
         let ctl = controller

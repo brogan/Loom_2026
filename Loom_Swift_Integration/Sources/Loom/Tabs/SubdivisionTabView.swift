@@ -376,6 +376,16 @@ struct SubdivisionTabView: View {
               let cfg       = controller.projectConfig,
               let sprite    = cfg.spriteConfig.library.allSprites.first(where: { $0.name == spriteID })
         else { return }
+
+        // `subdivPreviewSetName` can go stale (the set it was tracking got
+        // renamed or deleted elsewhere, e.g. via the Sprites tab or another
+        // window) — never write a dangling name onto the shape. Resync to the
+        // sprite's actual assigned set instead of applying garbage.
+        guard cfg.subdivisionConfig.paramsSets.contains(where: { $0.name == preview }) else {
+            controller.subdivPreviewSetName = assignedSetName(sprite: sprite, cfg: cfg)
+            return
+        }
+
         let ssName = sprite.shapeSetName
         let sName  = sprite.shapeName
         controller.updateProjectConfig { config in
@@ -737,11 +747,37 @@ struct SubdivisionTabView: View {
             hasAppeared = true
         }
 
-        guard controller.subdivSelectedSpriteID == nil,
-              let cfg = controller.projectConfig
-        else { return }
+        guard let cfg = controller.projectConfig else { return }
+
+        if let spriteID = controller.subdivSelectedSpriteID,
+           let sprite = cfg.spriteConfig.library.allSprites.first(where: { $0.name == spriteID }) {
+            resyncPreviewToAssigned(sprite: sprite, cfg: cfg)
+            return
+        }
         if let first = polygonSetSprites(in: cfg).first {
             handleSpriteSelected(first, cfg: cfg)
+        }
+    }
+
+    /// Re-checks `subdivPreviewSetName` against the sprite's actual current
+    /// assignment every time this tab appears — called even when the sprite
+    /// was already selected (unlike `handleSpriteSelected`, which resets
+    /// `selectedSubdivisionParamIndex` too and is meant for a fresh
+    /// selection, not a revisit). `subdivPreviewSetName` is transient UI
+    /// state (which set is being browsed without committing) and shouldn't
+    /// survive a trip away from this tab and back unexamined — without this,
+    /// a change made elsewhere to the sprite's assignment (most commonly via
+    /// the Sprites tab's own "Transform set" picker) leaves the preview
+    /// pointed at the old value, which then shows a spurious "Previewing: X
+    /// — Apply" bar whose Apply would clobber the just-made, correct
+    /// assignment right back to the stale one.
+    private func resyncPreviewToAssigned(sprite: SpriteDef, cfg: ProjectConfig) {
+        let assigned = assignedSetName(sprite: sprite, cfg: cfg)
+        guard controller.subdivPreviewSetName != assigned else { return }
+        controller.subdivPreviewSetName = assigned
+        if let assigned,
+           let idx = cfg.subdivisionConfig.paramsSets.firstIndex(where: { $0.name == assigned }) {
+            controller.selectedSubdivisionIndex = idx
         }
     }
 
