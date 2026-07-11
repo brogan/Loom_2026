@@ -1,6 +1,8 @@
 # Geometric Lifecycle — Spec
 
-**Status**: Phases 0–6 complete; Phase 7 (Fulguration) V1 complete, V2 pending; Phase 8
+**Status**: Phases 0–6 complete; Phase 7 (Fulguration) V1 complete, V2 pending, V3
+(Assembly Fulguration, §5.12–§5.13) implemented with the procedural-primitive source
+(§5.12.2's original document-source variant deferred); Phase 8
 (Evolution: generational artificial-life) in progress (core loop complete, see below)  
 **Affects**: LoomEngine, Loom (studio), subdivision tab architecture
 
@@ -215,6 +217,38 @@ Convergence pressure and momentum drift compose: a form can drift stochastically
 while also being pulled toward a target, so the drift becomes increasingly constrained
 as pressure rises.
 
+**Update (2026-07-10) — open-curve extension.** Momentum Drift and Convergence
+Pressure originally only wrote to `SubdivisionParams` fields, which `SubdivisionEngine`
+bypasses entirely for `.openSpline` — so both operation types were silently inert on
+open curves (the perturbed values were computed but never consulted by anything, since
+curves never reach `SubdivisionEngine`). Closed by wiring both against
+`CurveRefinementParams` too, the open-curve analogue of Subdivision that
+`CurveRefinementEngine` actually consults:
+- `DriftTarget` gained three curve-targeting cases — `.curveDisplacement`,
+  `.curveCPNormalOffset`, `.curvePressure` — writing to `CurveRefinementParams`'
+  `displacement`/`cpNormalOffset`/`pressureValue` instead of the closed-polygon fields.
+  A `DriftTarget.isCurveTarget` flag routes each Momentum Drift pass to the correct
+  array; one pass still targets exactly one field, same as before, just a wider choice
+  of field. `EvolutionEngine.apply` gained a `curveRefinementParams: inout
+  [CurveRefinementParams]` parameter alongside the existing `params` one.
+- Convergence Pressure wasn't field-targeted to begin with (one pass already lerps
+  every relevant `SubdivisionParams` field toward the target set at once), so the
+  natural extension is the same shape: one pass now also lerps every relevant
+  `CurveRefinementParams` field toward the same named target set, in addition to the
+  `SubdivisionParams` fields, not instead of them. No new target-picker needed — the
+  existing `convergenceTargetSetName` resolves into both `allSets` and a new
+  `allCurveSets: [String: [CurveRefinementParams]]` (same name namespace: a transform
+  set's name covers both its `params` and `curveRefinement` arrays). A transform set
+  with no curve-refinement passes sees an empty array on both sides — a harmless no-op,
+  not a special case to guard against at the call site.
+- Three additional call sites in `Loom_Swift_Integration` (Bake, Transform-tab SVG
+  export, and the live wireframe preview) construct their own local
+  `EvolutionEngine.apply` calls independent of the main render pipeline
+  (`SpriteScene.swift`) and needed the identical fix — found by the compiler once the
+  signature changed, not by a working-as-designed search, which is worth noting: these
+  three paths can silently drift out of sync with the main pipeline's behavior whenever
+  `EvolutionEngine`'s signature changes, since nothing enforces they stay parallel.
+
 ### 4.4 Generational evolution (artificial life) — planned
 
 #### 4.4.1 What it is
@@ -247,10 +281,13 @@ Each shape subject to a generational-evolution pass has:
   Genuinely new (no existing operator does this): it's a structural mutation, not a
   static transform, since where the "outward" direction and the pre-split shape are
   depend on everything that happened in prior generations.
-- **Duplicate-and-graft** — copy a contiguous sub-portion of the current boundary
-  (a run of vertices/edges) and attach the copy elsewhere on the shape. Needs an
-  attachment rule (nearest edge, a symmetric position across the shape's axis, or a
-  driven/random vertex) — left as an open detail for the first prototype.
+- **Duplicate-and-reattach** (renamed 2026-07-11, was "duplicate-and-graft" — freed
+  up "graft" for §4.4.8's unrelated, newer concept: this one *copies existing*
+  geometry from elsewhere on the same shape, §4.4.8 *generates a fresh primitive*)
+  — copy a contiguous sub-portion of the current boundary (a run of vertices/edges)
+  and attach the copy elsewhere on the shape. Needs an attachment rule (nearest edge,
+  a symmetric position across the shape's axis, or a driven/random vertex) — left as
+  an open detail for the first prototype.
 - **Subdivision cycle** — run one pass of `SubdivisionEngine.process` on the current
   polygon as a mutation step. This does *not* require reordering the five-stage
   pipeline (Involution → Extension → Evolution → Fulguration → Dissolution) — it's an
@@ -261,6 +298,62 @@ Each shape subject to a generational-evolution pass has:
   (`operatorWeights: [GenerationOperator: Double]`, seeded), so the user can bias
   toward mostly-extrusion, mostly-grafting, an even mix, or a fixed single operator
   by zeroing the others' weights.
+
+**Update (2026-07-10) — extrude/split shape controls.** Three additions to the two
+implemented operators, all opt-in (default = original behavior, byte-for-byte
+unchanged):
+- `extrudeAsymmetricSides: Bool` — off (default): both corners of an extruded edge
+  move out by the same sampled distance (a rectangular quad). On: each corner is
+  independently RPSR-scaled from that distance (0.4×–1.6×, `GenerationalEvolutionEngine`'s
+  `asymmetryRangeLo/Hi`), producing a tapered/wedge quad instead. Resampled per edge
+  in a run, not once for the whole run, via a seed salted by edge offset (see the
+  implementation note below on why that's needed rather than extending the existing
+  per-generation `cycleBase` scheme).
+- `extrudeAngleRandomized: Bool` — off (default): extrusion direction is exactly the
+  edge's outward normal (perpendicular). On: direction is RPSR-tilted up to ±45° from
+  perpendicular (45°–135° measured from the edge itself), resampled per edge.
+- `splitBulgePinchMin/Max: Double` — 0–0 (default): the two control points flanking a
+  split's new anchor stay exactly where `BezierMath.split` placed them (existing
+  behavior). Widening the range adds an RPSR offset to those two points: positive
+  pulls them *toward* the shape's centre relative to their un-displaced split
+  position, which flares the base into a fuller, rounder bulge (an S-curve widening
+  before the point); negative pushes them *away* from centre, straightening the
+  sides into a sharper point/pinch. Independent (canvas-normalized units) of
+  `splitDisplacementMin/Max`, not a multiplier of it.
+
+Implementation note: the per-edge rolls for the two extrude toggles can't reuse the
+existing `cycleBase = generation * 8` per-generation scheme (§4.4.4) — that stride has
+exactly one free slot (cycleBase+0, used by the bulge/pinch roll instead) and adding
+per-*edge* rolls there would need a much wider stride, which would change the hash
+input for *every* existing roll in generations beyond the first, silently changing
+output for any saved preset with `generationCount > 1` even with both new toggles off.
+Instead each edge's rolls use a *salted seed* (`seed &+ (offset+1) * 3_267_000_013`)
+combined with small fixed cycle numbers (0/1/2) — a different hash input entirely, so
+it can't collide with any roll that uses the unmodified `seed`, regardless of how many
+edges a run has. Same pattern already used for Dissolution's per-polygon drift seed and
+Fulguration's per-sprite-index seed.
+
+**Fix (2026-07-10) — bulge/pinch sign was backwards.** The first implementation
+applied positive `splitBulgePinch` *away* from centre (toward/past the displaced
+anchor) and negative *toward* centre — exactly inverted from the bullet above and
+from what a user would call "bulge" vs "pinch." Caught by user report ("I seem to
+always be getting bulged splits") and confirmed by rendering the actual curve
+geometry for both signs (not just reasoning about control-point offsets
+symbolically, which is what produced the wrong sign in the first place — the
+abstract "push the handle toward the far anchor = fuller" intuition doesn't hold
+once the anchor has already jumped past where the handle originally was). Fixed by
+negating the offset direction; existing `GenerationalEvolutionEngineTests` for this
+were also wrong in the same direction and corrected alongside the fix.
+
+**Addition (2026-07-10) — split position range.** `splitPositionMin/Max: Double`
+(de Casteljau t-parameter, 0–1) — 0.5–0.5 (default): the split always lands at the
+exact midpoint of the target edge (original, unchanged behavior). Widening the range
+RPSR-samples where along the edge the split occurs each generation instead, clamped
+to [0.05, 0.95] so an extreme setting can't produce a degenerate near-zero-length
+sub-segment. One roll per generation (not per edge, since split only ever processes
+one edge per generation), using the same salted-seed pattern as the extrude toggles
+above rather than a `cycleBase+N` slot — all eight of that stride's slots were
+already in use by this point.
 
 #### 4.4.3 Fitness and selection
 
@@ -279,8 +372,10 @@ Each shape subject to a generational-evolution pass has:
 - **Lock rule** — once a generation's fitness crosses `successThreshold`, the shape
   stops being mutated by extrusion/splitting/subdivision. `lockMode` decides what
   happens next: `.hold` (carry forward unchanged for any remaining generations) or
-  `.graft` (duplicate the locked shape onto itself or another lineage rather than
-  continuing to mutate it — connects back to the duplicate-and-graft operator above).
+  `.duplicate` (renamed 2026-07-11, was `.graft` — same disambiguation as the
+  operator above: duplicate the locked shape onto itself or another lineage rather
+  than continuing to mutate it — connects back to the duplicate-and-reattach
+  operator above, not §4.4.8's unrelated Graft operator).
 
 #### 4.4.4 Architecture: state, determinism, and cost
 
@@ -304,26 +399,517 @@ cannot be:
   generations:, operators:, fitness:) -> Polygon2D` walks the chain once per call;
   memoizing the result per shape-instance (invalidated on any input change) is a valid
   performance optimization, never a correctness requirement.
-- **A hard complexity budget is required**, not optional. Duplicate-and-graft and the
+- **A hard complexity budget is required**, not optional. Duplicate-and-reattach and the
   subdivision-cycle operator both multiply vertex/polygon count per generation.
   Extension hit exactly this failure mode at branch depth 8 (~87,000 polygons before
   the fix) and had to thread a budget counter through the recursion (§3.2 note); the
   generation loop needs the same discipline — a `maxVertexBudget` (or equivalent) that
   stops mutation once exceeded, from the first implementation, not added after an
   incident.
-- **Lineage growth needs its own cap.** If duplicate-and-graft or `.graft` lock mode
-  produces more than one independent descendant, each descendant runs its own
+- **Lineage growth needs its own cap.** If duplicate-and-reattach or `.duplicate` lock
+  mode produces more than one independent descendant, each descendant runs its own
   generation chain onward — a small population, not a single path. `maxLineages`
   bounds this the same way `maxVertexBudget` bounds per-shape complexity.
 
 #### 4.4.5 Suggested build order
 
 Start with only extrusion and edge-split as operators, symmetry as the only fitness
-measure, and both caps enforced from the outset. Add duplicate-and-graft and
-reference-shape matching afterward — they're the two riskiest pieces (grafting for
+measure, and both caps enforced from the outset. Add duplicate-and-reattach and
+reference-shape matching afterward — they're the two riskiest pieces (reattachment for
 uncontrolled complexity growth, reference-matching for metric quality), and validating
 the generation/fitness/lock loop on the simpler pair first makes it much easier to
 tell whether problems come from the core loop or from those two additions.
+
+#### 4.4.6 Open curves — side-extrude (complete, 2026-07-10)
+
+**Status:** all 5 steps implemented and tested.
+- **Step 1** (operator-first/per-operator-eligible-set restructuring):
+  `EvolutionParams.extrudeIncludeOpenCurves: Bool` (default `false`) gates it. With
+  it on, Extrude can target `.openSpline` polygons and a contiguous run correctly
+  stops at an open curve's end instead of wrapping (folded into step 1 — see the
+  build-order note below). Split's eligibility is unaffected either way, always
+  closed-only.
+- **Step 2** (per-edge side roll): each edge of an eligible curve run now
+  independently RPSR-picks one of `outwardNormal`'s two perpendiculars (`edgeSeed`
+  cycle 3, the salted-per-edge namespace steps 1's asymmetry/angle rolls already
+  established) rather than always using the single un-flipped normal. Composes
+  correctly with `extrudeAngleRandomized` (rotation is applied *after* the side
+  pick, around whichever side was chosen) and `extrudeAsymmetricSides` (unaffected —
+  it scales magnitude along whatever direction it's given, side-agnostic). Verified
+  geometrically, not just structurally: two new tests recompute the expected
+  side/position directly from the roll formula and compare exact coordinates against
+  the actual output, across 20 seeds each, plus a test confirming a closed-polygon
+  target's output is byte-for-byte identical whether the flag is on or off.
+- **Step 3** (per-edge both-sides roll): `EvolutionParams.extrudeOpenCurveBothSides:
+  Bool` (default `false`). When on, a *second* independent per-edge roll (`edgeSeed`
+  cycle 4) decides whether that edge additionally extrudes its other side too —
+  "one or more sides" per this section's original framing. Both quads (when both
+  fire) share the same angle-randomization offset — a property of the edge, not of
+  the individual quad — and the same `distanceA0`/`A1` asymmetry roll, each computed
+  once per edge rather than re-rolled per side. Five new tests: off matches the
+  step-2 single-side path exactly; the roll/quad-count/geometry match an
+  independently-computed expectation across 20 seeds; the per-edge property holds
+  across a 4-segment run; the shared-angle-offset composition is verified by
+  checking both quads' exact directions; and a closed-polygon target is confirmed
+  completely unaffected regardless of the flag.
+- **Step 4** (further tests) — effectively done incrementally alongside steps 1–3
+  rather than as a separate later pass; each step shipped with its own regression,
+  new-behavior, and determinism coverage as it was built.
+- **Step 5** (UI + docs): `EvolutionInspector`'s Extrude section gained two fields —
+  **Include Open Curves** (toggles `extrudeIncludeOpenCurves`) and, shown only when
+  that's on, **Both Sides** (toggles `extrudeOpenCurveBothSides`) — matching the
+  established conditional-reveal pattern (e.g. Fulguration's Development section
+  showing Grow-in/Shrink-out fields only in `.growShrink` mode). help.html's
+  Generational Evolution parameter table documents both.
+
+`GenerationalEvolutionEngine` has been closed-polygon-only since it was first built —
+its own doc comment says so plainly ("Closed polygons (`.spline`) only; open curves are
+future work"). Raised directly by user request 2026-07-10, alongside the observation
+that this could be "as simple as running closed polygon generation algorithms on one or
+more sides of the edges that compose an open curve." Scoped to Extrude only for this
+round (Split is a separate, unreviewed question — see below); "one or more sides" per
+edge, decided per edge, not globally.
+
+**Why Extrude generalizes cleanly.** `.openSpline` and `.spline` share the identical
+4-points-per-segment encoding, and the geometry primitive that matters —
+`ExtensionEngine.outwardNormal(of:segIdx:)` — doesn't actually reference the polygon's
+interior or winding at all: it's a pure `(-dy/len, dx/len)` rotate-90° of the edge
+direction. Its "outward" correctness for a *closed* polygon is a property of that
+polygon's winding being consistent, not something the formula itself checks or
+enforces. For an *open* curve there's no interior to be outward from — but the same
+computation still produces a well-defined, consistent perpendicular; it's simply no
+longer principled as "away from the shape," only as "one of the curve's two sides."
+`ExtensionEngine.extrudeEdge` (already extended this session with `distanceA0/A1` and
+a `direction` override for the asymmetric-sides/angle-randomized toggles, §4.4.2) needs
+no further change — it already accepts an arbitrary direction vector and doesn't care
+what that vector means geometrically.
+
+**New parameters** (all opt-in, default = today's closed-only behavior unchanged):
+- `extrudeIncludeOpenCurves: Bool = false` — off (default): Extrude's target pool is
+  `.spline` only, exactly as today. On: `.openSpline` polygons also become eligible
+  Extrude targets.
+- `extrudeOpenCurveBothSides: Bool = false` — off (default): each eligible curve edge
+  extrudes on exactly one RPSR-chosen side (model (a): a per-edge coin-flip between
+  the edge's two perpendiculars — there's no principled default side to fall back to,
+  since there's no interior, so it's always randomized once curve-extrude is active).
+  On: a *second* per-edge RPSR roll decides, independently per edge, whether that edge
+  extrudes on one side (as above) or both — calling `extrudeEdge` twice, once per
+  perpendicular direction, adding both resulting quads. Has no effect on closed-polygon
+  targets, which keep using the single true-outward direction unaffected by this flag.
+
+**Why Split is deliberately excluded, not merely unfinished.**
+`GenerationalEvolutionEngine.applySplit` has no type guard today — nothing stops it
+from already running on an open curve if one reached it, using
+`BezierMath.centreSpline`'s anchor-average as a "centre"
+even though that average isn't a true interior centroid for an open path. Whether that
+produces a *good* result is untested and unreviewed; letting it happen as an accidental
+side effect of widening eligibility (rather than a deliberate, separately-validated
+choice) is exactly the kind of thing to avoid. Concretely, this means **target
+eligibility can't stay a single shared list computed before the operator is chosen** —
+today's `applyGeneration` picks `targetIdx` from one `eligible` array, *then* rolls
+Extrude-vs-Split; widening that one array would make both operators open-curve-eligible
+at once. The fix (only on the new toggle's branch — the existing code path is untouched
+byte-for-byte when `extrudeIncludeOpenCurves` is false, so this carries zero
+determinism/regression risk for any existing preset): when the toggle is on, roll the
+operator choice *first*, then draw the target from *that operator's own* eligible set
+(Extrude's includes open curves; Split's stays closed-only, always). The two rolls
+still use the same `cycleBase+1`/`cycleBase+2` slots as today, just consumed in the
+other order — a new code path, not a reinterpretation of the existing one, so there's
+no shared-history determinism concern for the off case.
+
+**Roll-index note.** The per-edge "which side"/"both sides" rolls reuse the salted-seed
+pattern from §4.4.2's asymmetry/angle rolls (`seed &+ (offset+1) * 3_267_000_013`,
+consuming two more small fixed cycle numbers within that edge's already-isolated
+namespace) rather than claiming new `cycleBase+N` slots — same reasoning as before:
+per-*edge* rolls don't fit the fixed 8-wide per-generation stride, and salting sidesteps
+that entirely rather than widening the stride and risking collisions.
+
+**Suggested build order:**
+1. ✅ **Done.** Operator-first / per-operator-eligible-set restructuring, gated
+   behind `extrudeIncludeOpenCurves`, with the off-path byte-for-byte unchanged.
+   Turned out to need one more piece than originally scoped: `applyExtrude`'s
+   `(startSeg + offset) % segCount` wraparound (correct for a closed polygon's
+   cyclic segments) is wrong for an open curve, which has no segment "after" its
+   last one — folded into step 1 rather than deferred, since step 1's own
+   "tested in isolation" bar meant testing Extrude against a real open-curve
+   target, which would have exposed the wrap immediately. Fixed by clamping the
+   run to `segCount - startSeg` specifically for `.openSpline` targets; closed
+   polygons keep wrapping exactly as before. 6 new tests in
+   `GenerationalEvolutionEngineTests`, including a 40-seed sweep verifying the
+   non-wrapped quad count against an independently-computed expectation.
+2. ✅ **Done.** Per-edge side roll for the single-side (default) case — `edgeSeed`
+   cycle 3 picks between `outwardNormal`'s two perpendiculars per edge, only on
+   `.openSpline` targets; closed polygons never take the branch. 3 new tests,
+   including two that recompute the exact expected corner position from the roll
+   formula and compare coordinates directly rather than only checking counts/shape.
+3. ✅ **Done.** Per-edge both-sides roll behind `extrudeOpenCurveBothSides` —
+   `edgeSeed` cycle 4, independent of the cycle 3 side roll; both quads share the
+   edge's angle offset and asymmetry roll when fired together. 5 new tests.
+4. ✅ **Done** (folded into steps 1–3 rather than as a separate later pass): each
+   step landed with its own regression coverage (closed-only presets unchanged),
+   geometry-exact new-behavior coverage, and determinism coverage as it was built,
+   rather than deferring all testing to one pass at the end.
+5. ✅ **Done.** `EvolutionInspector`'s Extrude section gained **Include Open
+   Curves** and (conditionally shown) **Both Sides** toggles; help.html's
+   Generational Evolution table documents both.
+
+#### 4.4.7 Open curves — curve grafting (V2, sketch only, deferred)
+
+The second half of the 2026-07-10 request — "generating further open curves from the
+existing curve in a variety of ways" — is structurally a different, larger problem than
+side-extrude and is **not designed in detail here**, only sketched so the idea isn't
+lost: an operator that picks an anchor point on the existing curve (an endpoint, or a
+newly-split mid-curve point — Split's open-curve support is exactly the open question
+§4.4.6 defers), grafts a new short curve segment from there with its own sampled
+tangent/angle, and — unlike side-extrude, which only ever adds *closed* quads — the
+grafted result is itself a new *open* curve, eligible for further mutation in later
+generations. This is close in spirit to Extension's Branch (§3.x) but made generational
+(compounding across the generation loop, not applied once to the base form) and
+targeting a graftable point anywhere along the curve, not just its two endpoints. Real
+new geometry-generation logic is needed here, unlike §4.4.6 which is almost entirely
+reuse — sequence this after §4.4.6 is validated, not in parallel with it.
+
+**Superseded in scope by §4.4.8 (2026-07-11):** this section's "graft a new open
+curve from an anchor point" is exactly §4.4.8's Graft operator at `n=1`,
+`attachmentMode: .singlePoint`. Kept here as the original narrower sketch; §4.4.8 is
+the fuller design and the one to build from.
+
+#### 4.4.8 The n-gon Graft operator (steps 1–6 complete, 2026-07-11)
+
+##### 4.4.8.1 What it is, and what it subsumes
+
+Raised by user request 2026-07-11: instead of two separately hand-built mutation
+operators (Extrude, a fixed quad shape; Split, a displaced point), generalize to a
+single operator parameterized by the *number of sides* of the primitive being
+attached — `n=1` is a degenerate "polygon," a line; `n=3,4,5,…` are triangle,
+quadrilateral, pentagon, and so on. Each generation, Graft picks an `n` from a
+user-specified range, generates that primitive, optionally distorts
+(stretches/squashes) it, optionally curves and/or articulates its free edges, and
+attaches it to the existing geometry at a chosen site — the anchor point or edge
+linking back to the previous generation, which is never itself distorted, curved,
+articulated, or otherwise touched.
+
+This is a genuine generalization, not a parallel system — the operators and designs
+already in this document turn out to be specific points inside the space Graft
+describes:
+- **Extrude** (§4.4.2, implemented) ≈ `n=4`, `attachmentMode: .wholeEdge`, no
+  distortion, a fixed (not RPSR-ranged) curvature on one specific edge only.
+- **Split** (§4.4.2, implemented) ≈ `n=1`, `attachmentMode: .singlePoint` with a
+  newly-inserted point (splitting the parent edge), departure direction derived from
+  "away from the shape's centre" rather than freely random.
+- **§4.4.7's curve-grafting sketch** ≈ `n=1`, `attachmentMode: .singlePoint`, either
+  attachment-site flavor (existing vertex or newly-split point) — see the note above.
+- **Extension's Branch** (§3.x, implemented, one-shot not generational) ≈ the same
+  `n=1`/point-attachment shape again, applied once rather than compounding through
+  the generation loop.
+
+None of this is coincidence — it's what motivated the proposal. The scope decision
+for *this* round (confirmed 2026-07-11): build Graft as an **additive third
+operator**, alongside Extrude/Split, sharing the same weighted operator-selection
+mechanism (§4.4.2's `operatorWeights`, a new `graftWeight` alongside
+`extrudeWeight`/`splitWeight`). The longer-term aim — explicitly not this round's
+work — is to generalize Extrude and Split into presets/defaults of Graft's parameter
+space and retire their separate implementations, once Graft itself is validated
+standalone. Building the general form first and proving it can reproduce the two
+special cases is the actual test of whether the generalization holds up; committing
+to retiring working, tested code before that's shown would be premature.
+
+##### 4.4.8.2 Reuse: this is mostly Assembly Fulguration's machinery, relocated
+
+The lower-level geometry Graft needs already exists, built for a different mode
+(Fulguration §5.12, not Evolution) but not caring which mode calls it:
+- **Primitive generation**: `AssemblyPrimitiveKit`'s `plainPolygon(sides:)` already
+  generates an arbitrary-`n` regular polygon (currently called only for its fixed
+  `.square`/`.triangle`/`.pentagon` kind cases, `sides` 3–5); Graft's RPSR-sampled
+  `n` range calls the same underlying function directly rather than going through
+  the closed `AssemblyPrimitiveKind` enum. `AssemblyPrimitiveKit`'s `.line` kind
+  (a straight `.openSpline` 2-point segment) is already exactly the `n=1` case.
+- **Distortion**: `AssemblyPrimitiveKit.deformed(_:scaleX:scaleY:)` — independent
+  per-axis scale, already exactly "stretch and squash." Reused directly.
+- **Attachment geometry**: `AttachmentSite`/`AttachmentSiteExtractor` already
+  generalize "a point + direction + outward side" across both `.line` polygon edges
+  and `.openSpline` endpoints uniformly (§5.12.3) — precisely the abstraction needed
+  to unify Graft's edge- and point-attachment cases into one type. `AssemblyFulgurationEngine
+  .place` already does the rigid-transform-onto-a-target-site math (§5.12.4), including
+  the `.preserveSize`/`.matchLength` edge-length toggle — directly reusable for
+  Graft's whole-edge and partial-edge attachment modes.
+- **The "root anchor never moves" invariant falls out for free.** Assembly
+  Fulguration's existing pipeline already deforms a piece *in its own local frame*,
+  extracts attachment sites from the deformed result, and only *then* rigidly places
+  it so the chosen site lands exactly on the target site (§5.12.4). Because
+  distortion happens before placement, not after, the placement step is what
+  guarantees the shared coordinate is exact — this was never a special rule to add,
+  it's a structural consequence of the existing pipeline's ordering. Graft inherits
+  it by construction if it reuses that pipeline rather than re-deriving the geometry.
+
+Net effect: this is substantially a *relocation* of existing, tested code into a new
+calling context (Evolution's generational loop instead of Fulguration's one-shot
+flash), not a from-scratch geometry-math project. The genuinely new work is in
+§4.4.8.4 below.
+
+##### 4.4.8.3 Attachment modes — three, not one, each with different degrees of freedom
+
+Whole-edge attachment (Extrude's existing case) is fully determined by the shared
+edge — position, rotation, and scale are all pinned. The other two are not, and each
+needs its own extra parameter(s) to be well-defined:
+
+- **`.wholeEdge`** — the new primitive's chosen attachment-site edge is matched
+  exactly onto the parent's target edge (reusing `AssemblyFulgurationEngine.place`
+  and its `.preserveSize`/`.matchLength` toggle directly). No extra angle parameter
+  needed — the edge match determines orientation.
+- **`.singlePoint`** — only one coordinate is shared, leaving departure direction
+  free. Needs `graftDepartureAngleMin/Max: Double` (RPSR range, radians, relative to
+  the parent's local tangent/normal at that point — same "angle relative to a
+  reference direction" shape `DirectionalSelector` already uses elsewhere, though
+  DirectionalSelector itself is a *filter* on eligible targets, not a *sampler* for
+  a new direction, so this is a related but distinct small piece of new math, not a
+  direct reuse). Also needs `graftPointSource: GraftPointSource` — `.existingVertex`
+  (non-destructive to the parent's topology, matches Branch/§4.4.7) or
+  `.newlyInsertedPoint` (splits the parent edge at an RPSR position first, reusing
+  `splitPositionMin/Max`'s existing clamp-to-[0.05,0.95] convention from §4.4.2,
+  then attaches from the new point — matches Split's existing behavior).
+- **`.partialEdge`** — the new primitive's attachment site spans only *part* of the
+  parent edge's length, not a single point and not the whole edge. Needs
+  `graftPartialPositionMin/Max: Double` (where along the parent edge the span
+  starts — directly reuses `splitPositionMin/Max`'s t-parameter idiom) and
+  `graftPartialSpanMin/Max: Double` (0–1, what fraction of the parent edge's
+  remaining length the attachment covers). The most complex of the three
+  geometrically and the one with the least existing-code overlap; sequence it last.
+
+##### 4.4.8.4 What's genuinely new: curvature and articulation
+
+Distortion and attachment are substantially reuse (§4.4.8.2–3). Per-edge curvature
+and articulation are not — nothing in Extrude/Split/Assembly Fulguration does either
+today:
+
+- **`graftEdgeCurvatureProbability: Double`** (0–1, default 0) — per-free-edge RPSR
+  chance of becoming curved (a control-point bow) instead of staying straight.
+  `graftEdgeCurvatureAmountMin/Max: Double` — bow magnitude when curved, as a
+  fraction of edge length, the same units `ExtensionEngine.extrudeSegment`'s
+  existing `extrusionCurvature` already uses for Extrude's outer face — reuse the
+  convention even though this is a new call site.
+- **`graftArticulationCountMin/Max: Int`** (default 0–0, no articulation) — how many
+  extra joints a free edge is subdivided into. Conceptually the same operation
+  `CurveRefinementParams.insertionCount` already performs at the whole-curve level;
+  an individual grafted edge wanting a light version of that is a strong argument
+  for sharing vocabulary with `CurveRefinementEngine` rather than inventing parallel
+  terms, even though the call site (one edge of a freshly-grafted primitive, not a
+  whole `.openSpline` polygon) is different enough that literal code reuse needs
+  checking at implementation time rather than assumed here.
+- **`graftArticulationPattern`** — RPSR-jittered displacement per joint, or a
+  regular alternating pattern (the user's "zig zag" example). `CurveDisplacementMode`
+  already has `.jitter`; `.lazy` (periodic-hold jitter) is close to but not the same
+  as a deterministic alternating zigzag, so this needs either a new case added to
+  that enum or a small dedicated `GraftArticulationPattern` enum — left as an
+  implementation-time choice, leaning toward extending the existing enum if the
+  shapes turn out to match cleanly.
+- **`graftArticulationAmountMin/Max: Double`** — displacement magnitude per joint,
+  canvas-normalized units, perpendicular to the edge's own local direction.
+
+##### 4.4.8.5 Fitness and selection (§4.4.3) becomes more valuable, not more required
+
+§4.4.3's fitness/lock/selection machinery is still unbuilt and Graft doesn't depend
+on it — Extrude and Split already ship generation-after-generation without any
+fitness measure today, pure RPSR sampling with a vertex-budget backstop, and Graft
+can follow the identical pattern for its first version. But a much larger `n`-range
+with independent distortion/curvature/articulation multiplies the space of possible
+outputs considerably faster than two fixed operators did; unguided sampling across
+that space is more likely to produce visually inconsistent generations-to-generation
+results without some selection pressure eventually pruning toward coherence. Worth
+noting as a reason fitness/selection may become worth prioritizing sooner once Graft
+ships, not a blocking dependency for Graft's own first version.
+
+##### 4.4.8.6 Suggested build order
+
+1. `n`-range sampling + plain-`n`-gon generation reusing `AssemblyPrimitiveKit
+   .plainPolygon(sides:)` directly (bypassing the closed `AssemblyPrimitiveKind`
+   enum), plus distortion reusing `.deformed`. No attachment yet — just prove the
+   primitive-generation half in isolation, mirroring how Assembly Fulguration's own
+   build order validated piece generation before attachment.
+   ✅ **Done (2026-07-11).** `AssemblyPrimitiveKit.plainPolygon(sides:)` relaxed
+   from `private` to internal so it's reachable with an arbitrary `n`, not just
+   the fixed `AssemblyPrimitiveKind` cases. `EvolutionParams` gained
+   `graftSidesMin/Max` (default 1/4) and `graftDistortionMin/Max` (default
+   1.0/1.0). New `GraftEngine.generatePrimitive(seed:rollBase:params:)` RPSR-
+   samples `n`, degenerates `n≤2` to the existing `.line` primitive (no
+   meaningful 2-sided polygon), calls `plainPolygon(sides:)` directly for
+   `n≥3` (confirmed reachable up to at least n=6, beyond the enum's fixed
+   square/triangle/pentagon), then applies independent x/y distortion via
+   `.deformed`. Not wired into `GenerationalEvolutionEngine.applyGeneration`
+   yet — returns a freestanding piece in its own local frame. 12 new tests in
+   `GraftEngineTests.swift` (n→shape mapping, range-clamping across 50 seeds,
+   distortion neutrality/independence, determinism); full suite at 637 tests,
+   0 failures; both `loom_swift` and `Loom_Swift_Integration` build clean.
+2. `.wholeEdge` attachment only, reusing `AttachmentSite`/`AssemblyFulgurationEngine
+   .place` directly. This is the closest case to Extrude, so it's the cheapest way
+   to validate the reused placement math actually behaves correctly when called
+   from Evolution's generation loop instead of Fulguration's flash logic.
+   ✅ **Done (2026-07-11).** `EvolutionParams` gained `graftWeight` (default 0,
+   folded into the existing extrude/split weighted roll as a three-way choice —
+   identical to before whenever `graftWeight` is 0) and `graftEdgeMatching`
+   (`AssemblyEdgeMatching`, default `.preserveSize`, reusing Assembly
+   Fulguration's own enum rather than a parallel one). New
+   `GenerationalEvolutionEngine.applyGraft`: picks a target edge on the parent
+   polygon the same way Extrude/Split pick theirs (`eligibleSegments`, honoring
+   `directionalSelector`), builds an `AttachmentSite` for it directly from the
+   edge's own anchors/outward-normal (`AttachmentSiteExtractor` doesn't cover
+   the `.spline` encoding Evolution's parent polygons use, only
+   `AssemblyPrimitiveKit`'s `.line`/`.openSpline` output — so the *target* side
+   is built by hand from existing edge math, while the *generated piece*'s own
+   sites still go through `AttachmentSiteExtractor` unmodified), then calls
+   `GraftEngine.generatePrimitive` and `AssemblyFulgurationEngine.place`
+   directly. A rolled primitive with no edge-type site (`n≤2`) is skipped for
+   that generation, deferred to `.singlePoint` (step 3). Own salted-seed
+   namespace (`graftSeedSalt`), since all eight `cycleBase+0...7` slots on the
+   un-salted seed were already claimed by Extrude/Split. In the open-curve
+   (§4.4.6) path, Graft's eligible set stays closed-only, mirroring Split, so
+   neither can end up targeting a curve as a side effect of Extrude's widened
+   list. 8 new tests in `GenerationalEvolutionEngineTests.swift`: one-append-
+   per-generation, geometry-exact edge-coincidence (a roll-independent
+   invariant — `place()` guarantees the source site's point lands exactly on
+   the target's, regardless of which site/mirror/edge-matching was rolled),
+   `n≤2` skip, determinism, `.matchLength` vs `.preserveSize` edge-length
+   invariant, closed-only eligibility (mixed-polygon-set and open-curve-only
+   sweeps), and a `graftWeight: 0` regression proof (a distinctively-shaped
+   heptagon primitive never appears when the weight excluding it is left at
+   its default). Full suite at 645 tests, 0 failures; both `loom_swift` and
+   `Loom_Swift_Integration` build clean.
+3. `.singlePoint` attachment (`.existingVertex` source first — non-destructive,
+   simpler; `.newlyInsertedPoint` second, reusing `splitPositionMin/Max`).
+   ✅ **Done (2026-07-11).** `EvolutionParams` gained `graftAttachmentMode`
+   (`GraftAttachmentMode`: `.wholeEdge` default/step-2-unchanged, `.singlePoint`
+   new), `graftDepartureAngleMin/Max` (radians, default 0–0 = always exactly
+   outward, no randomization), and `graftPointSource` (`GraftPointSource`:
+   `.existingVertex` default/non-destructive, `.newlyInsertedPoint` — the
+   latter reuses `splitPositionMin/Max` directly rather than a parallel field,
+   per this step's own note above). `applyGraft` became a two-line dispatcher
+   over `applyGraftWholeEdge` (the renamed step-2 implementation, unchanged)
+   and new `applyGraftSinglePoint`. Turned out to need less new placement math
+   than expected: `.singlePoint`'s only real difference from `.wholeEdge` is
+   how the target `AttachmentSite` is built — `point` is the existing anchor
+   or a freshly split one, `outward` is the edge's own outward normal rotated
+   by the sampled departure angle (rather than the edge's natural normal
+   directly), `length: nil` (a point, not an edge) — `AssemblyFulgurationEngine
+   .place` is then reused completely unmodified, `.matchLength` naturally
+   becoming a no-op per `AttachmentSite`'s own existing doc comment about
+   length-less sites. `.existingVertex` mode reuses `eligibleSegments` +
+   the segment's own start anchor, touching nothing on the parent.
+   `.newlyInsertedPoint` mode splits the chosen edge first (undisplaced — no
+   bulge/pinch, those are Split-operator-specific extras this doesn't need),
+   the same net +4-point mutation Split's own operator produces. Unlike
+   `.wholeEdge`, every rolled primitive is placeable here (point-type sites
+   work as well as edge-type ones), so `n≤2` primitives are no longer skipped
+   in this mode. 8 new tests in `GenerationalEvolutionEngineTests.swift`:
+   non-destructiveness of `.existingVertex`, the split-mutation shape of
+   `.newlyInsertedPoint`, geometry-exact site-coincidence for both point
+   sources, the 0–0 default's exact-outward departure direction, a
+   diametrically-opposite placement check for a π departure angle, `n≤2`
+   placeability, and determinism. Full suite at 653 tests, 0 failures; both
+   `loom_swift` and `Loom_Swift_Integration` build clean.
+4. `.partialEdge` attachment — deferred to last per §4.4.8.3, least code overlap
+   with what's already built.
+   ✅ **Done (2026-07-11).** `GraftAttachmentMode` gained a third case,
+   `.partialEdge`. `EvolutionParams` gained `graftPartialPositionMin/Max`
+   (t-parameter along the parent edge where the span starts; default 0–0 —
+   its own field rather than sharing `splitPositionMin/Max`, since unlike
+   Split there's no parent-topology zero-length risk to clamp away from, so
+   it isn't restricted to [0.05, 0.95]) and `graftPartialSpanMin/Max` (0–1,
+   what fraction of the edge's *remaining* length beyond the start position
+   the span covers; default 1–1). New `applyGraftPartialEdge` turned out to
+   need even less new code than `.singlePoint` did: it's `.wholeEdge` with
+   one change — the target `AttachmentSite` is built from a sub-segment
+   (`BezierMath.point(seg:t:)` at the sampled start/end t-values) instead of
+   the full edge, giving it its own `point`/`direction`/`length`, while
+   `outward` and everything downstream (mirror roll, source-site roll,
+   `GraftEngine.generatePrimitive`, the `n≤2` edge-type-site requirement,
+   `AssemblyFulgurationEngine.place`) is identical to `.wholeEdge`. Default
+   0–0/1–1 span deliberately reproduces `.wholeEdge`'s full-edge target
+   exactly, so `.partialEdge` is a strict superset, not a separate behavior
+   to reconcile later. Non-destructive to the parent, like `.wholeEdge` — the
+   sub-span is only ever used to compute `targetSite`, never written back.
+   7 new tests in `GenerationalEvolutionEngineTests.swift`: the default-
+   reproduces-`.wholeEdge` invariant, geometry-exact sub-segment-midpoint
+   coincidence for a narrowed span, a `.matchLength` test proving the placed
+   edge scales to the shorter sub-segment length (not the full edge's, unlike
+   the equivalent `.wholeEdge` test), non-destructiveness, `n≤2` skip, a
+   zero-span no-op guard, and determinism. Full suite at 660 tests, 0
+   failures; both `loom_swift` and `Loom_Swift_Integration` build clean.
+5. Curvature and articulation (§4.4.8.4) — layered on top of whichever attachment
+   modes are validated by that point, rather than gating the whole operator on both
+   being done first.
+   ✅ **Done (2026-07-11).** `EvolutionParams` gained `graftEdgeCurvatureProbability`
+   (0–1, default 0) and `graftEdgeCurvatureAmountMin/Max` (default 0–0), plus
+   `graftArticulationCountMin/Max` (default 0–0), `graftArticulationPattern`
+   (new dedicated `GraftArticulationPattern` enum: `.jitter`/`.zigzag` — kept
+   separate from `CurveDisplacementMode` rather than extending it, since
+   `.lazy` turned out not to match a deterministic alternation closely enough
+   to justify sharing, confirming the spec's own "needs checking at
+   implementation time" note), and `graftArticulationAmountMin/Max` (default
+   0–0). New `applyGraftEdgeDetailing` runs after `place()` in all three
+   attachment-mode functions, as a no-op guard (`placed` returned completely
+   unchanged) unless at least one of the four fields is actually configured —
+   zero regression risk for every existing test, all of which use untouched
+   defaults. When it does fire: a `.line`-type piece is converted to `.spline`
+   via `BezierMath.lineToSplinePoints` (an `.openSpline` piece, already
+   spline-encoded, needs no conversion); every segment except the one
+   `AttachmentSiteExtractor` site index that was matched to the parent (`nil`
+   for a point-type root, which protects nothing extra since neither operation
+   ever relocates an original anchor) is eligible. Articulation runs first —
+   `BezierMath.point` samples joints at even `t` along the *original* edge,
+   displaced perpendicular to its chord by an RPSR (`.jitter`) or
+   deterministically-alternating (`.zigzag`) amount, producing straight
+   sub-segments — then curvature is independently rolled per resulting
+   sub-segment, reusing `ExtensionEngine.extrudeSegment`'s existing
+   `bow = amount * edgeLength` convention (a new call site, not new math).
+   Turned out to need real new geometry work exactly where the spec
+   anticipated (§4.4.8.4's own framing) but *not* where it hedged most: the
+   whole-curve-oriented `CurveRefinementEngine.refineOne` (private, driver-
+   resolved params, whole-`.openSpline`-polygon granularity) didn't fit a
+   single probabilistically-toggled edge cleanly, so articulation is a small
+   self-contained function sharing *vocabulary* with `CurveRefinementParams
+   .insertionCount` (per the spec's suggestion) rather than literal code.
+   6 new tests in `GenerationalEvolutionEngineTests.swift`, all geometry-exact
+   with zero RNG replication needed beyond the existing `sourceSiteRoll`
+   pattern (probability=1/degenerate min==max ranges eliminate the remaining
+   randomness from the assertions themselves): curvature bows every non-root
+   edge by the exact formula while leaving the root edge's control points
+   exactly collinear; articulation produces the exact predicted segment count
+   and keeps the ring closed; an `n≤2` open-spline piece's lone edge stays
+   fully articulable and the parent-anchor coincidence invariant survives
+   detailing; `.zigzag`'s alternating sign matches exactly, joint-for-joint;
+   determinism. Full suite at 666 tests, 0 failures; both `loom_swift` and
+   `Loom_Swift_Integration` build clean.
+6. Tests + `EvolutionInspector` UI + spec/help.html sync at each step, same
+   incremental pattern §4.4.6 already used successfully (regression coverage,
+   geometry-exact new-behavior coverage, and determinism coverage landing alongside
+   each piece rather than deferred to one pass at the end).
+   ✅ **Done (2026-07-11).** Tests landed incrementally with steps 1–5 as
+   planned (66 new tests total across `GraftEngineTests.swift` and
+   `GenerationalEvolutionEngineTests.swift`); UI and docs were the piece
+   deferred to this step. New `EvolutionInspector.graftOperatorSection`
+   (collapsed by default, unlike Extrude/Split, since Graft's 0-weight
+   default keeps it opt-in): Weight, Sides, Distortion, Edge Matching
+   (segmented picker, same convention `FulgurationInspector`'s equivalent
+   field already uses), Attachment (segmented picker), mode-conditional
+   Point Source/Departure (Single Point) or Position/Span (Partial Edge),
+   Curvature Probability/Amount, and Articulation Count/Pattern/Amount —
+   Departure angle shown/edited in degrees (converted to/from the
+   radians-native field), same convention `DirectionalSelectorEditor`
+   already uses. `help.html`'s Generational Evolution section gained a new
+   "Graft — attaching freestanding n-gon primitives" walkthrough (mirroring
+   the existing Extrude/Split step-by-step sections) and 13 new parameter-
+   reference table rows; the section's own intro paragraph, the Directional
+   Selector paragraph (also applies to Graft's target-edge choice, not just
+   Extrude/Split), and the Reveal row (noting Graft doesn't yet tween into
+   view, the one known gap carried over from step 2's design note) were all
+   updated to mention the third operator. Tag-balance-checked against the
+   file's existing 7 pre-existing false positives (an unrelated inline SVG
+   icon) — unchanged, confirming no new issues. Both `loom_swift` and
+   `Loom_Swift_Integration` build clean; full `loom_swift` suite still at
+   666 tests, 0 failures (UI/doc-only step, no engine changes).
+7. **Not this round:** generalizing Extrude/Split into Graft presets and retiring
+   their separate implementations — the explicitly-deferred longer-term aim from
+   §4.4.8.1, revisited once Graft is validated standalone.
 
 ---
 
@@ -516,7 +1102,7 @@ post-process at 2e/2f) rather than needing a new kind of pipeline composition.
   local development clock) is deferred; it reopens the cross-mode polygon identity
   question already flagged as unresolved in §13.4, and shouldn't be tackled until V1/V2
   are validated and a concrete case actually needs it (same reasoning §4.4.5 gives for
-  deferring duplicate-and-graft).
+  deferring duplicate-and-reattach).
 
 ### 5.10 Suggested build order
 
@@ -535,6 +1121,271 @@ post-process at 2e/2f) rather than needing a new kind of pipeline composition.
    conditional appearance), more an extension of Evolution's existing drift concept
    into a new trigger context.
 6. **Deferred beyond V2**: true concurrent multi-instance firing (§5.9's last point).
+
+### 5.11 Design note (2026-07-09): irreducibility, and what V1 actually evokes
+
+§5.1 borrows fulguration's philosophical sense — genuine emergence, form irreducible to
+prior conditions — but that sense has a hard edge computation can't cross. Any
+deterministic algorithm, however elaborated with pseudo-randomness, is fully specified by
+its code and seed: nothing it outputs is irreducible to those inputs even in principle,
+only unpredictable to an observer who lacks them. That's *epistemic* opacity (chaos,
+PRNG-driven surprise), not the *ontological* irreducibility the term names in its original
+sense — a distinction worth keeping explicit so the mode's goal doesn't quietly slide into
+"make something the software literally cannot compute."
+
+The achievable target is narrower and still worthwhile: not manifesting unprefigurable
+novelty, but staging geometry that *reads* as such to a viewer — optimizing for perceptual
+discontinuity (no visible seam back to what preceded it) rather than for algorithmic
+unpredictability (which RPSR sampling already gives, for free, without making a flash look
+like anything other than "the same shape popping in and out somewhere new").
+
+Measured against that target, V1 (§5.3–5.5) covers the *conditional-appearance* half of
+Fulguration — existing/not-existing, keyed to a trigger — but not the *qualitative-novelty*
+half. Every parameter it varies (interval, hold, translation, scale, rotation, grow/shrink
+envelope) is a continuous value drawn from a range, and what appears each cycle is always a
+rigid transform of the identical resolved shape. Nothing about *what* appears is ever
+discontinuous with what came before — only *when* and *where*. A viewer reads this
+correctly as "the shape is flickering," not as "something new just happened." V2 as scoped
+(§5.6–5.8) doesn't close this gap either: `.spriteMetric`/proximity triggers generalize
+*when* it fires, and §5.8's geometry variation perturbs the same continuous drift-target
+vocabulary Evolution already uses — still parametric interpolation, not a change in kind.
+
+Directions worth exploring for a real V3 (none implemented, no commitment implied — the
+point is to keep the option space open for whenever this mode gets picked up again):
+
+- **Discrete variant switching, not continuous perturbation.** Instead of RPSR-sampling a
+  value within a range, RPSR-*select* among a small set of qualitatively distinct shape
+  variants (different point counts, different subdivision recipes, different source
+  polygon sets entirely) per flash. The jump between variants is a jump in kind, not
+  degree — the thing that actually reads as not interpolable from the prior state.
+- **Structural discontinuity as the flash's content.** A flash whose geometry momentarily
+  breaks a constraint the rest of the piece maintains — desyncing an otherwise-mirrored
+  symmetry, briefly changing point/branch count, switching which curve-refinement
+  algorithm resolves the shape — rather than only varying a resolved shape's placement.
+- **Rule-switching across passes.** Let a flash apply a *different* transformation-set
+  pass chosen from a discrete list, rather than parameter-varying within one fixed pass —
+  the same pipeline-discontinuity idea applied at the mode-composition level instead of
+  the single-pass level.
+- **Co-timed non-interpolable render state.** Pairing the geometric flash with a
+  simultaneous hard-cut in palette/blend-mode/layer visibility (not a crossfade)
+  reinforces the discontinuity perceptually even where the geometry change alone is
+  subtle.
+- **Coupling to Dissolution's endpoint as a trigger.** The inverse of the cross-stage
+  coupling already flagged and deferred at §13's item 7 (Fulguration's trigger state
+  feeding Dissolution) — here, one form's collapse *is* the discontinuous cause of
+  another's appearance, rather than both running on independent, unrelated clocks. Closer
+  to §5.1's original relational ideal than either V1's self-contained or V2's proximity
+  framing currently reach.
+
+None of these require abandoning V1 — the frame-cycle trigger, hold-window development,
+and per-cycle RPSR seeding are sound infrastructure regardless of what varies discretely
+versus continuously. What needs rethinking is specifically *what a flash is allowed to
+change*, not *when* it's allowed to change it.
+
+### 5.12 V3 — Assembly Fulguration (combinatorial construction)
+
+Proposed 2026-07-09, directly addressing §5.11's "discrete variant switching" and
+"structural discontinuity" directions with a concrete mechanism, rather than a rigid
+transform of one shape (V1) or a continuous perturbation of one shape's own parameters
+(V2 §5.8). A flash's content is *built*, piece by piece, from a set of independent source
+shapes — what appears was never a single shape to begin with, so nothing about it can
+read as "the same thing, moved."
+
+#### 5.12.1 Relation to V1/V2 — a second content mode, same trigger vocabulary
+
+Everything in §5.3 (frame-cycle trigger) and the hold-window concept in §5.5 carries over
+unchanged. What's new is entirely *what happens during the hold window* — so this is
+scoped as a second `contentMode` on `FulgurationParams` (`.transform`, V1's existing
+behavior, remains the default; `.assembly` selects this), not a parallel params type or a
+new pipeline stage. One engine entry point, one trigger/timing model, two ways of
+generating what's shown.
+
+#### 5.12.2 Source: a built-in procedural primitive kit (revised 2026-07-09)
+
+Originally scoped (see history below) as a reference to a separate user-authored
+geometry document. Revised to a small **built-in primitive kit** instead — no document,
+no file dependency, no missing/empty-source error path: `AssemblyPrimitiveKind`
+(`.square`, `.triangle`, `.pentagon`, `.line`), each generated on the fly by a plain
+regular-N-gon function (square/triangle/pentagon: 3–5 evenly spaced vertices on a circle,
+`.line` type) or a straight two-point `.openSpline` segment (`.line` kind). **Not**
+`RegularPolygonGenerator` — that function is a *star* generator (alternating outer/inner
+radius tips via `RegularPolygonParams`); coercing it into a plain N-gon needs an awkward
+degenerate case, so plain-N-gon generation is its own small function instead.
+
+Each piece instance also gets an independent seeded uniform size (`assemblySizeMin/Max`,
+RPSR-sampled per piece, default 0.15–0.35) applied before the x/y deform below — **added
+2026-07-09**, after initial use showed pieces starting "quite large" by default: the kit's
+base shapes are canvas-scale on their own (~0.5-radius), so with no size variation every
+flash read as roughly canvas-filling regardless of Piece Count.
+
+Each piece instance also gets independent seeded x/y deform (`assemblyDeformMin/Max`, a
+per-axis scale range around 1.0, RPSR-sampled same as everything else) on top of size,
+before attachment sites are computed — a square becomes a rectangle or slight rhomboid, a
+triangle becomes scalene, applied *before* §5.12.3's site extraction so alignment math
+sees the deformed edges directly, no separate accounting needed.
+
+Because there's no finite fixed set to exhaustively traverse (unlike a document's layer
+list), an explicit `assemblyPieceCountMin/Max: Int` range is RPSR-sampled per cycle, and
+pieces are drawn *with* repetition from the four-kind kit rather than each used once.
+
+**Original document-source design, kept for a possible later variant, not built:** a
+`assemblySourceDocument: String` naming a separate geometry-editor document, one piece
+per visible layer, reusing `EditableGeometryDocument.runtimePolygons()`'s per-layer
+resolution (already built for the whole-document SVG export,
+`AppController.saveGeometryDocumentAsSVG`) without its flatten step. Would let a user
+supply their own custom pieces instead of the built-in kit. Deferred indefinitely — the
+procedural kit removes the entire dependency for no real loss of expressiveness at this
+stage, and the two aren't mutually exclusive if ever revisited (an `assemblySource`
+enum with `.proceduralKit` / `.document(name)` cases would let both coexist).
+
+#### 5.12.3 Attachment sites — generalizing "edge" to cover curves
+
+An **attachment site** is `(point: Vector2D, direction: Vector2D, outward: Vector2D)`.
+Two constructors cover the two piece representations the primitive kit produces (§5.12.2)
+— **not** `ExtensionEngine.outwardNormal`, which assumes the 4-points-per-segment
+`.spline` encoding a shape only has *after* passing through Subdivision; the kit's
+`.square`/`.triangle`/`.pentagon` pieces are plain `.line`-type polygons (raw vertex
+list, edges = consecutive point pairs), a different representation needing its own
+(equally small) edge-normal function:
+
+- **`.line` polygon edge** (square/triangle/pentagon): `point` = edge midpoint
+  (`points[i]`↔`points[(i+1) % n]`), `direction` = edge unit vector, `outward` =
+  perpendicular to the edge pointing away from the polygon's own centroid.
+- **`.openSpline` endpoint** (the `.line` kind — a straight 2-point piece, `[a0, cp1,
+  cp2, a1]` with collinear control points): `point` = `a0` or `a1`, `direction` = the
+  tangent at that endpoint (`a0`→`cp1` or `cp2`→`a1`; trivial for a straight segment,
+  general enough to extend to real curves later). `outward` has no principled answer for
+  a bare line — its own bounding-box centroid sits *on* the line, so the
+  "away-from-centroid" heuristic degenerates. Resolved by **not** trying to derive it
+  geometrically: `outward` is simply `direction` rotated +90°, and the existing seeded
+  mirror-roll in §5.12.4 step 3 (which already exists for placement variety) supplies
+  the "or the other side" case, rather than this function needing its own seed.
+
+Every piece exposes a list of attachment sites through one shared type, so the assembly
+algorithm below never needs to know which representation it's placing.
+
+#### 5.12.4 Assembly algorithm — seeded and deterministic
+
+Per cycle (same `cycleSeed`/`spriteIndex` combination V1 already mixes, §5.4), the whole
+assembly is a pure function of `(seed, cycleIndex)` — no incremental state, matching the
+stateless-per-frame requirement (§5.9):
+
+1. RPSR-sample `assemblyPieceCountMin/Max` (§5.12.2) to get this cycle's piece count,
+   then RPSR-select that many pieces *with repetition* from the four-kind primitive
+   kit — there's no finite fixed set to exhaustively traverse the way a document's
+   layer list would have been, so "traverse the whole set" (the original document-based
+   framing) becomes "assemble exactly this many pieces," each independently x/y-deformed
+   (§5.12.2) as it's drawn.
+2. Place piece 0 unplaced (its own local coordinates, roughly centered).
+3. For each subsequent piece: RPSR-select an attachment site on the *already-placed
+   assembly so far* and a site on the incoming piece; rigid-transform (rotate +
+   translate, optionally mirror — one more seeded roll) the incoming piece so its site
+   maps onto the target site, placed on the target's `outward` side. Same
+   `applyRigidTransform` primitive `FulgurationEngine` already has.
+4. Accumulate as `[Polygon2D]`, each piece's placement transform already baked into its
+   own points (same "transform, then keep as a separate array element" pattern V1
+   already uses for a single shape) — **not flattened into one combined polygon**.
+   §5.12.6's exit behaviors need each piece individually addressable, which just means
+   staying as separate array elements; no extra tuple/transform bookkeeping needed since
+   a further exit-time transform composes fine on top of already-placed points.
+
+`assemblyEdgeMatching: AssemblyEdgeMatching` (`.preserveSize` default / `.matchLength`)
+is a pass-level toggle, per your call: `.preserveSize` places the incoming piece at its
+native scale (mismatched joint lengths — rougher, more "found-object"); `.matchLength`
+additionally scales the incoming piece so its attachment site's length matches the
+target's exactly (only meaningful for polygon-edge sites, which have a length; curve
+endpoints have none, so `.matchLength` is a no-op when either site is a curve endpoint).
+
+#### 5.12.5 Reveal: instant first, progressive deferred
+
+Two ways the assembly could become visible:
+
+- **Instant** (recommended starting point): the full composite from step 4 above
+  materializes complete the moment the cycle's hold window begins. Simplest possible,
+  reuses the hold window exactly as V1 already does.
+- **Progressive** (later): pieces appear one at a time across the early portion of the
+  hold window, each piece's reveal frame determined by its position in the same
+  deterministic sequence from §5.12.4 step 1 — e.g. piece *k* of *n* appears at
+  `holdElapsed >= k/n * buildDuration`. Because the full sequence is already computed
+  functionally from `(seed, cycleIndex)`, "how much is built at frame X" is just "the
+  first *k* entries of a list already known in full" — no new statefulness, just an
+  additional filter on an existing deterministic sequence. Deferred because it's pure
+  addition on top of the instant version, not a prerequisite for it.
+
+#### 5.12.6 Exit behaviors (fade removed — interferes with rendering)
+
+Four exit modes, on `exitMode: FulgurationExitMode`. Two are free — they're exactly V1's
+existing `developmentMode` machinery, just relabeled as exit-only options since Assembly
+mode's *entry* is §5.12.5, not a scale ramp:
+
+- **`.instant`** — sudden disappearance, the composite's hold window simply ends.
+  Zero new code.
+- **`.shrink`** — the whole composite scales toward its group centroid over
+  `exitDuration` frames, using `Polygon2D.scaled(by:around:)` exactly as V1's
+  `growShrink` shrink-out half already does. Zero new code, different field name.
+- **`.offscreen`** *(new)* — the whole composite translates toward a point outside the
+  canvas bounds over `exitDuration` frames, then the pass returns `[]` once past the
+  boundary. Reuses `applyRigidTransform`'s existing translation path; the only new part
+  is picking an off-canvas destination and the "past the boundary → hide" check.
+- **`.shatter`** *(new)* — each piece in the `[(piece, transform)]` list gets its *own*
+  independent drift, over `exitDuration` frames. This is Dissolution's existing Drift
+  mechanic (`driftEnabled`/`driftDistance`/`driftRotation`, §6.6–§6.10 — seeded
+  per-polygon direction, scaled by progress through the exit window) applied to
+  Fulguration's piece-list instead of a sprite's normal resolved polygons — same math,
+  reused from a different call site, not reinvented.
+
+Fade (opacity crossfade) intentionally excluded — per-shape alpha independent of layer
+opacity isn't reliable in the current render pipeline, and shrink already covers the
+"gradually reduce presence" register without it.
+
+#### 5.12.7 Why this doesn't (quite) fit the existing pipeline slot, and why that's fine
+
+V1 transforms the sprite's *own* resolved polygons in place (step 2f, alongside
+Dissolution). Assembly mode *replaces* them for the duration of the flash with content
+sourced from elsewhere — during a hold window, the sprite shows the assembled composite
+instead of its normal geometry, not a modified version of it. That's a real difference
+from every other mode in the pipeline, all of which transform what's already there. It
+doesn't require new pipeline architecture, though — `contentMode` is checked once, inside
+`FulgurationEngine.applyPass`, before deciding whether to transform `polygons` (V1 path)
+or discard them and return the assembled set instead (V3 path). No other stage needs to
+know this happened.
+
+### 5.13 V3 — Suggested implementation plan
+
+1. **`AssemblyPrimitiveKit`** (§5.12.2): plain-N-gon generator (square/triangle/
+   pentagon, 3–5 evenly spaced vertices, `.line` type) + straight 2-point `.openSpline`
+   `.line` kind, plus per-instance seeded x/y deform. No dependencies — first because
+   everything else consumes its output.
+2. **`AttachmentSite` type + site extraction** (§5.12.3): the `.line`-edge constructor
+   and the `.openSpline`-endpoint constructor, each small and independently testable
+   against known input pieces before the assembly algorithm depends on them.
+3. **Seeded assembly algorithm (§5.12.4), instant reveal only.** Piece-count sampling,
+   with-repetition piece selection, per-step attachment-site selection and placement,
+   producing `[Polygon2D]`. Test determinism (same seed → identical assembly) and
+   coverage of the `.preserveSize`/`.matchLength` toggle before anything else builds on
+   top.
+4. **`contentMode` wiring in `FulgurationParams`/`FulgurationEngine`.** `.transform`
+   (existing V1 path) stays default and byte-for-byte unchanged; `.assembly` gates the
+   new path. Existing 17 `FulgurationEngineTests` must pass unmodified — the acceptance
+   bar already established for every additive change to this engine this phase.
+5. **Exit modes `.instant`/`.shrink`.** Near-zero new code (§5.12.6) — mostly renaming
+   existing `developmentMode` fields/behavior into the new `exitMode` vocabulary for
+   Assembly mode specifically, since V1's grow-in half doesn't apply here (entry is
+   §5.12.5's instant reveal, not a scale ramp).
+6. **Exit mode `.offscreen`.** New but small: destination selection + boundary check.
+7. **Exit mode `.shatter`.** Wire Dissolution's Drift math against the piece list
+   instead of a sprite's resolved polygons — the one step that needs the piece list to
+   have stayed unflattened since step 3, so do this after confirming step 3's
+   representation genuinely survives that far unchanged.
+8. **`FulgurationInspector` UI.** Content-mode toggle (Transform/Assembly); when
+   Assembly is selected: piece-count range, deform range, edge-matching toggle,
+   exit-mode picker with its per-mode fields (mirroring how `developmentMode` already
+   conditionally shows `growInDuration`/`shrinkOutDuration` today).
+9. **Progressive reveal (§5.12.5).** Deferred to last since it's additive on top of
+   step 3's already-complete deterministic sequence, not a prerequisite for anything
+   above.
+10. **Spec/help.html sync** once the above is validated — same pattern as every other
+    phase in this document.
 
 ---
 
@@ -1246,6 +2097,30 @@ O(cycles so far) rather than O(1), same non-closed-form-but-stateless category a
 Generational Evolution (§4.4.4), and needs the same scan cap Collapse's probability
 trigger already uses.
 
+**V3 implemented (2026-07-09):** Assembly Fulguration — `FulgurationParams.contentMode`
+(`.transform` = V1 above, default; `.assembly` = V3) builds a flash's content by
+combinatorially attaching pieces drawn from a built-in procedural kit
+(`AssemblyPrimitiveKit`: square/triangle/pentagon/line, each independently x/y-deformed)
+rather than transforming the sprite's own resolved geometry — §5.12.2's original
+external-document-source design deferred in favor of the simpler no-file-dependency kit.
+New types: `AssemblyPrimitiveKit`, `AttachmentSite`/`AttachmentSiteExtractor` (edge sites
+for `.line` polygons, endpoint/tangent sites for `.openSpline`), `AssemblyFulgurationEngine`
+(seeded piece-count + with-repetition piece selection + attachment-site placement,
+`.preserveSize`/`.matchLength` edge-matching toggle). `FulgurationEngine.applyPass` now
+branches on `contentMode`; `.transform`'s path is unchanged (verified: original 17
+`FulgurationEngineTests` pass unmodified). Four exit modes on `FulgurationExitMode`
+(`.instant`/`.shrink` reuse existing scale-to-centroid math; `.offscreen` and `.shatter`
+are new — `.shatter` reuses Dissolution's per-polygon drift math against the assembly's
+own piece list). Fade dropped from the exit vocabulary per the same per-shape-alpha
+reliability concern noted in §5.12.6. `FulgurationInspector` gained a Content picker plus
+Assembly/Exit sections, conditionally shown by `contentMode`. Verified with 23 new tests
+(`AssemblyFulgurationEngineTests`, `AssemblyPrimitiveKitTests`, `AttachmentSiteExtractorTests`,
+`AssemblyPlacementTests`) — full suite at 576 passing, up from 553.
+
+**Not built:** §5.12.2's original document-source variant (a user-authored multi-layer
+geometry document as the piece source, instead of the built-in kit) and progressive
+reveal (§5.12.5) — both remain valid future extensions, neither blocks anything above.
+
 ### Phase 8 — Evolution: generational artificial-life system (in progress)
 
 `EvolutionParams.operationType` (§4.4) is `.momentumDrift` | `.convergencePressure` |
@@ -1255,7 +2130,7 @@ momentum drift/convergence pressure do.
 
 **Build order (recommended):** extrusion + edge-split operators only, symmetry-only
 fitness, hard vertex-budget and generation-count caps enforced from the start.
-Duplicate-and-graft and reference-shape similarity matching follow once the core
+Duplicate-and-reattach and reference-shape similarity matching follow once the core
 generate/measure/lock loop is validated — see §4.4.5 for why those two are deferred.
 
 **Not closed-form, still stateless in the sense that matters:** see §4.4.4. No
@@ -1291,10 +2166,13 @@ generation that would exceed budget is rejected outright, chain stops there).
   structural axis, not playback time, so the two shouldn't be conflated (see the doc
   comment on `EvolutionParams`).
 
-**Data model + pipeline wiring (complete, 2026-07-07):** the generational fields
-(`generationCount`, `extrudeWeight`/`splitWeight`, `extrudeRunLengthMin/Max`,
-`extrudeDistanceMin/Max`, `splitDisplacementMin/Max`, `generationSeed`,
-`maxVertexBudget`) live flat on `EvolutionParams` alongside the momentum-drift/
+**Data model + pipeline wiring (complete, 2026-07-07; extrude/split shape controls
+added 2026-07-10):** the generational fields (`generationCount`, `extrudeWeight`/
+`splitWeight`, `extrudeRunLengthMin/Max`, `extrudeDistanceMin/Max`,
+`extrudeAsymmetricSides`, `extrudeAngleRandomized`, `splitPositionMin/Max`,
+`splitDisplacementMin/Max`, `splitBulgePinchMin/Max`, `generationSeed`,
+`maxVertexBudget`) live flat on
+`EvolutionParams` alongside the momentum-drift/
 convergence-pressure fields, matching how `ExtensionParams`/`DissolutionParams`
 already carry all their modes' fields on one struct gated by `operationType`. The
 short-lived standalone `GenerationalEvolutionParams` struct from the prototype was
@@ -1473,9 +2351,9 @@ bug *if* a similarly huge value were ever pasted into them — none of them
 currently have a "live huge-value readout" feature feeding them, so the practical
 risk is low, but the pattern is worth remembering if that changes.
 
-**Not yet done:** duplicate-and-graft, subdivision-cycle-as-operator, fitness
-measures, lock/graft selection, budget cap on *lineage* count (moot until grafting
-exists), an easing curve option for the tween (currently linear).
+**Not yet done:** duplicate-and-reattach, subdivision-cycle-as-operator, fitness
+measures, lock/duplicate selection, budget cap on *lineage* count (moot until
+reattachment exists), an easing curve option for the tween (currently linear).
 
 **Update (2026-07-09) — directional edge selection.** `EvolutionParams.directionalSelector`
 restricts which edge the extrude/split operators may target by outward-normal
@@ -1574,6 +2452,39 @@ no changes.
    but may need reworking once two or three specific couplings exist side by side.
    No decision has been made — flagged here so it isn't lost, not to be resolved
    until there's a concrete second stage genuinely needing it.
+
+8. **Four independent render call sites, only one enforced to match (flagged
+   2026-07-10).** `SpriteScene.swift`'s `renderInstance` is the canonical pipeline —
+   Evolution → Subdivision → Curve Refinement → Segment Extraction → Extension →
+   Generational Evolution → Fulguration → Dissolution — but it is not the *only* place
+   that sequence is assembled. `Loom_Swift_Integration` has three more, each
+   hand-written independently: `SubdivisionTabView.bakeSelectedSet()` (the Bake
+   button), `SubdivisionTabView.saveSelectedSetAsSVG()` (Transform-tab SVG export),
+   and `SubdivisionWireframeView`'s live preview `.task`. Nothing links these four to
+   `SpriteScene`'s pipeline structurally — each is a separate, manually-maintained
+   sequence of engine calls that happens to currently match.
+
+   This was caught, not prevented, when the 2026-07-10 Evolution open-curve extension
+   (§4.2–4.3's update note) changed `EvolutionEngine.apply`'s signature: the compiler
+   flagged three call sites that had silently omitted the new
+   `curveRefinementParams`/`allCurveSets` threading, because each one independently
+   re-declares its own local `evolvedParams`/`curveRefinement` variables rather than
+   calling into any shared helper. A *behavioral* skip (an engine call reordered, or a
+   stage silently dropped in one of the four but not the others) would not be caught
+   by the compiler the way a signature change is — it would just render differently in
+   Bake output vs. live playback vs. the wireframe preview, discovered only by
+   noticing the mismatch, if it's noticed at all.
+
+   No fix attempted yet — flagged here so it isn't lost. The shape of a fix isn't
+   obvious: a single shared `PipelineRunner`-style function taking a params bundle and
+   returning `[Polygon2D]`, called from all four sites, is the natural answer, but
+   `SpriteScene`'s version threads live-render-only concerns (RNG state via `inout`,
+   `elapsedFrames`/`targetFPS`/`spriteIndex` for driver evaluation, cross-set lookup
+   dictionaries) that the three static/bake call sites don't have and pass empty/dummy
+   values for today (`allSets: [:]`, `elapsedFrames: 0`) — so the shared function's
+   signature would need to accommodate both a "live, driven" mode and a "static,
+   frame-0" mode cleanly, not just be a copy-paste extraction of the current inline
+   sequence. Worth doing before a fifth call site appears, not urgent today.
 
 ---
 

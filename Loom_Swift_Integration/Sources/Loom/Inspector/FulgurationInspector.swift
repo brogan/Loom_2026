@@ -15,12 +15,19 @@ struct FulgurationInspector: View {
     @AppStorage("fulinsp.cycleCollapsed")       private var cycleCollapsed       = false
     @AppStorage("fulinsp.transformCollapsed")   private var transformCollapsed   = false
     @AppStorage("fulinsp.developmentCollapsed") private var developmentCollapsed = false
+    @AppStorage("fulinsp.assemblyCollapsed")    private var assemblyCollapsed    = false
+    @AppStorage("fulinsp.exitCollapsed")        private var exitCollapsed        = false
 
     var body: some View {
         generalSection
         cycleSection
-        transformSection
-        developmentSection
+        if bindFUL(\.contentMode).wrappedValue == .transform {
+            transformSection
+            developmentSection
+        } else {
+            assemblySection
+            exitSection
+        }
     }
 
     // MARK: - General
@@ -36,6 +43,16 @@ struct FulgurationInspector: View {
             InspectorField("Enabled") {
                 Toggle("", isOn: bindFUL(\.enabled)).labelsHidden()
             }
+            InspectorField("Content") {
+                Picker("", selection: bindFUL(\.contentMode)) {
+                    Text("Transform").tag(FulgurationContentMode.transform)
+                    Text("Assembly").tag(FulgurationContentMode.assembly)
+                }
+                .labelsHidden()
+                .pickerStyle(.segmented)
+                .frame(maxWidth: 180)
+            }
+            .loomHelp("Transform: the sprite's own resolved geometry flashes with a rigid transform (V1). Assembly: the flash's content is instead built by combining primitive pieces (square/triangle/pentagon/line) end-to-end, replacing the sprite's geometry for the hold window rather than transforming it (V3, §5.12).")
         }
     }
 
@@ -119,6 +136,86 @@ struct FulgurationInspector: View {
                     Text("fr").font(.system(size: 11)).foregroundStyle(.secondary)
                 }
                 .loomHelp("Frames at the end of the hold window spent scaling back out to zero. Grow-in and shrink-out are automatically clamped so together they never exceed the actual hold duration for that cycle.")
+            }
+        }
+    }
+
+    // MARK: - Assembly (V3, §5.12)
+
+    private var assemblySection: some View {
+        InspectorSection("Assembly", isCollapsed: $assemblyCollapsed) {
+            InspectorField("Piece Count") {
+                FloatEntryField(value: intAsDoubleBinding(\.assemblyPieceCountMin), width: 50, fractionDigits: 0)
+                Text("–").foregroundStyle(.secondary)
+                FloatEntryField(value: intAsDoubleBinding(\.assemblyPieceCountMax), width: 50, fractionDigits: 0)
+            }
+            .loomHelp("How many primitive pieces (square/triangle/pentagon/line) are combined into this flash's composite, resampled each cycle (RPSR). Pieces are drawn with repetition from a small built-in kit, then attached edge-to-edge.")
+
+            InspectorField("Size") {
+                FloatEntryField(value: bindFUL(\.assemblySizeMin), width: 50)
+                Text("–").foregroundStyle(.secondary)
+                FloatEntryField(value: bindFUL(\.assemblySizeMax), width: 50)
+            }
+            .loomHelp("Uniform size range for each piece before attachment, resampled per piece (RPSR) — independent of Deform below. The built-in kit's base shapes are canvas-scale on their own (roughly a 0.5-radius circle), so this is what keeps pieces from starting large: 0.15–0.35 (the default) gives noticeably smaller pieces than 1–1 would.")
+
+            InspectorField("Deform") {
+                FloatEntryField(value: bindFUL(\.assemblyDeformMin), width: 50)
+                Text("–").foregroundStyle(.secondary)
+                FloatEntryField(value: bindFUL(\.assemblyDeformMax), width: 50)
+            }
+            .loomHelp("Independent per-axis scale range applied to each piece before attachment, so repeated draws of the same primitive don't look identical — a square becomes a rectangle or rhomboid, a triangle becomes scalene. 1–1 = no deform.")
+
+            InspectorField("Edge Matching") {
+                Picker("", selection: bindFUL(\.assemblyEdgeMatching)) {
+                    Text("Preserve Size").tag(AssemblyEdgeMatching.preserveSize)
+                    Text("Match Length").tag(AssemblyEdgeMatching.matchLength)
+                }
+                .labelsHidden()
+                .pickerStyle(.segmented)
+                .frame(maxWidth: 220)
+            }
+            .loomHelp("Preserve Size: an incoming piece keeps its own native scale at the joint (mismatched edge lengths — rougher, more found-object). Match Length: the incoming piece is additionally rescaled so its attachment edge matches the target's length exactly (clean joinery). No effect where either site is a curve endpoint (a line's ends have no length).")
+        }
+    }
+
+    // MARK: - Exit (V3, §5.12.6)
+
+    private var exitSection: some View {
+        let mode = bindFUL(\.exitMode).wrappedValue
+
+        return InspectorSection("Exit", isCollapsed: $exitCollapsed) {
+            InspectorField("Mode") {
+                Picker("", selection: bindFUL(\.exitMode)) {
+                    Text("Instant").tag(FulgurationExitMode.instant)
+                    Text("Shrink").tag(FulgurationExitMode.shrink)
+                    Text("Offscreen").tag(FulgurationExitMode.offscreen)
+                    Text("Shatter").tag(FulgurationExitMode.shatter)
+                }
+                .labelsHidden()
+                .pickerStyle(.segmented)
+                .frame(maxWidth: 280)
+            }
+            .loomHelp("How the assembled composite disappears at the end of its hold window. Instant: pops off. Shrink: scales to nothing around its own centroid. Offscreen: translates past the canvas edge. Shatter: each piece drifts away independently — fade was considered and dropped, per-shape alpha isn't reliable in the current render pipeline.")
+
+            if mode != .instant {
+                InspectorField("Duration") {
+                    FloatEntryField(value: intAsDoubleBinding(\.exitDuration), width: 50, fractionDigits: 0)
+                    Text("fr").font(.system(size: 11)).foregroundStyle(.secondary)
+                }
+                .loomHelp("Frames at the end of the hold window spent exiting (shrinking, translating offscreen, or scattering). Clamped to the hold duration.")
+            }
+
+            if mode == .shatter {
+                InspectorField("Drift") {
+                    FloatEntryField(value: bindFUL(\.shatterDistance), width: 60)
+                }
+                .loomHelp("Maximum per-piece drift distance, canvas-normalized units, reached at full exit progress. Each piece's direction is chosen independently (seeded) — same math as Dissolution's own Drift, applied to the assembly's pieces instead of a sprite's resolved polygons.")
+
+                InspectorField("Spin") {
+                    FloatEntryField(value: bindFUL(\.shatterRotation), width: 60)
+                    Text("rad").font(.system(size: 11)).foregroundStyle(.secondary)
+                }
+                .loomHelp("Maximum per-piece rotation, radians, reached at full exit progress.")
             }
         }
     }

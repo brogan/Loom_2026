@@ -302,7 +302,7 @@ struct SubdivisionTabView: View {
                         .frame(width: 30, height: 26)
                 }
                 .buttonStyle(.plain)
-                .disabled(!canBake)
+                .disabled(!canExportSVG)
                 .help("Save subdivided geometry as SVG wireframe to svgs/")
                 Spacer()
             }
@@ -493,6 +493,25 @@ struct SubdivisionTabView: View {
         return true
     }
 
+    /// Deliberately looser than `canBake`: SVG export goes through
+    /// `SpriteScene.loadBasePolygons`, which resolves *any* `ShapeSourceType`
+    /// (regular polygons, open curves, ovals, points — not just file-backed
+    /// polygon sets), so it only needs a sprite+shape to resolve at all. Sharing
+    /// `canBake`'s guard here previously left the SVG export button disabled for
+    /// every non-file-backed-polygonSet source, even though the export itself
+    /// (once reachable) already handled them once fixed — 2026-07-09.
+    private var canExportSVG: Bool {
+        guard controller.selectedSubdivisionIndex != nil,
+              let spriteID = controller.subdivSelectedSpriteID,
+              let cfg      = controller.projectConfig,
+              let sprite   = cfg.spriteConfig.library.allSprites.first(where: { $0.name == spriteID }),
+              cfg.shapeConfig.library.shapeSets
+                  .first(where: { $0.name == sprite.shapeSetName })?
+                  .shapes.first(where: { $0.name == sprite.shapeName }) != nil
+        else { return false }
+        return true
+    }
+
     private func bakeSelectedSet() {
         guard let setIdx    = controller.selectedSubdivisionIndex,
               let cfg       = controller.projectConfig,
@@ -539,14 +558,16 @@ struct SubdivisionTabView: View {
         // Run evolution (modifies params) → subdivision → refinement → extraction → extension.
         let paramSet     = cfg.subdivisionConfig.paramsSets[setIdx]
         var evolvedParams = paramSet.params
+        var evolvedCurveParams = paramSet.curveRefinement
         if !paramSet.evolutionPasses.isEmpty {
-            EvolutionEngine.apply(params: &evolvedParams, passes: paramSet.evolutionPasses,
-                                   elapsedFrames: 0, targetFPS: 24, spriteIndex: 0, allSets: [:])
+            EvolutionEngine.apply(params: &evolvedParams, curveRefinementParams: &evolvedCurveParams,
+                                   passes: paramSet.evolutionPasses,
+                                   elapsedFrames: 0, targetFPS: 24, spriteIndex: 0, allSets: [:], allCurveSets: [:])
         }
         var rng    = SystemRandomNumberGenerator()
         var result = SubdivisionEngine.process(polygons: polys, paramSet: evolvedParams, rng: &rng)
-        if !paramSet.curveRefinement.isEmpty {
-            result = CurveRefinementEngine.process(polygons: result, paramSet: paramSet.curveRefinement)
+        if !evolvedCurveParams.isEmpty {
+            result = CurveRefinementEngine.process(polygons: result, paramSet: evolvedCurveParams)
         }
         if !paramSet.segmentExtraction.isEmpty {
             result = SegmentExtractionEngine.process(polygons: result, paramSet: paramSet.segmentExtraction)
@@ -614,50 +635,40 @@ struct SubdivisionTabView: View {
               let sprite    = cfg.spriteConfig.library.allSprites.first(where: { $0.name == spriteID }),
               let shape     = cfg.shapeConfig.library.shapeSets
                   .first(where: { $0.name == sprite.shapeSetName })?
-                  .shapes.first(where: { $0.name == sprite.shapeName }),
-              let polyDef   = cfg.polygonConfig.library.polygonSets
-                  .first(where: { $0.name == shape.polygonSetName })
+                  .shapes.first(where: { $0.name == sprite.shapeName })
         else { return }
 
-        let resolvedFolder = (polyDef.folder == "polygonSet" || polyDef.folder.isEmpty)
-            ? "polygonSets" : polyDef.folder
-        let sourceURL = projectURL
-            .appendingPathComponent(resolvedFolder)
-            .appendingPathComponent(polyDef.filename)
-
-        guard FileManager.default.fileExists(atPath: sourceURL.path) else {
-            bakeAlert = BakeAlert(title: "SVG Export Failed",
-                                  message: "Source polygon file not found:\n\(sourceURL.path)")
-            return
-        }
-
+        // SpriteScene.loadBasePolygons is the single canonical ShapeDef → [Polygon2D]
+        // dispatch (same one the live render pipeline uses) — covers every source
+        // type (polygon sets incl. algorithmically-generated regular polygons, open
+        // curve sets, oval sets, point sets), unlike the polygonSets-only lookup
+        // this used to do by hand, which silently failed for anything else.
         let polys: [Polygon2D]
         do {
-            if sourceURL.pathExtension.lowercased() == "json" {
-                let doc = try EditableGeometryJSONLoader.load(url: sourceURL)
-                polys = try doc.runtimePolygons(
-                    targetLayerID:   polyDef.editableLayerID,
-                    targetLayerName: polyDef.editableLayerName
-                )
-            } else {
-                polys = try XMLPolygonLoader.load(url: sourceURL, normalise: false)
-            }
+            polys = try SpriteScene.loadBasePolygons(shapeDef: shape, config: cfg, projectDirectory: projectURL)
         } catch {
             bakeAlert = BakeAlert(title: "SVG Export Failed",
-                                  message: "Could not load polygon file:\n\(error.localizedDescription)")
+                                  message: "Could not load geometry:\n\(error.localizedDescription)")
+            return
+        }
+        guard !polys.isEmpty else {
+            bakeAlert = BakeAlert(title: "SVG Export Failed",
+                                  message: "No geometry found for this sprite's shape (\(shape.sourceType.rawValue)).")
             return
         }
 
         let paramSet2     = cfg.subdivisionConfig.paramsSets[setIdx]
         var evolvedParams2 = paramSet2.params
+        var evolvedCurveParams2 = paramSet2.curveRefinement
         if !paramSet2.evolutionPasses.isEmpty {
-            EvolutionEngine.apply(params: &evolvedParams2, passes: paramSet2.evolutionPasses,
-                                   elapsedFrames: 0, targetFPS: 24, spriteIndex: 0, allSets: [:])
+            EvolutionEngine.apply(params: &evolvedParams2, curveRefinementParams: &evolvedCurveParams2,
+                                   passes: paramSet2.evolutionPasses,
+                                   elapsedFrames: 0, targetFPS: 24, spriteIndex: 0, allSets: [:], allCurveSets: [:])
         }
         var rng    = SystemRandomNumberGenerator()
         var result = SubdivisionEngine.process(polygons: polys, paramSet: evolvedParams2, rng: &rng)
-        if !paramSet2.curveRefinement.isEmpty {
-            result = CurveRefinementEngine.process(polygons: result, paramSet: paramSet2.curveRefinement)
+        if !evolvedCurveParams2.isEmpty {
+            result = CurveRefinementEngine.process(polygons: result, paramSet: evolvedCurveParams2)
         }
         if !paramSet2.segmentExtraction.isEmpty {
             result = SegmentExtractionEngine.process(polygons: result, paramSet: paramSet2.segmentExtraction)
@@ -678,7 +689,18 @@ struct SubdivisionTabView: View {
                                               elapsedFrames: 0, spriteIndex: 0)
         }
 
-        let safePolyName = shape.polygonSetName.replacingOccurrences(of: " ", with: "_")
+        // Source name for the output filename — the relevant field varies by
+        // sourceType (polygonSetName is empty for e.g. an open-curve-sourced shape).
+        let sourceName: String
+        switch shape.sourceType {
+        case .polygonSet:     sourceName = shape.polygonSetName
+        case .openCurveSet:   sourceName = shape.openCurveSetName
+        case .pointSet:       sourceName = shape.pointSetName
+        case .ovalSet:        sourceName = shape.ovalSetName
+        case .regularPolygon: sourceName = "\(shape.regularPolygonSides)gon"
+        case .inlinePoints, .unknown: sourceName = shape.name
+        }
+        let safePolyName = (sourceName.isEmpty ? shape.name : sourceName).replacingOccurrences(of: " ", with: "_")
         let safeSetName  = paramSet2.name.replacingOccurrences(of: " ", with: "_")
         let stem         = "\(safePolyName)_\(safeSetName)"
         let svgsDir      = projectURL.appendingPathComponent("svgs")

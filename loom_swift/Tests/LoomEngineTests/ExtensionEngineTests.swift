@@ -113,6 +113,56 @@ final class ExtensionEngineTests: XCTestCase {
                        "the longest edge doesn't face the required direction, so it should be excluded")
     }
 
+    // MARK: - extrudeEdge asymmetric distance / direction override (2026-07-10)
+
+    func testExtrudeEdgeDefaultsToSymmetricDistance() {
+        let square = makeSquare()
+        guard let quad = ExtensionEngine.extrudeEdge(square, segIdx: 0, distance: 0.2) else {
+            return XCTFail("expected a quad")
+        }
+        // Seg 0 (inner) = a0,cp1,cp2,a1; Seg 2 (outer) = oa1,ocp1,ocp2,oa0 — see
+        // ExtensionEngine.extrudeSegment's layout comment.
+        let a0 = quad.points[0], a1 = quad.points[3]
+        let oa1 = quad.points[8], oa0 = quad.points[11]
+        XCTAssertEqual(a0.distance(to: oa0), a1.distance(to: oa1), accuracy: 1e-9,
+                       "with no override, both corners extrude by the same distance")
+    }
+
+    func testExtrudeEdgeDistanceA0A1OverrideProducesAsymmetricCorners() {
+        let square = makeSquare()
+        guard let quad = ExtensionEngine.extrudeEdge(square, segIdx: 0, distance: 0.2,
+                                                      distanceA0: 0.1, distanceA1: 0.3) else {
+            return XCTFail("expected a quad")
+        }
+        let a0 = quad.points[0], a1 = quad.points[3]
+        let oa1 = quad.points[8], oa0 = quad.points[11]
+        XCTAssertEqual(a0.distance(to: oa0), 0.1, accuracy: 1e-9)
+        XCTAssertEqual(a1.distance(to: oa1), 0.3, accuracy: 1e-9)
+    }
+
+    func testExtrudeEdgeDirectionOverrideTiltsAwayFromNormal() {
+        let square = makeSquare()
+        let normal = ExtensionEngine.outwardNormal(of: square, segIdx: 0)
+        let tilted = normal.rotated(by: 30.0 * .pi / 180.0)
+
+        guard let straight = ExtensionEngine.extrudeEdge(square, segIdx: 0, distance: 0.2),
+              let angled   = ExtensionEngine.extrudeEdge(square, segIdx: 0, distance: 0.2, direction: tilted)
+        else { return XCTFail("expected quads") }
+
+        // Inner edge (unchanged base edge) is identical either way; only the outer
+        // corners move when direction is overridden.
+        XCTAssertEqual(straight.points[0], angled.points[0])
+        XCTAssertEqual(straight.points[3], angled.points[3])
+        XCTAssertNotEqual(straight.points[11], angled.points[11], "oa0 should move when direction is tilted")
+        XCTAssertNotEqual(straight.points[8],  angled.points[8],  "oa1 should move when direction is tilted")
+
+        // Distance from the base edge is preserved — only the direction changed.
+        let a0 = angled.points[0], a1 = angled.points[3]
+        let oa1 = angled.points[8], oa0 = angled.points[11]
+        XCTAssertEqual(a0.distance(to: oa0), 0.2, accuracy: 1e-9)
+        XCTAssertEqual(a1.distance(to: oa1), 0.2, accuracy: 1e-9)
+    }
+
     func testDirectionalSelectorDisabledMatchesAllEdgesBehavior() {
         let square = makeSquare()
         var params = ExtensionParams(operationType: .extrude, extrusionDistance: .constant(0.1))

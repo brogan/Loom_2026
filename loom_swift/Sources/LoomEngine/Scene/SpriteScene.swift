@@ -69,6 +69,12 @@ public struct SpriteScene: @unchecked Sendable {
     /// All subdivision-params sets keyed by name, for fast lookup by the subdivisionSet driver.
     private let allSubdivisionSets: [String: [SubdivisionParams]]
 
+    /// All curve-refinement-params sets keyed by name (same name namespace as
+    /// `allSubdivisionSets` — a transform set's name covers both of its
+    /// `params`/`curveRefinement` arrays), for Convergence Pressure's open-curve
+    /// target lookup. Added 2026-07-10.
+    private let allCurveRefinementSets: [String: [CurveRefinementParams]]
+
     /// Compositing layers from project config.  Empty = legacy flat depth-sort path.
     var layers: [LoomLayer] = []
 
@@ -98,6 +104,7 @@ public struct SpriteScene: @unchecked Sendable {
         self.targetFPS         = 30
         self.allRendererSets   = [:]
         self.allSubdivisionSets = [:]
+        self.allCurveRefinementSets = [:]
         self.allCycles         = [:]
     }
 
@@ -157,6 +164,10 @@ public struct SpriteScene: @unchecked Sendable {
         )
         self.allSubdivisionSets = Dictionary(
             config.subdivisionConfig.paramsSets.map { ($0.name, $0.params) },
+            uniquingKeysWith: { first, _ in first }
+        )
+        self.allCurveRefinementSets = Dictionary(
+            config.subdivisionConfig.paramsSets.map { ($0.name, $0.curveRefinement) },
             uniquingKeysWith: { first, _ in first }
         )
         self.allCycles = Dictionary(
@@ -398,8 +409,19 @@ public struct SpriteScene: @unchecked Sendable {
 
     // MARK: - Geometry loading
 
-    /// Dispatch to the correct loader based on `shapeDef.sourceType`.
-    private static func loadBasePolygons(
+    /// Dispatch to the correct loader based on `shapeDef.sourceType` — the single
+    /// canonical mapping from a `ShapeDef` to its `[Polygon2D]`, covering every
+    /// source type (`.polygonSet` including algorithmically-generated regular
+    /// polygons, `.regularPolygon` at the `ShapeDef` level, `.openCurveSet`,
+    /// `.ovalSet`, `.pointSet`). Public so callers outside the live-render pipeline
+    /// (Transform tab bake/SVG export, geometry-editor reference-geometry loading)
+    /// can resolve a shape's geometry without re-deriving this dispatch themselves —
+    /// duplicating it was the root cause of the Transform tab's SVG export only
+    /// working for plain file-backed closed polygons (Specs — see SVG export fix,
+    /// 2026-07-09): it never checked `regularParams`/`sourceType` at all, so
+    /// algorithmically-generated regular polygons and any non-`.polygonSet` source
+    /// (open curves, ovals, points) silently failed or produced nothing.
+    public static func loadBasePolygons(
         shapeDef sd: ShapeDef,
         config: ProjectConfig,
         projectDirectory: URL
@@ -1480,15 +1502,18 @@ public struct SpriteScene: @unchecked Sendable {
             activeInstance.subdivisionParams = overrideParams
         }
 
-        // 2a. Evolution (modifies subdivision params before subdivision runs)
+        // 2a. Evolution (modifies subdivision params + curve-refinement params
+        // before subdivision/curve-refinement run)
         if !activeInstance.evolutionParams.isEmpty {
             EvolutionEngine.apply(
-                params:        &activeInstance.subdivisionParams,
-                passes:        activeInstance.evolutionParams,
-                elapsedFrames: elapsedFrames,
-                targetFPS:     targetFPS,
-                spriteIndex:   spriteIndex,
-                allSets:       allSubdivisionSets
+                params:                &activeInstance.subdivisionParams,
+                curveRefinementParams: &activeInstance.curveRefinementParams,
+                passes:                activeInstance.evolutionParams,
+                elapsedFrames:         elapsedFrames,
+                targetFPS:             targetFPS,
+                spriteIndex:           spriteIndex,
+                allSets:               allSubdivisionSets,
+                allCurveSets:          allCurveRefinementSets
             )
         }
 

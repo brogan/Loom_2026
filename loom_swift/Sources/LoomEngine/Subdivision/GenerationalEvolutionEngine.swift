@@ -4,8 +4,25 @@ import Foundation
 /// Specs/GeometricLifecycle.md §4.4. Only the extrude and split-and-displace
 /// mutation operators are implemented — no fitness measure or lock/graft selection
 /// yet (§4.4.5: validate the core generate loop on these two before adding the
-/// riskier pieces). Closed polygons (`.spline`) only; open curves are future work.
+/// riskier pieces). Closed polygons (`.spline`) only, by default — Split remains
+/// closed-only unconditionally; Extrude can also target `.openSpline` polygons when
+/// `EvolutionParams.extrudeIncludeOpenCurves` is set (§4.4.6, complete): each eligible
+/// curve edge independently picks one of its two sides (there's no principled single
+/// "outward" for an open curve), and `extrudeOpenCurveBothSides` additionally lets an
+/// edge extrude both sides at once.
 public enum GenerationalEvolutionEngine {
+
+    /// Per-side multiplier range for `EvolutionParams.extrudeAsymmetricSides` — each
+    /// corner of an extruded edge independently sampled from this range and
+    /// multiplied against the sampled distance. Centered on 1.0 so the average
+    /// visual scale roughly matches the symmetric (disabled) case.
+    private static let asymmetryRangeLo = 0.4
+    private static let asymmetryRangeHi = 1.6
+
+    /// Max angular deviation from perpendicular for
+    /// `EvolutionParams.extrudeAngleRandomized`, degrees — ±45° gives the
+    /// requested 45°–135° range measured from the edge itself.
+    private static let angleRandomizationDegrees = 45.0
 
     /// Runs every enabled `.generational` pass in `passes` in order, each processing
     /// the output of the previous. Non-`.generational` passes are ignored — they're
@@ -179,23 +196,71 @@ public enum GenerationalEvolutionEngine {
         generation: Int,
         strength:   Double
     ) -> [Polygon2D] {
-        let eligible = polygons.indices.filter { polygons[$0].type == .spline && polygons[$0].points.count >= 4 }
-        guard !eligible.isEmpty else { return polygons }
-
         let seed = params.generationSeed
         let cycleBase = generation * 8
+
+        guard params.extrudeIncludeOpenCurves else {
+            // Original path — byte-for-byte unchanged from before §4.4.6/§4.4.8
+            // existed when graftWeight is 0 (the default): Target is drawn once
+            // from a single closed-only eligible list, then the operator is
+            // chosen; all three operators share that one target. Graft (§4.4.8)
+            // widens the two-way roll to three-way — totalWeight and opRoll's
+            // scale are identical to before whenever graftWeight is 0, so the
+            // extrude/split threshold boundary is unaffected.
+            let eligible = polygons.indices.filter { polygons[$0].type == .spline && polygons[$0].points.count >= 4 }
+            guard !eligible.isEmpty else { return polygons }
+
+            let targetRoll = SubdivisionEngine.centreHash(seed: seed, cycle: cycleBase + 1)
+            let targetIdx  = eligible[min(eligible.count - 1, Int(targetRoll * Double(eligible.count)))]
+
+            let totalWeight = max(params.extrudeWeight, 0) + max(params.splitWeight, 0) + max(params.graftWeight, 0)
+            guard totalWeight > 0 else { return polygons }
+            let opRoll = SubdivisionEngine.centreHash(seed: seed, cycle: cycleBase + 2) * totalWeight
+
+            if opRoll < params.extrudeWeight {
+                return applyExtrude(polygons, targetIdx: targetIdx, params: params, cycleBase: cycleBase, strength: strength)
+            } else if opRoll < params.extrudeWeight + params.splitWeight {
+                return applySplit(polygons, targetIdx: targetIdx, params: params, cycleBase: cycleBase, strength: strength)
+            } else {
+                return applyGraft(polygons, targetIdx: targetIdx, params: params, cycleBase: cycleBase, strength: strength)
+            }
+        }
+
+        // §4.4.6 path: operator chosen *first*, then the target is drawn from that
+        // operator's own eligible set — Extrude's includes open curves, Split's
+        // and Graft's stay closed-only always (Graft's §4.4.8.6 build order has
+        // not yet reached open-curve targets), so neither can end up targeting a
+        // curve as an accidental side effect of widening one shared eligible list.
+        // Only reached when extrudeIncludeOpenCurves is explicitly on, so this
+        // carries no determinism/regression risk for the (default) path above.
+        // Same cycleBase+1/+2 roll slots as the original path, just consumed in
+        // the other order — a new code path, not a reinterpretation of the old one.
+        let totalWeight = max(params.extrudeWeight, 0) + max(params.splitWeight, 0) + max(params.graftWeight, 0)
+        guard totalWeight > 0 else { return polygons }
+        let opRoll = SubdivisionEngine.centreHash(seed: seed, cycle: cycleBase + 2) * totalWeight
+        let useExtrude = opRoll < params.extrudeWeight
+        let useSplit = !useExtrude && opRoll < params.extrudeWeight + params.splitWeight
+
+        let eligible: [Int]
+        if useExtrude {
+            eligible = polygons.indices.filter {
+                (polygons[$0].type == .spline || polygons[$0].type == .openSpline)
+                    && polygons[$0].points.count >= 4
+            }
+        } else {
+            eligible = polygons.indices.filter { polygons[$0].type == .spline && polygons[$0].points.count >= 4 }
+        }
+        guard !eligible.isEmpty else { return polygons }
 
         let targetRoll = SubdivisionEngine.centreHash(seed: seed, cycle: cycleBase + 1)
         let targetIdx  = eligible[min(eligible.count - 1, Int(targetRoll * Double(eligible.count)))]
 
-        let totalWeight = max(params.extrudeWeight, 0) + max(params.splitWeight, 0)
-        guard totalWeight > 0 else { return polygons }
-        let opRoll = SubdivisionEngine.centreHash(seed: seed, cycle: cycleBase + 2) * totalWeight
-
-        if opRoll < params.extrudeWeight {
+        if useExtrude {
             return applyExtrude(polygons, targetIdx: targetIdx, params: params, cycleBase: cycleBase, strength: strength)
-        } else {
+        } else if useSplit {
             return applySplit(polygons, targetIdx: targetIdx, params: params, cycleBase: cycleBase, strength: strength)
+        } else {
+            return applyGraft(polygons, targetIdx: targetIdx, params: params, cycleBase: cycleBase, strength: strength)
         }
     }
 
@@ -223,7 +288,11 @@ public enum GenerationalEvolutionEngine {
     /// the choice of target/edges/base-distance fixed and only scales magnitude —
     /// see `process(polygons:params:phase:)`), producing a run of neighboring quads
     /// (compound growth, same model as Extension's `.extrude` — see
-    /// `ExtensionEngine.extrudeEdge`).
+    /// `ExtensionEngine.extrudeEdge`). By default each quad is rectangular
+    /// (`extrudeAsymmetricSides` false) and extrudes exactly perpendicular to its
+    /// edge (`extrudeAngleRandomized` false); either toggle, independently sampled
+    /// per edge in the run, produces tapered/wedge quads and/or quads that lean up
+    /// to ±45° from perpendicular instead.
     private static func applyExtrude(
         _ polygons: [Polygon2D],
         targetIdx:  Int,
@@ -256,11 +325,96 @@ public enum GenerationalEvolutionEngine {
         let distRoll = SubdivisionEngine.centreHash(seed: seed, cycle: cycleBase + 5)
         let distance = (distLo + distRoll * (distHi - distLo)) * strength
 
+        // §4.4.6: a closed polygon's segments wrap (segment segCount-1 is adjacent
+        // to segment 0), so `(startSeg + offset) % segCount` is correct there — but
+        // an open curve's segments don't: there's nothing "after" the last one. A
+        // run is clamped to stop at the curve's end instead of wrapping onto its
+        // start, which would otherwise extrude a bogus "adjacent" edge that isn't
+        // actually adjacent to where the run started.
+        let isOpenCurve = polygon.type == .openSpline
+        let effectiveRunLength = isOpenCurve ? min(runLength, segCount - startSeg) : runLength
+
         var additions: [Polygon2D] = []
-        for offset in 0..<runLength {
-            let segIdx = (startSeg + offset) % segCount
-            if let quad = ExtensionEngine.extrudeEdge(polygon, segIdx: segIdx, distance: distance) {
+        for offset in 0..<effectiveRunLength {
+            let segIdx = isOpenCurve ? (startSeg + offset) : (startSeg + offset) % segCount
+
+            // Per-edge rolls for the two side toggles below, salted by `offset` so
+            // each edge in the run gets an independent choice rather than the whole
+            // run leaning uniformly one way. Salting the *seed* (not reusing a
+            // cycleBase+N slot) guarantees these never collide with any existing
+            // per-generation roll, including in generations that don't use these
+            // toggles — see the file-level note in EvolutionParams.swift.
+            let edgeSeed = seed &+ (offset &+ 1) &* 3_267_000_013
+
+            var distanceA0: Double?
+            var distanceA1: Double?
+            if params.extrudeAsymmetricSides {
+                let m0Roll = SubdivisionEngine.centreHash(seed: edgeSeed, cycle: 0)
+                let m1Roll = SubdivisionEngine.centreHash(seed: edgeSeed, cycle: 1)
+                distanceA0 = distance * (asymmetryRangeLo + m0Roll * (asymmetryRangeHi - asymmetryRangeLo))
+                distanceA1 = distance * (asymmetryRangeLo + m1Roll * (asymmetryRangeHi - asymmetryRangeLo))
+            }
+
+            // §4.4.6 step 2: an open curve has no principled "outward" — each edge
+            // independently picks one of its two sides via its own RPSR roll
+            // (edgeSeed cycle 3), rather than always using outwardNormal's single
+            // perpendicular the way a closed polygon does. Closed-polygon targets
+            // never take this branch, so their one true-outward direction is
+            // completely unaffected — `isOpenCurve` can only be true here when
+            // `extrudeIncludeOpenCurves` was on in the first place (§4.4.6 step 1
+            // gates eligibility upstream in applyGeneration).
+            //
+            // Step 3: when extrudeOpenCurveBothSides is also on, a second
+            // independent per-edge roll (cycle 4) decides whether this edge
+            // *additionally* extrudes its other side too — "one or more sides"
+            // per §4.4.6. Both sides share the same angle-randomization offset
+            // (a property of the edge, not of the individual quad) and the same
+            // distanceA0/A1 asymmetry roll, computed once above.
+            var direction: Vector2D?
+            var secondDirection: Vector2D?
+            let baseNormal = ExtensionEngine.outwardNormal(of: polygon, segIdx: segIdx)
+            if baseNormal != .zero {
+                var chosenNormal = baseNormal
+                var otherNormal: Vector2D?
+                if isOpenCurve {
+                    let sideRoll = SubdivisionEngine.centreHash(seed: edgeSeed, cycle: 3)
+                    if sideRoll < 0.5 {
+                        chosenNormal = -chosenNormal
+                    }
+                    if params.extrudeOpenCurveBothSides {
+                        let bothSidesRoll = SubdivisionEngine.centreHash(seed: edgeSeed, cycle: 4)
+                        if bothSidesRoll < 0.5 {
+                            otherNormal = -chosenNormal
+                        }
+                    }
+                }
+                if params.extrudeAngleRandomized {
+                    let angleRoll = SubdivisionEngine.centreHash(seed: edgeSeed, cycle: 2)
+                    let angleOffsetDeg = (angleRoll * 2.0 - 1.0) * angleRandomizationDegrees
+                    let angleRad = angleOffsetDeg * .pi / 180.0
+                    chosenNormal = chosenNormal.rotated(by: angleRad)
+                    otherNormal = otherNormal?.rotated(by: angleRad)
+                }
+                // Only override extrudeEdge's own internally-computed normal when
+                // something actually changed it — keeps the untouched-toggles case
+                // (closed polygon, angle randomization off) byte-for-byte identical
+                // to before this step existed.
+                if isOpenCurve || params.extrudeAngleRandomized {
+                    direction = chosenNormal
+                }
+                secondDirection = otherNormal
+            }
+
+            if let quad = ExtensionEngine.extrudeEdge(polygon, segIdx: segIdx, distance: distance,
+                                                       distanceA0: distanceA0, distanceA1: distanceA1,
+                                                       direction: direction) {
                 additions.append(quad)
+            }
+            if let secondDir = secondDirection,
+               let quad2 = ExtensionEngine.extrudeEdge(polygon, segIdx: segIdx, distance: distance,
+                                                        distanceA0: distanceA0, distanceA1: distanceA1,
+                                                        direction: secondDir) {
+                additions.append(quad2)
             }
         }
         guard !additions.isEmpty else { return polygons }
@@ -277,10 +431,12 @@ public enum GenerationalEvolutionEngine {
     /// `AppController.splitPolygonSegment`), then displaces the new anchor point
     /// outward from the shape's centre by an RPSR distance scaled by `strength`
     /// (1.0 = full sampled displacement; see `process(polygons:params:phase:)`).
-    /// Only the anchor moves; the flanking control points stay where the split
-    /// placed them, which pulls the boundary into a rounded spike rather than a
-    /// sharp discontinuity, and tweens smoothly from the undisplaced split point
-    /// as strength grows from 0.
+    /// By default only the anchor moves; the flanking control points stay where
+    /// the split placed them, which pulls the boundary into a rounded spike rather
+    /// than a sharp discontinuity, and tweens smoothly from the undisplaced split
+    /// point as strength grows from 0. `splitBulgePinchMin/Max` (0–0 by default,
+    /// no effect) additionally offsets those two flanking control points along the
+    /// same outward direction — see the bulge/pinch comment below.
     private static func applySplit(
         _ polygons: [Polygon2D],
         targetIdx:  Int,
@@ -304,9 +460,22 @@ public enum GenerationalEvolutionEngine {
         let distRoll = SubdivisionEngine.centreHash(seed: seed, cycle: cycleBase + 7)
         let distance = (distLo + distRoll * (distHi - distLo)) * strength
 
+        // Split position along the edge (t-parameter), RPSR-sampled from
+        // splitPositionMin/Max — 0.5–0.5 by default (always the exact midpoint,
+        // original behavior). Clamped away from the extreme ends so a degenerate
+        // near-zero-length sub-segment can't result. Salted seed (not a
+        // cycleBase+N slot — all 8 are taken, see the roll-index notes on the
+        // asymmetry/angle rolls above) so this can't collide with any existing
+        // per-generation roll.
+        let posLo = min(params.splitPositionMin, params.splitPositionMax)
+        let posHi = max(params.splitPositionMin, params.splitPositionMax)
+        let posSeed = seed &+ 444_444_437
+        let posRoll = SubdivisionEngine.centreHash(seed: posSeed, cycle: cycleBase)
+        let splitT = max(0.05, min(0.95, posLo + posRoll * (posHi - posLo)))
+
         let base = segIdx * 4
         let seg = Array(polygon.points[base..<(base + 4)])
-        let (left, right) = BezierMath.split(seg: seg, t: 0.5)
+        let (left, right) = BezierMath.split(seg: seg, t: splitT)
 
         // Outward direction: from the shape's anchor-only centre (matches
         // Dissolution's `.centroid` entropy target) to the new split point.
@@ -319,15 +488,533 @@ public enum GenerationalEvolutionEngine {
         let displaced = Vector2D(x: splitPt.x + outward.x * distance,
                                   y: splitPt.y + outward.y * distance)
 
+        // Bulge/pinch: an additional offset applied only to the two control points
+        // immediately flanking the new anchor, along the *inward* direction
+        // (toward centre) for positive values. Fixed 2026-07-10: this was
+        // originally applied along `outward` for positive values, which is
+        // backwards from what "bulge"/"pinch" mean visually — verified by
+        // rendering both signs (see the design-note update in
+        // Specs/GeometricLifecycle.md §4.4.2). Pulling the flanking points
+        // *toward* centre relative to their un-displaced split position is what
+        // actually produces a fuller, flared, rounder base (a "bulge" — the base
+        // widens into an S-curve before the point); pushing them *away* from
+        // centre (toward/past the displaced-anchor chord) straightens the sides
+        // into a cleaner, sharper point (a "pinch"). Uses cycleBase+0 — every
+        // other per-generation roll in this file starts at cycleBase+1
+        // (targetRoll) or higher, so this slot has been unused until now.
+        let bulgeLo = min(params.splitBulgePinchMin, params.splitBulgePinchMax)
+        let bulgeHi = max(params.splitBulgePinchMin, params.splitBulgePinchMax)
+        var leftCP2  = left[2]
+        var rightCP1 = right[1]
+        if bulgeLo != 0 || bulgeHi != 0 {
+            let bulgeRoll = SubdivisionEngine.centreHash(seed: seed, cycle: cycleBase + 0)
+            let bulge = (bulgeLo + bulgeRoll * (bulgeHi - bulgeLo)) * strength
+            leftCP2  = Vector2D(x: leftCP2.x  - outward.x * bulge, y: leftCP2.y  - outward.y * bulge)
+            rightCP1 = Vector2D(x: rightCP1.x - outward.x * bulge, y: rightCP1.y - outward.y * bulge)
+        }
+
         var newPoints = polygon.points
         newPoints.replaceSubrange(base..<(base + 4), with: [
-            left[0], left[1], left[2], displaced,
-            displaced, right[1], right[2], right[3]
+            left[0], left[1], leftCP2, displaced,
+            displaced, rightCP1, right[2], right[3]
         ])
         polygon.points = newPoints
 
         var result = polygons
         result[targetIdx] = polygon
         return result
+    }
+
+    // MARK: - Graft operator (Specs/GeometricLifecycle.md §4.4.8)
+
+    /// A distinct salt for Graft's own roll namespace (§4.4.8.6 step 2) — all
+    /// eight `cycleBase + 0...7` slots on the un-salted `seed` are already spoken
+    /// for by Extrude/Split (see the comments on those functions above), so Graft
+    /// gets its own salted seed instead, exactly like `applySplit`'s `posSeed`.
+    /// `centreHash` mixes `seed` multiplicatively before hashing, so a distinct
+    /// additive salt produces an effectively independent hash stream regardless
+    /// of which `cycle` values are reused on it — safe to use small fixed
+    /// `cycleBase + 0/1/2/...` offsets here exactly as the un-salted rolls do,
+    /// with `cycleBase` (not a bare constant) folded in so Graft's own rolls
+    /// still vary generation-to-generation like every other operator's.
+    private static let graftSeedSalt = 918_273_645
+
+    /// Dispatches on `graftAttachmentMode` (§4.4.8.3). `.wholeEdge` and
+    /// `.singlePoint` never run in the same generation for the same target, so
+    /// the two implementations freely reuse the same `cycleBase + 0/1/2/...`
+    /// roll-slot numbering on `graftSeed` without colliding — only one branch
+    /// ever executes. `strength` (the reveal tween) is not yet applied to the
+    /// grafted piece by either mode — unlike Extrude/Split's distance/
+    /// displacement, an exact edge/point match has no obvious "partial"
+    /// analogue; a generation using this operator during a fractional-phase
+    /// reveal pops in fully rather than growing, a known gap left for a later
+    /// pass.
+    private static func applyGraft(
+        _ polygons: [Polygon2D],
+        targetIdx:  Int,
+        params:     EvolutionParams,
+        cycleBase:  Int,
+        strength:   Double
+    ) -> [Polygon2D] {
+        switch params.graftAttachmentMode {
+        case .wholeEdge:
+            return applyGraftWholeEdge(polygons, targetIdx: targetIdx, params: params, cycleBase: cycleBase, strength: strength)
+        case .singlePoint:
+            return applyGraftSinglePoint(polygons, targetIdx: targetIdx, params: params, cycleBase: cycleBase, strength: strength)
+        case .partialEdge:
+            return applyGraftPartialEdge(polygons, targetIdx: targetIdx, params: params, cycleBase: cycleBase, strength: strength)
+        }
+    }
+
+    /// `.wholeEdge` attachment (§4.4.8.3 step 2): generates one Graft
+    /// primitive (`GraftEngine.generatePrimitive`), then rigid-places it so one
+    /// of its own edge sites lands exactly on the target polygon's chosen edge,
+    /// reusing `AssemblyFulgurationEngine.place` directly rather than
+    /// re-deriving the placement math. A rolled primitive with no edge-type
+    /// attachment site (`n≤2`, a bare line — only point sites) is skipped for
+    /// this generation, a no-op identical in shape to the existing "nothing
+    /// eligible" guards elsewhere in this file; `.singlePoint` attachment
+    /// below is what makes those primitives placeable too.
+    private static func applyGraftWholeEdge(
+        _ polygons: [Polygon2D],
+        targetIdx:  Int,
+        params:     EvolutionParams,
+        cycleBase:  Int,
+        strength:   Double
+    ) -> [Polygon2D] {
+        let polygon  = polygons[targetIdx]
+        let segCount = polygon.points.count / 4
+        guard segCount > 0 else { return polygons }
+
+        let eligibleSegs = eligibleSegments(of: polygon, selector: params.directionalSelector)
+        guard !eligibleSegs.isEmpty else { return polygons }
+
+        let graftSeed = params.generationSeed &+ graftSeedSalt
+
+        let segRoll = SubdivisionEngine.centreHash(seed: graftSeed, cycle: cycleBase + 0)
+        let segIdx  = eligibleSegs[min(eligibleSegs.count - 1, Int(segRoll * Double(eligibleSegs.count)))]
+
+        let base = segIdx * 4
+        let a0 = polygon.points[base]
+        let a1 = polygon.points[base + 3]
+        let edgeVector = a1 - a0
+        let edgeLength = edgeVector.length
+        guard edgeLength > 1e-9 else { return polygons }
+        let direction = Vector2D(x: edgeVector.x / edgeLength, y: edgeVector.y / edgeLength)
+        let outward   = ExtensionEngine.outwardNormal(of: polygon, segIdx: segIdx)
+        guard outward != .zero else { return polygons }
+        let mid = Vector2D(x: (a0.x + a1.x) / 2, y: (a0.y + a1.y) / 2)
+        let targetSite = AttachmentSite(point: mid, direction: direction, outward: outward, length: edgeLength)
+
+        // Own small namespace on graftSeed, distinct from GraftEngine's own
+        // rollBase+0/1/2 (sides/distortionX/distortionY) below.
+        let mirrorRoll     = SubdivisionEngine.centreHash(seed: graftSeed, cycle: cycleBase + 1)
+        let sourceSiteRoll = SubdivisionEngine.centreHash(seed: graftSeed, cycle: cycleBase + 2)
+
+        let generated = GraftEngine.generatePrimitive(seed: graftSeed, rollBase: cycleBase + 3, params: params)
+        let piece = generated.piece
+        // §4.4.8.3: only a `.line`-type piece (n≥3) has edge-type attachment
+        // sites; `.openSpline` (n≤2, a bare line) has only point-type endpoint
+        // sites, which `.wholeEdge` can't use.
+        guard piece.type == .line else { return polygons }
+
+        let pieceSites = AttachmentSiteExtractor.sites(of: piece)
+        guard !pieceSites.isEmpty else { return polygons }
+        let sourceSiteIdx = min(pieceSites.count - 1, Int(sourceSiteRoll * Double(pieceSites.count)))
+        let sourceSite = pieceSites[sourceSiteIdx]
+
+        let mirror = mirrorRoll < 0.5
+        let placed = AssemblyFulgurationEngine.place(
+            piece, sourceSite: sourceSite, onto: targetSite,
+            mirror: mirror, edgeMatching: params.graftEdgeMatching
+        )
+        let detailed = applyGraftEdgeDetailing(
+            placed, rootSiteIdx: sourceSiteIdx, graftSeed: graftSeed, cycleBase: cycleBase, params: params
+        )
+
+        var result = polygons
+        result.append(detailed)
+        return result
+    }
+
+    /// `.singlePoint` attachment (§4.4.8.3 step 3): only one coordinate is
+    /// shared, so unlike `.wholeEdge` the target `AttachmentSite`'s `outward`
+    /// isn't the edge's own natural normal — it's that normal rotated by an
+    /// RPSR-sampled `graftDepartureAngleMin/Max`, leaving departure direction
+    /// free. `length: nil` (a point, not an edge) makes `.matchLength`
+    /// naturally a no-op (see `AttachmentSite`'s own doc comment), so
+    /// `AssemblyFulgurationEngine.place` is reused completely unmodified — the
+    /// only thing that differs from `.wholeEdge` is how `targetSite` itself is
+    /// built. Unlike `.wholeEdge`, every rolled primitive is placeable here
+    /// (point-type sites work as well as edge-type ones), so there's no `n≤2`
+    /// skip.
+    private static func applyGraftSinglePoint(
+        _ polygons: [Polygon2D],
+        targetIdx:  Int,
+        params:     EvolutionParams,
+        cycleBase:  Int,
+        strength:   Double
+    ) -> [Polygon2D] {
+        var polygon  = polygons[targetIdx]
+        let segCount = polygon.points.count / 4
+        guard segCount > 0 else { return polygons }
+
+        let eligibleSegs = eligibleSegments(of: polygon, selector: params.directionalSelector)
+        guard !eligibleSegs.isEmpty else { return polygons }
+
+        let graftSeed = params.generationSeed &+ graftSeedSalt
+
+        let segRoll = SubdivisionEngine.centreHash(seed: graftSeed, cycle: cycleBase + 0)
+        let segIdx  = eligibleSegs[min(eligibleSegs.count - 1, Int(segRoll * Double(eligibleSegs.count)))]
+
+        let base = segIdx * 4
+        let a0 = polygon.points[base]
+        let a1 = polygon.points[base + 3]
+        let edgeVector = a1 - a0
+        let edgeLength = edgeVector.length
+        guard edgeLength > 1e-9 else { return polygons }
+        let baseNormal = ExtensionEngine.outwardNormal(of: polygon, segIdx: segIdx)
+        guard baseNormal != .zero else { return polygons }
+        let tangent = Vector2D(x: edgeVector.x / edgeLength, y: edgeVector.y / edgeLength)
+
+        // §4.4.8.3: `.existingVertex` touches nothing on the parent — the
+        // segment's own start anchor is the attachment point. `.newlyInsertedPoint`
+        // splits the edge first (undisplaced — no bulge/pinch, those are
+        // Split-operator-specific extras this doesn't need), reusing
+        // `splitPositionMin/Max` directly rather than a parallel field, per
+        // §4.4.8.3's own note that this "matches Split's existing behavior."
+        let anchorPoint: Vector2D
+        switch params.graftPointSource {
+        case .existingVertex:
+            anchorPoint = a0
+        case .newlyInsertedPoint:
+            let posLo = min(params.splitPositionMin, params.splitPositionMax)
+            let posHi = max(params.splitPositionMin, params.splitPositionMax)
+            let posRoll = SubdivisionEngine.centreHash(seed: graftSeed, cycle: cycleBase + 7)
+            let splitT = max(0.05, min(0.95, posLo + posRoll * (posHi - posLo)))
+            let seg = Array(polygon.points[base..<(base + 4)])
+            let (left, right) = BezierMath.split(seg: seg, t: splitT)
+            let splitPt = left[3]  // == right[0]
+            var newPoints = polygon.points
+            newPoints.replaceSubrange(base..<(base + 4), with: [
+                left[0], left[1], left[2], splitPt,
+                splitPt, right[1], right[2], right[3]
+            ])
+            polygon.points = newPoints
+            anchorPoint = splitPt
+        }
+
+        // Departure direction: the edge's own outward normal, rotated by an
+        // RPSR-sampled angle — 0–0 (default) always departs exactly outward,
+        // matching Split's own undeviated default displacement direction.
+        let angleLo = min(params.graftDepartureAngleMin, params.graftDepartureAngleMax)
+        let angleHi = max(params.graftDepartureAngleMin, params.graftDepartureAngleMax)
+        let angleRoll = SubdivisionEngine.centreHash(seed: graftSeed, cycle: cycleBase + 6)
+        let angle = angleLo + angleRoll * (angleHi - angleLo)
+        let departureDir = baseNormal.rotated(by: angle)
+
+        let targetSite = AttachmentSite(point: anchorPoint, direction: tangent, outward: departureDir, length: nil)
+
+        // Same roll-slot numbering as applyGraftWholeEdge — safe, see the
+        // dispatcher's own comment on why the two never collide.
+        let mirrorRoll     = SubdivisionEngine.centreHash(seed: graftSeed, cycle: cycleBase + 1)
+        let sourceSiteRoll = SubdivisionEngine.centreHash(seed: graftSeed, cycle: cycleBase + 2)
+
+        let generated = GraftEngine.generatePrimitive(seed: graftSeed, rollBase: cycleBase + 3, params: params)
+        let piece = generated.piece
+
+        let pieceSites = AttachmentSiteExtractor.sites(of: piece)
+        guard !pieceSites.isEmpty else { return polygons }
+        let sourceSiteIdx = min(pieceSites.count - 1, Int(sourceSiteRoll * Double(pieceSites.count)))
+        let sourceSite = pieceSites[sourceSiteIdx]
+
+        let mirror = mirrorRoll < 0.5
+        let placed = AssemblyFulgurationEngine.place(
+            piece, sourceSite: sourceSite, onto: targetSite,
+            mirror: mirror, edgeMatching: params.graftEdgeMatching
+        )
+        // Only a `.line`-type piece's source site is edge-type (its whole
+        // edge is "the root"); an `.openSpline` piece's site is a bare
+        // endpoint, so no edge needs excluding from curvature/articulation.
+        let rootSiteIdx = piece.type == .line ? sourceSiteIdx : nil
+        let detailed = applyGraftEdgeDetailing(
+            placed, rootSiteIdx: rootSiteIdx, graftSeed: graftSeed, cycleBase: cycleBase, params: params
+        )
+
+        var result = polygons
+        result[targetIdx] = polygon
+        result.append(detailed)
+        return result
+    }
+
+    /// `.partialEdge` attachment (§4.4.8.3 step 4): like `.wholeEdge`, the
+    /// primitive's chosen edge site is matched exactly onto a target
+    /// `AttachmentSite` — the only difference is that site now spans a
+    /// sub-portion of the parent edge (`graftPartialPositionMin/Max` for
+    /// where the span starts, `graftPartialSpanMin/Max` for how much of the
+    /// *remaining* length it covers) rather than the edge's full length.
+    /// Non-destructive to the parent, same as `.wholeEdge` — the sub-span is
+    /// only ever used to compute `targetSite`, never written back into the
+    /// parent's own points. Reuses the same `n≤2` edge-type-site requirement
+    /// `.wholeEdge` has, for the same reason: a bare line (point sites only)
+    /// has nothing to match a sub-edge onto.
+    private static func applyGraftPartialEdge(
+        _ polygons: [Polygon2D],
+        targetIdx:  Int,
+        params:     EvolutionParams,
+        cycleBase:  Int,
+        strength:   Double
+    ) -> [Polygon2D] {
+        let polygon  = polygons[targetIdx]
+        let segCount = polygon.points.count / 4
+        guard segCount > 0 else { return polygons }
+
+        let eligibleSegs = eligibleSegments(of: polygon, selector: params.directionalSelector)
+        guard !eligibleSegs.isEmpty else { return polygons }
+
+        let graftSeed = params.generationSeed &+ graftSeedSalt
+
+        let segRoll = SubdivisionEngine.centreHash(seed: graftSeed, cycle: cycleBase + 0)
+        let segIdx  = eligibleSegs[min(eligibleSegs.count - 1, Int(segRoll * Double(eligibleSegs.count)))]
+
+        let base = segIdx * 4
+        let seg = Array(polygon.points[base..<(base + 4)])
+        let outward = ExtensionEngine.outwardNormal(of: polygon, segIdx: segIdx)
+        guard outward != .zero else { return polygons }
+
+        // Sub-span of the parent edge: starts at t_start (own field, not
+        // clamped to [0.05, 0.95] like Split's — there's no parent-topology
+        // zero-length risk here since nothing is written back to the parent),
+        // covers `span` of the *remaining* length from t_start to the edge's
+        // own end. Default 0–0 / 1–1 reproduces `.wholeEdge`'s full span.
+        let posLo = min(params.graftPartialPositionMin, params.graftPartialPositionMax)
+        let posHi = max(params.graftPartialPositionMin, params.graftPartialPositionMax)
+        let posRoll = SubdivisionEngine.centreHash(seed: graftSeed, cycle: cycleBase + 6)
+        let tStart = max(0.0, min(1.0, posLo + posRoll * (posHi - posLo)))
+
+        let spanLo = min(params.graftPartialSpanMin, params.graftPartialSpanMax)
+        let spanHi = max(params.graftPartialSpanMin, params.graftPartialSpanMax)
+        let spanRoll = SubdivisionEngine.centreHash(seed: graftSeed, cycle: cycleBase + 7)
+        let span = max(0.0, min(1.0, spanLo + spanRoll * (spanHi - spanLo)))
+        let tEnd = max(tStart, min(1.0, tStart + span * (1.0 - tStart)))
+
+        let subStart = BezierMath.point(seg: seg, t: tStart)
+        let subEnd   = BezierMath.point(seg: seg, t: tEnd)
+        let subVector = subEnd - subStart
+        let subLength = subVector.length
+        guard subLength > 1e-9 else { return polygons }
+        let direction = Vector2D(x: subVector.x / subLength, y: subVector.y / subLength)
+        let mid = Vector2D(x: (subStart.x + subEnd.x) / 2, y: (subStart.y + subEnd.y) / 2)
+        let targetSite = AttachmentSite(point: mid, direction: direction, outward: outward, length: subLength)
+
+        let mirrorRoll     = SubdivisionEngine.centreHash(seed: graftSeed, cycle: cycleBase + 1)
+        let sourceSiteRoll = SubdivisionEngine.centreHash(seed: graftSeed, cycle: cycleBase + 2)
+
+        let generated = GraftEngine.generatePrimitive(seed: graftSeed, rollBase: cycleBase + 3, params: params)
+        let piece = generated.piece
+        guard piece.type == .line else { return polygons }
+
+        let pieceSites = AttachmentSiteExtractor.sites(of: piece)
+        guard !pieceSites.isEmpty else { return polygons }
+        let sourceSiteIdx = min(pieceSites.count - 1, Int(sourceSiteRoll * Double(pieceSites.count)))
+        let sourceSite = pieceSites[sourceSiteIdx]
+
+        let mirror = mirrorRoll < 0.5
+        let placed = AssemblyFulgurationEngine.place(
+            piece, sourceSite: sourceSite, onto: targetSite,
+            mirror: mirror, edgeMatching: params.graftEdgeMatching
+        )
+        let detailed = applyGraftEdgeDetailing(
+            placed, rootSiteIdx: sourceSiteIdx, graftSeed: graftSeed, cycleBase: cycleBase, params: params
+        )
+
+        var result = polygons
+        result.append(detailed)
+        return result
+    }
+
+    // MARK: - Edge curvature and articulation (§4.4.8.4)
+
+    /// A distinct salt for curvature/articulation rolls, kept separate from
+    /// `graftSeedSalt`'s own `cycleBase + 0...7` usage — that range means
+    /// different things per attachment mode (`.wholeEdge` only uses 0-5;
+    /// `.singlePoint`/`.partialEdge` also use 6/7 for their own mode-specific
+    /// rolls) — so edge-detailing never has to reason about which slots a
+    /// given mode already claimed; it gets its own independent hash stream.
+    private static let graftDetailSeedSalt = 471_338_509
+
+    /// Applies §4.4.8.4's curvature/articulation to every "free" edge of
+    /// `placed` — every edge except `rootSiteIdx` (the specific index, into
+    /// the pre-placement piece's own `AttachmentSiteExtractor.sites(of:)`
+    /// list, of the site that was matched to the parent — `nil` when that
+    /// site was point-type, which protects nothing extra since curvature only
+    /// moves control points and articulation only inserts new interior
+    /// points; a raw anchor is never itself relocated by either).
+    ///
+    /// A no-op — `placed` returned completely unchanged, still `.line`- or
+    /// `.openSpline`-type exactly as `place()` produced it — unless at least
+    /// one of curvature/articulation is actually configured, so every
+    /// wholeEdge/singlePoint/partialEdge test using untouched defaults is
+    /// unaffected; this only fires for presets that opt in.
+    private static func applyGraftEdgeDetailing(
+        _ placed:    Polygon2D,
+        rootSiteIdx: Int?,
+        graftSeed:   Int,
+        cycleBase:   Int,
+        params:      EvolutionParams
+    ) -> Polygon2D {
+        let curvatureOn = params.graftEdgeCurvatureProbability > 0
+            && (params.graftEdgeCurvatureAmountMin != 0 || params.graftEdgeCurvatureAmountMax != 0)
+        let articulationOn = max(params.graftArticulationCountMin, params.graftArticulationCountMax) > 0
+            && (params.graftArticulationAmountMin != 0 || params.graftArticulationAmountMax != 0)
+        guard curvatureOn || articulationOn else { return placed }
+
+        // `.line` (closed, raw-vertex) pieces need converting to per-segment
+        // control points before any one edge can be individually detailed;
+        // `.openSpline` pieces (the `n≤2` line primitive) are already
+        // spline-encoded. Both are the only two types `place()` can produce.
+        let spline: Polygon2D
+        switch placed.type {
+        case .line:
+            spline = Polygon2D(points: BezierMath.lineToSplinePoints(placed.points), type: .spline,
+                               pressures: placed.pressures, pressureProfiles: placed.pressureProfiles,
+                               visible: placed.visible)
+        case .openSpline:
+            spline = placed
+        default:
+            return placed
+        }
+
+        let segCount = spline.points.count / 4
+        guard segCount > 0 else { return placed }
+
+        let detailSeed = graftSeed &+ graftDetailSeedSalt
+        var outputSegments: [[Vector2D]] = []
+        outputSegments.reserveCapacity(segCount)
+
+        for segIdx in 0..<segCount {
+            let base = segIdx * 4
+            let seg = Array(spline.points[base..<(base + 4)])
+            guard segIdx != rootSiteIdx else {
+                outputSegments.append(seg)
+                continue
+            }
+
+            // Distinct per-edge namespace, same "salted seed" convention
+            // `applyExtrude`'s per-edge rolls already use — safe regardless of
+            // how many edges this piece has.
+            let edgeSeed = detailSeed &+ (segIdx &+ 1) &* 2_971_215_073
+
+            var jointCount = 0
+            if articulationOn {
+                let countLo = min(params.graftArticulationCountMin, params.graftArticulationCountMax)
+                let countHi = max(params.graftArticulationCountMin, params.graftArticulationCountMax)
+                let countRoll = SubdivisionEngine.centreHash(seed: edgeSeed, cycle: 0)
+                jointCount = max(0, countLo + Int(countRoll * Double(countHi - countLo + 1)))
+            }
+
+            // Articulation first — splits this edge into `jointCount + 1`
+            // straight sub-segments with displaced interior joints; curvature
+            // is then independently rolled per resulting sub-segment below,
+            // so an articulated edge's pieces can each end up curved too.
+            let subSegments = jointCount > 0
+                ? articulatedSubSegments(of: seg, jointCount: jointCount, edgeSeed: edgeSeed, params: params)
+                : [seg]
+
+            for (subIdx, subSeg) in subSegments.enumerated() {
+                outputSegments.append(curvedSegment(subSeg, edgeSeed: edgeSeed, subIdx: subIdx, params: params))
+            }
+        }
+
+        let outputPoints = outputSegments.flatMap { $0 }
+        return Polygon2D(points: outputPoints, type: spline.type,
+                         pressures: spline.pressures, pressureProfiles: spline.pressureProfiles,
+                         visible: spline.visible)
+    }
+
+    /// Subdivides one straight edge into `jointCount + 1` straight sub-segments,
+    /// each interior joint sampled at an even `t` along the *original* edge
+    /// (`BezierMath.point`, not a naive linear split — consistent with how
+    /// `CurveRefinementEngine` samples insertion points) then displaced
+    /// perpendicular to the edge's own chord direction. `.jitter`: independent
+    /// RPSR sign and magnitude per joint. `.zigzag`: sign alternates
+    /// deterministically joint-to-joint, magnitude still RPSR-sampled — the
+    /// "zig zag" case from the original proposal. Both original endpoints
+    /// (`seg[0]`/`seg[3]`) are carried through completely untouched.
+    private static func articulatedSubSegments(
+        of seg:     [Vector2D],
+        jointCount: Int,
+        edgeSeed:   Int,
+        params:     EvolutionParams
+    ) -> [[Vector2D]] {
+        let a0 = seg[0], a1 = seg[3]
+        let dx = a1.x - a0.x, dy = a1.y - a0.y
+        let len = sqrt(dx * dx + dy * dy)
+        guard len > 1e-9 else { return [seg] }
+        let perp = Vector2D(x: -dy / len, y: dx / len)
+
+        let amtLo = min(params.graftArticulationAmountMin, params.graftArticulationAmountMax)
+        let amtHi = max(params.graftArticulationAmountMin, params.graftArticulationAmountMax)
+
+        var anchors: [Vector2D] = [a0]
+        for j in 1...jointCount {
+            let t = Double(j) / Double(jointCount + 1)
+            let basePos = BezierMath.point(seg: seg, t: t)
+            let jointSeed = edgeSeed &+ (j &+ 1) &* 3_571_428_667
+
+            let magRoll = SubdivisionEngine.centreHash(seed: jointSeed, cycle: 1)
+            let magnitude = amtLo + magRoll * (amtHi - amtLo)
+            let sign: Double
+            switch params.graftArticulationPattern {
+            case .jitter:
+                let signRoll = SubdivisionEngine.centreHash(seed: jointSeed, cycle: 0)
+                sign = signRoll < 0.5 ? -1.0 : 1.0
+            case .zigzag:
+                sign = (j % 2 == 1) ? 1.0 : -1.0
+            }
+
+            anchors.append(basePos + perp * (sign * magnitude))
+        }
+        anchors.append(a1)
+
+        var segments: [[Vector2D]] = []
+        segments.reserveCapacity(anchors.count - 1)
+        for i in 0..<(anchors.count - 1) {
+            let p0 = anchors[i], p3 = anchors[i + 1]
+            segments.append([p0, Vector2D.lerp(p0, p3, t: 1.0 / 3.0), Vector2D.lerp(p0, p3, t: 2.0 / 3.0), p3])
+        }
+        return segments
+    }
+
+    /// RPSR chance (`graftEdgeCurvatureProbability`) of bowing one straight
+    /// sub-segment's control points outward from its own chord — same
+    /// `bow = amount * edgeLength` convention `ExtensionEngine.extrudeSegment`
+    /// already uses for Extrude's outer face (a new call site, not new math).
+    private static func curvedSegment(
+        _ seg:     [Vector2D],
+        edgeSeed:  Int,
+        subIdx:    Int,
+        params:    EvolutionParams
+    ) -> [Vector2D] {
+        guard params.graftEdgeCurvatureProbability > 0 else { return seg }
+        let subSeed = edgeSeed &+ (subIdx &+ 1) &* 3_968_546_921
+        let probRoll = SubdivisionEngine.centreHash(seed: subSeed, cycle: 0)
+        guard probRoll < params.graftEdgeCurvatureProbability else { return seg }
+
+        let a0 = seg[0], a1 = seg[3]
+        let dx = a1.x - a0.x, dy = a1.y - a0.y
+        let len = sqrt(dx * dx + dy * dy)
+        guard len > 1e-9 else { return seg }
+        let normal = Vector2D(x: -dy / len, y: dx / len)
+
+        let amtLo = min(params.graftEdgeCurvatureAmountMin, params.graftEdgeCurvatureAmountMax)
+        let amtHi = max(params.graftEdgeCurvatureAmountMin, params.graftEdgeCurvatureAmountMax)
+        let amtRoll = SubdivisionEngine.centreHash(seed: subSeed, cycle: 1)
+        let amount = amtLo + amtRoll * (amtHi - amtLo)
+        let bow = amount * len
+
+        let cp1 = Vector2D.lerp(a0, a1, t: 1.0 / 3.0) + normal * bow
+        let cp2 = Vector2D.lerp(a0, a1, t: 2.0 / 3.0) + normal * bow
+        return [a0, cp1, cp2, a1]
     }
 }

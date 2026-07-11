@@ -33,7 +33,7 @@ struct SubdivisionWireframeView: View {
             guard let inputs = subdivisionInputs else { cachedSubdivided = []; return }
             let polys             = inputs.basePolygons
             var params            = inputs.params
-            let curveRefinement   = inputs.curveRefinement
+            var curveRefinement   = inputs.curveRefinement
             let segmentExtraction = inputs.segmentExtraction
             let extensionPasses   = inputs.extensionPasses
             let evolutionPasses   = inputs.evolutionPasses
@@ -42,9 +42,10 @@ struct SubdivisionWireframeView: View {
             let result: [Polygon2D] = await Task.detached(priority: .userInitiated) {
                 var rng = SeededRNG()
                 if !evolutionPasses.isEmpty {
-                    EvolutionEngine.apply(params: &params, passes: evolutionPasses,
+                    EvolutionEngine.apply(params: &params, curveRefinementParams: &curveRefinement,
+                                          passes: evolutionPasses,
                                           elapsedFrames: 0, targetFPS: 24, spriteIndex: 0,
-                                          allSets: [:])
+                                          allSets: [:], allCurveSets: [:])
                 }
                 var subdivided = SubdivisionEngine.process(polygons: polys, paramSet: params, rng: &rng)
                 if !curveRefinement.isEmpty {

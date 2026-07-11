@@ -6,34 +6,56 @@ import Foundation
 /// with a closed-form weighted sum, so any frame can be evaluated independently.
 public enum EvolutionEngine {
 
-    /// Modifies `params` in-place according to all enabled evolution passes.
+    /// Modifies `params` and `curveRefinementParams` in-place according to all
+    /// enabled evolution passes.
     ///
     /// - Parameters:
-    ///   - params:        Subdivision params to mutate (modified in-place).
+    ///   - params:                 Subdivision params to mutate (modified in-place).
+    ///   - curveRefinementParams:  Curve-refinement params to mutate (modified
+    ///     in-place) — the open-curve counterpart, added 2026-07-10. A pass whose
+    ///     `driftTarget` is a curve target (`DriftTarget.isCurveTarget`) writes
+    ///     here instead of `params`; Convergence Pressure writes to both arrays
+    ///     unconditionally (empty arrays are a harmless no-op, so a transform set
+    ///     with no curve-refinement passes is unaffected).
     ///   - passes:        Ordered evolution passes to apply.
     ///   - elapsedFrames: Current playback position in frames.
     ///   - targetFPS:     Playback frame rate (used by DoubleDriver evaluation).
     ///   - spriteIndex:   Per-sprite offset for staggering.
     ///   - allSets:       All subdivision-param arrays keyed by set name, for convergence target lookup.
+    ///   - allCurveSets:  All curve-refinement-param arrays keyed by set name (same
+    ///     name namespace as `allSets` — a transform set's name covers both of its
+    ///     `params`/`curveRefinement` arrays), for convergence target lookup.
     public static func apply(
-        params:        inout [SubdivisionParams],
-        passes:        [EvolutionParams],
-        elapsedFrames: Double,
-        targetFPS:     Double,
-        spriteIndex:   Int,
-        allSets:       [String: [SubdivisionParams]]
+        params:                inout [SubdivisionParams],
+        curveRefinementParams: inout [CurveRefinementParams],
+        passes:                [EvolutionParams],
+        elapsedFrames:         Double,
+        targetFPS:             Double,
+        spriteIndex:           Int,
+        allSets:               [String: [SubdivisionParams]],
+        allCurveSets:          [String: [CurveRefinementParams]]
     ) {
         for pass in passes where pass.enabled {
             switch pass.operationType {
             case .momentumDrift:
-                applyMomentumDrift(params: &params, pass: pass,
-                                   elapsedFrames: elapsedFrames)
+                if pass.driftTarget.isCurveTarget {
+                    applyMomentumDriftToCurve(params: &curveRefinementParams, pass: pass,
+                                              elapsedFrames: elapsedFrames)
+                } else {
+                    applyMomentumDrift(params: &params, pass: pass,
+                                       elapsedFrames: elapsedFrames)
+                }
             case .convergencePressure:
                 applyConvergencePressure(params: &params, pass: pass,
                                          elapsedFrames: elapsedFrames,
                                          targetFPS: targetFPS,
                                          spriteIndex: spriteIndex,
                                          allSets: allSets)
+                applyConvergencePressureToCurve(params: &curveRefinementParams, pass: pass,
+                                                elapsedFrames: elapsedFrames,
+                                                targetFPS: targetFPS,
+                                                spriteIndex: spriteIndex,
+                                                allCurveSets: allCurveSets)
             case .generational:
                 // Operates on materialized [Polygon2D], not SubdivisionParams —
                 // dispatched separately by GenerationalEvolutionEngine at its own
@@ -81,6 +103,37 @@ public enum EvolutionEngine {
                     scale:       params[i].insetTransform.scale,
                     rotation:    params[i].insetTransform.rotation + drift
                 )
+            case .curveDisplacement, .curveCPNormalOffset, .curvePressure:
+                // Routed to applyMomentumDriftToCurve instead — see apply()'s
+                // isCurveTarget branch. Unreachable in practice, but the switch
+                // must stay exhaustive.
+                break
+            }
+        }
+    }
+
+    /// Open-curve counterpart of `applyMomentumDrift` above — same closed-form
+    /// noise-sum math, writing to `CurveRefinementParams`' base scalar fields
+    /// instead of `SubdivisionParams`'. Added 2026-07-10.
+    private static func applyMomentumDriftToCurve(
+        params:        inout [CurveRefinementParams],
+        pass:          EvolutionParams,
+        elapsedFrames: Double
+    ) {
+        let frameN = Int(max(0, elapsedFrames))
+        let drift  = computeDrift(atFrame: frameN, pass: pass)
+        for i in params.indices {
+            switch pass.driftTarget {
+            case .curveDisplacement:
+                params[i].displacement += drift
+            case .curveCPNormalOffset:
+                params[i].cpNormalOffset += drift
+            case .curvePressure:
+                params[i].pressureValue = clamp01(params[i].pressureValue + drift)
+            case .lineRatioX, .lineRatioY, .lineRatioXY, .cpNormalX, .cpNormalY, .insetScale, .insetRotation:
+                // A subdivision target selected — routed to applyMomentumDrift
+                // instead, nothing to do here. Unreachable in practice.
+                break
             }
         }
     }
@@ -166,6 +219,50 @@ public enum EvolutionEngine {
                 scale:       Vector2D(x: sScale, y: sScale),
                 rotation:    sRot
             )
+        }
+    }
+
+    /// Open-curve counterpart of `applyConvergencePressure` above. Unlike
+    /// Momentum Drift, Convergence Pressure was never field-targeted — one pass
+    /// already converges every relevant `SubdivisionParams` field toward the
+    /// target set at once, so the natural extension is the same: converge every
+    /// relevant `CurveRefinementParams` field toward the target set too, in the
+    /// same pass, rather than adding a target-field selector. A no-op when
+    /// `curveRefinementParams`/`allCurveSets` are empty (no curve-refinement
+    /// passes on this transform set), so this is safe to call unconditionally.
+    /// Added 2026-07-10.
+    private static func applyConvergencePressureToCurve(
+        params:        inout [CurveRefinementParams],
+        pass:          EvolutionParams,
+        elapsedFrames: Double,
+        targetFPS:     Double,
+        spriteIndex:   Int,
+        allCurveSets:  [String: [CurveRefinementParams]]
+    ) {
+        guard !pass.convergenceTargetSetName.isEmpty,
+              let targetSet = allCurveSets[pass.convergenceTargetSetName]
+        else { return }
+
+        let rawPressure = DriverEvaluator.evaluate(
+            pass.convergencePressure,
+            globalElapsed: elapsedFrames,
+            targetFPS:     targetFPS,
+            spriteIndex:   spriteIndex
+        )
+        let pressure = max(0.0, min(1.0, modifiedPressure(
+            raw:           rawPressure,
+            mode:          pass.convergenceMode,
+            elapsedFrames: elapsedFrames,
+            duration:      max(1.0, pass.convergenceDuration)
+        )))
+        guard pressure > 0 else { return }
+
+        for i in params.indices {
+            guard i < targetSet.count else { continue }
+            let target = targetSet[i]
+            params[i].displacement    = lerp(params[i].displacement, target.displacement, t: pressure)
+            params[i].cpNormalOffset  = lerp(params[i].cpNormalOffset, target.cpNormalOffset, t: pressure)
+            params[i].pressureValue   = clamp01(lerp(params[i].pressureValue, target.pressureValue, t: pressure))
         }
     }
 

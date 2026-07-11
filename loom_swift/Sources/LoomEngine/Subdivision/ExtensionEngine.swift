@@ -202,11 +202,14 @@ public enum ExtensionEngine {
     /// as a set of neighboring quads sharing endpoints, reusing this rather than
     /// duplicating the outward-normal/bow/width math.
     static func extrudeEdge(
-        _ polygon: Polygon2D,
-        segIdx:    Int,
-        distance:  Double,
-        width:     Double = 1.0,
-        curvature: Double = 0.0
+        _ polygon:   Polygon2D,
+        segIdx:      Int,
+        distance:    Double,
+        width:       Double = 1.0,
+        curvature:   Double = 0.0,
+        distanceA0:  Double? = nil,
+        distanceA1:  Double? = nil,
+        direction:   Vector2D? = nil
     ) -> Polygon2D? {
         let segCount = polygon.points.count / 4
         guard segCount > 0, segIdx < segCount else { return nil }
@@ -214,7 +217,8 @@ public enum ExtensionEngine {
         guard normal != .zero else { return nil }
         let params = ExtensionParams(operationType: .extrude, extrusionWidth: width, extrusionCurvature: curvature)
         return extrudeSegment(polygon, segIdx: segIdx, distance: distance,
-                               params: params, outwardNormal: normal)
+                               params: params, outwardNormal: direction ?? normal,
+                               distanceA0: distanceA0, distanceA1: distanceA1)
     }
 
     private static func extrudeSegment(
@@ -222,7 +226,9 @@ public enum ExtensionEngine {
         segIdx:          Int,
         distance:        Double,
         params:          ExtensionParams,
-        outwardNormal:   Vector2D
+        outwardNormal:   Vector2D,
+        distanceA0:      Double? = nil,
+        distanceA1:      Double? = nil
     ) -> Polygon2D {
         let base = segIdx * 4
         guard base + 3 < polygon.points.count else {
@@ -233,14 +239,19 @@ public enum ExtensionEngine {
         let cp2 = polygon.points[base + 2]
         let a1  = polygon.points[base + 3]
         let nx  = outwardNormal.x, ny = outwardNormal.y
+        // Per-corner distance override (GenerationalEvolutionEngine's asymmetric-
+        // sides toggle, Specs/GeometricLifecycle.md §4.4.2); both default to the
+        // shared `distance`, giving the original symmetric/rectangular quad.
+        let dA0 = distanceA0 ?? distance
+        let dA1 = distanceA1 ?? distance
 
         // Outer corners: width scaling around segment midpoint + normal offset
         let mx = (a0.x + a1.x) / 2, my = (a0.y + a1.y) / 2
         let w = params.extrusionWidth
-        let oa0 = Vector2D(x: mx + (a0.x - mx) * w + nx * distance,
-                           y: my + (a0.y - my) * w + ny * distance)
-        let oa1 = Vector2D(x: mx + (a1.x - mx) * w + nx * distance,
-                           y: my + (a1.y - my) * w + ny * distance)
+        let oa0 = Vector2D(x: mx + (a0.x - mx) * w + nx * dA0,
+                           y: my + (a0.y - my) * w + ny * dA0)
+        let oa1 = Vector2D(x: mx + (a1.x - mx) * w + nx * dA1,
+                           y: my + (a1.y - my) * w + ny * dA1)
 
         // Outer edge control points (oa1 → oa0 direction), bow in outward-normal direction
         let bow  = params.extrusionCurvature * sqrt((oa0.x - oa1.x) * (oa0.x - oa1.x)

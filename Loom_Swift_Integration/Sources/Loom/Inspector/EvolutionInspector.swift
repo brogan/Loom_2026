@@ -18,6 +18,7 @@ struct EvolutionInspector: View {
     @AppStorage("evinsp.generationsCollapsed") private var generationsCollapsed = false
     @AppStorage("evinsp.extrudeOpCollapsed")   private var extrudeOpCollapsed  = false
     @AppStorage("evinsp.splitOpCollapsed")     private var splitOpCollapsed    = false
+    @AppStorage("evinsp.graftOpCollapsed")     private var graftOpCollapsed    = true
     @AppStorage("evinsp.phaseDriverCollapsed") private var phaseDriverCollapsed = true
     @AppStorage("evinsp.directionalCollapsed") private var directionalCollapsed = true
 
@@ -35,6 +36,7 @@ struct EvolutionInspector: View {
             generationPhaseDriverSection
             extrudeOperatorSection
             splitOperatorSection
+            graftOperatorSection
             directionalSelectorSection
         }
     }
@@ -86,7 +88,7 @@ struct EvolutionInspector: View {
                 .labelsHidden()
                 .frame(maxWidth: 150)
             }
-            .loomHelp("Which subdivision parameter the drift displaces. Line Ratio XY affects both line ratio axes equally.")
+            .loomHelp("Which parameter the drift displaces. Line Ratio XY affects both line ratio axes equally. The three Curve targets (Displacement/CP Normal Offset/Pressure) drift this transform set's Curve Refinement params instead — the open-curve counterpart, since the other targets only affect closed polygons (Subdivision skips open curves entirely).")
 
             InspectorField("Momentum") {
                 FloatEntryField(value: bindEV(\.driftMomentum), width: 60)
@@ -124,7 +126,7 @@ struct EvolutionInspector: View {
                 .labelsHidden()
                 .frame(maxWidth: 150)
             }
-            .loomHelp("The transform set whose subdivision params this pass converges toward. The target's line ratios, CP offsets, and inset scale/rotation are lerped.")
+            .loomHelp("The transform set this pass converges toward. The target's line ratios, CP offsets, and inset scale/rotation are lerped for closed polygons; if this set also has Curve Refinement passes, its displacement/CP normal offset/pressure are lerped toward the same target set's curve params too, in the same pass — no separate target picker needed for curves.")
 
             InspectorField("Mode") {
                 Picker("", selection: bindEV(\.convergenceMode)) {
@@ -201,7 +203,9 @@ struct EvolutionInspector: View {
     // MARK: - Generational: extrude operator
 
     private var extrudeOperatorSection: some View {
-        InspectorSection("Extrude", isCollapsed: $extrudeOpCollapsed) {
+        let includeOpenCurves = bindEV(\.extrudeIncludeOpenCurves).wrappedValue
+
+        return InspectorSection("Extrude", isCollapsed: $extrudeOpCollapsed) {
             InspectorField("Weight") {
                 FloatEntryField(value: bindEV(\.extrudeWeight), width: 60)
             }
@@ -220,6 +224,28 @@ struct EvolutionInspector: View {
                 FloatEntryField(value: bindEV(\.extrudeDistanceMax), width: 50)
             }
             .loomHelp("Outward extrusion distance, resampled from this range each generation (RPSR).")
+
+            InspectorField("Asymmetric Sides") {
+                Toggle("", isOn: bindEV(\.extrudeAsymmetricSides)).labelsHidden()
+            }
+            .loomHelp("Off (default): both corners of an extruded edge move out by the same distance — a rectangular quad. On: each corner is independently randomized (scaled from the sampled Distance), so quads taper into a wedge instead. Resampled per edge, so a multi-edge run doesn't lean uniformly one way.")
+
+            InspectorField("Angled") {
+                Toggle("", isOn: bindEV(\.extrudeAngleRandomized)).labelsHidden()
+            }
+            .loomHelp("Off (default): extrusion is exactly perpendicular to its edge. On: direction is randomized up to ±45° from perpendicular (45°–135° measured from the edge itself), resampled per edge.")
+
+            InspectorField("Include Open Curves") {
+                Toggle("", isOn: bindEV(\.extrudeIncludeOpenCurves)).labelsHidden()
+            }
+            .loomHelp("Off (default): Extrude only targets closed polygons — Generational Evolution's Split operator is unaffected either way, always closed-only. On: open curves also become eligible Extrude targets. An open curve has no interior, so there's no single principled outward direction the way a closed polygon has — each eligible edge instead independently picks one of its two sides at random.")
+
+            if includeOpenCurves {
+                InspectorField("Both Sides") {
+                    Toggle("", isOn: bindEV(\.extrudeOpenCurveBothSides)).labelsHidden()
+                }
+                .loomHelp("Open curves only. Off (default): each edge extrudes on exactly one randomly-chosen side. On: a second, independent roll per edge decides whether that edge additionally extrudes its other side too — some edges in a run may end up with one quad, others with two.")
+            }
         }
     }
 
@@ -232,13 +258,167 @@ struct EvolutionInspector: View {
             }
             .loomHelp("Relative selection weight for the split operator each generation. Set to 0 to exclude splitting entirely (extrude-only evolution).")
 
+            InspectorField("Position") {
+                FloatEntryField(value: bindEV(\.splitPositionMin), width: 50)
+                Text("–").foregroundStyle(.secondary)
+                FloatEntryField(value: bindEV(\.splitPositionMax), width: 50)
+            }
+            .loomHelp("Where along the target edge the split lands (0 = start, 1 = end), resampled each generation (RPSR). 0.5–0.5 (default): always the exact midpoint. Widen the range so splits land at varied points rather than always the centre. Clamped to 0.05–0.95 regardless of setting, so an extreme value can't produce a degenerate sliver.")
+
             InspectorField("Displacement") {
                 FloatEntryField(value: bindEV(\.splitDisplacementMin), width: 50)
                 Text("–").foregroundStyle(.secondary)
                 FloatEntryField(value: bindEV(\.splitDisplacementMax), width: 50)
             }
             .loomHelp("How far the new anchor point (from splitting a random edge) is displaced outward from the shape's centre, resampled each generation (RPSR). Only the anchor moves — its flanking control points stay put, pulling the boundary into a rounded spike rather than a sharp break.")
+
+            InspectorField("Bulge / Pinch") {
+                FloatEntryField(value: bindEV(\.splitBulgePinchMin), width: 50)
+                Text("–").foregroundStyle(.secondary)
+                FloatEntryField(value: bindEV(\.splitBulgePinchMax), width: 50)
+            }
+            .loomHelp("0–0 (default): the two control points flanking the new anchor stay exactly where the split placed them. Positive values push them further out than the anchor for a fuller, rounder bulge; negative values pull them back for a concave pinch/dimple right at the split. Independent of Displacement above, resampled each generation (RPSR).")
         }
+    }
+
+    // MARK: - Generational: graft operator (Specs/GeometricLifecycle.md §4.4.8)
+
+    private var graftOperatorSection: some View {
+        let mode = bindEV(\.graftAttachmentMode).wrappedValue
+
+        return InspectorSection("Graft", isCollapsed: $graftOpCollapsed) {
+            InspectorField("Weight") {
+                FloatEntryField(value: bindEV(\.graftWeight), width: 60)
+            }
+            .loomHelp("Relative selection weight for the graft operator each generation, alongside Extrude/Split's own weights above. 0 (default) excludes Graft entirely.")
+
+            InspectorField("Sides") {
+                FloatEntryField(value: intAsDoubleBinding(\.graftSidesMin), width: 40, fractionDigits: 0)
+                Text("–").foregroundStyle(.secondary)
+                FloatEntryField(value: intAsDoubleBinding(\.graftSidesMax), width: 40, fractionDigits: 0)
+            }
+            .loomHelp("Number of sides `n` of the primitive grafted on each generation, resampled from this range (RPSR). n≤2 degenerates to a bare line (no meaningful 2-sided polygon) — n=1 is a line by design, the most basic \"polygon.\" n≥3 is a plain regular n-gon; unlike Assembly Fulguration's fixed square/triangle/pentagon kit, any n is reachable.")
+
+            InspectorField("Distortion") {
+                FloatEntryField(value: bindEV(\.graftDistortionMin), width: 50)
+                Text("–").foregroundStyle(.secondary)
+                FloatEntryField(value: bindEV(\.graftDistortionMax), width: 50)
+            }
+            .loomHelp("Independent per-axis scale range applied to the primitive before attachment, so repeated grafts don't look identical — a square becomes a rectangle or rhomboid. 1–1 (default) = no distortion.")
+
+            InspectorField("Edge Matching") {
+                Picker("", selection: bindEV(\.graftEdgeMatching)) {
+                    Text("Preserve Size").tag(AssemblyEdgeMatching.preserveSize)
+                    Text("Match Length").tag(AssemblyEdgeMatching.matchLength)
+                }
+                .labelsHidden()
+                .pickerStyle(.segmented)
+                .frame(maxWidth: 220)
+            }
+            .loomHelp("Preserve Size: the grafted primitive keeps its own native scale at the joint (mismatched edge lengths — rougher, found-object). Match Length: additionally rescaled so its attachment edge/span matches the parent's exactly (clean joinery). No effect for Single Point attachment (a point has no length to match).")
+
+            InspectorField("Attachment") {
+                Picker("", selection: bindEV(\.graftAttachmentMode)) {
+                    Text("Whole Edge").tag(GraftAttachmentMode.wholeEdge)
+                    Text("Single Point").tag(GraftAttachmentMode.singlePoint)
+                    Text("Partial Edge").tag(GraftAttachmentMode.partialEdge)
+                }
+                .labelsHidden()
+                .pickerStyle(.segmented)
+                .frame(maxWidth: 260)
+            }
+            .loomHelp("Whole Edge: the primitive's chosen edge is matched exactly onto the parent's target edge — closest to Extrude. Single Point: only one coordinate is shared, leaving departure direction free — closest to Split/Branch. Partial Edge: matches a sub-span of the parent edge rather than the whole thing. All three exclude only the specific matched site from curvature/articulation below — every other edge is free.")
+
+            if mode == .singlePoint {
+                InspectorField("Point Source") {
+                    Picker("", selection: bindEV(\.graftPointSource)) {
+                        Text("Existing Vertex").tag(GraftPointSource.existingVertex)
+                        Text("Newly Inserted").tag(GraftPointSource.newlyInsertedPoint)
+                    }
+                    .labelsHidden()
+                    .pickerStyle(.segmented)
+                    .frame(maxWidth: 220)
+                }
+                .loomHelp("Existing Vertex (default): attaches from the target edge's own start anchor, touching nothing on the parent. Newly Inserted: splits the target edge first (reusing Split's own Position range below), undisplaced, then attaches from the new anchor — matches Split's own behavior.")
+
+                InspectorField("Departure") {
+                    FloatEntryField(value: departureAngleMinDegrees, width: 60)
+                    Text("–").foregroundStyle(.secondary)
+                    FloatEntryField(value: departureAngleMaxDegrees, width: 60)
+                    Text("°").font(.system(size: 11)).foregroundStyle(.secondary)
+                }
+                .loomHelp("Departure angle, resampled each generation (RPSR), relative to the target edge's own outward normal at the chosen point. 0°–0° (default): always departs exactly outward, matching Split's own undeviated displacement direction.")
+            }
+
+            if mode == .partialEdge {
+                InspectorField("Position") {
+                    FloatEntryField(value: bindEV(\.graftPartialPositionMin), width: 50)
+                    Text("–").foregroundStyle(.secondary)
+                    FloatEntryField(value: bindEV(\.graftPartialPositionMax), width: 50)
+                }
+                .loomHelp("Where along the target edge the partial span starts (0 = start, 1 = end), resampled each generation (RPSR). 0–0 (default) = always starts at the edge's own start.")
+
+                InspectorField("Span") {
+                    FloatEntryField(value: bindEV(\.graftPartialSpanMin), width: 50)
+                    Text("–").foregroundStyle(.secondary)
+                    FloatEntryField(value: bindEV(\.graftPartialSpanMax), width: 50)
+                }
+                .loomHelp("What fraction (0–1) of the edge's *remaining* length beyond Position the span covers, resampled each generation (RPSR). 1–1 (default) covers the full remainder — Position 0–0 / Span 1–1 together reproduce Whole Edge's target exactly; narrowing either is what makes it partial.")
+            }
+
+            InspectorField("Curvature") {
+                FloatEntryField(value: bindEV(\.graftEdgeCurvatureProbability), width: 50)
+            }
+            .loomHelp("Per-free-edge chance (0–1) of becoming curved instead of staying straight, rolled independently per edge every generation. 0 (default) = never curved. \"Free\" means every edge except the one matched to the parent above.")
+
+            InspectorField("Curve Amount") {
+                FloatEntryField(value: bindEV(\.graftEdgeCurvatureAmountMin), width: 50)
+                Text("–").foregroundStyle(.secondary)
+                FloatEntryField(value: bindEV(\.graftEdgeCurvatureAmountMax), width: 50)
+            }
+            .loomHelp("Bow magnitude when an edge is curved, as a fraction of that edge's own length, resampled per curved edge (RPSR). Same units Extension's own extrusion curvature uses.")
+
+            InspectorField("Articulation") {
+                FloatEntryField(value: intAsDoubleBinding(\.graftArticulationCountMin), width: 40, fractionDigits: 0)
+                Text("–").foregroundStyle(.secondary)
+                FloatEntryField(value: intAsDoubleBinding(\.graftArticulationCountMax), width: 40, fractionDigits: 0)
+            }
+            .loomHelp("How many extra joints a free edge is subdivided into, resampled per free edge (RPSR). 0–0 (default) = no articulation.")
+
+            InspectorField("Art. Pattern") {
+                Picker("", selection: bindEV(\.graftArticulationPattern)) {
+                    Text("Jitter").tag(GraftArticulationPattern.jitter)
+                    Text("Zig Zag").tag(GraftArticulationPattern.zigzag)
+                }
+                .labelsHidden()
+                .pickerStyle(.segmented)
+                .frame(maxWidth: 180)
+            }
+            .loomHelp("Jitter: each joint's displacement direction and magnitude are independently randomized. Zig Zag: displacement alternates side deterministically joint-to-joint, magnitude still randomized — a regular zigzag rather than a scatter.")
+
+            InspectorField("Art. Amount") {
+                FloatEntryField(value: bindEV(\.graftArticulationAmountMin), width: 50)
+                Text("–").foregroundStyle(.secondary)
+                FloatEntryField(value: bindEV(\.graftArticulationAmountMax), width: 50)
+            }
+            .loomHelp("Displacement magnitude per joint, canvas-normalized units, perpendicular to the edge's own local direction, resampled per joint (RPSR).")
+        }
+    }
+
+    private var departureAngleMinDegrees: Binding<Double> {
+        let b = bindEV(\.graftDepartureAngleMin)
+        return Binding(
+            get: { b.wrappedValue * 180.0 / .pi },
+            set: { b.wrappedValue = $0 * .pi / 180.0 }
+        )
+    }
+
+    private var departureAngleMaxDegrees: Binding<Double> {
+        let b = bindEV(\.graftDepartureAngleMax)
+        return Binding(
+            get: { b.wrappedValue * 180.0 / .pi },
+            set: { b.wrappedValue = $0 * .pi / 180.0 }
+        )
     }
 
     // MARK: - Generational: directional selector
