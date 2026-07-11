@@ -76,6 +76,16 @@ struct GeometryTabView: View {
     @State private var showingRenameAlert = false
     @State private var renameText         = ""
 
+    // New-geometry-source dialogue — pre-filled with the same auto-generated
+    // defaults creation always used before this existed (see
+    // AppController.suggestedPolygonSetName / createPolygonSetGeometry), just
+    // editable now instead of applied silently. Both names remain changeable
+    // afterward via the existing Save-row filename field and the layer panel's
+    // own Rename button — this dialogue only front-loads the first choice.
+    @State private var showingNewGeometryPopover = false
+    @State private var newGeometryFileName  = ""
+    @State private var newGeometryLayerName = ""
+
     var body: some View {
         Group {
             if controller.isGeometryEditorActive {
@@ -93,6 +103,53 @@ struct GeometryTabView: View {
             }
             Button("Cancel", role: .cancel) {}
         }
+    }
+
+    private var newGeometryNamesInvalid: Bool {
+        newGeometryFileName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            || newGeometryLayerName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    private func confirmNewGeometry() {
+        controller.createGeometry(folder: "polygonSets", fileName: newGeometryFileName, layerName: newGeometryLayerName)
+        showingNewGeometryPopover = false
+    }
+
+    @ViewBuilder
+    private var newGeometryPopoverContent: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("New Geometry Source").font(.headline)
+            VStack(alignment: .leading, spacing: 4) {
+                Text("File Name").font(.system(size: 11)).foregroundStyle(.secondary)
+                TextField("Name", text: $newGeometryFileName)
+                    .textFieldStyle(.roundedBorder)
+                    .frame(width: 200)
+            }
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Initial Layer Name").font(.system(size: 11)).foregroundStyle(.secondary)
+                TextField("Layer name", text: $newGeometryLayerName)
+                    .textFieldStyle(.roundedBorder)
+                    .frame(width: 200)
+                    .onSubmit {
+                        guard !newGeometryNamesInvalid else { return }
+                        confirmNewGeometry()
+                    }
+            }
+            Text("Both can be changed later — the file name via the Save row, the layer name via the layer panel's Rename button.")
+                .font(.system(size: 10))
+                .foregroundStyle(.secondary)
+                .frame(width: 200, alignment: .leading)
+            HStack {
+                Button("Cancel") { showingNewGeometryPopover = false }
+                Spacer()
+                Button("Create") { confirmNewGeometry() }
+                    .disabled(newGeometryNamesInvalid)
+                    .buttonStyle(.borderedProminent)
+                    .controlSize(.small)
+            }
+        }
+        .padding(14)
+        .frame(width: 228)
     }
 
     private var geometryList: some View {
@@ -213,7 +270,9 @@ struct GeometryTabView: View {
             Text("Geometry Sources")
             Spacer()
             Button {
-                controller.createGeometry(folder: "polygonSets")
+                newGeometryFileName  = controller.suggestedPolygonSetName()
+                newGeometryLayerName = "Layer 1"
+                showingNewGeometryPopover = true
             } label: {
                 Label("New", systemImage: "plus")
                     .font(.system(size: 11))
@@ -221,6 +280,9 @@ struct GeometryTabView: View {
             .buttonStyle(.bordered)
             .controlSize(.small)
             .help("New Geometry Source")
+            .popover(isPresented: $showingNewGeometryPopover, arrowEdge: .bottom) {
+                newGeometryPopoverContent
+            }
         }
     }
 

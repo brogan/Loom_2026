@@ -1,0 +1,35 @@
+<polygonSet>
+    <name>rect</name>
+    <shapeType>CUBIC_CURVE</shapeType>
+    <polygon>
+        <curve>
+            <point x="-0.1" y="-0.1"/>
+            <point x="-0.03" y="-0.1"/>
+            <point x="0.03" y="-0.1"/>
+            <point x="0.1" y="-0.1"/>
+        </curve>
+        <curve>
+            <point x="0.1" y="-0.1"/>
+            <point x="0.1" y="-0.03"/>
+            <point x="0.1" y="0.03"/>
+            <point x="0.1" y="0.1"/>
+        </curve>
+        <curve>
+            <point x="0.1" y="0.1"/>
+            <point x="0.03" y="0.1"/>
+            <point x="-0.03" y="0.1"/>
+            <point x="-0.1" y="0.1"/>
+        </curve>
+        <curve>
+            <point x="-0.1" y="0.1"/>
+            <point x="-0.1" y="0.03"/>
+            <point x="-0.1" y="-0.03"/>
+            <point x="-0.1" y="-0.1"/>
+        </curve>
+    </polygon>
+    <scaleX>1.0</scaleX>
+    <scaleY>1.0</scaleY>
+    <rotationAngle>0.0</rotationAngle>
+    <transX>0.0</transX>
+    <transY>0.0</transY>
+</polygonSet>

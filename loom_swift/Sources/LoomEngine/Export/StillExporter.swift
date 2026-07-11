@@ -17,10 +17,15 @@ public enum StillExporter {
     /// The engine is not advanced; call `engine.update(deltaTime:)` beforehand
     /// if you want a specific frame.
     ///
+    /// - Parameter transparentBackground: write the background as transparent
+    ///   rather than `GlobalConfig.backgroundColor`/`backgroundImage`, for
+    ///   compositing the still over other content. PNG-only (JPEG has no alpha
+    ///   channel, so `exportJPEG` doesn't take this parameter — a "transparent"
+    ///   JPEG would just show through as black). See `Engine.makeFrame`.
     /// - Throws: `StillExporterError.renderFailed` when the engine produces no image.
     ///           `StillExporterError.writeFailed` when the file cannot be written.
-    public static func exportPNG(engine: Engine, to url: URL) throws {
-        guard let image = engine.makeFrame() else {
+    public static func exportPNG(engine: Engine, to url: URL, transparentBackground: Bool = false) throws {
+        guard let image = engine.makeFrame(transparentBackground: transparentBackground) else {
             throw StillExporterError.renderFailed
         }
         try write(image: image, to: url, type: UTType.png)

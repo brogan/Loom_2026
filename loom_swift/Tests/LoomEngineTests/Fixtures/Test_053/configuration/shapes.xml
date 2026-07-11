@@ -1,0 +1,25 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<ShapeConfig version="1.0">
+  <ShapeLibrary name="MainLibrary">
+    <ShapeSet name="rect_sprite">
+      <Shape name="keyframe_rect">
+        <Source type="POLYGON_SET" polygonSet="rect"/>
+        <SubdivisionParamsSet name="rect_Subdivide"/>
+      </Shape>
+      <Shape name="jitter_rect">
+        <Source type="POLYGON_SET" polygonSet="rect"/>
+        <SubdivisionParamsSet name="rect_Subdivide"/>
+      </Shape>
+    </ShapeSet>
+    <ShapeSet name="saw_sprite">
+      <Shape name="morphTarget_saw">
+        <Source type="POLYGON_SET" polygonSet="saw"/>
+        <SubdivisionParamsSet name="none"/>
+      </Shape>
+      <Shape name="jitter_morph_saw">
+        <Source type="POLYGON_SET" polygonSet="saw"/>
+        <SubdivisionParamsSet name="none"/>
+      </Shape>
+    </ShapeSet>
+  </ShapeLibrary>
+</ShapeConfig>

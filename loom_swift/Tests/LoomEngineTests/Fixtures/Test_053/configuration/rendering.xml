@@ -1,0 +1,79 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<RenderingConfig version="1.0">
+  <RendererSetLibrary name="MainLibrary">
+    <RendererSet name="rect_renderSet">
+      <PlaybackConfig>
+        <Mode>SEQUENTIAL</Mode>
+        <PreferredRenderer></PreferredRenderer>
+        <PreferredProbability>50.0</PreferredProbability>
+        <ModifyInternalParameters>true</ModifyInternalParameters>
+      </PlaybackConfig>
+      <Renderer name="rect_renderer">
+        <Mode>FILLED_STROKED</Mode>
+        <StrokeWidth>0.2</StrokeWidth>
+        <StrokeColor r="0" g="0" b="0" a="255"/>
+        <FillColor r="0" g="0" b="0" a="255"/>
+        <PointSize>2.0</PointSize>
+        <HoldLength>1</HoldLength>
+        <PointStyle stroked="true" filled="true"/>
+        <Changes>
+          <FillColorChange enabled="true">
+            <Kind>RAN</Kind>
+            <Motion>PING_PONG</Motion>
+            <Cycle>PAUSING</Cycle>
+            <Scale>POLY</Scale>
+            <Palette>
+              <PaletteColor r="56" g="59" b="102" a="31"/>
+              <PaletteColor r="149" g="98" b="255" a="31"/>
+              <PaletteColor r="255" g="57" b="182" a="36"/>
+            </Palette>
+            <PauseMax>5</PauseMax>
+          </FillColorChange>
+        </Changes>
+      </Renderer>
+    </RendererSet>
+    <RendererSet name="saw_renderSet">
+      <PlaybackConfig>
+        <Mode>SEQUENTIAL</Mode>
+        <PreferredRenderer></PreferredRenderer>
+        <PreferredProbability>50.0</PreferredProbability>
+        <ModifyInternalParameters>true</ModifyInternalParameters>
+      </PlaybackConfig>
+      <Renderer name="saw_renderer">
+        <Mode>STROKED</Mode>
+        <StrokeWidth>0.1</StrokeWidth>
+        <StrokeColor r="0" g="0" b="0" a="255"/>
+        <FillColor r="0" g="0" b="0" a="255"/>
+        <PointSize>2.0</PointSize>
+        <HoldLength>1</HoldLength>
+        <PointStyle stroked="true" filled="true"/>
+        <Changes>
+          <StrokeWidthChange enabled="true">
+            <Kind>RAN</Kind>
+            <Motion>UP</Motion>
+            <Cycle>CONSTANT</Cycle>
+            <Scale>POLY</Scale>
+            <SizePalette>
+              <PaletteEntry>0.1</PaletteEntry>
+              <PaletteEntry>0.3</PaletteEntry>
+              <PaletteEntry>0.6</PaletteEntry>
+            </SizePalette>
+            <PauseMax>0</PauseMax>
+          </StrokeWidthChange>
+          <StrokeColorChange enabled="true">
+            <Kind>SEQ</Kind>
+            <Motion>UP</Motion>
+            <Cycle>CONSTANT</Cycle>
+            <Scale>POLY</Scale>
+            <Palette>
+              <PaletteColor r="140" g="31" b="38" a="255"/>
+              <PaletteColor r="80" g="14" b="14" a="255"/>
+              <PaletteColor r="255" g="203" b="56" a="255"/>
+            </Palette>
+            <PauseMax>0</PauseMax>
+          </StrokeColorChange>
+        </Changes>
+      </Renderer>
+    </RendererSet>
+  </RendererSetLibrary>
+</RenderingConfig>

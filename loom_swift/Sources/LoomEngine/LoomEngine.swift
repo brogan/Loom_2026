@@ -250,8 +250,17 @@ public struct LoomEngine: @unchecked Sendable {
     ///   and the canvas is discarded after each call.  Suitable for still-image
     ///   rendering or frame-by-frame video export without trail effects.
     ///
+    /// - Parameter transparentBackground: skips the background pass entirely
+    ///   (`GlobalConfig.backgroundColor`/`backgroundImage`), leaving the frame's
+    ///   alpha channel — which the render buffer already carries (`premultipliedLast`)
+    ///   regardless of this flag — untouched where nothing was drawn, for
+    ///   compositing over other content. Only takes effect in independent-frame
+    ///   mode (`drawBackgroundOnce == false`); accumulation mode's persistent
+    ///   shared canvas is left alone rather than risk leaking transparency into
+    ///   later on-screen accumulated frames, so this is silently ignored there.
+    ///
     /// Returns `nil` when the canvas dimensions are zero or context creation fails.
-    public mutating func makeFrame() -> CGImage? {
+    public mutating func makeFrame(transparentBackground: Bool = false) -> CGImage? {
         let w = Int(viewTransform.canvasSize.width)
         let h = Int(viewTransform.canvasSize.height)
         guard w > 0, h > 0 else { return nil }
@@ -260,7 +269,7 @@ public struct LoomEngine: @unchecked Sendable {
         if config.globalConfig.drawBackgroundOnce {
             raw = makeAccumulatedFrame(width: w, height: h)
         } else {
-            raw = makeFreshFrame(width: w, height: h)
+            raw = makeFreshFrame(width: w, height: h, transparentBackground: transparentBackground)
         }
         guard let raw else { return nil }
         guard config.globalConfig.renderSoftness > 0 else { return raw }
@@ -395,7 +404,7 @@ public struct LoomEngine: @unchecked Sendable {
     }
 
     /// Creates and renders to a fresh canvas each call (independent-frame mode).
-    private mutating func makeFreshFrame(width w: Int, height h: Int) -> CGImage? {
+    private mutating func makeFreshFrame(width w: Int, height h: Int, transparentBackground: Bool = false) -> CGImage? {
         let bytesPerRow = w * 4
         let buf = UnsafeMutablePointer<UInt8>.allocate(capacity: h * bytesPerRow)
         defer { buf.deallocate() }
@@ -411,7 +420,7 @@ public struct LoomEngine: @unchecked Sendable {
             bitmapInfo:       CGImageAlphaInfo.premultipliedLast.rawValue
         ) else { return nil }
 
-        renderImpl(into: ctx, drawBackground: true)
+        renderImpl(into: ctx, drawBackground: !transparentBackground)
         return ctx.makeImage()
     }
 

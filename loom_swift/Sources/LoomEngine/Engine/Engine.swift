@@ -146,9 +146,15 @@ public final class Engine: @unchecked Sendable {
 
     /// Render the current frame to a new `CGImage`.
     ///
+    /// - Parameter transparentBackground: skip filling `GlobalConfig
+    ///   .backgroundColor`/`backgroundImage`, so pixels not covered by any drawn
+    ///   geometry stay transparent instead — for exporting an image meant to be
+    ///   composited over other content. Only takes effect outside accumulation
+    ///   mode (`GlobalConfig.drawBackgroundOnce`); see `LoomEngine.makeFrame`.
+    ///
     /// Returns `nil` when the canvas dimensions are zero or context creation fails.
-    public func makeFrame() -> CGImage? {
-        loomEngine.makeFrame()
+    public func makeFrame(transparentBackground: Bool = false) -> CGImage? {
+        loomEngine.makeFrame(transparentBackground: transparentBackground)
     }
 
     // MARK: - Forwarded accessors

@@ -7190,10 +7190,24 @@ final class AppController: ObservableObject, @unchecked Sendable {
         panel.allowedContentTypes  = [UTType.png]
         panel.nameFieldStringValue = "\(name)_\(f.string(from: Date())).png"
         panel.directoryURL         = stillRendersDirectory()
+
+        // Transparent-background option, for compositing the still over other
+        // content — read synchronously from the checkbox's state when the panel
+        // closes, no SwiftUI/AppKit state bridging needed. PNG-only (the panel
+        // only offers .png), so no format-dependent gating required here.
+        let transparentCheckbox = NSButton(checkboxWithTitle: "Transparent Background", target: nil, action: nil)
+        transparentCheckbox.state = .off
+        transparentCheckbox.sizeToFit()
+        let accessory = NSView(frame: NSRect(x: 0, y: 0, width: transparentCheckbox.frame.width + 40, height: 32))
+        transparentCheckbox.frame.origin = NSPoint(x: 20, y: 6)
+        accessory.addSubview(transparentCheckbox)
+        panel.accessoryView = accessory
+
         panel.begin { [weak self] response in
             guard response == .OK, let url = panel.url else { return }
+            let transparentBackground = transparentCheckbox.state == .on
             do {
-                try StillExporter.exportPNG(engine: engine, to: url)
+                try StillExporter.exportPNG(engine: engine, to: url, transparentBackground: transparentBackground)
                 LoomLogger.info("Saved still: \(url.path)")
             } catch {
                 LoomLogger.error("Still export failed", error: error)
@@ -7372,27 +7386,47 @@ final class AppController: ObservableObject, @unchecked Sendable {
 
     // MARK: - Geometry CRUD
 
-    func createGeometry(folder: String) {
+    /// A name guaranteed not to collide with any existing polygon-set geometry
+    /// source, starting from `base` (or "New_Geometry_Set" if `base` is empty
+    /// after trimming) — the same dedup rule `createPolygonSetGeometry` itself
+    /// applies at creation time. Exposed so the "New" dialogue can pre-fill a
+    /// name the user can accept as-is, without duplicating the uniqueness logic.
+    func suggestedPolygonSetName(base: String = "New_Geometry_Set") -> String {
+        let trimmed = base.trimmingCharacters(in: .whitespacesAndNewlines)
+        let effectiveBase = trimmed.isEmpty ? "New_Geometry_Set" : trimmed
+        let existing = Set(projectConfig?.polygonConfig.library.polygonSets.map(\.name) ?? [])
+        guard existing.contains(effectiveBase) else { return effectiveBase }
+        var suffix = 1
+        var candidate = effectiveBase
+        while existing.contains(candidate) {
+            suffix += 1
+            candidate = "\(effectiveBase)_\(suffix)"
+        }
+        return candidate
+    }
+
+    func createGeometry(folder: String, fileName: String = "New_Geometry_Set", layerName: String = "Layer 1") {
         switch folder {
         case "polygonSets":
-            createPolygonSetGeometry()
+            createPolygonSetGeometry(fileName: fileName, layerName: layerName)
         default:
             break
         }
     }
 
-    private func createPolygonSetGeometry() {
+    /// - Parameters:
+    ///   - fileName: the new geometry source's name — deduplicated against
+    ///     existing polygon sets the same way as before this took a parameter
+    ///     (see `suggestedPolygonSetName`), so a colliding name is still safe
+    ///     to pass rather than needing to be pre-validated by the caller.
+    ///   - layerName: the initial layer's name. Falls back to "Layer 1" if
+    ///     empty after trimming — the same default this always used before
+    ///     the caller could specify one.
+    private func createPolygonSetGeometry(fileName: String, layerName: String) {
         guard projectURL != nil else { return }
+        let candidate = suggestedPolygonSetName(base: fileName)
         var createdName: String?
         updateProjectConfig { cfg in
-            let existing = Set(cfg.polygonConfig.library.polygonSets.map(\.name))
-            let base = "New_Geometry_Set"
-            var candidate = base
-            var suffix = 1
-            while existing.contains(candidate) {
-                suffix += 1
-                candidate = "\(base)_\(suffix)"
-            }
             cfg.polygonConfig.library.polygonSets.append(
                 PolygonSetDef(
                     name: candidate,
@@ -7407,8 +7441,9 @@ final class AppController: ObservableObject, @unchecked Sendable {
             selectedTab = .geometry
             selectedGeometryKey = "polygonSets/\(createdName)"
             enterGeometryEditor()
-            var document = EditableGeometryDocument(name: createdName)
-            document.ensureActiveLayer()
+            let trimmedLayerName = layerName.trimmingCharacters(in: .whitespacesAndNewlines)
+            let layer = EditableGeometryLayer(name: trimmedLayerName.isEmpty ? "Layer 1" : trimmedLayerName)
+            let document = EditableGeometryDocument(name: createdName, layers: [layer])
             setGeometryEditorDocument(document, resetHistory: true, cleanSource: .loaded)
         }
     }

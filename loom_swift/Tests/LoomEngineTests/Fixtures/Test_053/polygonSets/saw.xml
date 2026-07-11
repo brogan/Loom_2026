@@ -1,0 +1,101 @@
+<polygonSet>
+    <name>saw</name>
+    <shapeType>CUBIC_CURVE</shapeType>
+    <polygon>
+        <curve>
+            <point x="-0.03" y="0.05"/>
+            <point x="-0.05" y="0.03"/>
+            <point x="-0.07" y="0.01"/>
+            <point x="-0.09" y="-0.01"/>
+        </curve>
+        <curve>
+            <point x="-0.09" y="-0.01"/>
+            <point x="-0.11" y="0.01"/>
+            <point x="-0.13" y="0.03"/>
+            <point x="-0.14" y="0.05"/>
+        </curve>
+        <curve>
+            <point x="-0.14" y="0.05"/>
+            <point x="-0.16" y="0.03"/>
+            <point x="-0.18" y="0.01"/>
+            <point x="-0.2" y="-0.01"/>
+        </curve>
+        <curve>
+            <point x="-0.2" y="-0.01"/>
+            <point x="-0.22" y="0.01"/>
+            <point x="-0.24" y="0.03"/>
+            <point x="-0.26" y="0.05"/>
+        </curve>
+        <curve>
+            <point x="-0.26" y="0.05"/>
+            <point x="-0.27" y="0.03"/>
+            <point x="-0.28" y="0.01"/>
+            <point x="-0.29" y="-0.01"/>
+        </curve>
+        <curve>
+            <point x="-0.29" y="-0.01"/>
+            <point x="-0.24" y="-0.05"/>
+            <point x="-0.19" y="-0.09"/>
+            <point x="-0.14" y="-0.13"/>
+        </curve>
+        <curve>
+            <point x="-0.14" y="-0.13"/>
+            <point x="-0.05" y="-0.13"/>
+            <point x="0.05" y="-0.13"/>
+            <point x="0.15" y="-0.13"/>
+        </curve>
+        <curve>
+            <point x="0.15" y="-0.13"/>
+            <point x="0.19" y="-0.09"/>
+            <point x="0.24" y="-0.05"/>
+            <point x="0.29" y="-0.01"/>
+        </curve>
+        <curve>
+            <point x="0.29" y="-0.01"/>
+            <point x="0.28" y="0.01"/>
+            <point x="0.27" y="0.03"/>
+            <point x="0.26" y="0.05"/>
+        </curve>
+        <curve>
+            <point x="0.26" y="0.05"/>
+            <point x="0.24" y="0.03"/>
+            <point x="0.22" y="0.01"/>
+            <point x="0.2" y="-0.01"/>
+        </curve>
+        <curve>
+            <point x="0.2" y="-0.01"/>
+            <point x="0.18" y="0.01"/>
+            <point x="0.16" y="0.03"/>
+            <point x="0.15" y="0.05"/>
+        </curve>
+        <curve>
+            <point x="0.15" y="0.05"/>
+            <point x="0.13" y="0.03"/>
+            <point x="0.11" y="0.01"/>
+            <point x="0.09" y="-0.01"/>
+        </curve>
+        <curve>
+            <point x="0.09" y="-0.01"/>
+            <point x="0.07" y="0.01"/>
+            <point x="0.05" y="0.03"/>
+            <point x="0.03" y="0.05"/>
+        </curve>
+        <curve>
+            <point x="0.03" y="0.05"/>
+            <point x="0.02" y="0.04"/>
+            <point x="0.01" y="0.03"/>
+            <point x="0.0" y="0.02"/>
+        </curve>
+        <curve>
+            <point x="0.0" y="0.02"/>
+            <point x="-0.01" y="0.03"/>
+            <point x="-0.02" y="0.04"/>
+            <point x="-0.03" y="0.05"/>
+        </curve>
+    </polygon>
+    <scaleX>1.0</scaleX>
+    <scaleY>1.0</scaleY>
+    <rotationAngle>0.0</rotationAngle>
+    <transX>0.0</transX>
+    <transY>0.0</transY>
+</polygonSet>
