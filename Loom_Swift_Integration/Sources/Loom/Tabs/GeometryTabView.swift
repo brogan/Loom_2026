@@ -821,8 +821,21 @@ struct GeometryMainView: View {
                 controller.setGeometryEditorDocument(editableDocument, resetHistory: true, cleanSource: .loaded)
             } else {
                 loadedPolygons = try resolvePolygons(key: key)
-                let editableDocument = try makeEditableDocument(key: key, polygons: loadedPolygons)
-                controller.setGeometryEditorDocument(editableDocument, resetHistory: true, cleanSource: .loaded)
+                let sourceName = String(key.split(separator: "/", maxSplits: 1).last ?? "")
+                if loadedPolygons.isEmpty,
+                   let existing = controller.geometryEditorDocument,
+                   existing.name == sourceName {
+                    // Brand-new, not-yet-saved geometry source (e.g. just created via
+                    // the "New Geometry Source" popup): nothing exists on disk to load,
+                    // but `geometryEditorDocument` already holds the document built at
+                    // creation time — including the user's chosen initial layer name.
+                    // Reusing it here avoids clobbering that name with a freshly
+                    // synthesized blank document the moment this reactive reload fires.
+                    loadedPolygons = try existing.runtimePolygons()
+                } else {
+                    let editableDocument = try makeEditableDocument(key: key, polygons: loadedPolygons)
+                    controller.setGeometryEditorDocument(editableDocument, resetHistory: true, cleanSource: .loaded)
+                }
             }
             loadError = nil
         } catch {

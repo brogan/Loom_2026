@@ -89,10 +89,42 @@ public enum GraftArticulationPattern: String, Codable, CaseIterable, Equatable, 
 /// (default) is the original behavior — an RPSR-sampled n-gon/line from
 /// `AssemblyPrimitiveKit`, unchanged. `.customSet` instead pulls a user-drawn
 /// shape from the project's existing polygon/curve set library (the same
-/// storage a sprite's own base geometry uses) — see `graftCustomSetNames`.
+/// storage a sprite's own base geometry uses) — see `graftCustomShapes`.
 public enum GraftPrimitiveSource: String, Codable, CaseIterable, Equatable, Sendable {
     case generated = "Generated"
     case customSet = "Custom Set"
+}
+
+/// §4.4.8.3 orientation control (2026-07-13) — which of a Graft piece's own
+/// attachment sites is used as the connector to the parent. `.random`
+/// (default) reproduces the original RPSR-uniform pick exactly. `.lowestPoint`
+/// deterministically picks whichever site sits lowest (min Y, this engine's
+/// Y-up convention) in the piece's own authored/local frame — the piece's
+/// "bottom" as drawn in the geometry editor becomes the part that connects to
+/// the parent, rather than an arbitrary edge/endpoint.
+public enum GraftConnectorSelection: String, Codable, CaseIterable, Equatable, Sendable {
+    case random      = "Random"
+    case lowestPoint = "Lowest Point"
+}
+
+/// One shape entry in `graftCustomShapes` (2026-07-13) — a saved polygon/curve
+/// set name, plus a relative selection weight used for a weighted-random draw
+/// when `graftPrimitiveSource == .customSet` and multiple entries are present.
+/// Named "probability" in the UI since values are meant to sit in [0, 1], but
+/// these are relative weights, not independent per-shape odds — they need not
+/// sum to 1 (two entries both at 1.0 split the roll 50/50, same as before this
+/// existed; a weight of 0 excludes that entry from ever being picked while its
+/// siblings remain eligible). `probability: 1.0` default reproduces the old
+/// plain-`[String]` uniform pick exactly for any list where every entry is
+/// left at its default.
+public struct GraftCustomShapeEntry: Codable, Equatable, Sendable {
+    public var name: String
+    public var probability: Double
+
+    public init(name: String, probability: Double = 1.0) {
+        self.name = name
+        self.probability = probability
+    }
 }
 
 public struct EvolutionParams: Equatable, Codable, Sendable {
@@ -153,6 +185,23 @@ public struct EvolutionParams: Equatable, Codable, Sendable {
     /// .openCurveSafeOutward`, which all three operators now route through for
     /// `.openSpline` targets).
     public var includeOpenCurves: Bool
+
+    /// false (default): every eligible polygon (per `includeOpenCurves`'s type
+    /// filter) is a valid target for Extrude/Split/Graft each generation, exactly
+    /// as before this existed — including polygons a *previous* generation in
+    /// this same pass appended (only Graft appends; Extrude/Split both mutate
+    /// their target in place at its existing index, so a polygon present at the
+    /// start of the pass is always targetable regardless of how many times it's
+    /// since been extruded/split, whichever this is set to). true: targets are
+    /// restricted to the polygons present when this pass started — a grafted
+    /// piece, or anything appended by an earlier generation, can never itself
+    /// become a target (2026-07-13). Motivating case: a grove of trees Graft-
+    /// attached to a subdivided ground plane, where later generations should
+    /// keep landing on the ground rather than occasionally grafting onto an
+    /// already-placed tree. Chained evolution passes each treat their own
+    /// starting geometry as "original" — this is a per-pass toggle, not a
+    /// sprite-wide one.
+    public var restrictTargetsToOriginalGeometry: Bool
 
     /// false (default): each eligible curve edge extrudes on exactly one RPSR-chosen
     /// side (§4.4.6 step 2 — a per-edge coin-flip between the edge's two
@@ -221,19 +270,22 @@ public struct EvolutionParams: Equatable, Codable, Sendable {
     public var graftScaleMax: Double
 
     /// `.generated` (default) reproduces the original n-gon/line behavior
-    /// exactly, unaffected by `graftCustomSetNames` below. `.customSet` uses a
-    /// user-drawn shape instead — see `graftCustomSetNames`.
+    /// exactly, unaffected by `graftCustomShapes` below. `.customSet` uses a
+    /// user-drawn shape instead — see `graftCustomShapes`.
     public var graftPrimitiveSource: GraftPrimitiveSource
 
-    /// Names of saved polygon/curve sets (the same library a sprite's own base
-    /// geometry is drawn from) eligible as Graft's base shape when
-    /// `graftPrimitiveSource == .customSet`. One entry always uses that shape;
-    /// several give each graft instance a rotating cast, RPSR-picked per
-    /// instance the same way `graftSidesMin/Max` picks a side count. A name
-    /// with no matching saved set (typo, deleted shape) is simply skipped in
-    /// the roll — falls back to `.generated` if none resolve. Empty (default)
-    /// = no effect, same as `.generated`.
-    public var graftCustomSetNames: [String]
+    /// Saved polygon/curve sets (the same library a sprite's own base geometry
+    /// is drawn from) eligible as Graft's base shape when `graftPrimitiveSource
+    /// == .customSet`. One entry always uses that shape; several give each
+    /// graft instance a rotating cast, weighted-RPSR-picked per instance by
+    /// each entry's `probability` (2026-07-13 — a plain `[String]` before,
+    /// renamed when per-shape weighting was added; still an exact uniform pick
+    /// when every entry is left at its default `probability`, same as before).
+    /// A name with no matching saved set (typo, deleted shape), or a
+    /// `probability` of exactly 0, is simply skipped in the roll — falls back
+    /// to `.generated` if none resolve. Empty (default) = no effect, same as
+    /// `.generated`.
+    public var graftCustomShapes: [GraftCustomShapeEntry]
 
     /// Relative selection weight alongside `extrudeWeight`/`splitWeight` (same
     /// three-way roll, widened from two). 0 (default) excludes Graft from
@@ -324,6 +376,19 @@ public struct EvolutionParams: Equatable, Codable, Sendable {
     public var graftArticulationAmountMin: Double
     public var graftArticulationAmountMax: Double
 
+    /// §4.4.8.3 orientation control (2026-07-13). See `GraftConnectorSelection`.
+    public var graftConnectorSelection: GraftConnectorSelection
+
+    /// §4.4.8.3 orientation control (2026-07-13): extra rotation applied to a
+    /// placed graft piece around its own anchor point, on top of `place()`'s
+    /// own mechanical outward-normal-to-outward-normal alignment — a signed
+    /// fraction of a full turn, resampled per graft (RPSR). 0–0 (default) adds
+    /// no rotation at all, reproducing the original "perpendicular" placement
+    /// exactly; ±1 is a full ±360° turn. Applies uniformly regardless of
+    /// `graftAttachmentMode` or `graftConnectorSelection`.
+    public var graftOrientationAmountMin: Double
+    public var graftOrientationAmountMax: Double
+
     public var generationSeed:        Int
     public var maxVertexBudget:       Int      // hard cap on total vertex count; required, not optional
 
@@ -376,6 +441,7 @@ public struct EvolutionParams: Equatable, Codable, Sendable {
         extrudeAsymmetricSides:   Bool                    = false,
         extrudeAngleRandomized:   Bool                    = false,
         includeOpenCurves:        Bool                    = false,
+        restrictTargetsToOriginalGeometry: Bool            = false,
         extrudeOpenCurveBothSides: Bool                   = false,
         splitPositionMin:         Double                  = 0.5,
         splitPositionMax:         Double                  = 0.5,
@@ -390,7 +456,7 @@ public struct EvolutionParams: Equatable, Codable, Sendable {
         graftScaleMin:            Double                  = 1.0,
         graftScaleMax:            Double                  = 1.0,
         graftPrimitiveSource:     GraftPrimitiveSource    = .generated,
-        graftCustomSetNames:      [String]                = [],
+        graftCustomShapes:        [GraftCustomShapeEntry] = [],
         graftWeight:              Double                  = 0.0,
         graftEdgeMatching:        AssemblyEdgeMatching    = .preserveSize,
         graftAttachmentMode:      GraftAttachmentMode     = .wholeEdge,
@@ -409,6 +475,9 @@ public struct EvolutionParams: Equatable, Codable, Sendable {
         graftArticulationPattern:      GraftArticulationPattern = .jitter,
         graftArticulationAmountMin:    Double             = 0.0,
         graftArticulationAmountMax:    Double             = 0.0,
+        graftConnectorSelection:  GraftConnectorSelection = .random,
+        graftOrientationAmountMin: Double                 = 0.0,
+        graftOrientationAmountMax: Double                 = 0.0,
         generationSeed:           Int                     = 0,
         maxVertexBudget:          Int                     = 512,
         generationPhase:          DoubleDriver            = DoubleDriver(),
@@ -437,6 +506,7 @@ public struct EvolutionParams: Equatable, Codable, Sendable {
         self.extrudeAsymmetricSides   = extrudeAsymmetricSides
         self.extrudeAngleRandomized   = extrudeAngleRandomized
         self.includeOpenCurves        = includeOpenCurves
+        self.restrictTargetsToOriginalGeometry = restrictTargetsToOriginalGeometry
         self.extrudeOpenCurveBothSides = extrudeOpenCurveBothSides
         self.splitPositionMin         = splitPositionMin
         self.splitPositionMax         = splitPositionMax
@@ -451,7 +521,7 @@ public struct EvolutionParams: Equatable, Codable, Sendable {
         self.graftScaleMin            = graftScaleMin
         self.graftScaleMax            = graftScaleMax
         self.graftPrimitiveSource     = graftPrimitiveSource
-        self.graftCustomSetNames      = graftCustomSetNames
+        self.graftCustomShapes        = graftCustomShapes
         self.graftWeight              = graftWeight
         self.graftEdgeMatching        = graftEdgeMatching
         self.graftAttachmentMode      = graftAttachmentMode
@@ -470,6 +540,9 @@ public struct EvolutionParams: Equatable, Codable, Sendable {
         self.graftArticulationPattern      = graftArticulationPattern
         self.graftArticulationAmountMin    = graftArticulationAmountMin
         self.graftArticulationAmountMax    = graftArticulationAmountMax
+        self.graftConnectorSelection       = graftConnectorSelection
+        self.graftOrientationAmountMin     = graftOrientationAmountMin
+        self.graftOrientationAmountMax     = graftOrientationAmountMax
         self.generationSeed           = generationSeed
         self.maxVertexBudget          = maxVertexBudget
         self.generationPhase          = generationPhase
@@ -487,28 +560,32 @@ public struct EvolutionParams: Equatable, Codable, Sendable {
         case extrudeRunLengthMin, extrudeRunLengthMax, extrudeDistanceMin, extrudeDistanceMax
         case extrudeAsymmetricSides, extrudeAngleRandomized
         case includeOpenCurves
+        case restrictTargetsToOriginalGeometry
         case extrudeOpenCurveBothSides
         case splitPositionMin, splitPositionMax
         case splitDisplacementMin, splitDisplacementMax, generationSeed, maxVertexBudget
         case splitBulgePinchMin, splitBulgePinchMax
         case graftSidesMin, graftSidesMax, graftDistortionMin, graftDistortionMax
         case graftScaleMin, graftScaleMax
-        case graftPrimitiveSource, graftCustomSetNames
+        case graftPrimitiveSource, graftCustomShapes
         case graftWeight, graftEdgeMatching
         case graftAttachmentMode, graftDepartureAngleMin, graftDepartureAngleMax, graftPointSource
         case graftPartialPositionMin, graftPartialPositionMax, graftPartialSpanMin, graftPartialSpanMax
         case graftEdgeCurvatureProbability, graftEdgeCurvatureAmountMin, graftEdgeCurvatureAmountMax
         case graftArticulationCountMin, graftArticulationCountMax, graftArticulationPattern
         case graftArticulationAmountMin, graftArticulationAmountMax
+        case graftConnectorSelection, graftOrientationAmountMin, graftOrientationAmountMax
         case generationPhase, varySeedPerCycle, directionalSelector
     }
 
     /// Not part of `CodingKeys` — a case here with no matching stored property
     /// would break the compiler's automatic `Encodable` synthesis. Read via its
     /// own separate keyed container over the same decoder, only as a decode-time
-    /// fallback for `includeOpenCurves` (see `init(from:)`); never written.
+    /// fallback for `includeOpenCurves`/`graftCustomShapes` (see `init(from:)`);
+    /// never written.
     private enum LegacyCodingKeys: String, CodingKey {
         case extrudeIncludeOpenCurves
+        case graftCustomSetNames
     }
 
     public init(from decoder: Decoder) throws {
@@ -547,6 +624,7 @@ public struct EvolutionParams: Equatable, Codable, Sendable {
         } else {
             includeOpenCurves = false
         }
+        restrictTargetsToOriginalGeometry = try c.decodeIfPresent(Bool.self, forKey: .restrictTargetsToOriginalGeometry) ?? false
         extrudeOpenCurveBothSides = try c.decodeIfPresent(Bool.self,                   forKey: .extrudeOpenCurveBothSides) ?? false
         splitPositionMin         = try c.decodeIfPresent(Double.self,                  forKey: .splitPositionMin)         ?? 0.5
         splitPositionMax         = try c.decodeIfPresent(Double.self,                  forKey: .splitPositionMax)         ?? 0.5
@@ -561,7 +639,18 @@ public struct EvolutionParams: Equatable, Codable, Sendable {
         graftScaleMin            = try c.decodeIfPresent(Double.self,                  forKey: .graftScaleMin)            ?? 1.0
         graftScaleMax            = try c.decodeIfPresent(Double.self,                  forKey: .graftScaleMax)            ?? 1.0
         graftPrimitiveSource     = try c.decodeIfPresent(GraftPrimitiveSource.self,     forKey: .graftPrimitiveSource)     ?? .generated
-        graftCustomSetNames      = try c.decodeIfPresent([String].self,               forKey: .graftCustomSetNames)      ?? []
+        // New key first; fall back to the pre-rename legacy key (plain [String],
+        // one entry per name, uniform pick) so existing saved projects keep
+        // loading with the exact same custom shapes and uniform-pick behavior,
+        // not silently reset to empty.
+        if let entries = try c.decodeIfPresent([GraftCustomShapeEntry].self, forKey: .graftCustomShapes) {
+            graftCustomShapes = entries
+        } else if let legacy = try? decoder.container(keyedBy: LegacyCodingKeys.self),
+                  let names = try legacy.decodeIfPresent([String].self, forKey: .graftCustomSetNames) {
+            graftCustomShapes = names.map { GraftCustomShapeEntry(name: $0) }
+        } else {
+            graftCustomShapes = []
+        }
         graftWeight              = try c.decodeIfPresent(Double.self,                  forKey: .graftWeight)              ?? 0.0
         graftEdgeMatching        = try c.decodeIfPresent(AssemblyEdgeMatching.self,     forKey: .graftEdgeMatching)        ?? .preserveSize
         graftAttachmentMode      = try c.decodeIfPresent(GraftAttachmentMode.self,      forKey: .graftAttachmentMode)      ?? .wholeEdge
@@ -580,6 +669,9 @@ public struct EvolutionParams: Equatable, Codable, Sendable {
         graftArticulationPattern      = try c.decodeIfPresent(GraftArticulationPattern.self, forKey: .graftArticulationPattern) ?? .jitter
         graftArticulationAmountMin    = try c.decodeIfPresent(Double.self,             forKey: .graftArticulationAmountMin)    ?? 0.0
         graftArticulationAmountMax    = try c.decodeIfPresent(Double.self,             forKey: .graftArticulationAmountMax)    ?? 0.0
+        graftConnectorSelection      = try c.decodeIfPresent(GraftConnectorSelection.self, forKey: .graftConnectorSelection)   ?? .random
+        graftOrientationAmountMin    = try c.decodeIfPresent(Double.self,             forKey: .graftOrientationAmountMin)     ?? 0.0
+        graftOrientationAmountMax    = try c.decodeIfPresent(Double.self,             forKey: .graftOrientationAmountMax)     ?? 0.0
         generationSeed           = try c.decodeIfPresent(Int.self,                     forKey: .generationSeed)           ?? 0
         maxVertexBudget          = try c.decodeIfPresent(Int.self,                     forKey: .maxVertexBudget)          ?? 512
         generationPhase          = try c.decodeIfPresent(DoubleDriver.self,            forKey: .generationPhase)          ?? DoubleDriver()

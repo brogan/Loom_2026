@@ -181,6 +181,11 @@ struct EvolutionInspector: View {
                 Toggle("", isOn: bindEV(\.includeOpenCurves)).labelsHidden()
             }
             .loomHelp("Off (default): every operator (Extrude, Split, Graft) only targets closed polygons. On: open curves also become eligible targets for all three. An open curve has no interior, so there's no single principled outward direction the way a closed polygon has — each eligible edge instead independently picks one of its two sides at random, per operator instance. See Extrude's own Both Sides toggle below for an open-curve-only extra.")
+
+            InspectorField("Restrict to Original") {
+                Toggle("", isOn: bindEV(\.restrictTargetsToOriginalGeometry)).labelsHidden()
+            }
+            .loomHelp("Off (default): every operator can target any eligible polygon, including one a previous generation grafted on. On: only the polygons present when this pass started are ever targeted — a grafted piece can never itself become a target for a later Extrude, Split, or Graft. Useful when supplementary geometry should stay a \"leaf\" — e.g. a grove of trees Graft-attached to a subdivided ground plane, kept from occasionally growing on top of each other instead of staying rooted to the ground.")
         }
     }
 
@@ -427,6 +432,24 @@ struct EvolutionInspector: View {
                 FloatEntryField(value: bindEV(\.graftArticulationAmountMax), width: 50)
             }
             .loomHelp("Displacement magnitude per joint, canvas-normalized units, perpendicular to the edge's own local direction, resampled per joint (RPSR).")
+
+            InspectorField("Connector") {
+                Picker("", selection: bindEV(\.graftConnectorSelection)) {
+                    Text("Random").tag(GraftConnectorSelection.random)
+                    Text("Lowest Point").tag(GraftConnectorSelection.lowestPoint)
+                }
+                .labelsHidden()
+                .pickerStyle(.segmented)
+                .frame(maxWidth: 160)
+            }
+            .loomHelp("Which of the piece's own sites connects to the parent. Random (default): an arbitrary edge/endpoint, resampled each graft (RPSR) — matches all prior behavior exactly. Lowest Point: always the site sitting lowest in the piece's own authored orientation (its \"bottom,\" as drawn in the Geometry editor) — the same site every time, regardless of seed. Most useful with Custom Set shapes you've drawn with a deliberate up/down.")
+
+            InspectorField("Orientation") {
+                FloatEntryField(value: bindEV(\.graftOrientationAmountMin), width: 50)
+                Text("–").foregroundStyle(.secondary)
+                FloatEntryField(value: bindEV(\.graftOrientationAmountMax), width: 50)
+            }
+            .loomHelp("Extra spin applied to the placed piece around its own connection point, on top of the default perpendicular alignment — a signed fraction of a full turn, resampled per graft (RPSR). 0–0 (default): no extra rotation, exactly the original perpendicular placement. ±1 = a full ±360° turn; e.g. 0.25 = a quarter turn (90°).")
         }
     }
 
@@ -434,22 +457,24 @@ struct EvolutionInspector: View {
     /// Source is Custom Set (2026-07-12) — same list-editor pattern
     /// `SpritesInspector`'s Morph Targets section already uses. One entry
     /// always uses that shape; several give each graft instance a rotating
-    /// cast, picked at random per instance. A name with no matching saved
-    /// shape is simply skipped, falling back to Generated if none resolve.
+    /// cast, weighted-picked per instance by each row's own Probability
+    /// (2026-07-13 — a plain unweighted list before). A name with no matching
+    /// saved shape, or a Probability of exactly 0, is simply skipped, falling
+    /// back to Generated if none resolve.
     @ViewBuilder
     private var graftCustomShapesEditor: some View {
         let options = (controller.projectConfig?.polygonConfig.library.polygonSets.map(\.name) ?? [])
             + (controller.projectConfig?.curveConfig.library.curveSets.map(\.name) ?? [])
-        let namesBinding = bindEV(\.graftCustomSetNames)
+        let entriesBinding = bindEV(\.graftCustomShapes)
 
-        ForEach(namesBinding.wrappedValue.indices, id: \.self) { i in
+        ForEach(entriesBinding.wrappedValue.indices, id: \.self) { i in
             InspectorField("Shape \(i + 1)") {
                 Picker("", selection: Binding(
-                    get: { namesBinding.wrappedValue[safe: i] ?? "" },
+                    get: { entriesBinding.wrappedValue[safe: i]?.name ?? "" },
                     set: { newVal in
-                        var arr = namesBinding.wrappedValue
-                        if i < arr.count { arr[i] = newVal }
-                        namesBinding.wrappedValue = arr
+                        var arr = entriesBinding.wrappedValue
+                        if i < arr.count { arr[i].name = newVal }
+                        entriesBinding.wrappedValue = arr
                     }
                 )) {
                     if options.isEmpty {
@@ -458,11 +483,19 @@ struct EvolutionInspector: View {
                     ForEach(options, id: \.self) { Text($0).tag($0) }
                 }
                 .labelsHidden()
-                .frame(maxWidth: 150)
+                .frame(maxWidth: 120)
+                FloatEntryField(value: Binding(
+                    get: { entriesBinding.wrappedValue[safe: i]?.probability ?? 1.0 },
+                    set: { newVal in
+                        var arr = entriesBinding.wrappedValue
+                        if i < arr.count { arr[i].probability = newVal }
+                        entriesBinding.wrappedValue = arr
+                    }
+                ), width: 45)
                 Button {
-                    var arr = namesBinding.wrappedValue
+                    var arr = entriesBinding.wrappedValue
                     arr.remove(at: i)
-                    namesBinding.wrappedValue = arr
+                    entriesBinding.wrappedValue = arr
                 } label: {
                     Image(systemName: "minus.circle").font(.system(size: 11))
                         .frame(width: 22, height: 22)
@@ -470,12 +503,12 @@ struct EvolutionInspector: View {
                 }
                 .buttonStyle(.plain).foregroundStyle(.secondary)
             }
-            .loomHelp("Saved polygon/curve sets eligible as Graft's base shape — the same library a sprite's own base geometry is drawn from. One shape always uses it; several give each graft a rotating cast, chosen at random per instance. A name with no matching saved shape falls back to Generated.")
+            .loomHelp("Saved polygon/curve set eligible as Graft's base shape, and its relative selection probability (0–1, default 1.0) — the same library a sprite's own base geometry is drawn from. One shape always uses it; several give each graft a rotating cast, weighted by these probabilities (they don't need to sum to 1 — equal values split the roll evenly, 0 excludes a shape entirely). A name with no matching saved shape falls back to Generated.")
         }
         Button {
-            var arr = namesBinding.wrappedValue
-            arr.append(options.first(where: { !arr.contains($0) }) ?? "")
-            namesBinding.wrappedValue = arr
+            var arr = entriesBinding.wrappedValue
+            arr.append(GraftCustomShapeEntry(name: options.first(where: { name in !arr.contains { $0.name == name } }) ?? ""))
+            entriesBinding.wrappedValue = arr
         } label: {
             Label("Add shape", systemImage: "plus").font(.system(size: 11))
         }

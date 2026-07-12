@@ -210,6 +210,14 @@ struct RenderingInspector: View {
             LoomColorField(label: "Fill color",
                            color: bindR(setIdx, itemIdx, \.fillColor))
             .loomHelp("Colour and opacity used when the mode includes a filled area.")
+            if [.filled, .filledStroked, .gradientFilled, .gradientFilledStroked].contains(renderer.mode) {
+                InspectorField("Exclude open curves") {
+                    Toggle("", isOn: bindR(setIdx, itemIdx, \.excludeOpenCurveFill))
+                        .labelsHidden()
+                        .toggleStyle(.checkbox)
+                }
+                .loomHelp("When on, open curves in this renderer's output are never filled (stroke still applies) — only closed polygons are filled. Useful when a sprite mixes an open-curve base with grafted closed pieces (Evolution's Graft) and only the closed pieces should read as filled shapes.")
+            }
             InspectorField("Stroke w") {
                 FloatEntryField(value: bindR(setIdx, itemIdx, \.strokeWidth), width: 60, fractionDigits: 2)
             }

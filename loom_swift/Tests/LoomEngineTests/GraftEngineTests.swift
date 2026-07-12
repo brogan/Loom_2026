@@ -191,7 +191,7 @@ final class GraftEngineTests: XCTestCase {
     private func customParams(names: [String]) -> EvolutionParams {
         var p = EvolutionParams()
         p.graftPrimitiveSource = .customSet
-        p.graftCustomSetNames = names
+        p.graftCustomShapes = names.map { GraftCustomShapeEntry(name: $0) }
         return p
     }
 
@@ -229,10 +229,10 @@ final class GraftEngineTests: XCTestCase {
     }
 
     func testCustomSetSourceHasNoEffectWhenSourceIsGenerated() {
-        // Regression: graftCustomSetNames populated but graftPrimitiveSource left
+        // Regression: graftCustomShapes populated but graftPrimitiveSource left
         // at its .generated default must be a complete no-op.
         var p = EvolutionParams()
-        p.graftCustomSetNames = ["mine"]
+        p.graftCustomShapes = [GraftCustomShapeEntry(name: "mine")]
         let withNames = GraftEngine.generatePrimitive(seed: 3, rollBase: 0, params: p, customPrimitives: ["mine": customShape()])
 
         let withoutNames = GraftEngine.generatePrimitive(seed: 3, rollBase: 0, params: EvolutionParams())
@@ -274,5 +274,62 @@ final class GraftEngineTests: XCTestCase {
         let a = GraftEngine.generatePrimitive(seed: 9, rollBase: 3, params: p, customPrimitives: primitives)
         let b = GraftEngine.generatePrimitive(seed: 9, rollBase: 3, params: p, customPrimitives: primitives)
         XCTAssertEqual(a, b)
+    }
+
+    // MARK: - Per-shape probability (2026-07-13)
+
+    func testProbabilityZeroExcludesAShapeEntirely() {
+        let shapeA = Polygon2D(points: [Vector2D(x: 0, y: 0), Vector2D(x: 0.1, y: 0), Vector2D(x: 0.1, y: 0.1), Vector2D(x: 0, y: 0.1)], type: .spline)
+        let shapeB = Polygon2D(points: [Vector2D(x: 0, y: 0), Vector2D(x: 0.2, y: 0), Vector2D(x: 0.1, y: 0.2)], type: .spline)
+        var p = EvolutionParams()
+        p.graftPrimitiveSource = .customSet
+        p.graftCustomShapes = [
+            GraftCustomShapeEntry(name: "a", probability: 0.0),
+            GraftCustomShapeEntry(name: "b", probability: 1.0),
+        ]
+        let primitives = ["a": shapeA, "b": shapeB]
+        for seed in 0..<20 {
+            let result = GraftEngine.generatePrimitive(seed: seed, rollBase: 0, params: p, customPrimitives: primitives)
+            XCTAssertEqual(result.sides, shapeB.points.count / 4, "seed \(seed): probability 0 must never be picked")
+        }
+    }
+
+    func testUnequalProbabilityBiasesSelectionFrequency() {
+        let shapeA = Polygon2D(points: [Vector2D(x: 0, y: 0), Vector2D(x: 0.1, y: 0), Vector2D(x: 0.1, y: 0.1), Vector2D(x: 0, y: 0.1)], type: .spline)
+        let shapeB = Polygon2D(points: [Vector2D(x: 0, y: 0), Vector2D(x: 0.2, y: 0), Vector2D(x: 0.1, y: 0.2)], type: .spline)
+        var p = EvolutionParams()
+        p.graftPrimitiveSource = .customSet
+        p.graftCustomShapes = [
+            GraftCustomShapeEntry(name: "a", probability: 0.9),
+            GraftCustomShapeEntry(name: "b", probability: 0.1),
+        ]
+        let primitives = ["a": shapeA, "b": shapeB]
+        var aCount = 0
+        let trials = 500
+        for seed in 0..<trials {
+            let result = GraftEngine.generatePrimitive(seed: seed, rollBase: 0, params: p, customPrimitives: primitives)
+            if result.sides == shapeA.points.count / 4 { aCount += 1 }
+        }
+        // Not an exact 90/10 split (RPSR isn't a true uniform RNG over this small
+        // a sample), but heavily biased toward "a" — comfortably clear of 50/50.
+        XCTAssertGreaterThan(aCount, trials * 2 / 3, "a (weight 0.9) should be picked far more often than b (weight 0.1)")
+    }
+
+    func testEqualProbabilitiesMatchOldUniformPickExactly() {
+        // Every entry left at its default probability (1.0) must reproduce the
+        // exact same pick, seed for seed, as the old plain-uniform-index scheme —
+        // i.e. this is a pure rename/generalization, not a behavior change for
+        // any previously authored list.
+        let shapeA = Polygon2D(points: [Vector2D(x: 0, y: 0), Vector2D(x: 0.1, y: 0), Vector2D(x: 0.1, y: 0.1), Vector2D(x: 0, y: 0.1)], type: .spline)
+        let shapeB = Polygon2D(points: [Vector2D(x: 0, y: 0), Vector2D(x: 0.2, y: 0), Vector2D(x: 0.1, y: 0.2)], type: .spline)
+        let primitives = ["a": shapeA, "b": shapeB]
+        for seed in 0..<30 {
+            let p = customParams(names: ["a", "b"])
+            let result = GraftEngine.generatePrimitive(seed: seed, rollBase: 0, params: p, customPrimitives: primitives)
+            let pickRoll = SubdivisionEngine.centreHash(seed: seed, cycle: 0)
+            let expectedIdx = min(1, Int(pickRoll * 2.0))
+            let expectedName = ["a", "b"][expectedIdx]
+            XCTAssertEqual(result.sides, primitives[expectedName]!.points.count / 4, "seed \(seed)")
+        }
     }
 }

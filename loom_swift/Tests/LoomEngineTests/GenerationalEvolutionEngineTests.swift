@@ -1348,7 +1348,7 @@ final class GenerationalEvolutionEngineTests: XCTestCase {
             let square = makeSquare()
             let params = EvolutionParams(
                 generationCount: 1, extrudeWeight: 0.0, splitWeight: 0.0,
-                graftPrimitiveSource: .customSet, graftCustomSetNames: ["house"],
+                graftPrimitiveSource: .customSet, graftCustomShapes: [GraftCustomShapeEntry(name: "house")],
                 graftWeight: 1.0, generationSeed: seed, maxVertexBudget: 10_000
             )
             let result = GenerationalEvolutionEngine.process(
@@ -1368,6 +1368,63 @@ final class GenerationalEvolutionEngineTests: XCTestCase {
             let placedSites = AttachmentSiteExtractor.sites(of: result[1])
             let closest = placedSites.map { $0.point.distance(to: expectedMid) }.min() ?? .infinity
             XCTAssertEqual(closest, 0, accuracy: 1e-9, "seed \(seed): custom shape must coincide with the target edge")
+        }
+    }
+
+    func testGraftWholeEdgeAttachesACustomOpenCurveShape() {
+        // Before openCurveEligibleSites existed, a custom .openSpline piece's
+        // endpoint sites had length == nil, which .wholeEdge's edge-type-site
+        // gate rejected outright — every generation silently no-op'd
+        // (result.count == 1 forever), the exact bug reported for open-curve
+        // custom Graft targets (2026-07-12).
+        let curve = makeOpenCurve(segments: 2)
+        for seed in 0..<15 {
+            let square = makeSquare()
+            let params = EvolutionParams(
+                generationCount: 1, extrudeWeight: 0.0, splitWeight: 0.0,
+                graftPrimitiveSource: .customSet, graftCustomShapes: [GraftCustomShapeEntry(name: "curve")],
+                graftWeight: 1.0, generationSeed: seed, maxVertexBudget: 10_000
+            )
+            let result = GenerationalEvolutionEngine.process(
+                polygons: [square], params: params, customPrimitives: ["curve": curve]
+            )
+            guard result.count == 2 else { return XCTFail("seed \(seed): expected the custom open curve to attach") }
+            XCTAssertEqual(result[0], square, "seed \(seed): .wholeEdge is non-destructive to the parent")
+            XCTAssertEqual(result[1].points.count, curve.points.count,
+                            "seed \(seed): the attached piece must be the custom curve, not a generated primitive")
+        }
+    }
+
+    func testGraftPartialEdgeAttachesACustomOpenCurveShape() {
+        let curve = makeOpenCurve(segments: 2)
+        for seed in 0..<15 {
+            let square = makeSquare()
+            let params = EvolutionParams(
+                generationCount: 1, extrudeWeight: 0.0, splitWeight: 0.0,
+                graftPrimitiveSource: .customSet, graftCustomShapes: [GraftCustomShapeEntry(name: "curve")],
+                graftWeight: 1.0, graftAttachmentMode: .partialEdge,
+                generationSeed: seed, maxVertexBudget: 10_000
+            )
+            let result = GenerationalEvolutionEngine.process(
+                polygons: [square], params: params, customPrimitives: ["curve": curve]
+            )
+            guard result.count == 2 else { return XCTFail("seed \(seed): expected the custom open curve to attach") }
+        }
+    }
+
+    func testGraftGeneratedDegenerateLineStaysIneligibleForWholeEdgeEvenThoughCustomOpenCurvesNowAre() {
+        // Regression: openCurveEligibleSites must be scoped to isCustomSourced —
+        // the *generated* n=1 fallback (also a bare two-point .openSpline) must
+        // keep no-oping for .wholeEdge, distinct from a genuine custom open curve.
+        for seed in 0..<10 {
+            let square = makeSquare()
+            let params = EvolutionParams(
+                generationCount: 1, extrudeWeight: 0.0, splitWeight: 0.0,
+                graftSidesMin: 1, graftSidesMax: 1, graftWeight: 1.0,
+                generationSeed: seed, maxVertexBudget: 10_000
+            )
+            let result = GenerationalEvolutionEngine.process(polygons: [square], params: params)
+            XCTAssertEqual(result, [square], "seed \(seed)")
         }
     }
 
@@ -2170,5 +2227,209 @@ final class GenerationalEvolutionEngineTests: XCTestCase {
         let a = GenerationalEvolutionEngine.process(polygons: [square], params: params, phase: 0.3)
         let b = GenerationalEvolutionEngine.process(polygons: [square], params: params, phase: 0.3)
         XCTAssertEqual(a, b)
+    }
+
+    // MARK: - Graft: orientation control (2026-07-13)
+
+    /// A single-segment open curve running straight up from local (0,0) to
+    /// local (0,1) — an unambiguous "lowest" endpoint site (y=0) distinct from
+    /// its "highest" one (y=1), used to prove which site `.lowestPoint`
+    /// connector selection actually picks.
+    private func verticalCurve() -> Polygon2D {
+        Polygon2D(points: [
+            Vector2D(x: 0, y: 0), Vector2D(x: 0, y: 0.33), Vector2D(x: 0, y: 0.67), Vector2D(x: 0, y: 1),
+        ], type: .openSpline)
+    }
+
+    func testGraftConnectorSelectionLowestPointAlwaysUsesTheLowerEndpointRegardlessOfSeed() {
+        let curve = verticalCurve()
+        for seed in 0..<20 {
+            let square = makeSquare()
+            let params = EvolutionParams(
+                generationCount: 1, extrudeWeight: 0.0, splitWeight: 0.0,
+                graftPrimitiveSource: .customSet, graftCustomShapes: [GraftCustomShapeEntry(name: "curve")],
+                graftWeight: 1.0, graftAttachmentMode: .singlePoint,
+                graftConnectorSelection: .lowestPoint,
+                generationSeed: seed, maxVertexBudget: 10_000
+            )
+            let result = GenerationalEvolutionEngine.process(
+                polygons: [square], params: params, customPrimitives: ["curve": curve]
+            )
+            guard result.count == 2 else { return XCTFail("seed \(seed): expected the custom curve to attach") }
+
+            let segCount = square.points.count / 4
+            let segIdx = graftTargetSegIdx(seed: seed, segCount: segCount)
+            let anchor = square.points[segIdx * 4]  // .existingVertex default: the segment's own start anchor
+
+            // The curve's own local (0,0) point (its lowest site, index 0 in
+            // `.points` — array position is preserved through place()'s
+            // transform regardless of rotation/mirroring) must always be the
+            // one coincident with the parent's anchor, never the local (0,1)
+            // (highest) point at index 3.
+            XCTAssertEqual(result[1].points[0].distance(to: anchor), 0, accuracy: 1e-6, "seed \(seed)")
+        }
+    }
+
+    func testGraftOrientationAmountRotatesThePieceAroundItsAnchorByExactlyTheSampledFraction() {
+        let curve = verticalCurve()
+        for seed in 0..<10 {
+            func run(orientation: Double) -> Polygon2D {
+                let square = makeSquare()
+                let params = EvolutionParams(
+                    generationCount: 1, extrudeWeight: 0.0, splitWeight: 0.0,
+                    graftPrimitiveSource: .customSet, graftCustomShapes: [GraftCustomShapeEntry(name: "curve")],
+                    graftWeight: 1.0, graftAttachmentMode: .singlePoint,
+                    graftConnectorSelection: .lowestPoint,
+                    graftOrientationAmountMin: orientation, graftOrientationAmountMax: orientation,
+                    generationSeed: seed, maxVertexBudget: 10_000
+                )
+                let result = GenerationalEvolutionEngine.process(
+                    polygons: [square], params: params, customPrimitives: ["curve": curve]
+                )
+                return result[1]
+            }
+
+            let base = run(orientation: 0.0)
+            let rotated = run(orientation: 0.25)  // a quarter turn = 90°
+
+            // Anchor (points[0], the lowest site) is unaffected by the extra
+            // rotation — place() and applyOrientationRotation both pivot
+            // exactly on it.
+            XCTAssertEqual(base.points[0].distance(to: rotated.points[0]), 0, accuracy: 1e-6, "seed \(seed)")
+
+            let anchor = base.points[0]
+            let baseVec = base.points[3] - anchor
+            let rotatedVec = rotated.points[3] - anchor
+            XCTAssertEqual(baseVec.length, rotatedVec.length, accuracy: 1e-6,
+                            "seed \(seed): a rotation must not change distances from the anchor")
+
+            var angleDelta = (rotatedVec.angle - baseVec.angle).truncatingRemainder(dividingBy: 2 * .pi)
+            if angleDelta > .pi { angleDelta -= 2 * .pi }
+            if angleDelta < -.pi { angleDelta += 2 * .pi }
+            XCTAssertEqual(abs(angleDelta), .pi / 2, accuracy: 1e-6, "seed \(seed): 0.25 turn must be exactly 90°")
+        }
+    }
+
+    func testGraftOrientationDefaultRangeReproducesUnrotatedPlacementExactly() {
+        // Regression: 0-0 (default) must be a complete no-op — applyOrientationRotation
+        // never even runs its rotation math for the untouched default.
+        let curve = verticalCurve()
+        for seed in 0..<10 {
+            let square = makeSquare()
+            let paramsWithDefault = EvolutionParams(
+                generationCount: 1, extrudeWeight: 0.0, splitWeight: 0.0,
+                graftPrimitiveSource: .customSet, graftCustomShapes: [GraftCustomShapeEntry(name: "curve")],
+                graftWeight: 1.0, graftAttachmentMode: .singlePoint,
+                graftConnectorSelection: .lowestPoint,
+                generationSeed: seed, maxVertexBudget: 10_000
+            )
+            let paramsExplicitZero = EvolutionParams(
+                generationCount: 1, extrudeWeight: 0.0, splitWeight: 0.0,
+                graftPrimitiveSource: .customSet, graftCustomShapes: [GraftCustomShapeEntry(name: "curve")],
+                graftWeight: 1.0, graftAttachmentMode: .singlePoint,
+                graftConnectorSelection: .lowestPoint,
+                graftOrientationAmountMin: 0.0, graftOrientationAmountMax: 0.0,
+                generationSeed: seed, maxVertexBudget: 10_000
+            )
+            let a = GenerationalEvolutionEngine.process(polygons: [square], params: paramsWithDefault, customPrimitives: ["curve": curve])
+            let b = GenerationalEvolutionEngine.process(polygons: [square], params: paramsExplicitZero, customPrimitives: ["curve": curve])
+            XCTAssertEqual(a, b, "seed \(seed)")
+        }
+    }
+
+    // MARK: - Restrict targets to original geometry (2026-07-13)
+
+    /// Edge midpoints of `makeSquare()`'s four fixed edges — used as a
+    /// ground-truth set to check whether a grafted piece attached directly to
+    /// the original square (one of its sites coincides with one of these) or
+    /// to something else (a previously grafted piece) instead.
+    private func squareEdgeMidpoints(_ square: Polygon2D) -> [Vector2D] {
+        (0..<(square.points.count / 4)).map { i in
+            let a0 = square.points[i * 4], a1 = square.points[i * 4 + 3]
+            return Vector2D(x: (a0.x + a1.x) / 2, y: (a0.y + a1.y) / 2)
+        }
+    }
+
+    private func coincidesWithAnyEdge(_ piece: Polygon2D, edgeMids: [Vector2D]) -> Bool {
+        let sites = AttachmentSiteExtractor.sites(of: piece)
+        return sites.contains { site in edgeMids.contains { site.point.distance(to: $0) < 1e-6 } }
+    }
+
+    func testRestrictTargetsToOriginalGeometryKeepsEveryGraftDirectlyOnTheOriginalPolygon() {
+        // Custom Set with a .spline house shape, not the generated primitive
+        // path: a generated Graft piece is AssemblyPrimitiveKit's raw .line
+        // encoding (see testGraftAppendsOnePolygonPerGeneration), which never
+        // passes `eligible`'s `type == .spline` filter regardless of this
+        // toggle — so it could never demonstrate the restriction either way. A
+        // custom .spline shape (like a real authored "tree") stays .spline once
+        // placed and genuinely becomes eligible as a future target when
+        // unrestricted, which is exactly the scenario this toggle addresses.
+        //
+        // Extrude/Split weight 0 — Graft only, so the original square is never
+        // itself modified (in-place mutation is Extrude/Split's mechanism, not
+        // Graft's) and stays exactly makeSquare() throughout. With only one
+        // original polygon and restriction on, `eligible` is always just [0], so
+        // every one of several generations' grafts must attach directly to it —
+        // never to a piece appended by an earlier generation.
+        let square = makeSquare()
+        let house  = customHouseShape()
+        let edgeMids = squareEdgeMidpoints(square)
+        for seed in 0..<20 {
+            let params = EvolutionParams(
+                generationCount: 4, extrudeWeight: 0.0, splitWeight: 0.0,
+                restrictTargetsToOriginalGeometry: true,
+                graftPrimitiveSource: .customSet, graftCustomShapes: [GraftCustomShapeEntry(name: "house")],
+                graftWeight: 1.0,
+                generationSeed: seed, maxVertexBudget: 10_000
+            )
+            let result = GenerationalEvolutionEngine.process(polygons: [square], params: params, customPrimitives: ["house": house])
+            XCTAssertEqual(result[0], square, "seed \(seed): the original must never itself be modified (extrude/split weight 0)")
+            for (i, piece) in result.dropFirst().enumerated() {
+                XCTAssertTrue(coincidesWithAnyEdge(piece, edgeMids: edgeMids),
+                              "seed \(seed) piece \(i): every graft must attach directly to the original square when restricted")
+            }
+        }
+    }
+
+    func testWithoutRestrictionLaterGraftsCanLandOnPreviouslyGraftedPieces() {
+        // Statistical existence check, the mirror image of the test above:
+        // across enough seeds and generations, the *default* (unrestricted)
+        // behavior must eventually produce at least one piece that does NOT
+        // attach directly to the original — i.e. the exact grafted-onto-a-graft
+        // symptom the restriction exists to prevent really does occur without it.
+        let square = makeSquare()
+        let house  = customHouseShape()
+        let edgeMids = squareEdgeMidpoints(square)
+        var foundOffOriginal = false
+        seedLoop: for seed in 0..<200 {
+            let params = EvolutionParams(
+                generationCount: 6, extrudeWeight: 0.0, splitWeight: 0.0,
+                graftPrimitiveSource: .customSet, graftCustomShapes: [GraftCustomShapeEntry(name: "house")],
+                graftWeight: 1.0,
+                generationSeed: seed, maxVertexBudget: 10_000
+            )
+            let result = GenerationalEvolutionEngine.process(polygons: [square], params: params, customPrimitives: ["house": house])
+            for piece in result.dropFirst() where !coincidesWithAnyEdge(piece, edgeMids: edgeMids) {
+                foundOffOriginal = true
+                break seedLoop
+            }
+        }
+        XCTAssertTrue(foundOffOriginal, "without the restriction, at least one of many seeds/generations should graft onto a previously-grafted piece")
+    }
+
+    func testRestrictTargetsToOriginalGeometryDefaultFalseReproducesUnrestrictedBehaviorExactly() {
+        let square = makeSquare()
+        for seed in 0..<10 {
+            let paramsDefault = EvolutionParams(
+                generationCount: 4, extrudeWeight: 1.0, splitWeight: 1.0,
+                graftSidesMin: 3, graftSidesMax: 6, graftWeight: 1.0,
+                generationSeed: seed, maxVertexBudget: 10_000
+            )
+            var paramsExplicitFalse = paramsDefault
+            paramsExplicitFalse.restrictTargetsToOriginalGeometry = false
+            let a = GenerationalEvolutionEngine.process(polygons: [square], params: paramsDefault)
+            let b = GenerationalEvolutionEngine.process(polygons: [square], params: paramsExplicitFalse)
+            XCTAssertEqual(a, b, "seed \(seed)")
+        }
     }
 }

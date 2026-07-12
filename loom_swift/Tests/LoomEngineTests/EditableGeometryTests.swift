@@ -615,6 +615,77 @@ final class EditableGeometryTests: XCTestCase {
         XCTAssertEqual(scene.instances[0].basePolygons.count, 1)
     }
 
+    func testJSONEditableOpenCurveLayerTargetDrivesSpriteScenePipeline() throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("loom-json-curve-layer-pipeline-\(UUID().uuidString)", isDirectory: true)
+        let curveDir = root.appendingPathComponent("curveSets", isDirectory: true)
+        try FileManager.default.createDirectory(at: curveDir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        let lineLayer = EditableGeometryLayer(
+            name: "l",
+            openCurves: [EditableOpenCurve(name: "Line", anchors: [
+                Vector2D(x: 0, y: 0),
+                Vector2D(x: 1, y: 0)
+            ])]
+        )
+        let spiralLayer = EditableGeometryLayer(
+            name: "spiral",
+            openCurves: [EditableOpenCurve(name: "Spiral", anchors: [
+                Vector2D(x: 0, y: 0),
+                Vector2D(x: 1, y: 1),
+                Vector2D(x: 0, y: 2)
+            ])]
+        )
+        let document = EditableGeometryDocument(
+            name: "line",
+            layers: [lineLayer, spiralLayer],
+            activeLayerID: lineLayer.id
+        )
+        try EditableGeometryJSONLoader.save(document, to: curveDir.appendingPathComponent("line.json"))
+
+        let spiralSet = OpenCurveSetDef(
+            name: "line_spiral",
+            folder: "curveSets",
+            filename: "line.json",
+            editableLayerID: spiralLayer.id,
+            editableLayerName: spiralLayer.name
+        )
+        let shape = ShapeDef(
+            name: "line_spiral_Shape",
+            sourceType: .openCurveSet,
+            openCurveSetName: "line_spiral",
+            subdivisionParamsSetName: ""
+        )
+        let sprite = SpriteDef(
+            name: "line_spiral_Sprite",
+            shapeSetName: "line_spiral_Shapes",
+            shapeName: "line_spiral_Shape",
+            rendererSetName: "line_spiral_Renderers"
+        )
+        let config = ProjectConfig(
+            shapeConfig: ShapeConfig(library: ShapeLibrary(shapeSets: [
+                ShapeSet(name: "line_spiral_Shapes", shapes: [shape])
+            ])),
+            curveConfig: CurveConfig(library: OpenCurveSetLibrary(curveSets: [spiralSet])),
+            renderingConfig: RenderingConfig(library: RendererSetLibrary(rendererSets: [
+                RendererSet(name: "line_spiral_Renderers", renderers: [
+                    Renderer(name: "line_spiral_Renderer", mode: .stroked)
+                ])
+            ])),
+            spriteConfig: SpriteConfig(library: SpriteLibrary(spriteSets: [
+                SpriteSet(name: "line_spiral_Sprites", sprites: [sprite])
+            ]))
+        )
+
+        let scene = try SpriteScene(config: config, projectDirectory: root)
+
+        XCTAssertEqual(try document.runtimePolygons().count, 2)
+        XCTAssertEqual(scene.instances.count, 1)
+        XCTAssertEqual(scene.instances[0].basePolygons.count, 1)
+        XCTAssertEqual(scene.instances[0].basePolygons.first?.type, .openSpline)
+    }
+
     func testEditableGeometryJSONRejectsUnsupportedVersion() throws {
         let document = try EditableGeometryDocument.closedPolygonDocument(
             name: "JSON Doc",

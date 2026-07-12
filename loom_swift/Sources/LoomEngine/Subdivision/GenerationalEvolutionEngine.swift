@@ -170,16 +170,25 @@ public enum GenerationalEvolutionEngine {
         let fullGenerations = Int(clampedPhase)
         let partial = clampedPhase - Double(fullGenerations)
 
+        // Captured once, before this pass's own generation loop runs — see
+        // `restrictTargetsToOriginalGeometry`'s doc comment on `EvolutionParams`.
+        // "Original" means "this pass's own input," not the sprite's ultimate
+        // base geometry: chained evolution passes each treat their own starting
+        // point as original, consistent with the toggle living per-pass.
+        let originalCount = polygons.count
+
         var current = polygons
         for generation in 0..<fullGenerations {
-            let next = applyGeneration(current, params: params, generation: generation, strength: 1.0, customPrimitives: customPrimitives)
+            let next = applyGeneration(current, params: params, generation: generation, strength: 1.0,
+                                        originalCount: originalCount, customPrimitives: customPrimitives)
             // A generation that would exceed budget is rejected outright — the
             // chain stops there rather than producing a partially-applied mutation.
             if totalVertexCount(next) > params.maxVertexBudget { return current }
             current = next
         }
         if partial > 1e-9, fullGenerations < params.generationCount {
-            let next = applyGeneration(current, params: params, generation: fullGenerations, strength: partial, customPrimitives: customPrimitives)
+            let next = applyGeneration(current, params: params, generation: fullGenerations, strength: partial,
+                                        originalCount: originalCount, customPrimitives: customPrimitives)
             if totalVertexCount(next) <= params.maxVertexBudget {
                 current = next
             }
@@ -198,6 +207,7 @@ public enum GenerationalEvolutionEngine {
         params:     EvolutionParams,
         generation: Int,
         strength:   Double,
+        originalCount: Int = Int.max,
         customPrimitives: [String: Polygon2D] = [:]
     ) -> [Polygon2D] {
         let seed = params.generationSeed
@@ -213,10 +223,22 @@ public enum GenerationalEvolutionEngine {
         // Split, and Graft each independently handle the "no principled single
         // outward for an open curve" problem via `openCurveSafeOutward` below, so
         // none of them needs its own eligible-set carve-out anymore.
+        //
+        // `restrictTargetsToOriginalGeometry` (2026-07-13, default false — every
+        // index eligible, unchanged from before this existed) additionally
+        // excludes any polygon at index >= `originalCount` — i.e. anything a
+        // *previous* generation in this same pass appended (only Graft appends;
+        // Extrude/Split both mutate their target in place at its existing index,
+        // so a polygon present at the start of the pass never crosses this
+        // boundary no matter how many times it's since been extruded/split).
+        // The motivating case: a grove of trees Graft-attached to a subdivided
+        // ground plane, where later generations should keep landing on the
+        // ground rather than occasionally grafting onto an already-placed tree.
         let eligible = polygons.indices.filter {
             let typeOK = polygons[$0].type == .spline
                 || (params.includeOpenCurves && polygons[$0].type == .openSpline)
-            return typeOK && polygons[$0].points.count >= 4
+            let scopeOK = !params.restrictTargetsToOriginalGeometry || $0 < originalCount
+            return typeOK && scopeOK && polygons[$0].points.count >= 4
         }
         guard !eligible.isEmpty else { return polygons }
 
@@ -621,17 +643,18 @@ public enum GenerationalEvolutionEngine {
 
         let generated = GraftEngine.generatePrimitive(seed: graftSeed, rollBase: cycleBase + 3, params: params, customPrimitives: customPrimitives)
         let piece = generated.piece
-        let pieceSites = AttachmentSiteExtractor.sites(of: piece)
+        let pieceSites = openCurveEligibleSites(
+            AttachmentSiteExtractor.sites(of: piece), piece: piece, isCustomSourced: generated.isCustomSourced
+        )
         // §4.4.8.3: only a piece exposing at least one edge-type site (`.line`
-        // n≥3, or a custom `.spline` prototype, 2026-07-12) has something
-        // `.wholeEdge` can match a parent edge onto; `.openSpline` (n≤2, a bare
-        // line, or a custom open-curve prototype) exposes only point-type
-        // endpoint sites (`length == nil`), which `.wholeEdge` can't use.
-        // Checking site *content* rather than `piece.type` directly is what
-        // lets a custom `.spline` shape become eligible here without this
-        // guard needing to know about `graftPrimitiveSource` at all.
+        // n≥3, a custom `.spline` prototype, or now a custom open-curve prototype
+        // via `openCurveEligibleSites`, 2026-07-12) has something `.wholeEdge` can
+        // match a parent edge onto; the *generated* n≤2 degenerate-to-line
+        // fallback (meaning "no meaningful primitive this roll") still exposes
+        // only point-type endpoint sites (`length == nil`), which `.wholeEdge`
+        // can't use, and correctly stays ineligible.
         guard pieceSites.contains(where: { $0.length != nil }) else { return polygons }
-        let sourceSiteIdx = min(pieceSites.count - 1, Int(sourceSiteRoll * Double(pieceSites.count)))
+        let sourceSiteIdx = connectorSiteIndex(pieceSites, roll: sourceSiteRoll, selection: params.graftConnectorSelection)
         let sourceSite = pieceSites[sourceSiteIdx]
 
         let mirror = mirrorRoll < 0.5
@@ -639,14 +662,90 @@ public enum GenerationalEvolutionEngine {
             piece, sourceSite: sourceSite, onto: targetSite,
             mirror: mirror, edgeMatching: params.graftEdgeMatching
         )
+        let orientationAngle = orientationRotationAngle(params: params, graftSeed: graftSeed, cycleBase: cycleBase)
+        let oriented = applyOrientationRotation(placed, anchor: targetSite.point, angle: orientationAngle)
         let detailed = applyGraftEdgeDetailing(
-            placed, rootSiteIdx: sourceSiteIdx, graftSeed: graftSeed, cycleBase: cycleBase, params: params
+            oriented, rootSiteIdx: sourceSiteIdx, graftSeed: graftSeed, cycleBase: cycleBase, params: params
         )
         let revealed = applyRevealScale(detailed, anchor: targetSite.point, strength: strength)
 
         var result = polygons
         result.append(revealed)
         return result
+    }
+
+    /// §4.4.8.3 orientation control (2026-07-13): which of the piece's own
+    /// attachment sites is chosen as the connector to the parent. `.random`
+    /// (default) reproduces the original RPSR-uniform pick exactly.
+    /// `.lowestPoint` instead deterministically picks whichever site sits
+    /// lowest (min Y) in the piece's own authored/local frame — the piece's
+    /// "bottom," as drawn in the geometry editor (this engine's Y-up
+    /// convention — see `Vector2D`'s own doc comment), becomes the part that
+    /// connects to the parent, rather than an arbitrary edge/endpoint.
+    private static func connectorSiteIndex(
+        _ pieceSites: [AttachmentSite], roll: Double, selection: GraftConnectorSelection
+    ) -> Int {
+        switch selection {
+        case .random:
+            return min(pieceSites.count - 1, Int(roll * Double(pieceSites.count)))
+        case .lowestPoint:
+            return pieceSites.indices.min(by: { pieceSites[$0].point.y < pieceSites[$1].point.y }) ?? 0
+        }
+    }
+
+    /// §4.4.8.3 orientation control (2026-07-13): extra rotation applied to a
+    /// placed graft piece around its own anchor point (`targetSite.point`, the
+    /// exact coordinate `place()` already guarantees coincidence at — rotating
+    /// around it preserves that coincidence), on top of `place()`'s own
+    /// mechanical outward-normal-to-outward-normal alignment.
+    /// `graftOrientationAmountMin/Max` is a signed fraction of a full turn
+    /// (not degrees/radians directly) — 0-0 (default) adds no rotation at all,
+    /// reproducing the original "perpendicular" placement exactly; ±1 is a
+    /// full ±360° turn. Applied uniformly across all three attachment modes,
+    /// own salted seed (same pattern `GraftEngine`'s own scale roll uses)
+    /// rather than a new `cycleBase+N` slot, so it can't collide with any
+    /// mode's existing rolls.
+    private static func orientationRotationAngle(params: EvolutionParams, graftSeed: Int, cycleBase: Int) -> Double {
+        let lo = min(params.graftOrientationAmountMin, params.graftOrientationAmountMax)
+        let hi = max(params.graftOrientationAmountMin, params.graftOrientationAmountMax)
+        guard lo != 0 || hi != 0 else { return 0 }
+        let orientationSeed = graftSeed &+ 349_120_649
+        let roll = SubdivisionEngine.centreHash(seed: orientationSeed, cycle: cycleBase)
+        let fraction = lo + roll * (hi - lo)
+        return fraction * 2.0 * .pi
+    }
+
+    /// Rotates `piece` rigidly around `anchor` by `angle` radians — used to
+    /// apply `orientationRotationAngle`'s extra spin on top of `place()`'s own
+    /// alignment, after which `piece` is still exactly coincident with
+    /// `anchor` (a rotation around a point leaves that point fixed). A no-op
+    /// when `angle == 0`, the exact default, so untouched presets pay no cost.
+    private static func applyOrientationRotation(_ piece: Polygon2D, anchor: Vector2D, angle: Double) -> Polygon2D {
+        guard angle != 0 else { return piece }
+        let cosT = cos(angle), sinT = sin(angle)
+        let pts = piece.points.map { p -> Vector2D in
+            let rx = p.x - anchor.x, ry = p.y - anchor.y
+            return Vector2D(x: anchor.x + rx * cosT - ry * sinT, y: anchor.y + rx * sinT + ry * cosT)
+        }
+        return Polygon2D(points: pts, type: piece.type, pressures: piece.pressures,
+                          pressureProfiles: piece.pressureProfiles, visible: piece.visible)
+    }
+
+    /// Synthesizes a `length` (the piece's own start-to-end chord span) on a
+    /// custom-set open-curve piece's endpoint sites, making it eligible for
+    /// `.wholeEdge`/`.partialEdge` the same way any other edge-type site is
+    /// (2026-07-12). Scoped to `isCustomSourced` deliberately: the *generated*
+    /// primitive path's own `n≤2` degenerate-to-line fallback is structurally
+    /// identical (a bare two-point `.openSpline`) but means "no meaningful
+    /// primitive this roll" — it must stay ineligible, so this can't be done
+    /// inside `AttachmentSiteExtractor` itself, which has no notion of a piece's
+    /// provenance and is shared by both paths.
+    private static func openCurveEligibleSites(
+        _ sites: [AttachmentSite], piece: Polygon2D, isCustomSourced: Bool
+    ) -> [AttachmentSite] {
+        guard isCustomSourced, piece.type == .openSpline, sites.count == 2 else { return sites }
+        let span = sites[0].point.distance(to: sites[1].point)
+        return sites.map { AttachmentSite(point: $0.point, direction: $0.direction, outward: $0.outward, length: span) }
     }
 
     /// `.singlePoint` attachment (§4.4.8.3 step 3): only one coordinate is
@@ -740,7 +839,7 @@ public enum GenerationalEvolutionEngine {
 
         let pieceSites = AttachmentSiteExtractor.sites(of: piece)
         guard !pieceSites.isEmpty else { return polygons }
-        let sourceSiteIdx = min(pieceSites.count - 1, Int(sourceSiteRoll * Double(pieceSites.count)))
+        let sourceSiteIdx = connectorSiteIndex(pieceSites, roll: sourceSiteRoll, selection: params.graftConnectorSelection)
         let sourceSite = pieceSites[sourceSiteIdx]
 
         let mirror = mirrorRoll < 0.5
@@ -748,6 +847,8 @@ public enum GenerationalEvolutionEngine {
             piece, sourceSite: sourceSite, onto: targetSite,
             mirror: mirror, edgeMatching: params.graftEdgeMatching
         )
+        let orientationAngle = orientationRotationAngle(params: params, graftSeed: graftSeed, cycleBase: cycleBase)
+        let oriented = applyOrientationRotation(placed, anchor: targetSite.point, angle: orientationAngle)
         // Only an edge-type source site (a `.line` n-gon or a custom `.spline`
         // prototype, 2026-07-12) has a whole edge that is "the root" to
         // exclude; a bare endpoint site (`.openSpline`, n≤2 or a custom
@@ -757,7 +858,7 @@ public enum GenerationalEvolutionEngine {
         // guards above.
         let rootSiteIdx = sourceSite.length != nil ? sourceSiteIdx : nil
         let detailed = applyGraftEdgeDetailing(
-            placed, rootSiteIdx: rootSiteIdx, graftSeed: graftSeed, cycleBase: cycleBase, params: params
+            oriented, rootSiteIdx: rootSiteIdx, graftSeed: graftSeed, cycleBase: cycleBase, params: params
         )
         let revealed = applyRevealScale(detailed, anchor: targetSite.point, strength: strength)
 
@@ -835,11 +936,13 @@ public enum GenerationalEvolutionEngine {
 
         let generated = GraftEngine.generatePrimitive(seed: graftSeed, rollBase: cycleBase + 3, params: params, customPrimitives: customPrimitives)
         let piece = generated.piece
-        let pieceSites = AttachmentSiteExtractor.sites(of: piece)
+        let pieceSites = openCurveEligibleSites(
+            AttachmentSiteExtractor.sites(of: piece), piece: piece, isCustomSourced: generated.isCustomSourced
+        )
         // Same site-content check as `.wholeEdge` above, not `piece.type ==
         // .line` — see its comment.
         guard pieceSites.contains(where: { $0.length != nil }) else { return polygons }
-        let sourceSiteIdx = min(pieceSites.count - 1, Int(sourceSiteRoll * Double(pieceSites.count)))
+        let sourceSiteIdx = connectorSiteIndex(pieceSites, roll: sourceSiteRoll, selection: params.graftConnectorSelection)
         let sourceSite = pieceSites[sourceSiteIdx]
 
         let mirror = mirrorRoll < 0.5
@@ -847,8 +950,10 @@ public enum GenerationalEvolutionEngine {
             piece, sourceSite: sourceSite, onto: targetSite,
             mirror: mirror, edgeMatching: params.graftEdgeMatching
         )
+        let orientationAngle = orientationRotationAngle(params: params, graftSeed: graftSeed, cycleBase: cycleBase)
+        let oriented = applyOrientationRotation(placed, anchor: targetSite.point, angle: orientationAngle)
         let detailed = applyGraftEdgeDetailing(
-            placed, rootSiteIdx: sourceSiteIdx, graftSeed: graftSeed, cycleBase: cycleBase, params: params
+            oriented, rootSiteIdx: sourceSiteIdx, graftSeed: graftSeed, cycleBase: cycleBase, params: params
         )
         let revealed = applyRevealScale(detailed, anchor: targetSite.point, strength: strength)
 

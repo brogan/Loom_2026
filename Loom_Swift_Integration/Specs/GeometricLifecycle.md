@@ -1849,6 +1849,29 @@ top-level mode switch gating them.
 bottom section (`selectedTransformationFields`) showing the fields for whichever
 transformation is currently selected, separated by a `Divider`.
 
+**Transform tab widened to open-curve sprites (2026-07-13):** the tab's left-panel
+sprite list (`SubdivisionTabView`) and the main-view wireframe preview
+(`SubdivisionWireframeView`) each had their own identical `isPolygonSetSprite` filter,
+restricting both to `shape.sourceType == .polygonSet || .regularPolygon` — an
+open-curve-set sprite never appeared in either, even though the underlying processing
+chain (`SubdivisionEngine.process` passes `.openSpline` through untouched via
+`isBypassType`; `CurveRefinementEngine` handles it explicitly) has supported curves all
+along. Both filters renamed to `isTransformableSprite`/`transformableSprites` and
+widened to also accept `.openCurveSet`.
+
+A second, independent bug in the wireframe preview specifically: `subdivisionInputs`
+required `!paramSet.params.isEmpty` before recomputing anything — but a transform set
+built for an open curve typically only populates `curveRefinement` (plus possibly
+extension/evolution/fulguration/dissolution passes), leaving `params` (closed-polygon
+`SubdivisionParams`) empty. That guard silently skipped recomputation entirely for any
+curve-only set, so even a selected curve sprite fell back to showing its unmodified
+base curve. Fixed by widening the guard to require *any* pass array non-empty, not
+`params` specifically — so a curve-only transform set now actually recomputes and
+previews correctly. `canBake`/`canExportSVG` were already correctly gated per-source
+(`canBake` requires `.polygonSet` specifically and stays disabled for curve sprites, no
+crash risk; `canExportSVG` was already deliberately source-agnostic, per its own 2026-07-09
+comment) — neither needed a change.
+
 ---
 
 ## 9. Open Curves Across the Lifecycle
@@ -1857,9 +1880,28 @@ transformation is currently selected, separated by a `Divider`.
 |----------------|----------------------------------------------------------------|
 | Involution     | Curve refinement (insert driven anchor points, maintain gesture); segment extraction (break into independent sub-curves) |
 | Extension      | Branching from endpoints; growth/extension from ends (OpenCurves.md) |
-| Evolution      | Momentum drift and convergence pressure applied to control-point positions |
+| Evolution      | Momentum drift and convergence pressure applied to control-point positions; Graft with a custom open-curve target (2026-07-12, see below) |
 | Fulguration    | Curves that appear on a frame-cycle (V1) or at proximity encounters/global-parameter thresholds (V2); per-flash variation of insertion count/curvature (V2, §5.8) |
 | Dissolution    | Entropy (control points converge to smoothed positions); collapse (curve disappears) |
+
+**Quick Pipeline Setup's Evolution exclusion for curve sources removed (2026-07-12):** `InspectorPanel.swift`'s `availableTransformModes` used to exclude `.evolution` for `folder == "curveSets"`, on the reasoning that Evolution's momentum-drift component only mutates `SubdivisionParams`, which `SubdivisionEngine` bypasses for `.openSpline`. That reasoning is now stale — Evolution's Graft sub-feature (`includeOpenCurves`) already supports open-curve bases directly (§4.4, Graft custom primitive source). The picker now always offers all six modes regardless of source type; when seeded for a curve source, Quick Setup defaults the generated `EvolutionParams` to `operationType: .generational, includeOpenCurves: true` instead of the (visually inert for curves) `.momentumDrift` default, so the seeded pass does something out of the box.
+
+**Custom open-curve Graft targets fixed for `.wholeEdge`/`.partialEdge` (2026-07-12):** `graftCustomShapes` (§4.4, Graft custom primitive source; then a plain `[String]` called `graftCustomSetNames`) already listed curve sets in its picker and already loaded them into the primitive cache correctly — but a custom open-curve piece was silently dropped by `.wholeEdge`/`.partialEdge` Graft modes regardless, because `AttachmentSiteExtractor`'s open-curve endpoint sites report `length == nil` (a curve endpoint is a point, not an edge), and both modes gate on `pieceSites.contains(where: { $0.length != nil })`. Only `.singlePoint` ever accepted an open-curve piece.
+
+Fixed at the point of use rather than in `AttachmentSiteExtractor` itself: `GenerationalEvolutionEngine.openCurveEligibleSites(_:piece:isCustomSourced:)` synthesizes a `length` (the piece's own start-to-end chord span, treating the whole open curve as one "edge") on a custom-set open-curve piece's sites, called from `applyGraftWholeEdge`/`applyGraftPartialEdge` right after `AttachmentSiteExtractor.sites(of:)`. Deliberately scoped to `isCustomSourced` (a new field on `GraftEngine.GeneratedPrimitive`, true only when the piece came from `graftCustomShapes`) rather than done unconditionally by polygon type: the *generated* primitive path's own `n≤2` degenerate-to-line fallback (`graftSidesMin/Max` forced to 1) is structurally identical — a bare two-point `.openSpline` — but deliberately means "no meaningful primitive this roll," and must stay ineligible for `.wholeEdge`/`.partialEdge` exactly as before. `AttachmentSiteExtractor` itself has no notion of a piece's provenance, so it couldn't distinguish the two cases — hence the fix living in `GenerationalEvolutionEngine` instead.
+
+**Renderer fill exclusion for open curves (2026-07-12):** a sprite whose output mixes an `.openSpline` base with grafted closed pieces (Evolution's Graft) previously had no way to fill just the closed pieces — CoreGraphics implicitly closes-and-fills open subpaths, so any `.filled`/`.filledStroked`/`.gradientFilled*` renderer filled the base curve too. Added `Renderer.excludeOpenCurveFill: Bool` (default `false`, back-compat) — when true, `RenderEngine.draw` skips the fill step for `.openSpline`-type polygons (stroke, if any, is unaffected). Exposed as an "Exclude open curves" checkbox in the Rendering tab's renderer editor, shown only when the renderer's mode includes a fill.
+
+**Per-shape probability for Graft's custom shape list (2026-07-13):** `graftCustomSetNames: [String]` (§4.4, Graft custom primitive source) picked among multiple entries with a plain uniform RPSR index — no way to bias the roll toward one shape over another. Renamed to `graftCustomShapes: [GraftCustomShapeEntry]`, where `GraftCustomShapeEntry` holds `name: String` and `probability: Double = 1.0` (a relative selection weight, not an independent per-shape chance — entries don't need to sum to 1; a weight of 0 excludes that entry entirely while its siblings remain eligible). `GraftEngine.generatePrimitive`'s `.customSet` branch now does a weighted walk (subtract each eligible entry's probability from a single roll scaled by the total weight, in list order, until it goes negative) instead of a flat index — when every entry is left at its default `probability` (the common case for anyone who authored a list before this existed), the walk reduces to exactly the old uniform index, so no previously saved project's output changes. Old saved projects (`graftCustomSetNames` as a plain string array) still decode correctly, via a `LegacyCodingKeys`-only fallback in `EvolutionParams.init(from:)` that maps each name to `GraftCustomShapeEntry(name:)` (`probability` defaulting to 1.0) — never re-encoded under the old key. `EvolutionInspector.swift`'s custom-shape list editor gained a Probability number field per row alongside the existing shape picker.
+
+**Graft orientation control (2026-07-13):** previously, Graft's piece-to-parent alignment was 100% mechanical — `place()` always rigidly aligns the piece so whichever site got randomly picked (`sourceSiteIdx`, a uniform RPSR roll among the piece's own attachment sites) ends up antiparallel to the parent's outward normal, with no way to say "this custom shape's authored bottom should be the part that connects" and no way to add any spin beyond that mechanical alignment. Two new orthogonal controls, both applying uniformly across all three attachment modes:
+
+- **`GraftConnectorSelection`** (`graftConnectorSelection`, default `.random` — reproduces the original uniform-roll pick exactly): `.lowestPoint` instead deterministically picks whichever of the piece's own sites has the lowest Y in its own authored/local frame (this engine's Y-up convention, matching `Vector2D`'s own doc comment) — the piece's "bottom," as drawn in the Geometry editor, becomes the part that always connects to the parent, the same site every time regardless of seed. Implemented as `GenerationalEvolutionEngine.connectorSiteIndex(_:roll:selection:)`, called from all three `applyGraft*` functions in place of their old inline `min(pieceSites.count - 1, Int(roll * Double(pieceSites.count)))` index math.
+- **`graftOrientationAmountMin/Max`** (default `0.0`–`0.0`, a complete no-op at default): an extra rigid rotation applied to the already-placed piece, around its own anchor point (`targetSite.point`, the exact coordinate `place()` guarantees coincidence at — rotating around it preserves that coincidence). Expressed as a signed *fraction of a full turn* rather than an absolute angle (matching the original request's framing) — `0` is no extra rotation (today's "perpendicular" default, unchanged), `±1` a full `±360°` turn, RPSR-resampled per graft from the Min/Max range like every other Graft parameter. Implemented as `GenerationalEvolutionEngine.orientationRotationAngle(params:graftSeed:cycleBase:)` (own salted seed, `graftSeed &+ 349_120_649`, rather than a new `cycleBase+N` slot — same pattern `GraftEngine`'s own scale roll already uses to avoid auditing every mode's slot numbering) and `applyOrientationRotation(_:anchor:angle:)` (a plain rotate-around-a-point transform, applied right after `place()`, before curvature/articulation detailing).
+
+Exposed in `EvolutionInspector.swift`'s Graft section as a "Connector" segmented picker (Random / Lowest Point) and an "Orientation" Min–Max number-pair field, both placed after Articulation.
+
+**Restrict targets to original geometry (2026-07-13):** each generation's target polygon is drawn from a single `eligible` list shared by all three operators (`applyGeneration`) — previously that list was every currently-eligible polygon in the array, including anything a *previous* generation in the same pass had already Graft-appended. Motivating case: a grove of trees Graft-attached to a subdivided ground plane, where later generations would sometimes pick an already-placed tree as the target instead of the ground, growing trees on top of trees rather than keeping them rooted. New `EvolutionParams.restrictTargetsToOriginalGeometry: Bool` (default `false`, every index eligible — unchanged from before this existed) restricts `eligible` to `polygons.indices where $0 < originalCount`, where `originalCount` is `process(polygons:params:phase:)`'s own input count, captured once before its generation loop runs (chained evolution passes each treat their own starting geometry as "original" — a per-pass toggle, not a sprite-wide one). Applies uniformly to Extrude, Split, *and* Graft, since all three share the one `eligible` computation — no per-operator flag needed. Only Graft's targets are directly observable geometrically (Extrude/Split mutate their target in place, so a restricted-vs-unrestricted difference isn't visible in isolation the same way), so the regression tests exercise it via Graft specifically, but the mechanism is unified across all three by construction. Exposed as a "Restrict to Original" checkbox in `EvolutionInspector.swift`'s Generations section, next to Include Open Curves.
 
 ---
 
@@ -1899,6 +1941,26 @@ from the Geometry tab's "+" button — new geometry always starts as a `polygonS
 entry. The workaround is to draw an open curve in any polygon-set document and save
 it; the editor detects the `curveSets/` key and routes correctly. Adding an explicit
 "New Curve Set" button is a pending UX improvement.
+
+**Per-layer targeting extended to open curves (2026-07-12):** `PolygonSetDef` has long
+carried `editableLayerID`/`editableLayerName` so a named polygon set can pin itself to
+one specific layer within a multi-layer JSON document (rather than resolving "all
+visible layers"). `OpenCurveSetDef` never got the same two fields, so Quick Pipeline
+Setup's per-layer source picker silently disappeared for any multi-layer curve
+document — the picker's `layerOptions`/`editableGeometryDocument` logic only ever
+consulted `polygonConfig.library.polygonSets`, and `folder == "polygonSets"` guards
+excluded `curveSets` outright. Fixed by mirroring the polygon path exactly: added
+`editableLayerID: UUID?`/`editableLayerName: String?` to `OpenCurveSetDef`
+(`CurveConfig.swift`), threaded them through `SpriteScene.loadBasePolygons`'s
+`.openCurveSet` case (previously hardcoded `nil, nil`), and widened
+`QuickSetupSection` in `InspectorPanel.swift` — `layerOptions`, `editableGeometryDocument`,
+`initialLayerTargetID` now branch on `folder == "curveSets"` the same way they already
+did for polygons, and a new `upsertLayerTargetOpenCurveSet`/`layerTargetMatches(_:
+OpenCurveSetDef)` pair (mirroring the polygon versions) writes the per-layer derived
+`OpenCurveSetDef` into `curveConfig.library.curveSets` when a specific layer is chosen.
+`CycleSetupSection`'s `geometryLayers` has the identical `folder == "polygonSets"`-only
+restriction and was **not** touched — same underlying gap, left for a future pass if
+walk-cycle setup for multi-layer curve documents is needed.
 
 ---
 

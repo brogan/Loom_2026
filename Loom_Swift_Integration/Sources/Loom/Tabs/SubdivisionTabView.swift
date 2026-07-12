@@ -67,11 +67,11 @@ struct SubdivisionTabView: View {
             LazyVStack(alignment: .leading, spacing: 0) {
                 if let cfg = controller.projectConfig {
                     let spriteSets = cfg.spriteConfig.library.spriteSets
-                    if spriteSets.isEmpty || polygonSetSprites(in: cfg).isEmpty {
-                        emptyText("No polygon-set sprites")
+                    if spriteSets.isEmpty || transformableSprites(in: cfg).isEmpty {
+                        emptyText("No transformable sprites")
                     } else {
                         ForEach(spriteSets, id: \.name) { spriteSet in
-                            let relevant = spriteSet.sprites.filter { isPolygonSetSprite($0, in: cfg) }
+                            let relevant = spriteSet.sprites.filter { isTransformableSprite($0, in: cfg) }
                             if !relevant.isEmpty {
                                 spriteSetHeader(spriteSet.name, sprites: relevant)
                                 let visible = relevant.filter {
@@ -758,7 +758,7 @@ struct SubdivisionTabView: View {
             resyncPreviewToAssigned(sprite: sprite, cfg: cfg)
             return
         }
-        if let first = polygonSetSprites(in: cfg).first {
+        if let first = transformableSprites(in: cfg).first {
             handleSpriteSelected(first, cfg: cfg)
         }
     }
@@ -789,16 +789,27 @@ struct SubdivisionTabView: View {
 
     private func subdivSpriteKey(_ setName: String, _ spriteName: String) -> String { "\(setName)\t\(spriteName)" }
 
-    private func polygonSetSprites(in cfg: ProjectConfig) -> [SpriteDef] {
-        cfg.spriteConfig.library.allSprites.filter { isPolygonSetSprite($0, in: cfg) }
+    private func transformableSprites(in cfg: ProjectConfig) -> [SpriteDef] {
+        cfg.spriteConfig.library.allSprites.filter { isTransformableSprite($0, in: cfg) }
     }
 
-    private func isPolygonSetSprite(_ sprite: SpriteDef, in cfg: ProjectConfig) -> Bool {
+    /// A sprite is eligible for the Transform tab if its shape resolves to a
+    /// source type this tab's pipeline (Subdivision/CurveRefinement/
+    /// SegmentExtraction/Extension/Evolution/Fulguration/Dissolution) can
+    /// actually operate on — closed polygons and open curves alike, since
+    /// 2026-07-13 (previously polygon-only: `.polygonSet`/`.regularPolygon`,
+    /// which left curve-set sprites entirely absent from this tab's sprite
+    /// list and wireframe preview, even though the underlying processing
+    /// chain — `SubdivisionEngine.process` already passes `.openSpline`
+    /// through untouched via `isBypassType`, and `CurveRefinementEngine`
+    /// handles it explicitly — has supported curves all along).
+    private func isTransformableSprite(_ sprite: SpriteDef, in cfg: ProjectConfig) -> Bool {
         guard let shape = cfg.shapeConfig.library.shapeSets
             .first(where: { $0.name == sprite.shapeSetName })?
             .shapes.first(where: { $0.name == sprite.shapeName })
         else { return false }
         return shape.sourceType == .polygonSet || shape.sourceType == .regularPolygon
+            || shape.sourceType == .openCurveSet
     }
 
     private func assignedSetName(sprite: SpriteDef, cfg: ProjectConfig) -> String? {

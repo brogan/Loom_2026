@@ -93,7 +93,7 @@ public struct SpriteScene: @unchecked Sendable {
     private let allCycles: [String: SpriteCycle]
 
     /// User-drawn shapes eligible as Graft's base primitive (`EvolutionParams
-    /// .graftCustomSetNames`, 2026-07-12), keyed by set name — every polygon
+    /// .graftCustomShapes`, 2026-07-12), keyed by set name — every polygon
     /// set and open-curve set in the project, loaded once here rather than
     /// per-frame, the same "load once at scene assembly" convention
     /// `allSubdivisionSets`/`allRendererSets`/`allCycles` above already use.
@@ -540,7 +540,9 @@ public struct SpriteScene: @unchecked Sendable {
             }
             if curveDef.filename.lowercased().hasSuffix(".json") {
                 return try EditableGeometryJSONLoader.load(url: url).runtimePolygons(
-                    targetLayerID: nil, targetLayerName: nil)
+                    targetLayerID: curveDef.editableLayerID,
+                    targetLayerName: curveDef.editableLayerName
+                )
             }
             return try XMLPolygonLoader.loadOpenCurveSet(url: url)
 

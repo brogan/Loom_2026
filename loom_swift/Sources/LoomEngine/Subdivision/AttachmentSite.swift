@@ -111,6 +111,15 @@ public enum AttachmentSiteExtractor {
     /// `outward` is `direction` rotated +90°, and the assembly algorithm's own seeded
     /// mirror roll (§5.12.4 step 3) supplies "or the other side," rather than this
     /// function needing its own seed.
+    ///
+    /// `length` is deliberately `nil` here, same as ever — an open curve's endpoint
+    /// is a point, not an edge, and this function has no notion of a piece's
+    /// provenance. `GenerationalEvolutionEngine`'s `.customSet` Graft path (2026-07-12)
+    /// synthesizes a length for genuinely custom open-curve pieces itself, right at
+    /// its own call site, specifically so the *generated* primitive path's `sides=1`
+    /// degenerate fallback (also a bare two-point `.openSpline`, meaning "no
+    /// meaningful primitive this roll") stays correctly ineligible for
+    /// `.wholeEdge`/`.partialEdge` — see `openCurveEligibleSites` there.
     private static func openSplineEndpointSites(_ polygon: Polygon2D) -> [AttachmentSite] {
         let pts = polygon.points
         guard pts.count >= 4, pts.count % 4 == 0 else { return [] }

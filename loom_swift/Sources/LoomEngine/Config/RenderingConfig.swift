@@ -337,6 +337,13 @@ public struct Renderer: Equatable, Codable, Sendable {
     public var gradientConfig: GradientConfig?
     /// Optional second gradient target for blend-driver animation.
     public var gradientConfigB: GradientConfig?
+    /// When true, `.filled`/`.filledStroked`/`.gradientFilled*` modes skip filling
+    /// `.openSpline`-type polygons entirely (stroke, if any, still applies) — added
+    /// 2026-07-12 so a sprite whose output mixes an open-curve base with grafted
+    /// closed pieces (Evolution's Graft) can fill just the closed pieces, since
+    /// CoreGraphics otherwise implicitly closes-and-fills open subpaths too.
+    /// Default false reproduces prior behavior exactly.
+    public var excludeOpenCurveFill: Bool
 
     public init(
         name: String              = "",
@@ -353,7 +360,8 @@ public struct Renderer: Equatable, Codable, Sendable {
         brushConfig: BrushConfig?    = nil,
         stencilConfig: StencilConfig? = nil,
         gradientConfig: GradientConfig? = nil,
-        gradientConfigB: GradientConfig? = nil
+        gradientConfigB: GradientConfig? = nil,
+        excludeOpenCurveFill: Bool = false
     ) {
         self.name = name; self.enabled = enabled; self.mode = mode
         self.strokeWidth = strokeWidth; self.strokeColor = strokeColor
@@ -362,12 +370,14 @@ public struct Renderer: Equatable, Codable, Sendable {
         self.changes = changes; self.drivers = drivers
         self.brushConfig = brushConfig; self.stencilConfig = stencilConfig
         self.gradientConfig = gradientConfig; self.gradientConfigB = gradientConfigB
+        self.excludeOpenCurveFill = excludeOpenCurveFill
     }
 
     private enum CodingKeys: String, CodingKey {
         case name, enabled, mode, strokeWidth, strokeColor, fillColor,
              pointSize, holdLength, blurRadius, changes, drivers,
-             brushConfig, stencilConfig, gradientConfig, gradientConfigB
+             brushConfig, stencilConfig, gradientConfig, gradientConfigB,
+             excludeOpenCurveFill
     }
 
     public init(from decoder: Decoder) throws {
@@ -387,6 +397,7 @@ public struct Renderer: Equatable, Codable, Sendable {
         stencilConfig   = try c.decodeIfPresent(StencilConfig.self,    forKey: .stencilConfig)
         gradientConfig  = try c.decodeIfPresent(GradientConfig.self,   forKey: .gradientConfig)
         gradientConfigB = try c.decodeIfPresent(GradientConfig.self,   forKey: .gradientConfigB)
+        excludeOpenCurveFill = try c.decodeIfPresent(Bool.self, forKey: .excludeOpenCurveFill) ?? false
     }
 }
 

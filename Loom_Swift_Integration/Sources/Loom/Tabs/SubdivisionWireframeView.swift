@@ -24,7 +24,7 @@ struct SubdivisionWireframeView: View {
             }
 
             if controller.subdivSelectedSpriteID == nil {
-                Text("Select a polygon-set sprite above to preview subdivision")
+                Text("Select a sprite above to preview its transform")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
@@ -90,7 +90,17 @@ struct SubdivisionWireframeView: View {
         guard let spriteID = controller.subdivSelectedSpriteID,
               let setName  = controller.subdivPreviewSetName, !setName.isEmpty,
               let paramSet = controller.projectConfig?.subdivisionConfig.paramsSet(named: setName),
-              !paramSet.params.isEmpty,
+              // Any pass type counts, not just closed-polygon `params` — a
+              // transform set assigned to an open-curve sprite typically only
+              // populates `curveRefinement` (and possibly extension/evolution/
+              // fulguration/dissolution passes), leaving `params` empty. This
+              // guard used to require `params` specifically, so a curve-only
+              // set would never even attempt recomputation and the preview
+              // silently fell back to the base, untransformed curve (2026-07-13).
+              !(paramSet.params.isEmpty && paramSet.curveRefinement.isEmpty
+                && paramSet.segmentExtraction.isEmpty && paramSet.extensionPasses.isEmpty
+                && paramSet.evolutionPasses.isEmpty && paramSet.fulgurationPasses.isEmpty
+                && paramSet.dissolutionPasses.isEmpty),
               let inst     = makeInstanceMap()[spriteID]
         else { return nil }
         return SubdivisionInputs(spriteID: spriteID, setName: setName,
@@ -124,7 +134,7 @@ struct SubdivisionWireframeView: View {
     private func drawSprites(ctx: GraphicsContext, rect: CGRect, subdivided: [Polygon2D]) {
         guard let cfg = controller.projectConfig else { return }
         let instanceMap = makeInstanceMap()
-        let relevant    = polygonSetSprites(in: cfg)
+        let relevant    = transformableSprites(in: cfg)
 
         for sprite in relevant {
             let isSelected = controller.subdivSelectedSpriteID == sprite.name
@@ -168,7 +178,7 @@ struct SubdivisionWireframeView: View {
         let rect    = canvasRect(viewSize: viewSize)
         let instMap = makeInstanceMap()
 
-        for sprite in polygonSetSprites(in: cfg).reversed() {
+        for sprite in transformableSprites(in: cfg).reversed() {
             if let inst = instMap[sprite.name] {
                 let pts = inst.basePolygons.flatMap { $0.points }
                     .map { transformPoint($0, def: sprite, rect: rect) }
@@ -205,16 +215,22 @@ struct SubdivisionWireframeView: View {
         return Dictionary(instances.map { ($0.def.name, $0) }, uniquingKeysWith: { a, _ in a })
     }
 
-    func polygonSetSprites(in cfg: ProjectConfig) -> [SpriteDef] {
-        cfg.spriteConfig.library.allSprites.filter { isPolygonSetSprite($0, in: cfg) }
+    func transformableSprites(in cfg: ProjectConfig) -> [SpriteDef] {
+        cfg.spriteConfig.library.allSprites.filter { isTransformableSprite($0, in: cfg) }
     }
 
-    func isPolygonSetSprite(_ sprite: SpriteDef, in cfg: ProjectConfig) -> Bool {
+    /// See `SubdivisionTabView`'s identical (deliberately duplicated, not
+    /// shared) definition for the full rationale — widened 2026-07-13 to
+    /// include `.openCurveSet` sprites. `buildPath` below already renders
+    /// `.openSpline` correctly (it's had a dedicated case all along), so nothing
+    /// else in this view needed to change to make curve previews work.
+    func isTransformableSprite(_ sprite: SpriteDef, in cfg: ProjectConfig) -> Bool {
         guard let shape = cfg.shapeConfig.library.shapeSets
             .first(where: { $0.name == sprite.shapeSetName })?
             .shapes.first(where: { $0.name == sprite.shapeName })
         else { return false }
         return shape.sourceType == .polygonSet || shape.sourceType == .regularPolygon
+            || shape.sourceType == .openCurveSet
     }
 
     func assignedSetName(sprite: SpriteDef, cfg: ProjectConfig) -> String? {

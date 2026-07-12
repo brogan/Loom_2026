@@ -47,6 +47,11 @@ public enum RenderEngine {
         context.setAlpha(CGFloat(opacity))
         defer { context.restoreGState() }
 
+        // `excludeOpenCurveFill` (2026-07-12): CoreGraphics implicitly closes-and-
+        // fills open subpaths, so without this an `.openSpline` polygon sharing a
+        // renderer with grafted closed pieces gets filled too. Stroke is unaffected.
+        let skipFill = renderer.excludeOpenCurveFill && polygon.type == .openSpline
+
         switch renderer.mode {
         case .points:
             drawPoints(polygon, renderer: renderer, context: context, transform: transform,
@@ -56,14 +61,18 @@ public enum RenderEngine {
             applyStroke(path, renderer: renderer, context: context,
                         qualityMultiple: qualityMultiple)
         case .filled:
+            guard !skipFill else { return }
             let path = buildPath(polygon, transform: transform)
             applyFill(path, renderer: renderer, context: context)
         case .filledStroked:
             let path = buildPath(polygon, transform: transform)
-            applyFill(path, renderer: renderer, context: context)
+            if !skipFill {
+                applyFill(path, renderer: renderer, context: context)
+            }
             applyStroke(path, renderer: renderer, context: context,
                         qualityMultiple: qualityMultiple)
         case .gradientFilled:
+            guard !skipFill else { return }
             let path = buildPath(polygon, transform: transform)
             if let grad = renderer.gradientConfig {
                 applyGradientFill(path, polygon: polygon, gradCfg: grad,
@@ -73,11 +82,13 @@ public enum RenderEngine {
             }
         case .gradientFilledStroked:
             let path = buildPath(polygon, transform: transform)
-            if let grad = renderer.gradientConfig {
-                applyGradientFill(path, polygon: polygon, gradCfg: grad,
-                                  context: context, transform: transform)
-            } else {
-                applyFill(path, renderer: renderer, context: context)
+            if !skipFill {
+                if let grad = renderer.gradientConfig {
+                    applyGradientFill(path, polygon: polygon, gradCfg: grad,
+                                      context: context, transform: transform)
+                } else {
+                    applyFill(path, renderer: renderer, context: context)
+                }
             }
             applyStroke(path, renderer: renderer, context: context,
                         qualityMultiple: qualityMultiple)

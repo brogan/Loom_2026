@@ -2673,7 +2673,7 @@ private struct QuickSetupSection: View {
                 .font(.system(size: 11))
                 .frame(maxWidth: .infinity)
             }
-            .loomHelp("Which lifecycle mode's default pass to seed into a newly-created transform set. Involution adds subdivision (closed polygons) or curve refinement (open curves); Extension adds edge extrusion (closed) or branching (open); Evolution adds momentum drift (closed polygons only — has no visible effect on open curves); Fulguration adds a frame-cycle visibility/transform pass (either source type); Dissolution adds entropy/collapse. 'None' creates the set empty. Has no effect if the named transform set below already exists.")
+            .loomHelp("Which lifecycle mode's default pass to seed into a newly-created transform set. Involution adds subdivision (closed polygons) or curve refinement (open curves); Extension adds edge extrusion (closed) or branching (open); Evolution adds momentum drift (closed polygons) or Graft with open-curve targets enabled (open curves); Fulguration adds a frame-cycle visibility/transform pass (either source type); Dissolution adds entropy/collapse. 'None' creates the set empty. Has no effect if the named transform set below already exists.")
             InspectorField("Transform set") {
                 comboField($qsSubdivSetName, options: subdivisionSetOptions)
             }
@@ -2852,7 +2852,9 @@ private struct QuickSetupSection: View {
 
         let hasPolygonSet: Bool
         if folder == "curveSets" {
-            hasPolygonSet = cfg.curveConfig.library.curveSets.contains { $0.name == geoName }
+            hasPolygonSet = cfg.curveConfig.library.curveSets.contains {
+                $0.name == polygonSetName && layerTargetMatches($0)
+            }
         } else {
             hasPolygonSet = cfg.polygonConfig.library.polygonSets.contains {
                 $0.name == polygonSetName && layerTargetMatches($0)
@@ -2867,7 +2869,7 @@ private struct QuickSetupSection: View {
                 .contains {
                     $0.name == shapeName &&
                     $0.sourceType == .openCurveSet &&
-                    $0.openCurveSetName == geoName
+                    $0.openCurveSetName == polygonSetName
                 } ?? false
         } else {
             hasShape = cfg.shapeConfig.library.shapeSets
@@ -2909,7 +2911,9 @@ private struct QuickSetupSection: View {
         let rendererMode = recommendedQuickSetupRendererMode
 
         controller.updateProjectConfig { cfg in
-            if folder != "curveSets" {
+            if folder == "curveSets" {
+                upsertLayerTargetOpenCurveSet(in: &cfg, curveSetName: polygonSetName)
+            } else {
                 upsertLayerTargetPolygonSet(in: &cfg, polygonSetName: polygonSetName)
             }
 
@@ -2932,7 +2936,19 @@ private struct QuickSetupSection: View {
                         operationType: isOpenCurve ? .branch : .extrude
                     )]
                 case .evolution:
-                    newSet.evolutionPasses = [EvolutionParams(name: "\(geoName)_evo_1")]
+                    if isOpenCurve {
+                        // Momentum Drift (the default operationType) has no visible
+                        // effect on open curves — seed Generational/Graft instead,
+                        // with open-curve bases enabled, so the pass does something
+                        // out of the box.
+                        newSet.evolutionPasses = [EvolutionParams(
+                            name: "\(geoName)_evo_1",
+                            operationType: .generational,
+                            includeOpenCurves: true
+                        )]
+                    } else {
+                        newSet.evolutionPasses = [EvolutionParams(name: "\(geoName)_evo_1")]
+                    }
                 case .fulguration:
                     newSet.fulgurationPasses = [FulgurationParams(name: "\(geoName)_ful_1")]
                 case .dissolution:
@@ -2946,7 +2962,7 @@ private struct QuickSetupSection: View {
                 shape = ShapeDef(
                     name: shapeName,
                     sourceType: .openCurveSet,
-                    openCurveSetName: geoName,
+                    openCurveSetName: polygonSetName,
                     subdivisionParamsSetName: subdivSetName
                 )
             } else {
@@ -3043,6 +3059,43 @@ private struct QuickSetupSection: View {
             (def.editableLayerID == nil && clean(def.editableLayerName ?? "") == selectedLayer.name)
     }
 
+    private func upsertLayerTargetOpenCurveSet(in cfg: inout ProjectConfig, curveSetName: String) {
+        guard let selectedLayer = selectedLayerOption,
+              let layerID = selectedLayer.layerID
+        else { return }
+
+        guard let documentDef = cfg.curveConfig.library.curveSets.first(where: { $0.name == geoName }) else {
+            return
+        }
+
+        var targetDef = OpenCurveSetDef(
+            name: curveSetName,
+            folder: documentDef.folder,
+            filename: documentDef.filename,
+            editableLayerID: layerID,
+            editableLayerName: selectedLayer.name
+        )
+        if targetDef.folder.isEmpty {
+            targetDef.folder = "curveSets"
+        }
+
+        if let index = cfg.curveConfig.library.curveSets.firstIndex(where: { $0.name == curveSetName }) {
+            cfg.curveConfig.library.curveSets[index] = targetDef
+        } else {
+            cfg.curveConfig.library.curveSets.append(targetDef)
+        }
+    }
+
+    private func layerTargetMatches(_ def: OpenCurveSetDef) -> Bool {
+        guard let selectedLayer = selectedLayerOption,
+              let selectedLayerID = selectedLayer.layerID
+        else {
+            return def.name == geoName && def.editableLayerID == nil && clean(def.editableLayerName ?? "").isEmpty
+        }
+        return def.editableLayerID == selectedLayerID ||
+            (def.editableLayerID == nil && clean(def.editableLayerName ?? "") == selectedLayer.name)
+    }
+
     private func applyRecommendedNames(overwrite: Bool) {
         guard !geoName.isEmpty else { return }
         // Seed base name from the geo stem on first load only (never overwrite after user edits it).
@@ -3064,6 +3117,12 @@ private struct QuickSetupSection: View {
     }
 
     private var initialLayerTargetID: String {
+        if folder == "curveSets" {
+            guard let def = controller.projectConfig?.curveConfig.library.curveSets.first(where: { $0.name == geoName }),
+                  let layerID = def.editableLayerID
+            else { return Self.allVisibleLayerID }
+            return layerID.uuidString
+        }
         guard let def = controller.projectConfig?.polygonConfig.library.polygonSets.first(where: { $0.name == geoName }),
               let layerID = def.editableLayerID
         else { return Self.allVisibleLayerID }
@@ -3121,17 +3180,14 @@ private struct QuickSetupSection: View {
         }
         return sourceSupportsSubdivision ? recommendedSubdivSetName : Self.noSubdivisionName
     }
-    /// Lifecycle modes offered in the Quick Pipeline Setup "Mode" picker for
-    /// the current source. Evolution is omitted for open curves — it only
-    /// mutates SubdivisionParams, which SubdivisionEngine bypasses entirely
-    /// for .openSpline, so it would have no visible effect there. Fulguration
-    /// (V1: frame-cycle visibility/transform/development) operates on the fully
-    /// composed output geometry regardless of polygon type, so — like
-    /// Dissolution — it's offered for both source types.
+    /// Lifecycle modes offered in the Quick Pipeline Setup "Mode" picker —
+    /// all six apply to both source types. Evolution used to be excluded for
+    /// open curves (its momentum-drift component only mutates SubdivisionParams,
+    /// which SubdivisionEngine bypasses for .openSpline), but Evolution's Graft
+    /// sub-feature (`includeOpenCurves`) now supports open-curve bases directly
+    /// (2026-07-12), so the exclusion was stale and has been removed.
     private var availableTransformModes: [QuickSetupDefaultMode] {
-        folder == "curveSets"
-            ? [.none, .involution, .extend, .fulguration, .dissolution]
-            : QuickSetupDefaultMode.allCases
+        QuickSetupDefaultMode.allCases
     }
     private var recommendedQuickSetupTransformMode: QuickSetupDefaultMode {
         if sourceIsCleanParametricRegularPolygon || !sourceSupportsSubdivision {
@@ -3167,7 +3223,7 @@ private struct QuickSetupSection: View {
                 layerID: nil
             )
         ]
-        guard folder == "polygonSets",
+        guard folder == "polygonSets" || folder == "curveSets",
               let document = editableGeometryDocument
         else { return options }
         options.append(contentsOf: document.layers.map {
@@ -3177,9 +3233,20 @@ private struct QuickSetupSection: View {
     }
 
     private var editableGeometryDocument: EditableGeometryDocument? {
-        if controller.selectedGeometryKey == "polygonSets/\(geoName)",
+        if controller.selectedGeometryKey == "\(folder)/\(geoName)",
            let document = controller.geometryEditorDocument {
             return document
+        }
+        if folder == "curveSets" {
+            guard let projectURL = controller.projectURL,
+                  let def = controller.projectConfig?.curveConfig.library.curveSets.first(where: { $0.name == geoName }),
+                  !def.filename.isEmpty,
+                  def.filename.lowercased().hasSuffix(".json")
+            else { return nil }
+            let dir = def.folder.isEmpty ? "curveSets" : def.folder
+            return try? EditableGeometryJSONLoader.load(
+                url: projectURL.appendingPathComponent(dir).appendingPathComponent(def.filename)
+            )
         }
         guard let projectURL = controller.projectURL,
               let def = controller.projectConfig?.polygonConfig.library.polygonSets.first(where: { $0.name == geoName }),

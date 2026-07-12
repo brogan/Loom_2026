@@ -23,6 +23,13 @@ enum GraftEngine {
     struct GeneratedPrimitive: Equatable {
         var piece: Polygon2D
         var sides: Int
+        /// True only when `piece` came from `params.graftCustomShapes` (2026-07-12),
+        /// never from the generated-n-gon fallback — including its own `n≤2`
+        /// degenerate-to-line case, which must stay distinguishable from a genuine
+        /// custom open-curve piece even though both are structurally identical
+        /// (a bare two-point `.openSpline`). See `GenerationalEvolutionEngine
+        /// .openCurveEligibleSites`, the only place this is consulted.
+        var isCustomSourced: Bool = false
     }
 
     /// Generates one primitive: `n` is RPSR-sampled from `graftSidesMin/Max`, then
@@ -57,22 +64,42 @@ enum GraftEngine {
     ) -> GeneratedPrimitive {
         let base: Polygon2D
         let sides: Int
+        var isCustomSourced = false
 
         if params.graftPrimitiveSource == .customSet,
-           case let resolvedNames = params.graftCustomSetNames.filter({ customPrimitives[$0] != nil }),
-           !resolvedNames.isEmpty {
+           case let resolved = params.graftCustomShapes.filter({ customPrimitives[$0.name] != nil && $0.probability > 0 }),
+           !resolved.isEmpty {
             // Same roll slot (`rollBase + 0`) the generated-n-gon path below
             // would use for its own sides roll — the two paths are mutually
             // exclusive per call (this branch only runs instead of that one,
             // never alongside it), so reusing the slot can't collide with
-            // anything. Names that don't resolve to a saved shape (typo,
-            // deleted shape) are already filtered out above, so this only
-            // ever picks among names that actually exist.
+            // anything. Entries that don't resolve to a saved shape (typo,
+            // deleted shape), or whose probability is exactly 0, are already
+            // filtered out above, so this only ever picks among entries that
+            // actually exist and are eligible.
+            //
+            // Weighted pick (2026-07-13): walk `resolved` in order, subtracting
+            // each entry's own probability (relative weight) from a single roll
+            // scaled by the total weight, until it goes negative — the entry it
+            // lands on is the pick. When every entry's probability is the same
+            // (e.g. all left at the 1.0 default), this reduces to exactly the
+            // old uniform `Int(pickRoll * count)` index, so any previously
+            // authored list is unaffected.
+            let totalWeight = resolved.reduce(0.0) { $0 + $1.probability }
             let pickRoll = SubdivisionEngine.centreHash(seed: seed, cycle: rollBase + 0)
-            let idx = min(resolvedNames.count - 1, Int(pickRoll * Double(resolvedNames.count)))
-            let custom = customPrimitives[resolvedNames[idx]]!
+            var remaining = pickRoll * totalWeight
+            var chosenName = resolved[resolved.count - 1].name
+            for entry in resolved {
+                remaining -= entry.probability
+                if remaining < 0 {
+                    chosenName = entry.name
+                    break
+                }
+            }
+            let custom = customPrimitives[chosenName]!
             base = custom
             sides = custom.points.count / 4
+            isCustomSourced = true
         } else {
             // `.generated` (default), or `.customSet` with no name resolving to
             // an actual saved shape — falls back here rather than producing no
@@ -104,7 +131,7 @@ enum GraftEngine {
         let scale = scaleLo + scaleRoll * (scaleHi - scaleLo)
 
         let piece = AssemblyPrimitiveKit.deformed(base, scaleX: scale * sx, scaleY: scale * sy)
-        return GeneratedPrimitive(piece: piece, sides: sides)
+        return GeneratedPrimitive(piece: piece, sides: sides, isCustomSourced: isCustomSourced)
     }
 
     /// The original (`.generated`) primitive: RPSR-sampled `n`, degenerating to
