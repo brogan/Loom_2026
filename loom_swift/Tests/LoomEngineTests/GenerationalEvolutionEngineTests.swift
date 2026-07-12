@@ -1321,6 +1321,73 @@ final class GenerationalEvolutionEngineTests: XCTestCase {
         }
     }
 
+    // MARK: - Graft: custom primitive source (2026-07-12)
+
+    /// A simple closed pentagon ("house" shape) — distinctive enough that
+    /// matching its exact point count/shape in the output proves the pipeline
+    /// used *this* shape rather than a generated n-gon.
+    private func customHouseShape() -> Polygon2D {
+        let corners = [
+            Vector2D(x: -0.1, y: 0), Vector2D(x: 0.1, y: 0), Vector2D(x: 0.1, y: 0.15),
+            Vector2D(x: 0, y: 0.25), Vector2D(x: -0.1, y: 0.15),
+        ]
+        var pts = [Vector2D]()
+        for i in 0..<5 {
+            pts += BezierMath.connector(from: corners[i], to: corners[(i + 1) % 5],
+                                        cpRatios: Vector2D(x: 1.0 / 3.0, y: 2.0 / 3.0))
+        }
+        return Polygon2D(points: pts, type: .spline)
+    }
+
+    func testGraftWholeEdgeAttachesACustomClosedShapeVerbatim() {
+        // Before the .spline case existed on AttachmentSiteExtractor, this shape
+        // would have exposed zero attachment sites and every generation would
+        // have been silently skipped (result.count == 1 forever).
+        let house = customHouseShape()
+        for seed in 0..<15 {
+            let square = makeSquare()
+            let params = EvolutionParams(
+                generationCount: 1, extrudeWeight: 0.0, splitWeight: 0.0,
+                graftPrimitiveSource: .customSet, graftCustomSetNames: ["house"],
+                graftWeight: 1.0, generationSeed: seed, maxVertexBudget: 10_000
+            )
+            let result = GenerationalEvolutionEngine.process(
+                polygons: [square], params: params, customPrimitives: ["house": house]
+            )
+            guard result.count == 2 else { return XCTFail("seed \(seed): expected the custom shape to attach") }
+            XCTAssertEqual(result[0], square, "seed \(seed): .wholeEdge is non-destructive to the parent")
+            XCTAssertEqual(result[1].points.count, house.points.count,
+                            "seed \(seed): the attached piece must be the custom shape, not a generated n-gon")
+
+            let segCount = square.points.count / 4
+            let segIdx = graftTargetSegIdx(seed: seed, segCount: segCount)
+            let base = segIdx * 4
+            let a0 = square.points[base], a1 = square.points[base + 3]
+            let expectedMid = Vector2D(x: (a0.x + a1.x) / 2, y: (a0.y + a1.y) / 2)
+
+            let placedSites = AttachmentSiteExtractor.sites(of: result[1])
+            let closest = placedSites.map { $0.point.distance(to: expectedMid) }.min() ?? .infinity
+            XCTAssertEqual(closest, 0, accuracy: 1e-9, "seed \(seed): custom shape must coincide with the target edge")
+        }
+    }
+
+    func testGraftCustomPrimitivesParameterHasNoEffectWhenSourceIsGenerated() {
+        // Regression: passing a non-empty customPrimitives cache must not alter
+        // .generated (default) output at all.
+        let house = customHouseShape()
+        for seed in 0..<10 {
+            let square = makeSquare()
+            let params = EvolutionParams(
+                generationCount: 1, extrudeWeight: 0.0, splitWeight: 0.0,
+                graftSidesMin: 4, graftSidesMax: 4, graftWeight: 1.0,
+                generationSeed: seed, maxVertexBudget: 10_000
+            )
+            let withCache    = GenerationalEvolutionEngine.process(polygons: [square], params: params, customPrimitives: ["house": house])
+            let withoutCache = GenerationalEvolutionEngine.process(polygons: [square], params: params)
+            XCTAssertEqual(withCache, withoutCache, "seed \(seed)")
+        }
+    }
+
     func testGraftSinglePointTargetsOpenCurveWhenIncludeOpenCurvesIsOn() {
         for seed in 0..<15 {
             let curve = makeOpenCurve()
@@ -1923,6 +1990,55 @@ final class GenerationalEvolutionEngineTests: XCTestCase {
             // uses internally — no sign ambiguity to reconcile.
             let expectedJoint1 = base1 + perp * 0.3
             let expectedJoint2 = base2 + perp * (-0.3)
+            XCTAssertEqual(joint1.distance(to: expectedJoint1), 0, accuracy: 1e-9, "seed \(seed)")
+            XCTAssertEqual(joint2.distance(to: expectedJoint2), 0, accuracy: 1e-9, "seed \(seed)")
+        }
+    }
+
+    func testGraftArticulationAmountIsEdgeLengthRelativeNotAbsolute() {
+        // graftScaleMin/Max fixed well below 1 (0.2) makes the piece's own
+        // edge length 0.2, not 1 — proving `graftArticulationAmountMin/Max`
+        // scales the displacement by that edge length (`amount * len`, the
+        // same convention `graftEdgeCurvatureAmountMin/Max` already uses)
+        // rather than applying a fixed canvas-scale magnitude regardless of
+        // how small the graft piece itself was scaled down to. Before this
+        // was edge-relative, this test's expected joints would have used the
+        // raw 0.3 amount directly (0.06 here is 0.3 * 0.2), a displacement
+        // 5x the length of the entire piece it's supposedly detailing.
+        for seed in 0..<15 {
+            let square = makeSquare()
+            var params = EvolutionParams(
+                generationCount: 1, extrudeWeight: 0.0, splitWeight: 0.0,
+                graftSidesMin: 1, graftSidesMax: 1, graftWeight: 1.0,
+                graftAttachmentMode: .singlePoint, graftPointSource: .existingVertex,
+                generationSeed: seed, maxVertexBudget: 10_000
+            )
+            params.graftScaleMin = 0.2
+            params.graftScaleMax = 0.2
+            params.graftArticulationCountMin = 2
+            params.graftArticulationCountMax = 2
+            params.graftArticulationAmountMin = 0.3
+            params.graftArticulationAmountMax = 0.3
+            params.graftArticulationPattern = .zigzag
+
+            let result = GenerationalEvolutionEngine.process(polygons: [square], params: params)
+            guard result.count == 2 else { return XCTFail("seed \(seed)") }
+            let placed = result[1]
+            guard placed.points.count == 12 else { return XCTFail("seed \(seed)") }
+
+            let a0 = placed.points[0], a1 = placed.points[11]
+            let joint1 = placed.points[3], joint2 = placed.points[7]
+
+            let dx = a1.x - a0.x, dy = a1.y - a0.y
+            let len = (dx * dx + dy * dy).squareRoot()
+            guard len > 1e-9 else { continue }
+            XCTAssertEqual(len, 0.2, accuracy: 1e-9, "seed \(seed): piece edge should be scaled to 0.2")
+            let perp = Vector2D(x: -dy / len, y: dx / len)
+
+            let base1 = Vector2D.lerp(a0, a1, t: 1.0 / 3.0)
+            let base2 = Vector2D.lerp(a0, a1, t: 2.0 / 3.0)
+            let expectedJoint1 = base1 + perp * (0.3 * len)
+            let expectedJoint2 = base2 + perp * (-0.3 * len)
             XCTAssertEqual(joint1.distance(to: expectedJoint1), 0, accuracy: 1e-9, "seed \(seed)")
             XCTAssertEqual(joint2.distance(to: expectedJoint2), 0, accuracy: 1e-9, "seed \(seed)")
         }

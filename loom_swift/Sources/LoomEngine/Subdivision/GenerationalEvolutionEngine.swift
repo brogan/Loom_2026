@@ -40,7 +40,8 @@ public enum GenerationalEvolutionEngine {
         passes:        [EvolutionParams],
         elapsedFrames: Double = 0,
         targetFPS:     Double = 30,
-        spriteIndex:   Int    = 0
+        spriteIndex:   Int    = 0,
+        customPrimitives: [String: Polygon2D] = [:]
     ) -> [Polygon2D] {
         var result = polygons
         for pass in passes where pass.enabled && pass.operationType == .generational {
@@ -63,7 +64,7 @@ public enum GenerationalEvolutionEngine {
                 elapsedFrames: elapsedFrames,
                 targetFPS:     targetFPS
             )
-            result = process(polygons: result, params: effectivePass, phase: phase)
+            result = process(polygons: result, params: effectivePass, phase: phase, customPrimitives: customPrimitives)
         }
         return result
     }
@@ -158,7 +159,8 @@ public enum GenerationalEvolutionEngine {
     public static func process(
         polygons: [Polygon2D],
         params:   EvolutionParams,
-        phase:    Double? = nil
+        phase:    Double? = nil,
+        customPrimitives: [String: Polygon2D] = [:]
     ) -> [Polygon2D] {
         guard params.enabled, params.generationCount > 0 else { return polygons }
         let clampedPhase = max(0, min(Double(params.generationCount), phase ?? Double(params.generationCount)))
@@ -170,14 +172,14 @@ public enum GenerationalEvolutionEngine {
 
         var current = polygons
         for generation in 0..<fullGenerations {
-            let next = applyGeneration(current, params: params, generation: generation, strength: 1.0)
+            let next = applyGeneration(current, params: params, generation: generation, strength: 1.0, customPrimitives: customPrimitives)
             // A generation that would exceed budget is rejected outright — the
             // chain stops there rather than producing a partially-applied mutation.
             if totalVertexCount(next) > params.maxVertexBudget { return current }
             current = next
         }
         if partial > 1e-9, fullGenerations < params.generationCount {
-            let next = applyGeneration(current, params: params, generation: fullGenerations, strength: partial)
+            let next = applyGeneration(current, params: params, generation: fullGenerations, strength: partial, customPrimitives: customPrimitives)
             if totalVertexCount(next) <= params.maxVertexBudget {
                 current = next
             }
@@ -195,7 +197,8 @@ public enum GenerationalEvolutionEngine {
         _ polygons: [Polygon2D],
         params:     EvolutionParams,
         generation: Int,
-        strength:   Double
+        strength:   Double,
+        customPrimitives: [String: Polygon2D] = [:]
     ) -> [Polygon2D] {
         let seed = params.generationSeed
         let cycleBase = generation * 8
@@ -229,7 +232,7 @@ public enum GenerationalEvolutionEngine {
         } else if opRoll < params.extrudeWeight + params.splitWeight {
             return applySplit(polygons, targetIdx: targetIdx, params: params, cycleBase: cycleBase, strength: strength)
         } else {
-            return applyGraft(polygons, targetIdx: targetIdx, params: params, cycleBase: cycleBase, strength: strength)
+            return applyGraft(polygons, targetIdx: targetIdx, params: params, cycleBase: cycleBase, strength: strength, customPrimitives: customPrimitives)
         }
     }
 
@@ -555,15 +558,16 @@ public enum GenerationalEvolutionEngine {
         targetIdx:  Int,
         params:     EvolutionParams,
         cycleBase:  Int,
-        strength:   Double
+        strength:   Double,
+        customPrimitives: [String: Polygon2D] = [:]
     ) -> [Polygon2D] {
         switch params.graftAttachmentMode {
         case .wholeEdge:
-            return applyGraftWholeEdge(polygons, targetIdx: targetIdx, params: params, cycleBase: cycleBase, strength: strength)
+            return applyGraftWholeEdge(polygons, targetIdx: targetIdx, params: params, cycleBase: cycleBase, strength: strength, customPrimitives: customPrimitives)
         case .singlePoint:
-            return applyGraftSinglePoint(polygons, targetIdx: targetIdx, params: params, cycleBase: cycleBase, strength: strength)
+            return applyGraftSinglePoint(polygons, targetIdx: targetIdx, params: params, cycleBase: cycleBase, strength: strength, customPrimitives: customPrimitives)
         case .partialEdge:
-            return applyGraftPartialEdge(polygons, targetIdx: targetIdx, params: params, cycleBase: cycleBase, strength: strength)
+            return applyGraftPartialEdge(polygons, targetIdx: targetIdx, params: params, cycleBase: cycleBase, strength: strength, customPrimitives: customPrimitives)
         }
     }
 
@@ -581,7 +585,8 @@ public enum GenerationalEvolutionEngine {
         targetIdx:  Int,
         params:     EvolutionParams,
         cycleBase:  Int,
-        strength:   Double
+        strength:   Double,
+        customPrimitives: [String: Polygon2D] = [:]
     ) -> [Polygon2D] {
         let polygon  = polygons[targetIdx]
         let segCount = polygon.points.count / 4
@@ -614,15 +619,18 @@ public enum GenerationalEvolutionEngine {
         let mirrorRoll     = SubdivisionEngine.centreHash(seed: graftSeed, cycle: cycleBase + 1)
         let sourceSiteRoll = SubdivisionEngine.centreHash(seed: graftSeed, cycle: cycleBase + 2)
 
-        let generated = GraftEngine.generatePrimitive(seed: graftSeed, rollBase: cycleBase + 3, params: params)
+        let generated = GraftEngine.generatePrimitive(seed: graftSeed, rollBase: cycleBase + 3, params: params, customPrimitives: customPrimitives)
         let piece = generated.piece
-        // §4.4.8.3: only a `.line`-type piece (n≥3) has edge-type attachment
-        // sites; `.openSpline` (n≤2, a bare line) has only point-type endpoint
-        // sites, which `.wholeEdge` can't use.
-        guard piece.type == .line else { return polygons }
-
         let pieceSites = AttachmentSiteExtractor.sites(of: piece)
-        guard !pieceSites.isEmpty else { return polygons }
+        // §4.4.8.3: only a piece exposing at least one edge-type site (`.line`
+        // n≥3, or a custom `.spline` prototype, 2026-07-12) has something
+        // `.wholeEdge` can match a parent edge onto; `.openSpline` (n≤2, a bare
+        // line, or a custom open-curve prototype) exposes only point-type
+        // endpoint sites (`length == nil`), which `.wholeEdge` can't use.
+        // Checking site *content* rather than `piece.type` directly is what
+        // lets a custom `.spline` shape become eligible here without this
+        // guard needing to know about `graftPrimitiveSource` at all.
+        guard pieceSites.contains(where: { $0.length != nil }) else { return polygons }
         let sourceSiteIdx = min(pieceSites.count - 1, Int(sourceSiteRoll * Double(pieceSites.count)))
         let sourceSite = pieceSites[sourceSiteIdx]
 
@@ -657,7 +665,8 @@ public enum GenerationalEvolutionEngine {
         targetIdx:  Int,
         params:     EvolutionParams,
         cycleBase:  Int,
-        strength:   Double
+        strength:   Double,
+        customPrimitives: [String: Polygon2D] = [:]
     ) -> [Polygon2D] {
         var polygon  = polygons[targetIdx]
         let segCount = polygon.points.count / 4
@@ -726,7 +735,7 @@ public enum GenerationalEvolutionEngine {
         let mirrorRoll     = SubdivisionEngine.centreHash(seed: graftSeed, cycle: cycleBase + 1)
         let sourceSiteRoll = SubdivisionEngine.centreHash(seed: graftSeed, cycle: cycleBase + 2)
 
-        let generated = GraftEngine.generatePrimitive(seed: graftSeed, rollBase: cycleBase + 3, params: params)
+        let generated = GraftEngine.generatePrimitive(seed: graftSeed, rollBase: cycleBase + 3, params: params, customPrimitives: customPrimitives)
         let piece = generated.piece
 
         let pieceSites = AttachmentSiteExtractor.sites(of: piece)
@@ -739,10 +748,14 @@ public enum GenerationalEvolutionEngine {
             piece, sourceSite: sourceSite, onto: targetSite,
             mirror: mirror, edgeMatching: params.graftEdgeMatching
         )
-        // Only a `.line`-type piece's source site is edge-type (its whole
-        // edge is "the root"); an `.openSpline` piece's site is a bare
-        // endpoint, so no edge needs excluding from curvature/articulation.
-        let rootSiteIdx = piece.type == .line ? sourceSiteIdx : nil
+        // Only an edge-type source site (a `.line` n-gon or a custom `.spline`
+        // prototype, 2026-07-12) has a whole edge that is "the root" to
+        // exclude; a bare endpoint site (`.openSpline`, n≤2 or a custom
+        // open-curve prototype, `length == nil`) has no edge needing exclusion
+        // from curvature/articulation. Checked via the site itself, not
+        // `piece.type`, for the same reason as the `.wholeEdge`/`.partialEdge`
+        // guards above.
+        let rootSiteIdx = sourceSite.length != nil ? sourceSiteIdx : nil
         let detailed = applyGraftEdgeDetailing(
             placed, rootSiteIdx: rootSiteIdx, graftSeed: graftSeed, cycleBase: cycleBase, params: params
         )
@@ -770,7 +783,8 @@ public enum GenerationalEvolutionEngine {
         targetIdx:  Int,
         params:     EvolutionParams,
         cycleBase:  Int,
-        strength:   Double
+        strength:   Double,
+        customPrimitives: [String: Polygon2D] = [:]
     ) -> [Polygon2D] {
         let polygon  = polygons[targetIdx]
         let segCount = polygon.points.count / 4
@@ -819,12 +833,12 @@ public enum GenerationalEvolutionEngine {
         let mirrorRoll     = SubdivisionEngine.centreHash(seed: graftSeed, cycle: cycleBase + 1)
         let sourceSiteRoll = SubdivisionEngine.centreHash(seed: graftSeed, cycle: cycleBase + 2)
 
-        let generated = GraftEngine.generatePrimitive(seed: graftSeed, rollBase: cycleBase + 3, params: params)
+        let generated = GraftEngine.generatePrimitive(seed: graftSeed, rollBase: cycleBase + 3, params: params, customPrimitives: customPrimitives)
         let piece = generated.piece
-        guard piece.type == .line else { return polygons }
-
         let pieceSites = AttachmentSiteExtractor.sites(of: piece)
-        guard !pieceSites.isEmpty else { return polygons }
+        // Same site-content check as `.wholeEdge` above, not `piece.type ==
+        // .line` — see its comment.
+        guard pieceSites.contains(where: { $0.length != nil }) else { return polygons }
         let sourceSiteIdx = min(pieceSites.count - 1, Int(sourceSiteRoll * Double(pieceSites.count)))
         let sourceSite = pieceSites[sourceSiteIdx]
 
@@ -905,15 +919,18 @@ public enum GenerationalEvolutionEngine {
 
         // `.line` (closed, raw-vertex) pieces need converting to per-segment
         // control points before any one edge can be individually detailed;
-        // `.openSpline` pieces (the `n≤2` line primitive) are already
-        // spline-encoded. Both are the only two types `place()` can produce.
+        // `.openSpline` pieces (the `n≤2` line primitive) and `.spline` pieces
+        // (a custom closed-shape prototype, 2026-07-12) are already
+        // spline-encoded — `splineEdgeSites`' site ordering matches `.spline`'s
+        // own segment ordering exactly, so `rootSiteIdx` (a site index) lines
+        // up with `segIdx` (a segment index) here with no extra bookkeeping.
         let spline: Polygon2D
         switch placed.type {
         case .line:
             spline = Polygon2D(points: BezierMath.lineToSplinePoints(placed.points), type: .spline,
                                pressures: placed.pressures, pressureProfiles: placed.pressureProfiles,
                                visible: placed.visible)
-        case .openSpline:
+        case .openSpline, .spline:
             spline = placed
         default:
             return placed
@@ -970,11 +987,16 @@ public enum GenerationalEvolutionEngine {
     /// each interior joint sampled at an even `t` along the *original* edge
     /// (`BezierMath.point`, not a naive linear split — consistent with how
     /// `CurveRefinementEngine` samples insertion points) then displaced
-    /// perpendicular to the edge's own chord direction. `.jitter`: independent
-    /// RPSR sign and magnitude per joint. `.zigzag`: sign alternates
-    /// deterministically joint-to-joint, magnitude still RPSR-sampled — the
-    /// "zig zag" case from the original proposal. Both original endpoints
-    /// (`seg[0]`/`seg[3]`) are carried through completely untouched.
+    /// perpendicular to the edge's own chord direction, by `amount * edgeLength`
+    /// (same edge-relative convention `curvedSegment` below uses for its own
+    /// `bow`, rather than an absolute canvas-scale magnitude) — so articulation
+    /// shrinks along with a piece scaled down via `graftScaleMin/Max`, instead
+    /// of staying a fixed size regardless of how small the piece itself is.
+    /// `.jitter`: independent RPSR sign and magnitude per joint. `.zigzag`: sign
+    /// alternates deterministically joint-to-joint, magnitude still
+    /// RPSR-sampled — the "zig zag" case from the original proposal. Both
+    /// original endpoints (`seg[0]`/`seg[3]`) are carried through completely
+    /// untouched.
     private static func articulatedSubSegments(
         of seg:     [Vector2D],
         jointCount: Int,
@@ -997,7 +1019,7 @@ public enum GenerationalEvolutionEngine {
             let jointSeed = edgeSeed &+ (j &+ 1) &* 3_571_428_667
 
             let magRoll = SubdivisionEngine.centreHash(seed: jointSeed, cycle: 1)
-            let magnitude = amtLo + magRoll * (amtHi - amtLo)
+            let magnitude = (amtLo + magRoll * (amtHi - amtLo)) * len
             let sign: Double
             switch params.graftArticulationPattern {
             case .jitter:

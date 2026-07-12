@@ -51,7 +51,7 @@ struct DissolutionInspector: View {
             InspectorField("Enabled") {
                 Toggle("", isOn: bindDIS(\.entropyEnabled)).labelsHidden()
             }
-            .loomHelp("When on, polygon vertices gradually migrate toward the target shape over time. The form does not disappear — it loses complexity.")
+            .loomHelp("When on, polygon vertices gradually migrate toward the target shape over time. The form does not disappear — it loses complexity. On open curves, this always means straightening (see Target below) — there's no shape target to pick.")
 
             InspectorField("Rate") {
                 FloatEntryField(value: bindDIS(\.entropyRate), width: 60)
@@ -68,12 +68,17 @@ struct DissolutionInspector: View {
                 .pickerStyle(.segmented)
                 .frame(maxWidth: 200)
             }
-            .loomHelp("Smoothed: each anchor moves toward the average of its neighbors — corners round while retaining the polygon's overall gesture. Centroid: all anchors converge to the polygon centre — the form collapses inward. Circle: anchors normalize to a best-fit circle radius — angular shapes become round.")
+            .loomHelp("Closed polygons only — ignored for open curves, which always straighten instead (see below). Smoothed: each anchor moves toward the average of its neighbors — corners round while retaining the polygon's overall gesture. Centroid: all anchors converge to the polygon centre — the form collapses inward. Circle: anchors normalize to a best-fit circle radius — angular shapes become round.")
+
+            InspectorField("Scale") {
+                FloatEntryField(value: bindDIS(\.entropyScaleDelta), width: 60)
+            }
+            .loomHelp("Uniform size trend combined with the shape/straightening change above, around the same centre. 0 (default) = no size change. Negative shrinks toward 0 as entropy completes (e.g. −0.5 = shrinks to half size). Positive grows (e.g. 1.0 = grows to double size). Applies to both closed polygons and open curves.")
 
             InspectorField("Noise") {
                 FloatEntryField(value: bindDIS(\.entropyNoise), width: 60)
             }
-            .loomHelp("Per-anchor random perturbation added during erosion, in canvas units. 0 = perfectly uniform decay toward target. Values above 0 make the path toward simplicity irregular and organic. Keep below 5 for subtle texture.")
+            .loomHelp("Per-anchor random perturbation added during erosion, in canvas units. 0 = perfectly uniform decay toward target. Values above 0 make the path toward simplicity irregular and organic. Keep below 5 for subtle texture. Closed polygons only — open curves' straightening has no noise term.")
 
             InspectorField("Seed") {
                 let b = bindDISInt(\.entropySeed)

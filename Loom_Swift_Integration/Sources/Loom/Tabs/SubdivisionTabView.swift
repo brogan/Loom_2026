@@ -586,8 +586,10 @@ struct SubdivisionTabView: View {
             result = ExtensionEngine.process(polygons: result, paramSet: paramSet.extensionPasses)
         }
         if paramSet.evolutionPasses.contains(where: { $0.enabled && $0.operationType == .generational }) {
+            let customPrimitives = SpriteScene.loadGraftCustomPrimitives(config: cfg, projectDirectory: projectURL)
             result = GenerationalEvolutionEngine.process(polygons: result, passes: paramSet.evolutionPasses,
-                                                          elapsedFrames: 0, targetFPS: 24, spriteIndex: 0)
+                                                          elapsedFrames: 0, targetFPS: 24, spriteIndex: 0,
+                                                          customPrimitives: customPrimitives)
         }
         if !paramSet.fulgurationPasses.isEmpty {
             result = FulgurationEngine.apply(polygons: result, passes: paramSet.fulgurationPasses,
@@ -687,8 +689,10 @@ struct SubdivisionTabView: View {
             result = ExtensionEngine.process(polygons: result, paramSet: paramSet2.extensionPasses)
         }
         if paramSet2.evolutionPasses.contains(where: { $0.enabled && $0.operationType == .generational }) {
+            let customPrimitives2 = SpriteScene.loadGraftCustomPrimitives(config: cfg, projectDirectory: projectURL)
             result = GenerationalEvolutionEngine.process(polygons: result, passes: paramSet2.evolutionPasses,
-                                                          elapsedFrames: 0, targetFPS: 24, spriteIndex: 0)
+                                                          elapsedFrames: 0, targetFPS: 24, spriteIndex: 0,
+                                                          customPrimitives: customPrimitives2)
         }
         if !paramSet2.fulgurationPasses.isEmpty {
             result = FulgurationEngine.apply(polygons: result, passes: paramSet2.fulgurationPasses,

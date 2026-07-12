@@ -34,6 +34,26 @@ private func makeLineSquareSet(count: Int) -> [Polygon2D] {
     (0..<count).map { makeLineSquare(offsetX: Double($0) * 3.0) }
 }
 
+/// One straight-chord segment with a fixed perpendicular bow — isolates
+/// open-curve entropy's curvature-relaxation step from its anchor-migration
+/// step (a single segment has no interior anchor to migrate).
+private func bowedSegment(_ p0: Vector2D, _ p1: Vector2D, bow: Double) -> [Vector2D] {
+    let mid1 = Vector2D.lerp(p0, p1, t: 1.0 / 3.0)
+    let mid2 = Vector2D.lerp(p0, p1, t: 2.0 / 3.0)
+    let dx = p1.x - p0.x, dy = p1.y - p0.y
+    let len = (dx * dx + dy * dy).squareRoot()
+    let normal = Vector2D(x: -dy / len, y: dx / len)
+    return [p0, mid1 + normal * bow, mid2 + normal * bow, p1]
+}
+
+/// A 2-segment open "zigzag" curve, (0,0) → (1,1) → (2,0), each segment bowed
+/// by a fixed perpendicular offset — exercises both of open-curve entropy's
+/// relaxations at once (interior anchor to migrate, plus bow to relax).
+private func makeZigzagOpenCurve(bow: Double = 0.2) -> Polygon2D {
+    let a0 = Vector2D(x: 0, y: 0), a1 = Vector2D(x: 1, y: 1), a2 = Vector2D(x: 2, y: 0)
+    return Polygon2D(points: bowedSegment(a0, a1, bow: bow) + bowedSegment(a1, a2, bow: bow), type: .openSpline)
+}
+
 final class DissolutionEngineTests: XCTestCase {
 
     // MARK: - Baseline entropy / collapse regression (contraction-anchor refactor safety net)
@@ -405,5 +425,162 @@ final class DissolutionEngineTests: XCTestCase {
         )
         XCTAssertEqual(chained, sequential, "apply(passes:) should feed each pass the previous pass's output, in order")
         XCTAssertLessThan(chained.count, set.count, "loss pass should have pruned before drift ran")
+    }
+
+    // MARK: - Open-curve entropy: straightening, not shape-seeking (2026-07-12)
+
+    func testOpenCurveEntropyDisabledLeavesUnchanged() {
+        let curve = makeZigzagOpenCurve()
+        let pass = DissolutionParams()
+        let result = DissolutionEngine.apply(polygons: [curve], passes: [pass], elapsedFrames: 50, targetFPS: 30, spriteIndex: 0)
+        XCTAssertEqual(result, [curve])
+    }
+
+    func testOpenCurveEntropyEndpointsAreFixedPoints() {
+        // The curve's own two true endpoints always map to themselves (target_0
+        // == first, target_n == last), for any rate/frame/bow — they anchor the
+        // straight line everything else migrates toward, so they can't move.
+        let curve = makeZigzagOpenCurve()
+        var pass = DissolutionParams()
+        pass.entropyEnabled = true
+        pass.entropyRate = 0.5
+
+        let result = DissolutionEngine.apply(polygons: [curve], passes: [pass], elapsedFrames: 3, targetFPS: 30, spriteIndex: 0)[0]
+        XCTAssertEqual(result.points[0], curve.points[0], "start anchor must be a fixed point")
+        XCTAssertEqual(result.points[7], curve.points[7], "end anchor must be a fixed point")
+    }
+
+    func testOpenCurveEntropySingleSegmentRelaxesCurvatureExactly() {
+        // n=1: no interior anchor to migrate (the curve's "straight line" already
+        // passes through exactly its own 2 anchors), so this isolates the
+        // curvature-relaxation step in isolation with a hand-computable exact
+        // result: control points lerp toward their segment's own chord by
+        // exactly `factor`, with no anchor drag involved at all.
+        let a0 = Vector2D(x: 0, y: 0), a1 = Vector2D(x: 2, y: 0)
+        let curve = Polygon2D(points: bowedSegment(a0, a1, bow: 0.3), type: .openSpline)
+
+        var pass = DissolutionParams()
+        pass.entropyEnabled = true
+        pass.entropyRate = 0.5 // entropyFactor(rate: 0.5, frames: 1) == 0.5 exactly
+
+        let result = DissolutionEngine.apply(polygons: [curve], passes: [pass], elapsedFrames: 1, targetFPS: 30, spriteIndex: 0)[0]
+
+        XCTAssertEqual(result.points[0], a0, "endpoints never move")
+        XCTAssertEqual(result.points[3], a1, "endpoints never move")
+
+        let chordCp1 = Vector2D.lerp(a0, a1, t: 1.0 / 3.0)
+        let chordCp2 = Vector2D.lerp(a0, a1, t: 2.0 / 3.0)
+        let expectedCp1 = Vector2D.lerp(curve.points[1], chordCp1, t: 0.5)
+        let expectedCp2 = Vector2D.lerp(curve.points[2], chordCp2, t: 0.5)
+        XCTAssertEqual(result.points[1].distance(to: expectedCp1), 0, accuracy: 1e-9)
+        XCTAssertEqual(result.points[2].distance(to: expectedCp2), 0, accuracy: 1e-9)
+    }
+
+    func testOpenCurveEntropyMiddleAnchorWeightedByChordLengthNotIndex() {
+        // Unevenly-spaced anchors: a1 sits much closer (by chord length) to a0
+        // than to a2. Arc-length weighting must place its target well off the
+        // curve's own 50%-by-index point — proves the chord-length weighting is
+        // actually being used, not a naive `i/n` split.
+        let a0 = Vector2D(x: 0, y: 0), a1 = Vector2D(x: 1, y: 1), a2 = Vector2D(x: 4, y: 0)
+        let curve = Polygon2D(points: bowedSegment(a0, a1, bow: 0) + bowedSegment(a1, a2, bow: 0), type: .openSpline)
+
+        var pass = DissolutionParams()
+        pass.entropyEnabled = true
+        pass.entropyRate = 0.5 // factor == 0.5 exactly at frame 1
+
+        let result = DissolutionEngine.apply(polygons: [curve], passes: [pass], elapsedFrames: 1, targetFPS: 30, spriteIndex: 0)[0]
+
+        let d01 = a0.distance(to: a1), d12 = a1.distance(to: a2)
+        let t1  = d01 / (d01 + d12)
+        let target1 = Vector2D.lerp(a0, a2, t: t1)
+        let expectedA1 = Vector2D.lerp(a1, target1, t: 0.5)
+
+        // Middle anchor is shared: segment 0's end (points[3]) and segment 1's
+        // start (points[4]).
+        XCTAssertEqual(result.points[3].distance(to: expectedA1), 0, accuracy: 1e-9)
+        XCTAssertEqual(result.points[4].distance(to: expectedA1), 0, accuracy: 1e-9)
+
+        // Sanity: the naive index-based 50% point is a materially different
+        // location, so this genuinely distinguishes the two weightings.
+        let indexBasedTarget = Vector2D.lerp(a0, a2, t: 0.5)
+        XCTAssertGreaterThan(target1.distance(to: indexBasedTarget), 0.1)
+    }
+
+    func testOpenCurveEntropyHighFactorNearlyStraightensCompletely() {
+        let curve = makeZigzagOpenCurve()
+        var pass = DissolutionParams()
+        pass.entropyEnabled = true
+        pass.entropyRate = 0.5 // max allowed rate; factor -> 1 as frames grow
+
+        let result = DissolutionEngine.apply(polygons: [curve], passes: [pass], elapsedFrames: 50, targetFPS: 30, spriteIndex: 0)[0]
+
+        let first = result.points[0], last = result.points[7]
+        let dx = last.x - first.x, dy = last.y - first.y
+        let len = (dx * dx + dy * dy).squareRoot()
+        for p in result.points {
+            // Perpendicular distance from p to the first→last line.
+            let perp = abs((p.x - first.x) * dy - (p.y - first.y) * dx) / len
+            XCTAssertLessThan(perp, 1e-4, "every point should sit almost exactly on the endpoint line once nearly fully entropied")
+        }
+    }
+
+    // MARK: - entropyScaleDelta: generalized to both .spline and .openSpline (2026-07-12)
+
+    func testEntropyScaleDeltaDefaultIsNoOpRegression() {
+        let square = makeSquare()
+        var withDefault = DissolutionParams()
+        withDefault.entropyEnabled = true
+        withDefault.entropyRate = 0.5
+        withDefault.entropyTarget = .centroid
+        // entropyScaleDelta left at its 0.0 default.
+        var explicitZero = withDefault
+        explicitZero.entropyScaleDelta = 0.0
+
+        let a = DissolutionEngine.apply(polygons: [square], passes: [withDefault], elapsedFrames: 3, targetFPS: 30, spriteIndex: 0)
+        let b = DissolutionEngine.apply(polygons: [square], passes: [explicitZero], elapsedFrames: 3, targetFPS: 30, spriteIndex: 0)
+        XCTAssertEqual(a, b)
+    }
+
+    func testEntropyScaleDeltaShrinksClosedSplineAdditionally() {
+        let square = makeSquare()
+        var withoutScale = DissolutionParams()
+        withoutScale.entropyEnabled = true
+        withoutScale.entropyRate = 0.5
+        withoutScale.entropyTarget = .centroid
+
+        var withScale = withoutScale
+        withScale.entropyScaleDelta = -0.5
+
+        let base   = DissolutionEngine.apply(polygons: [square], passes: [withoutScale], elapsedFrames: 1, targetFPS: 30, spriteIndex: 0)[0]
+        let scaled = DissolutionEngine.apply(polygons: [square], passes: [withScale],    elapsedFrames: 1, targetFPS: 30, spriteIndex: 0)[0]
+
+        let c = BezierMath.centreSpline(square.points)
+        let factor = 0.5 // entropyFactor(rate: 0.5, frames: 1)
+        let expectedScale = 1.0 + factor * (-0.5)
+        for (basePt, scaledPt) in zip(base.points, scaled.points) {
+            let expected = c + (basePt - c) * expectedScale
+            XCTAssertEqual(scaledPt.distance(to: expected), 0, accuracy: 1e-9)
+        }
+    }
+
+    func testEntropyScaleDeltaGrowsOpenCurveAdditionally() {
+        let curve = makeZigzagOpenCurve()
+        var withoutScale = DissolutionParams()
+        withoutScale.entropyEnabled = true
+        withoutScale.entropyRate = 0.5
+
+        var withScale = withoutScale
+        withScale.entropyScaleDelta = 1.0 // grows
+
+        let base   = DissolutionEngine.apply(polygons: [curve], passes: [withoutScale], elapsedFrames: 1, targetFPS: 30, spriteIndex: 0)[0]
+        let scaled = DissolutionEngine.apply(polygons: [curve], passes: [withScale],    elapsedFrames: 1, targetFPS: 30, spriteIndex: 0)[0]
+
+        let c = BezierMath.centreSpline(curve.points)
+        let factor = 0.5
+        let expectedScale = 1.0 + factor * 1.0
+        for (basePt, scaledPt) in zip(base.points, scaled.points) {
+            let expected = c + (basePt - c) * expectedScale
+            XCTAssertEqual(scaledPt.distance(to: expected), 0, accuracy: 1e-9)
+        }
     }
 }

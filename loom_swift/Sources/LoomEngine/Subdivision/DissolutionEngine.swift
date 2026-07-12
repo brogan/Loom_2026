@@ -94,7 +94,7 @@ public enum DissolutionEngine {
                                  noise: pass.entropyNoise, seed: pass.entropySeed,
                                  spriteIndex: spriteIndex, frames: effectiveFrames,
                                  anchor: pass.contractionAnchor, anchorSeed: pass.dissolutionSeed,
-                                 polygonIndex: idx)
+                                 polygonIndex: idx, scaleDelta: pass.entropyScaleDelta)
                 }
             }
         }
@@ -162,13 +162,22 @@ public enum DissolutionEngine {
         frames:         Double,
         anchor:         ContractionAnchor,
         anchorSeed:     Int,
-        polygonIndex:   Int
+        polygonIndex:   Int,
+        scaleDelta:     Double
     ) -> Polygon2D {
         switch poly.type {
         case .spline:
             return applyEntropySpline(poly, factor: factor, target: target,
                                       noise: noise, seed: seed,
-                                      spriteIndex: spriteIndex, frames: frames)
+                                      spriteIndex: spriteIndex, frames: frames,
+                                      scaleDelta: scaleDelta)
+        case .openSpline:
+            // Open curves have no interior to seek a shape target toward — none
+            // of centroid/smoothed/circle mean anything for a curve with two
+            // distinct ends, so `target` is ignored here (2026-07-12): entropy on
+            // an open curve always means losing complexity — straightening —
+            // rather than seeking a target shape.
+            return applyEntropyOpenCurve(poly, factor: factor, scaleDelta: scaleDelta)
         default:
             // For non-spline types, use simple uniform shrink toward the contraction anchor.
             let c = anchorPoint(for: poly, anchor: anchor, seed: anchorSeed, polygonIndex: polygonIndex)
@@ -183,7 +192,8 @@ public enum DissolutionEngine {
         noise:        Double,
         seed:         Int,
         spriteIndex:  Int,
-        frames:       Double
+        frames:       Double,
+        scaleDelta:   Double
     ) -> Polygon2D {
         let pts = poly.points
         let n   = pts.count / 4
@@ -251,10 +261,100 @@ public enum DissolutionEngine {
             newPts[base + 2] = Vector2D(x: pts[base+2].x + d1.x, y: pts[base+2].y + d1.y)
             newPts[base + 3] = Vector2D(x: pts[base+3].x + d1.x, y: pts[base+3].y + d1.y)
         }
-        return Polygon2D(points: newPts, type: poly.type,
-                         pressures: poly.pressures,
-                         pressureProfiles: poly.pressureProfiles,
-                         visible: poly.visible)
+        let result = Polygon2D(points: newPts, type: poly.type,
+                               pressures: poly.pressures,
+                               pressureProfiles: poly.pressureProfiles,
+                               visible: poly.visible)
+        guard abs(scaleDelta) > 1e-12 else { return result }
+        return result.scaled(by: 1.0 + factor * scaleDelta, around: c)
+    }
+
+    /// Open-curve entropy (2026-07-12): "losing complexity" rather than seeking a
+    /// shape target — reuses the exact same `factor` temporal ramp as `.spline`
+    /// entropy, but relaxes toward straightness instead of a target shape. Two
+    /// combined, purely position-based relaxations (deliberately not point
+    /// removal — Dissolution is stateless and independently seekable at any
+    /// frame; discretely dropping anchors at some threshold would break that and
+    /// pop rather than continuously relax):
+    ///   1. Anchors migrate toward the straight line between the curve's own two
+    ///      endpoints, weighted by cumulative chord length (a fast O(n)
+    ///      arc-length approximation — no per-segment Bezier arc-length
+    ///      integration — so evenly-spaced-looking anchors end up evenly spaced
+    ///      on the line rather than bunching by raw index count). Handles follow
+    ///      their anchor rigidly, same "drag, don't recompute" technique
+    ///      `applyEntropySpline` already uses, so this alone preserves each
+    ///      segment's own relative bow while the anchor cluster straightens.
+    ///   2. Each segment's own control points additionally relax toward that
+    ///      segment's own (post-step-1) chord — this is what actually removes
+    ///      bow/curvature, since step 1 alone is a rigid drag that doesn't change
+    ///      a segment's shape relative to its own anchors.
+    private static func applyEntropyOpenCurve(
+        _ poly:       Polygon2D,
+        factor:       Double,
+        scaleDelta:   Double
+    ) -> Polygon2D {
+        let pts = poly.points
+        let n   = pts.count / 4
+        guard n > 0 else { return poly }
+
+        // n+1 anchors for n segments: segment starts (0, 4, …) plus the curve's
+        // own true final endpoint (last segment's end anchor).
+        var anchors = (0 ..< n).map { pts[$0 * 4] }
+        anchors.append(pts[(n - 1) * 4 + 3])
+
+        let first = anchors[0], last = anchors[n]
+
+        // Cumulative chord length per anchor, normalized to [0, 1] — a cheap
+        // proxy for arc length (straight-line distance between anchors, not true
+        // Bezier arc length, which would need per-segment numerical integration
+        // for no real visual benefit here).
+        var cumulative: [Double] = [0]
+        cumulative.reserveCapacity(n + 1)
+        var total = 0.0
+        for i in 1...n {
+            total += anchors[i].distance(to: anchors[i - 1])
+            cumulative.append(total)
+        }
+        let ts: [Double] = total > 1e-9 ? cumulative.map { $0 / total }
+                                        : (0...n).map { Double($0) / Double(n) }
+
+        let deltas: [Vector2D] = (0...n).map { i in
+            let target = Vector2D.lerp(first, last, t: ts[i])
+            return Vector2D(x: (target.x - anchors[i].x) * factor,
+                            y: (target.y - anchors[i].y) * factor)
+        }
+
+        // Step 1: drag anchors + their own adjacent handles rigidly (no modulo —
+        // open, not a ring).
+        var newPts = pts
+        for k in 0 ..< n {
+            let d0 = deltas[k], d1 = deltas[k + 1]
+            let base = k * 4
+            newPts[base + 0] = pts[base + 0] + d0
+            newPts[base + 1] = pts[base + 1] + d0
+            newPts[base + 2] = pts[base + 2] + d1
+            newPts[base + 3] = pts[base + 3] + d1
+        }
+
+        // Step 2: relax each segment's own control points toward its own
+        // (already-dragged) chord — removes bow that step 1's rigid drag alone
+        // leaves untouched.
+        for k in 0 ..< n {
+            let base = k * 4
+            let a0 = newPts[base + 0], a1 = newPts[base + 3]
+            let chordCp1 = Vector2D.lerp(a0, a1, t: 1.0 / 3.0)
+            let chordCp2 = Vector2D.lerp(a0, a1, t: 2.0 / 3.0)
+            newPts[base + 1] = Vector2D.lerp(newPts[base + 1], chordCp1, t: factor)
+            newPts[base + 2] = Vector2D.lerp(newPts[base + 2], chordCp2, t: factor)
+        }
+
+        let result = Polygon2D(points: newPts, type: poly.type,
+                               pressures: poly.pressures,
+                               pressureProfiles: poly.pressureProfiles,
+                               visible: poly.visible)
+        guard abs(scaleDelta) > 1e-12 else { return result }
+        let c = BezierMath.centreSpline(pts)
+        return result.scaled(by: 1.0 + factor * scaleDelta, around: c)
     }
 
     // MARK: - Contraction anchor

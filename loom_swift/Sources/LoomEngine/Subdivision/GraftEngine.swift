@@ -44,19 +44,41 @@ enum GraftEngine {
     /// interoperate with `GenerationalEvolutionEngine.applyGeneration`'s own
     /// `cycleBase` numbering (that wiring is step 2, once there's an attachment
     /// mode to place the result with).
+    /// `customPrimitives` is a name→shape lookup built once per frame from the
+    /// project's own saved polygon/curve set library (2026-07-12) — the same
+    /// storage a sprite's own base geometry uses. Empty by default so every
+    /// existing call site (and every test) is unaffected; only consulted at
+    /// all when `params.graftPrimitiveSource == .customSet`.
     static func generatePrimitive(
         seed:     Int,
         rollBase: Int,
-        params:   EvolutionParams
+        params:   EvolutionParams,
+        customPrimitives: [String: Polygon2D] = [:]
     ) -> GeneratedPrimitive {
-        let sidesLo = min(params.graftSidesMin, params.graftSidesMax)
-        let sidesHi = max(params.graftSidesMin, params.graftSidesMax)
-        let sidesRoll = SubdivisionEngine.centreHash(seed: seed, cycle: rollBase + 0)
-        let sides = max(1, sidesLo + Int(sidesRoll * Double(sidesHi - sidesLo + 1)))
+        let base: Polygon2D
+        let sides: Int
 
-        let base: Polygon2D = sides <= 2
-            ? AssemblyPrimitiveKit.generate(.line)
-            : AssemblyPrimitiveKit.plainPolygon(sides: sides)
+        if params.graftPrimitiveSource == .customSet,
+           case let resolvedNames = params.graftCustomSetNames.filter({ customPrimitives[$0] != nil }),
+           !resolvedNames.isEmpty {
+            // Same roll slot (`rollBase + 0`) the generated-n-gon path below
+            // would use for its own sides roll — the two paths are mutually
+            // exclusive per call (this branch only runs instead of that one,
+            // never alongside it), so reusing the slot can't collide with
+            // anything. Names that don't resolve to a saved shape (typo,
+            // deleted shape) are already filtered out above, so this only
+            // ever picks among names that actually exist.
+            let pickRoll = SubdivisionEngine.centreHash(seed: seed, cycle: rollBase + 0)
+            let idx = min(resolvedNames.count - 1, Int(pickRoll * Double(resolvedNames.count)))
+            let custom = customPrimitives[resolvedNames[idx]]!
+            base = custom
+            sides = custom.points.count / 4
+        } else {
+            // `.generated` (default), or `.customSet` with no name resolving to
+            // an actual saved shape — falls back here rather than producing no
+            // graft at all.
+            (base, sides) = generatedNGon(seed: seed, rollBase: rollBase, params: params)
+        }
 
         let distLo = min(params.graftDistortionMin, params.graftDistortionMax)
         let distHi = max(params.graftDistortionMin, params.graftDistortionMax)
@@ -83,5 +105,25 @@ enum GraftEngine {
 
         let piece = AssemblyPrimitiveKit.deformed(base, scaleX: scale * sx, scaleY: scale * sy)
         return GeneratedPrimitive(piece: piece, sides: sides)
+    }
+
+    /// The original (`.generated`) primitive: RPSR-sampled `n`, degenerating to
+    /// `AssemblyPrimitiveKit`'s `.line` kind for `n≤2` — extracted unchanged out
+    /// of `generatePrimitive` so `.customSet` can share the same function
+    /// signature/fallback path without duplicating this roll.
+    private static func generatedNGon(
+        seed:     Int,
+        rollBase: Int,
+        params:   EvolutionParams
+    ) -> (Polygon2D, Int) {
+        let sidesLo = min(params.graftSidesMin, params.graftSidesMax)
+        let sidesHi = max(params.graftSidesMin, params.graftSidesMax)
+        let sidesRoll = SubdivisionEngine.centreHash(seed: seed, cycle: rollBase + 0)
+        let sides = max(1, sidesLo + Int(sidesRoll * Double(sidesHi - sidesLo + 1)))
+
+        let base: Polygon2D = sides <= 2
+            ? AssemblyPrimitiveKit.generate(.line)
+            : AssemblyPrimitiveKit.plainPolygon(sides: sides)
+        return (base, sides)
     }
 }

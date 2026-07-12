@@ -68,8 +68,12 @@ final class RenderSurfaceNSView: NSView {
 
     // Shared serial queue: all preview surfaces serialize engine mutation and
     // CGImage production, including during tab switches while an old surface may
-    // still be finishing an in-flight render.
-    private static let sharedRenderQueue = DispatchQueue(label: "com.loom.render", qos: .userInteractive)
+    // still be finishing an in-flight render. Internal (not private) so one-shot
+    // engine access from elsewhere (e.g. `AppController.saveStill`/`saveSVG`) can
+    // synchronize with it too — `Engine`/`LoomEngine` are explicitly not
+    // thread-safe, so any direct `engine.makeFrame()` off this queue races
+    // whatever in-flight render this queue is running.
+    static let sharedRenderQueue = DispatchQueue(label: "com.loom.render", qos: .userInteractive)
     private var renderQueue: DispatchQueue { Self.sharedRenderQueue }
 
     // Main-thread only below this line ↓

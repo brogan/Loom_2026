@@ -286,18 +286,36 @@ struct EvolutionInspector: View {
     private var graftOperatorSection: some View {
         let mode = bindEV(\.graftAttachmentMode).wrappedValue
 
+        let source = bindEV(\.graftPrimitiveSource).wrappedValue
+
         return InspectorSection("Graft", isCollapsed: $graftOpCollapsed) {
             InspectorField("Weight") {
                 FloatEntryField(value: bindEV(\.graftWeight), width: 60)
             }
             .loomHelp("Relative selection weight for the graft operator each generation, alongside Extrude/Split's own weights above. 0 (default) excludes Graft entirely.")
 
-            InspectorField("Sides") {
-                FloatEntryField(value: intAsDoubleBinding(\.graftSidesMin), width: 40, fractionDigits: 0)
-                Text("–").foregroundStyle(.secondary)
-                FloatEntryField(value: intAsDoubleBinding(\.graftSidesMax), width: 40, fractionDigits: 0)
+            InspectorField("Source") {
+                Picker("", selection: bindEV(\.graftPrimitiveSource)) {
+                    ForEach(GraftPrimitiveSource.allCases, id: \.self) { s in
+                        Text(s.rawValue).tag(s)
+                    }
+                }
+                .labelsHidden()
+                .pickerStyle(.segmented)
+                .frame(maxWidth: 160)
             }
-            .loomHelp("Number of sides `n` of the primitive grafted on each generation, resampled from this range (RPSR). n≤2 degenerates to a bare line (no meaningful 2-sided polygon) — n=1 is a line by design, the most basic \"polygon.\" n≥3 is a plain regular n-gon; unlike Assembly Fulguration's fixed square/triangle/pentagon kit, any n is reachable.")
+            .loomHelp("Generated (default): an RPSR-sampled n-gon/line, per Sides below. Custom Set: a user-drawn shape from Custom Shapes below instead — the same polygon/curve set library a sprite's own base geometry uses. Scale, Distortion, Edge Matching, and Attachment all still apply either way.")
+
+            if source == .customSet {
+                graftCustomShapesEditor
+            } else {
+                InspectorField("Sides") {
+                    FloatEntryField(value: intAsDoubleBinding(\.graftSidesMin), width: 40, fractionDigits: 0)
+                    Text("–").foregroundStyle(.secondary)
+                    FloatEntryField(value: intAsDoubleBinding(\.graftSidesMax), width: 40, fractionDigits: 0)
+                }
+                .loomHelp("Number of sides `n` of the primitive grafted on each generation, resampled from this range (RPSR). n≤2 degenerates to a bare line (no meaningful 2-sided polygon) — n=1 is a line by design, the most basic \"polygon.\" n≥3 is a plain regular n-gon; unlike Assembly Fulguration's fixed square/triangle/pentagon kit, any n is reachable.")
+            }
 
             InspectorField("Scale") {
                 FloatEntryField(value: bindEV(\.graftScaleMin), width: 50)
@@ -410,6 +428,59 @@ struct EvolutionInspector: View {
             }
             .loomHelp("Displacement magnitude per joint, canvas-normalized units, perpendicular to the edge's own local direction, resampled per joint (RPSR).")
         }
+    }
+
+    /// One or more named saved shapes eligible as Graft's base primitive when
+    /// Source is Custom Set (2026-07-12) — same list-editor pattern
+    /// `SpritesInspector`'s Morph Targets section already uses. One entry
+    /// always uses that shape; several give each graft instance a rotating
+    /// cast, picked at random per instance. A name with no matching saved
+    /// shape is simply skipped, falling back to Generated if none resolve.
+    @ViewBuilder
+    private var graftCustomShapesEditor: some View {
+        let options = (controller.projectConfig?.polygonConfig.library.polygonSets.map(\.name) ?? [])
+            + (controller.projectConfig?.curveConfig.library.curveSets.map(\.name) ?? [])
+        let namesBinding = bindEV(\.graftCustomSetNames)
+
+        ForEach(namesBinding.wrappedValue.indices, id: \.self) { i in
+            InspectorField("Shape \(i + 1)") {
+                Picker("", selection: Binding(
+                    get: { namesBinding.wrappedValue[safe: i] ?? "" },
+                    set: { newVal in
+                        var arr = namesBinding.wrappedValue
+                        if i < arr.count { arr[i] = newVal }
+                        namesBinding.wrappedValue = arr
+                    }
+                )) {
+                    if options.isEmpty {
+                        Text("(no saved shapes)").tag("")
+                    }
+                    ForEach(options, id: \.self) { Text($0).tag($0) }
+                }
+                .labelsHidden()
+                .frame(maxWidth: 150)
+                Button {
+                    var arr = namesBinding.wrappedValue
+                    arr.remove(at: i)
+                    namesBinding.wrappedValue = arr
+                } label: {
+                    Image(systemName: "minus.circle").font(.system(size: 11))
+                        .frame(width: 22, height: 22)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain).foregroundStyle(.secondary)
+            }
+            .loomHelp("Saved polygon/curve sets eligible as Graft's base shape — the same library a sprite's own base geometry is drawn from. One shape always uses it; several give each graft a rotating cast, chosen at random per instance. A name with no matching saved shape falls back to Generated.")
+        }
+        Button {
+            var arr = namesBinding.wrappedValue
+            arr.append(options.first(where: { !arr.contains($0) }) ?? "")
+            namesBinding.wrappedValue = arr
+        } label: {
+            Label("Add shape", systemImage: "plus").font(.system(size: 11))
+        }
+        .buttonStyle(.plain).foregroundStyle(.secondary)
+        .disabled(options.isEmpty)
     }
 
     private var departureAngleMinDegrees: Binding<Double> {

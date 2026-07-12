@@ -174,4 +174,105 @@ final class GraftEngineTests: XCTestCase {
         let b = GraftEngine.generatePrimitive(seed: 42, rollBase: 8, params: p)
         XCTAssertNotEqual(a, b)
     }
+
+    // MARK: - Custom primitive source (2026-07-12)
+
+    private func customShape() -> Polygon2D {
+        // An irregular closed shape — deliberately not a plain n-gon, to prove
+        // the pipeline is using the *provided* shape rather than coincidentally
+        // matching a generated one.
+        Polygon2D(points: [
+            Vector2D(x: 0, y: 0), Vector2D(x: 0.1, y: 0), Vector2D(x: 0.2, y: 0.05), Vector2D(x: 0.3, y: 0.1),
+            Vector2D(x: 0.35, y: 0.15), Vector2D(x: 0.4, y: 0.3), Vector2D(x: 0.2, y: 0.4), Vector2D(x: 0.1, y: 0.35),
+            Vector2D(x: -0.1, y: 0.3), Vector2D(x: -0.15, y: 0.2), Vector2D(x: -0.1, y: 0.1), Vector2D(x: -0.05, y: 0.05),
+        ], type: .spline)
+    }
+
+    private func customParams(names: [String]) -> EvolutionParams {
+        var p = EvolutionParams()
+        p.graftPrimitiveSource = .customSet
+        p.graftCustomSetNames = names
+        return p
+    }
+
+    func testCustomSetSourceUsesTheProvidedShapeVerbatimWhenNeutral() {
+        let shape = customShape()
+        let p = customParams(names: ["mine"])
+        let result = GraftEngine.generatePrimitive(seed: 1, rollBase: 0, params: p, customPrimitives: ["mine": shape])
+        // Scale/distortion default to 1–1 (neutral), so the piece should be the
+        // custom shape exactly, not a generated n-gon.
+        XCTAssertEqual(result.piece, shape)
+        XCTAssertEqual(result.sides, shape.points.count / 4)
+    }
+
+    func testCustomSetSourceStillAppliesScaleAndDistortion() {
+        let shape = customShape()
+        var p = customParams(names: ["mine"])
+        p.graftScaleMin = 2.0
+        p.graftScaleMax = 2.0
+        let result = GraftEngine.generatePrimitive(seed: 1, rollBase: 0, params: p, customPrimitives: ["mine": shape])
+        for (orig, scaled) in zip(shape.points, result.piece.points) {
+            XCTAssertEqual(scaled.x, orig.x * 2.0, accuracy: 1e-9)
+            XCTAssertEqual(scaled.y, orig.y * 2.0, accuracy: 1e-9)
+        }
+    }
+
+    func testCustomSetSourceFallsBackToGeneratedWhenNoNameResolves() {
+        let p = customParams(names: ["doesNotExist"])
+        let withCustom = GraftEngine.generatePrimitive(seed: 5, rollBase: 0, params: p, customPrimitives: [:])
+
+        var generatedEquivalent = p
+        generatedEquivalent.graftPrimitiveSource = .generated
+        let expected = GraftEngine.generatePrimitive(seed: 5, rollBase: 0, params: generatedEquivalent)
+
+        XCTAssertEqual(withCustom, expected, "an unresolved name must fall back to exactly the .generated result")
+    }
+
+    func testCustomSetSourceHasNoEffectWhenSourceIsGenerated() {
+        // Regression: graftCustomSetNames populated but graftPrimitiveSource left
+        // at its .generated default must be a complete no-op.
+        var p = EvolutionParams()
+        p.graftCustomSetNames = ["mine"]
+        let withNames = GraftEngine.generatePrimitive(seed: 3, rollBase: 0, params: p, customPrimitives: ["mine": customShape()])
+
+        let withoutNames = GraftEngine.generatePrimitive(seed: 3, rollBase: 0, params: EvolutionParams())
+        XCTAssertEqual(withNames, withoutNames)
+    }
+
+    func testCustomSetSourcePicksAmongMultipleNamesWithVariety() {
+        let shapeA = Polygon2D(points: [Vector2D(x: 0, y: 0), Vector2D(x: 0.1, y: 0), Vector2D(x: 0.1, y: 0.1), Vector2D(x: 0, y: 0.1)], type: .spline)
+        let shapeB = Polygon2D(points: [Vector2D(x: 0, y: 0), Vector2D(x: 0.2, y: 0), Vector2D(x: 0.1, y: 0.2)], type: .spline)
+        let p = customParams(names: ["a", "b"])
+        let primitives = ["a": shapeA, "b": shapeB]
+
+        var seenSideCounts = Set<Int>()
+        for seed in 0..<20 {
+            let result = GraftEngine.generatePrimitive(seed: seed, rollBase: 0, params: p, customPrimitives: primitives)
+            XCTAssertTrue(result.sides == shapeA.points.count / 4 || result.sides == shapeB.points.count / 4,
+                          "seed \(seed): must pick one of the two provided shapes")
+            seenSideCounts.insert(result.sides)
+        }
+        XCTAssertEqual(seenSideCounts.count, 2, "across enough seeds, both shapes should get picked at least once")
+    }
+
+    func testCustomSetSourceOnlyPicksAmongNamesThatActuallyResolve() {
+        // "missing" never resolves; only "mine" should ever be picked, regardless
+        // of which name the roll would have landed on.
+        let shape = customShape()
+        let p = customParams(names: ["missing", "mine"])
+        for seed in 0..<20 {
+            let result = GraftEngine.generatePrimitive(seed: seed, rollBase: 0, params: p, customPrimitives: ["mine": shape])
+            XCTAssertEqual(result.sides, shape.points.count / 4, "seed \(seed)")
+        }
+    }
+
+    func testCustomSetSourceIsDeterministic() {
+        let shapeA = Polygon2D(points: [Vector2D(x: 0, y: 0), Vector2D(x: 0.1, y: 0), Vector2D(x: 0.1, y: 0.1), Vector2D(x: 0, y: 0.1)], type: .spline)
+        let shapeB = Polygon2D(points: [Vector2D(x: 0, y: 0), Vector2D(x: 0.2, y: 0), Vector2D(x: 0.1, y: 0.2)], type: .spline)
+        let p = customParams(names: ["a", "b"])
+        let primitives = ["a": shapeA, "b": shapeB]
+        let a = GraftEngine.generatePrimitive(seed: 9, rollBase: 3, params: p, customPrimitives: primitives)
+        let b = GraftEngine.generatePrimitive(seed: 9, rollBase: 3, params: p, customPrimitives: primitives)
+        XCTAssertEqual(a, b)
+    }
 }

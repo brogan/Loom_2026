@@ -37,7 +37,9 @@ public enum AttachmentSiteExtractor {
             return lineEdgeSites(polygon)
         case .openSpline:
             return openSplineEndpointSites(polygon)
-        case .spline, .point, .oval:
+        case .spline:
+            return splineEdgeSites(polygon)
+        case .point, .oval:
             return []
         }
     }
@@ -60,6 +62,40 @@ public enum AttachmentSiteExtractor {
             let dir = (b - a).normalized()
             guard dir != .zero else { continue }
             // Perpendicular to the edge, oriented away from the polygon's own centroid.
+            var normal = Vector2D(x: -dir.y, y: dir.x)
+            if normal.dot(mid - centre) < 0 { normal = -normal }
+            sites.append(AttachmentSite(point: mid, direction: dir, outward: normal, length: a.distance(to: b)))
+        }
+        return sites
+    }
+
+    // MARK: - .spline (closed, curved — user-drawn shapes, 2026-07-12)
+
+    /// One site per segment, same edge-midpoint/direction/outward math as
+    /// `lineEdgeSites` above, but walking anchor points (every 4th point, the
+    /// segment starts) instead of raw vertices, and using each segment's own
+    /// anchor-to-anchor chord as "the edge" — bow is deliberately ignored for
+    /// attachment purposes, the same convention `ExtensionEngine.outwardNormal`
+    /// already uses for `.spline` segments elsewhere. Centroid via
+    /// `BezierMath.centreSpline` (an anchor-only average) rather than
+    /// `Polygon2D.centroid` (which would average in the bezier control points
+    /// too, pulling it off-centre for a bowed shape).
+    private static func splineEdgeSites(_ polygon: Polygon2D) -> [AttachmentSite] {
+        let pts = polygon.points
+        let n = pts.count / 4
+        guard n >= 1, pts.count % 4 == 0 else { return [] }
+
+        let anchors = (0..<n).map { pts[$0 * 4] }
+        let centre = BezierMath.centreSpline(pts)
+        var sites: [AttachmentSite] = []
+        sites.reserveCapacity(n)
+
+        for i in 0..<n {
+            let a = anchors[i]
+            let b = anchors[(i + 1) % n]
+            let mid = Vector2D(x: (a.x + b.x) / 2, y: (a.y + b.y) / 2)
+            let dir = (b - a).normalized()
+            guard dir != .zero else { continue }
             var normal = Vector2D(x: -dir.y, y: dir.x)
             if normal.dot(mid - centre) < 0 { normal = -normal }
             sites.append(AttachmentSite(point: mid, direction: dir, outward: normal, length: a.distance(to: b)))

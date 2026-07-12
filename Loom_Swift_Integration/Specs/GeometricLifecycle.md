@@ -769,7 +769,13 @@ today:
   implementation-time choice, leaning toward extending the existing enum if the
   shapes turn out to match cleanly.
 - **`graftArticulationAmountMin/Max: Double`** — displacement magnitude per joint,
-  canvas-normalized units, perpendicular to the edge's own local direction.
+  as a fraction of the edge's own length (same edge-relative convention as
+  `graftEdgeCurvatureAmountMin/Max` above, `bow = amount * edgeLength`) rather than
+  an absolute canvas-scale unit — **fixed 2026-07-11**: the first implementation
+  used a raw canvas-normalized magnitude independent of the piece's own scale,
+  which meant a graft scaled way down via `graftScaleMin/Max` still got
+  full-size articulation bumps, dwarfing the piece itself once revealed.
+  Perpendicular to the edge's own local direction, same as before.
 
 ##### 4.4.8.5 Fitness and selection (§4.4.3) becomes more valuable, not more required
 
@@ -1017,6 +1023,119 @@ ships, not a blocking dependency for Graft's own first version.
      final reveal-scale step) plus a determinism test. Full suite at 678
      tests, 0 failures; both `loom_swift` and `Loom_Swift_Integration` build
      clean.
+9. **Articulation amount made edge-relative (2026-07-11 follow-up, done).** Raised
+   directly by user report after step 8's Scale fix still left grafted geometry
+   too large on full reveal even with `graftScaleMin/Max` turned down and
+   `graftEdgeMatching` set to `.preserveSize` — a second, independent cause
+   stacked on top of step 8's original bug. `graftArticulationAmountMin/Max`
+   (§4.4.8.4) was specified and implemented as a raw canvas-normalized
+   displacement, with no dependency on the piece's own scale or edge length —
+   unlike `graftEdgeCurvatureAmountMin/Max` right next to it, which already used
+   `bow = amount * edgeLength`. A piece scaled down to 5–10% size via
+   `graftScaleMin/Max` still got full-size (canvas-scale) articulation joints,
+   dwarfing the piece once `applyRevealScale` finished tweening it in.
+   `articulatedSubSegments` (`GenerationalEvolutionEngine.swift`) now multiplies
+   the RPSR-sampled amount by the edge's own chord length before displacing each
+   joint, the same convention `curvedSegment`'s `bow` already used — so
+   articulation now shrinks along with `graftScaleMin/Max` instead of staying
+   fixed-size regardless of it. `EvolutionParams`'s doc comment for
+   `graftArticulationAmountMin/Max` updated to match. Existing tests were
+   unaffected (all used the default `graftScaleMin/Max = 1–1`, where edge length
+   is exactly 1 and the multiplication is a no-op); one new test
+   (`testGraftArticulationAmountIsEdgeLengthRelativeNotAbsolute`) fixes
+   `graftScaleMin/Max` to 0.2 and asserts the exact displaced-joint geometry
+   scales with it. Full suite at 681 tests, 0 failures; both `loom_swift` and
+   `Loom_Swift_Integration` build clean.
+10. **Custom primitive source — user-drawn shapes as Graft's base (2026-07-12,
+    done).** Raised directly by the user: instead of always synthesizing an
+    RPSR n-gon/line, let Graft pull a user-drawn shape from the project's
+    existing polygon/curve set library — the same storage a sprite's own base
+    geometry already uses. Discussed as a feasibility question first (is a new
+    restricted authoring tool needed?); traced through the actual code before
+    committing to a design, which surfaced two genuine gaps and one
+    non-requirement:
+    - **`AttachmentSiteExtractor` had no `.spline` case** — it returned `[]`
+      unconditionally for closed, curved (bezier-encoded) shapes, the format
+      the Geometry editor actually produces, meaning a user-drawn closed shape
+      could never be attached as a Graft piece at all before this. Added
+      `splineEdgeSites`, the same edge-midpoint/direction/outward math
+      `lineEdgeSites` already uses, but walking anchor points instead of raw
+      vertices (bow deliberately ignored for attachment purposes — the same
+      convention `ExtensionEngine.outwardNormal` already uses for `.spline`
+      segments elsewhere), with centroid via `BezierMath.centreSpline` (an
+      anchor-only average) rather than `Polygon2D.centroid` (which would pull
+      off-centre toward the bezier control points). User-drawn *open* curves
+      needed none of this — `.openSpline` sites were already fully generic.
+    - **`.wholeEdge`/`.partialEdge`'s `guard piece.type == .line` gate** (their
+      way of checking "does this piece have an edge-type site") needed
+      generalizing to `pieceSites.contains(where: { $0.length != nil })`, since
+      a `.spline` piece now exposes edge-type sites too but isn't `.line`.
+      Same fix applied to `applyGraftSinglePoint`'s `rootSiteIdx` computation,
+      which had the identical `piece.type == .line` check for a different
+      purpose (excluding the attached edge from curvature/articulation).
+    - **`applyGraftEdgeDetailing`'s type switch** silently no-op'd curvature/
+      articulation for a native `.spline` piece (it only recognized `.line`,
+      needing conversion, and `.openSpline`, already spline-encoded) — added
+      `.spline` alongside `.openSpline` as "already spline-encoded, no
+      conversion needed." `splineEdgeSites`' site ordering matches `.spline`'s
+      own segment ordering exactly, so `rootSiteIdx` (a site index) lines up
+      with `segIdx` (a segment index) with no extra bookkeeping.
+    - **Not a requirement, once traced through:** the reveal tween
+      (`applyRevealScale`) and the scale/distortion pipeline
+      (`AssemblyPrimitiveKit.deformed`) already operate generically on any
+      `Polygon2D` regardless of complexity or where it sits in canvas space —
+      scaling around an arbitrary pivot only translates the absolute result,
+      never the shape's own proportions, and `place()` re-anchors everything
+      relative to a site extracted *after* scaling regardless. So a hand-drawn
+      prototype reveals exactly as smoothly as a synthetic n-gon; no new
+      "simple enough to animate" constraint was needed, contrary to the
+      original worry that prompted the feasibility question.
+    - **`EvolutionParams` gained `graftPrimitiveSource`** (`GraftPrimitiveSource`:
+      `.generated` default/unchanged, `.customSet`) and
+      **`graftCustomSetNames: [String]`** (default empty) — a *list*, not a
+      single name, so variety comes from RPSR-picking an index into it (same
+      roll-slot convention as `graftSidesMin/Max`, and literally reusing that
+      slot, `rollBase + 0`, since the two paths are mutually exclusive per
+      call) rather than a new multi-shape-per-file format. A name with no
+      matching saved shape is filtered out before the roll; if none resolve,
+      falls back to `.generated` rather than producing no graft at all.
+    - **`GraftEngine.generatePrimitive`** gained a `customPrimitives: [String:
+      Polygon2D] = [:]` parameter — empty by default, so every existing call
+      site is unaffected. The original sides-roll/shape logic was extracted
+      unchanged into `generatedNGon`, now shared by both the `.generated` path
+      and `.customSet`'s no-name-resolves fallback.
+    - **The cache is loaded once per scene, not per frame.** New
+      `SpriteScene.loadGraftCustomPrimitives(config:projectDirectory:)`
+      (`public`, alongside the existing `allSubdivisionSets`/`allRendererSets`/
+      `allCycles` "load once at scene assembly" convention) resolves every
+      polygon set and open-curve set in the project to its first shape via
+      `loadBasePolygons` itself (a minimal synthetic `ShapeDef` per set — JSON
+      editable-geometry documents, XML files, and algorithmic regular polygons
+      all load identically to how a sprite's own base geometry already loads
+      them), keyed by name. Threaded as `customPrimitives` through
+      `GenerationalEvolutionEngine.process`'s two overloads → `applyGeneration`
+      → `applyGraft` → all three attachment-mode functions →
+      `GraftEngine.generatePrimitive`. `Loom_Swift_Integration`'s two bake/SVG-
+      export call sites (`SubdivisionTabView.swift`, which don't go through a
+      full `SpriteScene`) build the same cache via the now-public loader rather
+      than silently falling back to `.generated` for a `.customSet` pass.
+    - 16 new tests: `AttachmentSiteTests.swift` (new file) proves `.spline`
+      sites match `.line` sites for the same straight shape, ignore bow (use
+      the anchor chord only), point outward from the anchor-only centroid, and
+      that `.openSpline`/`.point`/`.oval` are unaffected by the addition;
+      `GraftEngineTests.swift` gained custom-source verbatim-shape,
+      scale/distortion-still-applies, unresolved-name-falls-back-to-generated,
+      no-effect-when-source-is-generated, multi-name RPSR variety, and
+      determinism coverage; `GenerationalEvolutionEngineTests.swift` gained an
+      end-to-end test proving a custom closed pentagon attaches via
+      `.wholeEdge` (impossible before the `.spline` site case existed) and a
+      no-effect regression for the `customPrimitives` parameter when
+      `graftPrimitiveSource` is left at `.generated`. `EvolutionInspector`'s
+      Graft section gained a Source picker and a Custom Shapes list editor
+      (same add/remove pattern `SpritesInspector`'s Morph Targets section
+      already uses), shown in place of Sides when Source is Custom Set. Full
+      `loom_swift` suite at 730 tests, 0 failures; both `loom_swift` and
+      `Loom_Swift_Integration` build clean.
 
 ---
 
@@ -2007,6 +2126,140 @@ further restricts `extrusionTarget`'s candidates by outward-normal direction —
 `ExtensionEngine.outwardNormal(of:segIdx:)`, reused by `extrudePolygon`, `extrudeEdge`,
 and the new filter.
 
+**Update (2026-07-12) — Branch anchor scope, Line geometry, and curvature.** Three
+requests, unified into one generalization rather than three separate features:
+- **`branchAnchorScope`** (`BranchAnchorScope`: `.endpointsOnly` default/unchanged,
+  `.anyAnchor`) widens the hardcoded 2-element `[startPos, endPos]` origin list into
+  every anchor point (`0...segCount`). Interior anchors reuse the same "outgoing
+  tangent" formula the start endpoint already used, just applied to their own
+  segment; the final anchor keeps the existing end-of-curve formula unchanged. The
+  existing 256-branch budget cap already guards the extra density — no new safety
+  mechanism needed.
+- **`branchGeometry`** (`BranchGeometry`: `.rootCopy` default/unchanged, `.line`) adds
+  a second branch shape alongside the existing scaled-copy-of-root: a single straight
+  (or bowed) line segment via new `lineBranch`. Recursion needed no new plumbing —
+  `branchPolygon`'s existing recursive call already passes the just-created branch
+  back in as the next `polygon`, so a `.line` branch's own sub-branches originate
+  from *its own* anchors for free. "Single line extension" (the simpler, non-branching
+  ask) is therefore not a fourth operation type — it's `branchGeometry = .line` with
+  `branchCount = 1, branchDepth = 1`, fields that already existed.
+- **`branchCurvatureAmountMin/Max`** (default 0.0/0.0, only meaningful when
+  `branchGeometry == .line`) bows the line's control points, `bow = amount * length`
+  — the same convention `extrusionCurvature`/Graft's `graftEdgeCurvatureAmountMin/Max`
+  already use. Deliberately *not* a none/fixed/random mode enum: Min == Max at 0
+  is none, Min == Max at a nonzero value is fixed, Min != Max is random — exactly
+  how every other amount-range field in this codebase already behaves, so no new
+  concept was needed.
+- **`branchLineLength`** is a `DoubleDriver` (default `.constant(0.2)`), not a plain
+  `Double` — evaluated once per `ExtensionEngine.process` call exactly like
+  `branchAngle`/`extrusionDistance` already are, so a `.line` branch can be driven to
+  unfold gradually (a ramp/oscillator grows it from 0 to full length over time)
+  instead of popping in at a fixed size every frame.
+- All four new fields default to values that reproduce prior behavior exactly —
+  existing saved projects are unaffected.
+- 9 new tests in `ExtensionEngineTests.swift`: anchor-scope regression (endpointsOnly
+  ≡ prior hardcoded behavior) and anyAnchor geometry-exact per-anchor coverage;
+  `.line` geometry exact endpoint/direction and a rootCopy-unaffected regression;
+  curvature none/fixed-exact/random-range-and-determinism; the line-length driver
+  actually changing rendered length across two `elapsedFrames` values (the "unfold
+  gradually" ask, checked directly rather than assumed); and a geometry-exact
+  enumeration of `.line`'s depth-2 recursion output. `ExtensionInspector` gained
+  Anchor Scope and Geometry segmented pickers in the Branch section, Curvature
+  Min/Max fields shown only when Geometry = Line, and a Line Length `DoubleDriverEditor`
+  section shown only when Geometry = Line (same conditional-field pattern
+  `EvolutionInspector` already uses for Graft's mode-specific fields). Full
+  `loom_swift` suite at 690 tests, 0 failures; both `loom_swift` and
+  `Loom_Swift_Integration` build clean.
+
+**Update (2026-07-12) — Extrude for open curves, per-edge tower heights, departure
+angle.** Raised directly by the user as the natural open-curve complement to
+closed-polygon Extrude, plus two enhancements applying to both:
+- **`extrudeOpenCurves: Bool`** (default `false`) — `extrudeSegment`'s geometry
+  (duplicate one edge's own points, preserving whatever curvature it has, then
+  wall-connect the endpoints into a new closed polygon) was already completely
+  type-agnostic; the only gate was `process`'s `polygon.type == .spline` filter in
+  the `.extrude` case. Widened to `polygon.type == .spline || (params
+  .extrudeOpenCurves && polygon.type == .openSpline)` — no new geometry code
+  needed. Off by default, so no existing project's Extrude output changes; turning
+  it on bridges a targeted open-curve edge into a new closed polygon, leaving the
+  source curve itself untouched (same non-mutating-source contract closed-polygon
+  Extrude already has).
+- **`extrusionGenerationsMin/Max: Int`** (default 1–1, replacing the single
+  `extrusionGenerations: Int` — legacy key still decoded, seeding both new fields
+  identically for existing saved projects) — each targeted edge now rolls its own
+  independent generation count rather than one shared count applied to every edge,
+  producing distinct tower heights across a polygon's edges instead of a uniform
+  stack. Min == Max reproduces the exact old fixed-count behavior. Required a
+  custom `encode(to:)` on `ExtensionParams`, since the decode-only legacy
+  `extrusionGenerations` `CodingKeys` case (kept for migration, no longer backed by
+  a stored property) breaks Swift's synthesized `Encodable`.
+- **`extrusionDepartureAngleMin/Max: Double`** (degrees, default 0–0) — rotates the
+  extrusion direction away from the plain perpendicular outward normal, resolved
+  once per edge and reused across that edge's own generations (same as the base
+  normal already was). 0–0 is a no-op regression (all pre-existing Extrude tests
+  pass unchanged). Most useful with `extrudeOpenCurves`, where "outward" has no
+  enclosed interior to be relative to — just one arbitrary consistent side — so an
+  explicit offset gives real control, the same idea as Graft's
+  `graftDepartureAngleMin/Max`.
+- **`extrusionSeed: Int`** (default 0, new — Extrude previously had no seed field
+  at all) — deterministic seed for the two rolls above.
+- 7 new tests in `ExtensionEngineTests.swift`: `extrudeOpenCurves` off-by-default
+  regression and on-bridges-the-edge-into-a-closed-quad (inner face verbatim from
+  the source curve's own points); generations Min==Max fixed-count regression and
+  Min!=Max distinct-per-edge-tower-heights (chain boundaries read directly off the
+  output geometry — no RNG replication needed); departure angle 0–0 regression,
+  fixed-angle exact rotation, and random-range bounds+determinism+variation.
+  `ExtensionInspector`'s Extrude section gained Generations min/max steppers (in
+  place of the single stepper), an Open Curves toggle, Departure min/max fields,
+  and a Seed field. Full `loom_swift` suite at 697 tests, 0 failures; both
+  `loom_swift` and `Loom_Swift_Integration` build clean.
+
+**Update (2026-07-12) — `structurePhase`: gradual structural reveal.** Raised
+directly by the user during a full audit of driver coverage across all five
+modes: Generational Evolution has `generationPhase` (generations reveal one at
+a time) and Dissolution has `dissolutionPhase` (partial loss/drift ramp in),
+but Extension had no equivalent — Branch's depth/count and Extrude's per-edge
+generation count were always either fully present or fully absent, every
+frame, even though their *continuous* parameters (`branchAngle`,
+`extrusionDistance`, `branchLineLength`) already animate fine via their own
+drivers.
+- **`structurePhase: DoubleDriver`** (default disabled — falls back to the
+  static `branchDepth`/`extrusionGenerationsMin/Max` behavior, unchanged from
+  before this existed), shared by both operation types, mirroring
+  `GenerationalEvolutionEngine`'s exact `generationPhase` shape: an integer
+  count of fully-revealed levels plus a fractional "currently growing" one.
+- **No new reveal-tween math needed.** Both `transformBranch`/`lineBranch`
+  already pivot around the branch's own anchor point (`ep.pos`) regardless of
+  scale, and `extrudeSegment`'s inner face is untouched by `distance` — so the
+  currently-growing level's effective scale/length/distance is simply
+  multiplied by its `strength` (0→1) directly, the same trick Generational
+  Evolution's own Extrude operator already uses (scaling `distance` by
+  `strength`) rather than a separate post-hoc anchor-relative tween.
+- **Branch**: `branchPolygon`'s recursion was restructured from a "remaining
+  depth" countdown to a 0-based `depthIndex` compared against `fullDepth`/
+  `partialDepth`, so each level can independently be "fully built," "the one
+  currently growing," or "doesn't exist yet." The per-branch RPSR seed salt
+  (previously keyed on the countdown value) now uses `maxDepth - depthIndex`
+  specifically to reproduce the old salt bit-for-bit — existing saved
+  projects' jitter/probability rolls are completely unaffected when
+  `structurePhase` is disabled.
+- **Extrude**: `extrudePolygon` clamps the driver's raw value to `[0, 6]` (the
+  engine's hard generation cap), then per edge further clamps to that edge's
+  own independently-rolled `extrusionGenerationsMin/Max` count before splitting
+  into full/partial — a shorter tower finishes revealing sooner than a taller
+  one, consistent with the "distinct towers" per-edge rolling already in
+  place.
+- 9 new tests in `ExtensionEngineTests.swift`: phase-zero no-op, fractional
+  growth at an exact hand-computed length/height, exact-integer full-reveal-
+  with-none-of-the-next, fractional-past-one (level 1 stays full while level 2
+  grows — classified by measured length rather than array position, since
+  Branch's recursion interleaves each branch with its own children), Extrude's
+  per-edge generation-count clamp, and disabled-driver-matches-static-fallback
+  regressions for both operators. `ExtensionInspector` gained a shared
+  "Structure phase" `DoubleDriverEditor` section under both Branch and Extrude.
+  Full `loom_swift` suite at 715 tests, 0 failures; both `loom_swift` and
+  `Loom_Swift_Integration` build clean.
+
 ### Phase 5 — Evolution: momentum drift + convergence pressure (complete)
 
 `EvolutionParams` on `SubdivisionParamsSet.evolutionPasses: [EvolutionParams]`. Engine:
@@ -2126,6 +2379,67 @@ the single-polygon no-op, drift distance/rotation bounds and centroid preservati
 **Not yet done:** closed polygon → open curve, edge fragmentation (§6.10 — both
 deferred as a materially larger step than the above), and any cross-stage coupling
 (e.g. dissolution phase driven by Evolution's generation count — see §13).
+
+**Update (2026-07-12) — open-curve entropy (straightening) + `entropyScaleDelta`.**
+Raised directly by the user: entropy on an open curve previously fell into the
+`default:` branch shared with `.oval`/`.point`/`.line` — a flat uniform shrink
+toward a contraction anchor, no different from any other non-spline type, and
+none of `.spline` entropy's three targets (centroid/smoothed/circle) mean
+anything for a curve with two distinct ends anyway (`.smoothed`'s neighbor
+averaging even wraps `(i+1) % n`, silently treating the curve as if it looped).
+- **`applyEntropyOpenCurve`** (new, dispatched for `.openSpline` in `applyEntropy`,
+  `entropyTarget` ignored — automatic-only behavior per the user's own call,
+  since none of the existing targets apply): two combined, purely position-based
+  relaxations, both driven by the same `entropyFactor(rate, frames)` ramp
+  `.spline` entropy already uses.
+  1. **Anchor migration** ("losing articulation") — every anchor (not just
+     `.spline`'s per-segment-start count; open curves have `segCount + 1`, the
+     true end included) migrates toward the straight line between the curve's
+     own two endpoints, weighted by **cumulative chord length** (a fast O(n)
+     straight-line-distance proxy for arc length — no per-segment Bezier
+     integration) rather than raw index/segment-count, so unevenly-spaced
+     anchors end up evenly spaced on the line rather than bunching. Handles
+     follow their owning anchor rigidly, the same "drag, don't recompute"
+     technique `applyEntropySpline` already uses — this alone preserves each
+     segment's own relative bow while the anchor cluster straightens, same as
+     the closed-curve case.
+  2. **Curvature relaxation** ("losing curvature") — each segment's own control
+     points additionally relax toward that segment's own (post-migration)
+     chord — this is what actually removes bow, since step 1's rigid drag alone
+     doesn't change a segment's shape relative to its own anchors.
+  Deliberately *not* literal anchor/point removal for reducing complexity —
+  Dissolution's whole design rests on being stateless and independently
+  seekable at any frame; discretely dropping points at some threshold would
+  break that and pop rather than continuously relax. The two relaxations above
+  get the same "used to be complicated, now it's basically a straight line"
+  visual result entirely through position interpolation.
+- **`entropyScaleDelta: Double`** (default `0.0`, generalized to both `.spline`
+  and `.openSpline` per the user's own call — not scoped to open curves only):
+  `scale = 1.0 + entropyFactor(...) * entropyScaleDelta`, applied around the
+  same centroid anchor either path already computes. Negative shrinks toward 0
+  as entropy completes; positive grows. 0 is a true no-op (early-return before
+  any `Polygon2D.scaled` call), so existing `.spline` entropy — which
+  previously had no scale component at all — is completely unaffected unless a
+  project opts in. Does *not* touch the unrelated `default:` branch's own
+  always-shrinks hardcoded behavior (`.oval`/`.point`/`.line`), which keeps
+  exactly its prior behavior.
+- Chord-length weighting was chosen over cheaper index-based weighting after
+  confirming the cost is negligible: O(n) straight-line distance calculations,
+  the same asymptotic complexity `applyEntropySpline` already has — no
+  meaningful performance concern raised by adding it.
+- 11 new tests in `DissolutionEngineTests.swift`: disabled-is-untouched
+  regression, endpoints-are-fixed-points invariant (true for any rate/frame/bow,
+  since the two endpoints always map to themselves), a single-segment fixture
+  isolating curvature-relaxation with an exact hand-derivable result (no
+  anchor drag possible with only 2 anchors), an unevenly-spaced 3-anchor
+  fixture proving chord-length weighting is genuinely in effect (its predicted
+  target differs materially from the naive index-based 50% point), a
+  high-factor asymptotic straightness check (every point within `1e-4` of the
+  endpoint line), and `entropyScaleDelta` zero-is-no-op/shrinks-closed-spline/
+  grows-open-curve coverage. `DissolutionInspector`'s Entropy section gained a
+  **Scale** field and updated help text noting Target/Noise are closed-polygon-
+  only. Full `loom_swift` suite at 705 tests, 0 failures; both `loom_swift` and
+  `Loom_Swift_Integration` build clean.
 
 ### Phase 7 — Fulguration: triggers (V1 complete, V2 pending)
 

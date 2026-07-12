@@ -22,17 +22,50 @@ public enum ExtensionEngine {
                                                       globalElapsed: elapsedFrames,
                                                       targetFPS: targetFPS,
                                                       spriteIndex: spriteIndex)
+                // Only meaningful for `.line` geometry, but resolved unconditionally —
+                // same cost as `angle` above, and keeps this a plain per-generation
+                // evaluation rather than a conditional one. Driven (not a constant
+                // `Double`) so a `.line` branch can unfold gradually: a ramp/oscillator
+                // here grows the line from 0 to full length over time rather than
+                // popping in at a fixed size every frame.
+                let lineLength = DriverEvaluator.evaluate(params.branchLineLength,
+                                                           globalElapsed: elapsedFrames,
+                                                           targetFPS: targetFPS,
+                                                           spriteIndex: spriteIndex)
+                let maxDepth = max(1, min(8, params.branchDepth))
+                // Reveals depth levels one at a time (2026-07-12) rather than the
+                // whole tree popping in at once — same integer-plus-fractional
+                // shape `GenerationalEvolutionEngine`'s `generationPhase` uses.
+                // Disabled (default): falls back to the static `maxDepth`, i.e.
+                // every level fully built, unchanged from before this existed.
+                let structurePhase: Double
+                if params.structurePhase.enabled {
+                    let raw = DriverEvaluator.evaluate(params.structurePhase,
+                                                        globalElapsed: elapsedFrames,
+                                                        targetFPS: targetFPS,
+                                                        spriteIndex: spriteIndex)
+                    structurePhase = max(0, min(Double(maxDepth), raw))
+                } else {
+                    structurePhase = Double(maxDepth)
+                }
+                let fullDepth = Int(structurePhase)
+                let partialDepth = structurePhase - Double(fullDepth)
+
                 var additions: [Polygon2D] = []
                 for polygon in polygons where polygon.type == .openSpline {
                     var budget = maxBranchesPerPolygon
                     let branches = branchPolygon(
                         polygon,
-                        root:             polygon,
-                        params:           params,
-                        resolvedAngleDeg: angle,
-                        cumulativeScale:  1.0,
-                        depth:            max(1, min(8, params.branchDepth)),
-                        budget:           &budget
+                        root:              polygon,
+                        params:            params,
+                        resolvedAngleDeg:  angle,
+                        resolvedLineLength: lineLength,
+                        cumulativeScale:   1.0,
+                        depthIndex:        0,
+                        maxDepth:          maxDepth,
+                        fullDepth:         fullDepth,
+                        partialDepth:      partialDepth,
+                        budget:            &budget
                     )
                     additions.append(contentsOf: branches)
                 }
@@ -43,9 +76,29 @@ public enum ExtensionEngine {
                                                          globalElapsed: elapsedFrames,
                                                          targetFPS: targetFPS,
                                                          spriteIndex: spriteIndex)
+                // Reveals generations one at a time per edge (2026-07-12), same
+                // convention as Branch above. Clamped to the engine's own hard
+                // cap of 6 generations; `extrudePolygon` further clamps per edge
+                // to that edge's own rolled `extrusionGenerationsMin/Max` count,
+                // so a shorter tower finishes revealing sooner than a taller one.
+                // Disabled (default): every edge's rolled generation count is
+                // fully built immediately, unchanged from before this existed.
+                let structurePhase: Double
+                if params.structurePhase.enabled {
+                    let raw = DriverEvaluator.evaluate(params.structurePhase,
+                                                        globalElapsed: elapsedFrames,
+                                                        targetFPS: targetFPS,
+                                                        spriteIndex: spriteIndex)
+                    structurePhase = max(0, min(6.0, raw))
+                } else {
+                    structurePhase = 6.0
+                }
                 var additions: [Polygon2D] = []
-                for polygon in polygons where polygon.type == .spline {
-                    additions.append(contentsOf: extrudePolygon(polygon, params: params, distance: distance))
+                for polygon in polygons
+                where polygon.type == .spline
+                   || (params.extrudeOpenCurves && polygon.type == .openSpline) {
+                    additions.append(contentsOf: extrudePolygon(polygon, params: params, distance: distance,
+                                                                 structurePhase: structurePhase))
                 }
                 result.append(contentsOf: additions)
             }
@@ -55,18 +108,30 @@ public enum ExtensionEngine {
 
     // MARK: - Branch
 
+    /// `depthIndex` is 0-based: how many levels deep this call is generating
+    /// (0 = spawned directly from the root curve). `maxDepth` is the
+    /// configured cap (`branchDepth`, clamped 1–8); `fullDepth`/`partialDepth`
+    /// come from `structurePhase` — levels `< fullDepth` are fully built
+    /// (`strength` 1.0), level `== fullDepth` is the currently-growing one
+    /// (`strength` = `partialDepth`), anything beyond doesn't exist yet.
     private static func branchPolygon(
-        _ polygon:        Polygon2D,
-        root:             Polygon2D,
-        params:           ExtensionParams,
-        resolvedAngleDeg: Double,
-        cumulativeScale:  Double,
-        depth:            Int,
-        budget:           inout Int
+        _ polygon:          Polygon2D,
+        root:               Polygon2D,
+        params:             ExtensionParams,
+        resolvedAngleDeg:   Double,
+        resolvedLineLength: Double,
+        cumulativeScale:    Double,
+        depthIndex:         Int,
+        maxDepth:           Int,
+        fullDepth:          Int,
+        partialDepth:       Double,
+        budget:             inout Int
     ) -> [Polygon2D] {
         let segCount = polygon.points.count / 4
-        guard segCount > 0, depth > 0, budget > 0 else { return [] }
+        guard segCount > 0, depthIndex < maxDepth, depthIndex <= fullDepth, budget > 0 else { return [] }
         guard root.points.count >= 4 else { return [] }
+        let strength = depthIndex < fullDepth ? 1.0 : partialDepth
+        guard strength > 1e-9 else { return [] }
 
         let rootStartAngle = atan2(root.points[1].y - root.points[0].y,
                                    root.points[1].x - root.points[0].x)
@@ -79,20 +144,43 @@ public enum ExtensionEngine {
         let endCP    = polygon.points[(segCount - 1) * 4 + 2]
         let endTangAngle = atan2(endPos.y - endCP.y, endPos.x - endCP.x)
 
-        let endpoints: [(pos: Vector2D, tangAngle: Double, seed: Int)] = [
-            (startPos, startTangAngle, 0),
-            (endPos,   endTangAngle,   1)
-        ]
+        // `.endpointsOnly` (original behavior): just the two ends, seeds 0/1
+        // exactly as before — fully backward compatible. `.anyAnchor` widens
+        // this to every anchor point (every 4th point, `0...segCount`):
+        // interior anchors reuse the same "outgoing tangent" formula as the
+        // start endpoint above, applied to their own segment; the final
+        // anchor reuses the existing end-of-curve formula unchanged. The
+        // 256-branch budget already guards against the extra density, so no
+        // new cap is needed.
+        let anchors: [(pos: Vector2D, tangAngle: Double, seed: Int)]
+        switch params.branchAnchorScope {
+        case .endpointsOnly:
+            anchors = [(startPos, startTangAngle, 0), (endPos, endTangAngle, 1)]
+        case .anyAnchor:
+            var list: [(pos: Vector2D, tangAngle: Double, seed: Int)] = []
+            for i in 0..<segCount {
+                let a0  = polygon.points[i * 4]
+                let cp1 = polygon.points[i * 4 + 1]
+                list.append((a0, atan2(cp1.y - a0.y, cp1.x - a0.x), i))
+            }
+            list.append((endPos, endTangAngle, segCount))
+            anchors = list
+        }
 
         let nextScale = cumulativeScale * params.branchScaleRatio
         let count     = max(1, params.branchCount)
         var branches: [Polygon2D] = []
 
-        outer: for ep in endpoints {
+        outer: for ep in anchors {
             for i in 0..<count {
                 guard budget > 0 else { break outer }
 
-                let seedBase = params.branchSeed ^ ep.seed * 997 ^ i * 1009 ^ depth * 1013
+                // `maxDepth - depthIndex` reproduces the old "remaining depth
+                // countdown" value bit-for-bit (the seed salt this formula always
+                // used), so existing saved projects' jitter/probability rolls are
+                // completely unaffected by switching the recursion itself over to
+                // a 0-based depth index for the new structurePhase reveal logic.
+                let seedBase = params.branchSeed ^ ep.seed * 997 ^ i * 1009 ^ (maxDepth - depthIndex) * 1013
 
                 if params.branchProbability < 1.0 - 1e-9 {
                     let roll = SubdivisionEngine.centreHash(seed: seedBase, cycle: 0)
@@ -112,25 +200,88 @@ public enum ExtensionEngine {
                 let angleDeg = (count == 1 ? resolvedAngleDeg
                                            : resolvedAngleDeg * spreadFrac) + jitter
                 let targetAngle = ep.tangAngle + angleDeg * (.pi / 180.0)
-                let rotation    = targetAngle - rootStartAngle
 
-                let branch = transformBranch(root, to: ep.pos, rotation: rotation, scale: nextScale)
+                // `structurePhase`'s reveal (2026-07-12): the currently-growing
+                // level (`strength < 1`) uses a proportionally smaller
+                // scale/length — since both `transformBranch` and `lineBranch`
+                // already pivot around `ep.pos` regardless of scale, this alone
+                // makes the branch visibly grow from its anchor point as
+                // `strength` climbs to 1, the same trick Generational
+                // Evolution's own Extrude operator already uses (scaling
+                // `distance` by `strength`) rather than a separate post-hoc
+                // anchor-relative tween.
+                let branch: Polygon2D
+                switch params.branchGeometry {
+                case .rootCopy:
+                    let rotation = targetAngle - rootStartAngle
+                    branch = transformBranch(root, to: ep.pos, rotation: rotation, scale: nextScale * strength)
+                case .line:
+                    branch = lineBranch(
+                        from: ep.pos, angle: targetAngle, length: nextScale * resolvedLineLength * strength,
+                        curvatureAmountMin: params.branchCurvatureAmountMin,
+                        curvatureAmountMax: params.branchCurvatureAmountMax,
+                        seed: seedBase
+                    )
+                }
                 branches.append(branch)
                 budget -= 1
 
-                if depth > 1 {
+                if depthIndex + 1 < maxDepth {
                     let subs = branchPolygon(
                         branch, root: root, params: params,
-                        resolvedAngleDeg: resolvedAngleDeg,
-                        cumulativeScale:  nextScale,
-                        depth:            depth - 1,
-                        budget:           &budget
+                        resolvedAngleDeg:   resolvedAngleDeg,
+                        resolvedLineLength: resolvedLineLength,
+                        cumulativeScale:    nextScale,
+                        depthIndex:         depthIndex + 1,
+                        maxDepth:           maxDepth,
+                        fullDepth:          fullDepth,
+                        partialDepth:       partialDepth,
+                        budget:             &budget
                     )
                     branches.append(contentsOf: subs)
                 }
             }
         }
         return branches
+    }
+
+    /// Generates a `.line`-geometry branch: a single straight (or bowed) segment
+    /// from `origin` toward `angle`, `length` long — not a copy of `root`.
+    /// Curvature bows the segment's control points perpendicular to its own
+    /// chord, `bow = amount * length` (same convention as `extrusionCurvature`/
+    /// Graft's `graftEdgeCurvatureAmountMin/Max`). `curvatureAmountMin ==
+    /// curvatureAmountMax` gives a fixed bow with no RNG roll at all — the
+    /// degenerate case that also covers "no curvature" at 0–0 — `curvatureAmountMin
+    /// != curvatureAmountMax` RPSR-samples the bow off `seed` (the same per-branch
+    /// seed already used for jitter/probability, so this needs no extra seed
+    /// plumbing).
+    private static func lineBranch(
+        from origin:           Vector2D,
+        angle:                 Double,
+        length:                Double,
+        curvatureAmountMin:    Double,
+        curvatureAmountMax:    Double,
+        seed:                  Int
+    ) -> Polygon2D {
+        let dir = Vector2D(x: cos(angle), y: sin(angle))
+        let end = Vector2D(x: origin.x + dir.x * length, y: origin.y + dir.y * length)
+        let normal = Vector2D(x: -dir.y, y: dir.x)
+
+        let amtLo = min(curvatureAmountMin, curvatureAmountMax)
+        let amtHi = max(curvatureAmountMin, curvatureAmountMax)
+        let bowAmount: Double
+        if amtHi - amtLo < 1e-12 {
+            bowAmount = amtLo
+        } else {
+            let roll = SubdivisionEngine.centreHash(seed: seed, cycle: 2)
+            bowAmount = amtLo + roll * (amtHi - amtLo)
+        }
+        let bow = bowAmount * length
+
+        let cp1 = Vector2D.lerp(origin, end, t: 1.0 / 3.0) + normal * bow
+        let cp2 = Vector2D.lerp(origin, end, t: 2.0 / 3.0) + normal * bow
+
+        return Polygon2D(points: [origin, cp1, cp2, end], type: .openSpline)
     }
 
     private static func transformBranch(
@@ -155,9 +306,10 @@ public enum ExtensionEngine {
     // MARK: - Extrude
 
     private static func extrudePolygon(
-        _ polygon: Polygon2D,
-        params:    ExtensionParams,
-        distance:  Double
+        _ polygon:       Polygon2D,
+        params:          ExtensionParams,
+        distance:        Double,
+        structurePhase:  Double
     ) -> [Polygon2D] {
         let segCount = polygon.points.count / 4
         guard segCount > 0 else { return [] }
@@ -171,20 +323,67 @@ public enum ExtensionEngine {
             segIndices = segIndices.filter { params.directionalSelector.accepts(outwardNormal(of: polygon, segIdx: $0)) }
         }
 
-        let maxGenerations = max(1, min(6, params.extrusionGenerations))
         var result: [Polygon2D] = []
 
         for segIdx in segIndices {
-            let normal = outwardNormal(of: polygon, segIdx: segIdx)
-            guard normal != .zero else { continue }
+            let baseNormal = outwardNormal(of: polygon, segIdx: segIdx)
+            guard baseNormal != .zero else { continue }
+
+            // Independent per-edge rolls (2026-07-12): "towers" of varying height
+            // and departure angle rather than one uniform count/direction applied
+            // to every edge. Distinct salted seeds per roll, same "own namespace
+            // per concern" convention used throughout this engine.
+            let genSeed = params.extrusionSeed ^ (segIdx &* 2_654_435_761)
+            let genLo   = min(params.extrusionGenerationsMin, params.extrusionGenerationsMax)
+            let genHi   = max(params.extrusionGenerationsMin, params.extrusionGenerationsMax)
+            let genRoll = SubdivisionEngine.centreHash(seed: genSeed, cycle: 0)
+            let maxGenerations = max(1, min(6, genLo + Int(genRoll * Double(genHi - genLo + 1))))
+
+            // Resolved once per edge and reused across all of that edge's own
+            // generations, same as the plain outward normal already was — a
+            // rotated departure direction, not just a fixed perpendicular. Most
+            // useful for `extrudeOpenCurves`, where "outward" has no enclosed
+            // interior to be relative to.
+            let angleSeed = params.extrusionSeed ^ (segIdx &* 2_971_215_073)
+            let angLo     = min(params.extrusionDepartureAngleMin, params.extrusionDepartureAngleMax)
+            let angHi     = max(params.extrusionDepartureAngleMin, params.extrusionDepartureAngleMax)
+            let angleDeg: Double
+            if angHi - angLo < 1e-12 {
+                angleDeg = angLo
+            } else {
+                let angleRoll = SubdivisionEngine.centreHash(seed: angleSeed, cycle: 0)
+                angleDeg = angLo + angleRoll * (angHi - angLo)
+            }
+            let normal = baseNormal.rotated(by: angleDeg * .pi / 180.0)
+
+            // `structurePhase`'s reveal (2026-07-12), clamped to this edge's own
+            // rolled `maxGenerations` — a shorter tower finishes revealing sooner
+            // than a taller one. Same integer-plus-fractional shape as Branch's
+            // depth reveal above: full generations built at their normal
+            // distance, the one currently-growing generation scaled by
+            // `partialGen` instead — the same trick Generational Evolution's own
+            // Extrude operator already uses (scaling `distance` by `strength`),
+            // so the new floor visibly grows from its shared base edge rather
+            // than popping in at full height.
+            let edgePhase  = min(structurePhase, Double(maxGenerations))
+            let fullGens   = Int(edgePhase)
+            let partialGen = edgePhase - Double(fullGens)
 
             var currentPoly     = polygon
             var currentSegIdx   = segIdx
             var currentDistance = distance
 
-            for _ in 0..<maxGenerations {
+            for generation in 0..<maxGenerations {
+                let thisDistance: Double
+                if generation < fullGens {
+                    thisDistance = currentDistance
+                } else if generation == fullGens, partialGen > 1e-9 {
+                    thisDistance = currentDistance * partialGen
+                } else {
+                    break // this generation and beyond haven't started revealing yet
+                }
                 let ext = extrudeSegment(currentPoly, segIdx: currentSegIdx,
-                                          distance: currentDistance, params: params,
+                                          distance: thisDistance, params: params,
                                           outwardNormal: normal)
                 result.append(ext)
                 currentPoly     = ext

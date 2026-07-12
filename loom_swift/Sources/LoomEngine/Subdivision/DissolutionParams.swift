@@ -48,6 +48,18 @@ public struct DissolutionParams: Equatable, Codable, Sendable {
     public var entropyNoise:   Double        = 0.0
     public var entropySeed:    Int           = 0
 
+    /// Uniform scale trend applied alongside the target-seeking anchor
+    /// migration above, `scale = 1.0 + entropyFactor(rate, frames) *
+    /// entropyScaleDelta`, around the same centroid anchor `.spline`/`.openSpline`
+    /// entropy already computes (2026-07-12). Signed: negative shrinks toward 0
+    /// as entropy completes, positive grows (up to `1 + entropyScaleDelta`×
+    /// original size). 0 (default) = no size change — existing behavior for
+    /// `.spline` (which previously had no scale component at all) is unaffected.
+    /// Applies to `.spline` and `.openSpline` only, not the simple uniform-shrink
+    /// `default` case (`.oval`/`.point`/`.line`), which keeps its own unrelated,
+    /// always-shrinks hardcoded behavior unchanged.
+    public var entropyScaleDelta: Double = 0.0
+
     // Collapse
     public var collapseEnabled:            Bool                = false
     public var collapseMode:               CollapseMode        = .instant
@@ -96,7 +108,7 @@ public struct DissolutionParams: Equatable, Codable, Sendable {
 
     private enum CodingKeys: String, CodingKey {
         case name, enabled
-        case entropyEnabled, entropyRate, entropyTarget, entropyNoise, entropySeed
+        case entropyEnabled, entropyRate, entropyTarget, entropyNoise, entropySeed, entropyScaleDelta
         case collapseEnabled, collapseMode, collapseBriefDuration
         case collapseTriggerType, collapseTriggerFrameCount, collapseTriggerProbability
         case collapseEndMode
@@ -115,6 +127,7 @@ public struct DissolutionParams: Equatable, Codable, Sendable {
         entropyTarget  = (try? c.decodeIfPresent(EntropyTarget.self,  forKey: .entropyTarget))  ?? .smoothed
         entropyNoise   = (try? c.decodeIfPresent(Double.self,         forKey: .entropyNoise))   ?? 0.0
         entropySeed    = (try? c.decodeIfPresent(Int.self,            forKey: .entropySeed))    ?? 0
+        entropyScaleDelta = (try? c.decodeIfPresent(Double.self,      forKey: .entropyScaleDelta)) ?? 0.0
 
         collapseEnabled            = (try? c.decodeIfPresent(Bool.self,                 forKey: .collapseEnabled))            ?? false
         collapseMode               = (try? c.decodeIfPresent(CollapseMode.self,         forKey: .collapseMode))               ?? .instant
@@ -144,6 +157,7 @@ public struct DissolutionParams: Equatable, Codable, Sendable {
         try c.encode(entropyTarget,  forKey: .entropyTarget)
         try c.encode(entropyNoise,   forKey: .entropyNoise)
         try c.encode(entropySeed,    forKey: .entropySeed)
+        try c.encode(entropyScaleDelta, forKey: .entropyScaleDelta)
         try c.encode(collapseEnabled,            forKey: .collapseEnabled)
         try c.encode(collapseMode,               forKey: .collapseMode)
         try c.encode(collapseBriefDuration,      forKey: .collapseBriefDuration)

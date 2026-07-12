@@ -7169,13 +7169,20 @@ final class AppController: ObservableObject, @unchecked Sendable {
         }
         panel.begin { [weak self] response in
             guard response == .OK, let url = panel.url else { return }
-            do {
-                try SVGExporter.exportSVG(engine: engine, to: url)
-                LoomLogger.info("Saved SVG: \(url.path)")
-            } catch {
-                LoomLogger.error("SVG export failed", error: error)
+            // `Engine`/`LoomEngine` are not thread-safe, and the live preview's
+            // background render loop (`RenderSurfaceNSView.sharedRenderQueue`) may
+            // still be mid-render on this exact instance — reading it directly on
+            // the main thread here would race that loop. Route through the same
+            // queue so this waits its turn instead.
+            RenderSurfaceNSView.sharedRenderQueue.async {
+                do {
+                    try SVGExporter.exportSVG(engine: engine, to: url)
+                    DispatchQueue.main.async { LoomLogger.info("Saved SVG: \(url.path)") }
+                } catch {
+                    DispatchQueue.main.async { LoomLogger.error("SVG export failed", error: error) }
+                }
+                DispatchQueue.main.async { self?.lastRenderOutputType = .still }
             }
-            self?.lastRenderOutputType = .still
         }
     }
 
@@ -7206,13 +7213,21 @@ final class AppController: ObservableObject, @unchecked Sendable {
         panel.begin { [weak self] response in
             guard response == .OK, let url = panel.url else { return }
             let transparentBackground = transparentCheckbox.state == .on
-            do {
-                try StillExporter.exportPNG(engine: engine, to: url, transparentBackground: transparentBackground)
-                LoomLogger.info("Saved still: \(url.path)")
-            } catch {
-                LoomLogger.error("Still export failed", error: error)
+            // `Engine`/`LoomEngine` are not thread-safe, and the live preview's
+            // background render loop (`RenderSurfaceNSView.sharedRenderQueue`) may
+            // still be mid-render on this exact instance — reading it directly on
+            // the main thread here would race that loop (worse the slower each
+            // background render is, e.g. at a high quality multiplier). Route
+            // through the same queue so this waits its turn instead.
+            RenderSurfaceNSView.sharedRenderQueue.async {
+                do {
+                    try StillExporter.exportPNG(engine: engine, to: url, transparentBackground: transparentBackground)
+                    DispatchQueue.main.async { LoomLogger.info("Saved still: \(url.path)") }
+                } catch {
+                    DispatchQueue.main.async { LoomLogger.error("Still export failed", error: error) }
+                }
+                DispatchQueue.main.async { self?.lastRenderOutputType = .still }
             }
-            self?.lastRenderOutputType = .still
         }
     }
 
@@ -8110,8 +8125,15 @@ final class AppController: ObservableObject, @unchecked Sendable {
 
         if eng.globalConfig.animating {
             guard let exportEngine = try? Engine(projectDirectory: projURL) else {
-                try? StillExporter.exportPNG(engine: eng, to: url); return
+                // `eng` is the live, shared engine the preview's background
+                // render queue may still be mid-render on — route through the
+                // same queue rather than touching it directly here (see
+                // `saveStill`'s equivalent comment).
+                RenderSurfaceNSView.sharedRenderQueue.async { try? StillExporter.exportPNG(engine: eng, to: url) }
+                return
             }
+            // Freshly constructed, never touched by the render queue — safe to
+            // drive directly on this thread.
             let maxFrames = exportEngine.maxAnimationFrames
             if maxFrames > 0 {
                 let dt = 1.0 / max(1.0, exportEngine.globalConfig.targetFPS)
@@ -8122,7 +8144,7 @@ final class AppController: ObservableObject, @unchecked Sendable {
             }
             try? StillExporter.exportPNG(engine: exportEngine, to: url)
         } else {
-            try? StillExporter.exportPNG(engine: eng, to: url)
+            RenderSurfaceNSView.sharedRenderQueue.async { try? StillExporter.exportPNG(engine: eng, to: url) }
         }
     }
 }

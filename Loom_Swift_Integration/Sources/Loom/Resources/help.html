@@ -2686,6 +2686,10 @@
       <tr><td>Angle jitter</td><td>0°–20°</td><td>Random perturbation added to each branch angle. Controlled by Seed for determinism. 0 = perfect symmetry; 5–15° = organic irregularity.</td></tr>
       <tr><td>Probability</td><td>0.5–1.0</td><td>Chance each branch spawns. 1.0 = always; 0.5 = sparse stochastic. Use with Seed for a stable sparse tree.</td></tr>
       <tr><td>Seed</td><td>0–9999</td><td>Deterministic seed for jitter and probability rolls. Change to get a different tree topology without touching other settings.</td></tr>
+      <tr><td>Anchors</td><td>—</td><td><strong>Endpoints Only</strong> (default): the curve's two ends. <strong>Any Anchor</strong>: every anchor point along the curve. Denser — reaches the 256-branch cap sooner at the same Count/Depth.</td></tr>
+      <tr><td>Geometry</td><td>—</td><td><strong>Root Copy</strong> (default): scaled copy of the whole input curve. <strong>Line</strong>: a single straight/bowed line segment — enables Line length and Curvature below.</td></tr>
+      <tr><td>Line length</td><td>0.05–0.4</td><td>Base length of a Line-geometry branch at depth 0, before Scale ratio's per-level shrink. DoubleDriver — drive with a ramp/oscillator to unfold gradually. Ignored for Root Copy.</td></tr>
+      <tr><td>Curvature min/max</td><td>−0.3–0.3</td><td>Bow of a Line branch, as a fraction of its own length. Equal values = fixed bow; different values = randomized per branch. 0/0 (default) = straight. Ignored for Root Copy.</td></tr>
     </tbody>
   </table>
 
@@ -2694,11 +2698,31 @@
   <h4>Animating branches</h4>
   <p>Branch angle supports a <strong>DoubleDriver</strong>. Wire it to a noise or oscillator driver to make the tree breathe — branches fan out and close over time. Because the tree is recomputed every frame, any driver change propagates instantly through all levels. Keep driver amplitude below 30° for readable motion; large swings at high depth can flip branches through each other.</p>
 
+  <h4>Growing the tree gradually: Structure phase</h4>
+  <p>Branch angle and Line length can already animate continuously, but by default the tree's <em>structure</em> — how many depth levels exist — is all-or-nothing: the full Depth is built the instant the pass is enabled. <strong>Structure phase</strong> (a DoubleDriver, off by default) reveals depth levels one at a time instead. Its value is how many levels have appeared so far: at 0, no branches exist yet; between 0 and 1, the first level is growing in size from each anchor point; at exactly 1, the first level is fully grown with no second level yet; between 1 and 2, the first level stays fully grown while the second level grows in; and so on up to Depth. Wire a keyframe ramp or a slow oscillator to it to make the tree sprout level-by-level rather than popping in fully.</p>
+
+  <h4>Anchor scope: endpoints only, or any anchor point</h4>
+  <p>By default (<strong>Endpoints Only</strong>) branches spawn only from the curve's two ends, as described above. Switch <strong>Anchors</strong> to <strong>Any Anchor</strong> and every anchor point along the curve — not just the two ends — becomes an eligible branch origin. A 5-segment curve has 6 anchors; each spawns its own sub-tree. This is denser than Endpoints Only (more origins × the same Count/Depth), so the existing 256-branch cap is reached sooner — start from a lower Depth than you would with Endpoints Only.</p>
+
+  <h4>Geometry: Root Copy or Line</h4>
+  <p>The <strong>Geometry</strong> picker controls what actually grows at each branch origin:</p>
+  <ul>
+    <li><strong>Root Copy</strong> (default) — the original behavior described above: each branch is a scaled, rotated copy of the entire input curve.</li>
+    <li><strong>Line</strong> — each branch is a single straight (or bowed) line segment instead, not a copy of the root curve's shape. Two new fields appear: <strong>Line length</strong> (a DoubleDriver — the base length at depth 0, before Scale ratio's per-level shrink) and <strong>Curvature min/max</strong> (see below). Recursion still works exactly as with Root Copy — a Line branch's own sub-branches originate from its own two ends, producing forking stick/twig structures at Depth &gt; 1.</li>
+  </ul>
+  <div class="tip"><strong>Single line extension:</strong> for a plain, non-branching extension — just one line growing from each anchor — set <strong>Geometry</strong> to <strong>Line</strong>, <strong>Count</strong> to <strong>1</strong>, and <strong>Depth</strong> to <strong>1</strong>. This isn't a separate mode; it's the simplest corner of the same Line geometry, with branching turned off via the same Count/Depth fields Root Copy already uses.</div>
+
+  <h4>Curvature (Line geometry only)</h4>
+  <p><strong>Curvature min</strong> and <strong>Curvature max</strong> bow a Line branch's control points, as a fraction of the branch's own length — the same convention Extrude's Curvature field uses. Leave both at <strong>0</strong> for straight lines (the default). Set both to the <strong>same nonzero value</strong> for a fixed bow on every branch. Set <strong>different values</strong> (e.g. −0.3 to 0.3) to randomize the bow per branch, seeded deterministically like Angle jitter and Probability above. These fields have no effect when Geometry is Root Copy.</p>
+
+  <h4>Animating a Line branch's length</h4>
+  <p><strong>Line length</strong> supports a <strong>DoubleDriver</strong>, evaluated once per frame exactly like Branch angle. Wire an oscillator or ramp to it to make Line branches unfold gradually — growing from short to full length over time — rather than popping in at a fixed size every frame.</p>
+
   <!-- ═══════════════════════════════════════════════════════════════════ -->
   <h3 id="extension-extrude">Extension — Extrude (closed polygons)</h3>
-  <p>The Extrude operation grows closed polygon faces outward from selected edges. For each target segment of a <strong>closed spline</strong> polygon it constructs a new 4-segment closed polygon: the inner face (the original segment), two straight wall segments, and a bowed outer face. Multiple <strong>Generations</strong> stack by extruding the outer face of each previous result, building layered wall structures.</p>
+  <p>The Extrude operation grows closed polygon faces outward from selected edges. For each target segment of a <strong>closed spline</strong> polygon it constructs a new 4-segment closed polygon: the inner face (the original segment), two straight wall segments, and a bowed outer face. Generations (see below) stack by extruding the outer face of each previous result, building layered wall structures.</p>
 
-  <div class="note"><strong>Input requirement:</strong> Extrude only acts on polygons with type <code>spline</code> (closed splines). Open curves are passed through unchanged. Use the Geometry editor to confirm your source polygons are closed before expecting extrusion output.</div>
+  <div class="note"><strong>Input requirement:</strong> By default Extrude only acts on polygons with type <code>spline</code> (closed splines) — open curves are passed through unchanged. Enable <strong>Open curves</strong> (below) to also extrude open-curve edges; see "Extruding open curves" further down.</div>
 
   <h4>Step-by-step: extruding a subdivided polygon's edges</h4>
   <ol class="steps">
@@ -2708,7 +2732,7 @@
     <li>Set <strong>Distance</strong> to roughly <strong>0.05–0.15</strong> (in normalised canvas units). This is the height of the extrusion wall. Start at 0.1.</li>
     <li>Leave <strong>Width</strong> at <strong>1.0</strong> (parallel walls). Values below 1.0 taper toward a point; above 1.0 flare outward. Try <strong>0.8</strong> for a trapezoidal cross-section.</li>
     <li>Set <strong>Curvature</strong> to <strong>0.0</strong> for straight outer edges, or a small positive value (0.1–0.3) to bow the outer face outward. Negative values bow inward (concave).</li>
-    <li>Set <strong>Generations</strong> to <strong>1</strong> for a single wall. Increase to 2 or 3 to stack concentric extrusion layers. Each generation extrudes the outer face of the previous result at the same distance and width.</li>
+    <li>Set <strong>Generations min</strong> and <strong>Generations max</strong> both to <strong>1</strong> for a single wall on every edge. Set both to <strong>2</strong> or <strong>3</strong> to stack concentric extrusion layers uniformly. Each generation extrudes the outer face of the previous result at the same distance and width.</li>
   </ol>
 
   <h4>Extrude parameter reference and safe input values</h4>
@@ -2718,13 +2742,36 @@
       <tr><td>Distance</td><td>0.01–0.3</td><td>Height of the extrusion wall in normalised canvas units. Too large (above 0.5) causes walls to overlap adjacent cells. Start at 0.05–0.1 for subdivided geometry.</td></tr>
       <tr><td>Width</td><td>0.2–2.0</td><td>Scales the outer edge around the segment midpoint. 1.0 = parallel. &lt;1 = taper to a point. &gt;1 = flare. Values near 0 collapse the outer edge to a spike; values above 2 cause the outer edge to overlap the adjacent polygon's extrusion.</td></tr>
       <tr><td>Curvature</td><td>−0.5–0.5</td><td>Bow applied to the outer edge as a fraction of its length. 0 = straight. Positive = outward dome. Negative = inward concave. Beyond ±0.5 the bow exceeds the outer edge length and creates crossing control points.</td></tr>
-      <tr><td>Generations</td><td>1–3</td><td>Number of stacked extrusion levels. Each level extrudes the outer face of the previous polygon. Generation 3 with All Edges on a 16-polygon mesh produces 16 × 4 × 3 = 192 additional polygons. Keep generations at 1–2 for dense meshes.</td></tr>
+      <tr><td>Generations min/max</td><td>1–3</td><td>Number of stacked extrusion levels, rolled independently per edge. Equal values = a fixed count on every edge (Generation 3 with All Edges on a 16-polygon mesh produces 16 × 4 × 3 = 192 additional polygons — keep at 1–2 for dense meshes). Different values = each edge gets its own random tower height — see "Tower heights" below.</td></tr>
       <tr><td>Target</td><td>—</td><td><strong>All Edges:</strong> every segment of every input polygon is extruded — use for uniform growth patterns. <strong>Longest Edge:</strong> only the single longest segment per polygon — use for directional spines or elongated crystals.</td></tr>
+      <tr><td>Open curves</td><td>—</td><td>Off (default): closed polygons only. On: also extrude open-curve edges — see "Extruding open curves" below.</td></tr>
+      <tr><td>Departure min/max</td><td>−45°–45°</td><td>Rotates the extrusion direction away from the plain perpendicular, rolled independently per edge. 0/0 (default) = straight outward. See "Departure angle" below.</td></tr>
+      <tr><td>Seed</td><td>0–9999</td><td>Deterministic seed for the Generations and Departure angle rolls. Change to get a different tower-height/departure arrangement without altering other settings.</td></tr>
     </tbody>
   </table>
 
   <h4>Animating extrusion distance</h4>
   <p>Extrude Distance supports a <strong>DoubleDriver</strong>. A slow oscillator on distance (amplitude 0.02–0.08, period 2–4 seconds) makes polygon walls breathe in and out, creating a pulsating cell structure. Negative distance values push walls inward rather than outward — ensure <strong>Width</strong> is set to a value that prevents self-intersection when going negative.</p>
+
+  <h4>Tower heights: randomizing Generations per edge</h4>
+  <p>Setting <strong>Generations min</strong> and <strong>Generations max</strong> to different values (e.g. min 1, max 4) makes each targeted edge independently roll its own generation count, deterministically seeded by <strong>Seed</strong> — a skyline of distinct tower heights rather than one uniform stack applied to every edge. Combine with <strong>All Edges</strong> on a many-sided polygon for the clearest effect; on a 4-sided square, expect roughly one edge at each height across the min–max range, not identical everywhere.</p>
+
+  <h4>Growing towers gradually: Structure phase</h4>
+  <p>Extrude Distance can already animate continuously, but by default each edge's full rolled Generations count is built the instant the pass is enabled. <strong>Structure phase</strong> (a DoubleDriver, off by default, shared with Branch above) reveals generations one at a time per edge instead. Its value is how many floors have appeared so far, clamped per edge to that edge's own rolled Generations count — a tower that only rolled 2 generations finishes revealing at phase 2 and stays there, while a tower that rolled 5 keeps sprouting new floors until phase 5. Between two integers, the newest floor grows in height from its shared base edge rather than popping in at full height. Wire a ramp to it for a skyline that visibly builds itself over time, with shorter towers finishing first.</p>
+
+  <h4>Departure angle: rotating away from straight outward</h4>
+  <p><strong>Departure min</strong> and <strong>Departure max</strong> (degrees) rotate the extrusion direction away from the plain perpendicular outward normal, rolled independently per edge off the same <strong>Seed</strong>. Leave both at <strong>0</strong> for straight outward (the default, and the only sensible choice for most closed-polygon work). Set both to the <strong>same nonzero value</strong> for a fixed lean on every edge. Set <strong>different values</strong> (e.g. −30 to 30) to randomize the lean per edge. This is most useful with <strong>Open curves</strong> below, where "outward" has no enclosed interior to be relative to — it's just one arbitrary consistent side — so an explicit offset gives real control over which way the bridging quad departs.</p>
+
+  <h4>Extruding open curves</h4>
+  <p>Enable <strong>Open curves</strong> to let Extrude also target <code>openSpline</code> polygons — the open-curve complement to closed-polygon Extrude, and a more focused, predictable alternative to routing the same idea through Evolution's generational Graft operator. For each targeted edge of the open curve (with whatever curvature it already has), Extrude duplicates that edge at Distance/Width/Curvature and wall-connects the original curve's two endpoints of that edge to the duplicate's corresponding endpoints — producing a new <em>closed</em> polygon bridging the two, while the source open curve itself is left completely untouched (it remains in the scene as a separate, unchanged element).</p>
+  <ol class="steps">
+    <li>Select an open curve sprite (or one with a Branch pass already producing open curves).</li>
+    <li>In the <strong>Extension</strong> section, add (or reuse) an <strong>Extrude</strong> pass and enable <strong>Open curves</strong>.</li>
+    <li>Set <strong>Target</strong> to <strong>All Edges</strong> to bridge every segment of the curve, or <strong>Longest Edge</strong> for just one.</li>
+    <li>Adjust <strong>Distance</strong>, <strong>Width</strong>, and <strong>Curvature</strong> exactly as for closed-polygon Extrude — the same fields, same meaning.</li>
+    <li>If the curve has multiple segments, try <strong>Any Anchor</strong>-style density by targeting <strong>All Edges</strong> — each segment produces its own independent bridging quad.</li>
+  </ol>
+  <div class="note">A single-segment open curve's two endpoints are the curve's true start and end — extruding that one edge effectively "caps" the whole curve into a closed shape. A multi-segment curve's interior edges instead produce a small bridging quad welded onto that one section, with the rest of the curve remaining a separate open path.</div>
 
   <h4 id="extension-directional">Constraining extrusion to a direction</h4>
   <p>The <strong>Directional Selector</strong> (below the Extrude fields) further restricts which edges are eligible on top of Target — e.g. "only the edge(s) facing up," regardless of which index that happens to be on a given shape. This answers a question index-based selection can't: "the top edge" isn't edge 0 or edge 2, it's whichever edge's outward-facing direction matches — so the same setting works on a square, a triangle, or an irregular polygon alike.</p>
@@ -2736,7 +2783,7 @@
   </ol>
   <div class="note">If Tolerance is too tight for the shape in question, zero edges may qualify — Extrude then simply produces no additional geometry for that pass, rather than an error. Widen Tolerance or check Target angle against the shape's actual orientation if nothing appears.</div>
 
-  <div class="tip"><strong>Combining Branch and Extrude:</strong> Branch and Extrude are separate Extension passes and can both be enabled in the same transform set. They run independently on their respective polygon types — Branch on open curves, Extrude on closed polygons. A common pattern: draw an open curve tree (Branch pass) alongside a subdivided polygon mesh (Extrude pass) in the same sprite so that the branching organic structure and the extruded rigid structure share the same transform and renderer.</div>
+  <div class="tip"><strong>Combining Branch and Extrude:</strong> Branch and Extrude are separate Extension passes and can both be enabled in the same transform set. By default they run independently on their respective polygon types — Branch on open curves, Extrude on closed polygons — but with <strong>Open curves</strong> enabled, Extrude can target the same open curve a Branch pass produces, bridging its edges into closed polygons in the same transform set. A common pattern: draw an open curve tree (Branch pass) alongside a subdivided polygon mesh (Extrude pass) in the same sprite so that the branching organic structure and the extruded rigid structure share the same transform and renderer.</div>
 
   <h3 id="evolution-drift">Evolution — Momentum Drift</h3>
   <p>Momentum Drift displaces a chosen subdivision parameter over time using a slowly-changing noise field. Unlike a DoubleDriver, which applies an independent value each frame, drift has <em>inertia</em>: the direction of change accumulates, producing organic wandering rather than oscillation. The displacement is fully deterministic and seekable — the value at any frame is computed directly from the seed and frame index without simulating prior frames.</p>
@@ -2851,17 +2898,28 @@
   </ol>
 
   <h4 id="evolution-graft">Graft — attaching freestanding n-gon primitives</h4>
-  <p>Graft is a third mutation operator alongside Extrude and Split. Each time it fires, it generates one freestanding primitive — a line (1 side), triangle, quadrilateral, pentagon, or beyond, chosen by a resampled side count — optionally stretches/squashes it, then rigid-attaches it to the target shape at a chosen site. Unlike Extrude's fixed quad or Split's fixed displaced point, the primitive's shape itself varies generation to generation.</p>
+  <p>Graft is a third mutation operator alongside Extrude and Split. Each time it fires, it generates one freestanding primitive — by default a line (1 side), triangle, quadrilateral, pentagon, or beyond, chosen by a resampled side count — optionally stretches/squashes it, then rigid-attaches it to the target shape at a chosen site. Unlike Extrude's fixed quad or Split's fixed displaced point, the primitive's shape itself varies generation to generation.</p>
   <ol class="steps">
     <li>With a Generational pass selected, expand <strong>Graft</strong> and set its <strong>Weight</strong> above 0 (it's 0 by default, so existing Extrude/Split-only setups are unaffected until you opt in) — it's selected each generation by the same weighted-probability roll as Extrude/Split.</li>
-    <li>Set <strong>Sides</strong> to a range, e.g. <strong>3–6</strong>, so each graft independently rolls a triangle through hexagon. 1 or 2 always resolves to a bare line — there's no meaningful 2-sided closed polygon.</li>
-    <li>Set <strong>Scale</strong> to match your geometry's own size — grafted primitives generate at a fixed unit size regardless of the target shape, so they often need scaling down (e.g. <strong>0.05–0.15</strong>) to look proportionate on smaller geometry.</li>
+    <li>Choose a <strong>Source</strong>: <strong>Generated</strong> (default) is the n-gon/line behavior described above. <strong>Custom Set</strong> instead grafts a shape you've drawn yourself — see "Grafting your own shapes" below.</li>
+    <li>With Source set to Generated, set <strong>Sides</strong> to a range, e.g. <strong>3–6</strong>, so each graft independently rolls a triangle through hexagon. 1 or 2 always resolves to a bare line — there's no meaningful 2-sided closed polygon.</li>
+    <li>Set <strong>Scale</strong> to match your geometry's own size — grafted primitives generate at a fixed unit size regardless of the target shape, so they often need scaling down (e.g. <strong>0.05–0.15</strong>) to look proportionate on smaller geometry. This applies to custom shapes too.</li>
     <li>Choose an <strong>Attachment</strong> mode: <strong>Whole Edge</strong> matches one of the primitive's own edges exactly onto the target's chosen edge (closest to how Extrude attaches); <strong>Single Point</strong> shares only one coordinate, leaving the primitive free to depart at an angle (closest to how Split/Branch attach); <strong>Partial Edge</strong> matches a sub-span of the target edge rather than the whole thing.</li>
     <li>For <strong>Single Point</strong>, also set <strong>Point Source</strong> (Existing Vertex, non-destructive, or Newly Inserted, which splits the target edge first) and <strong>Departure</strong>, the angle range the graft leans away from straight-outward.</li>
     <li>For <strong>Partial Edge</strong>, set <strong>Position</strong> (where along the target edge the span starts) and <strong>Span</strong> (how much of the remaining edge length it covers) — Position 0–0 / Span 1–1 (the defaults) reproduce Whole Edge's full-edge target exactly, so narrowing either is what actually makes an attachment partial.</li>
     <li>Optionally set <strong>Curvature</strong> (a per-edge chance of bowing instead of staying straight, plus a bow-amount range) and <strong>Articulation</strong> (how many extra joints a free edge gets, a Jitter/Zig Zag pattern, and a displacement-amount range) for grafts that read as organic tendrils/branches rather than plain rigid polygons. Both default to off. Either way, the one site actually anchoring the graft to the parent is always left untouched — only the graft's <em>other</em> edges can curve or articulate.</li>
   </ol>
   <div class="note">Whichever attachment mode is chosen, a rolled primitive that doesn't offer the kind of site that mode needs is skipped for that generation rather than erroring — e.g. a 1-sided line has no edge-type site, so it's silently skipped under Whole Edge or Partial Edge (both need one), while Single Point can use it fine.</div>
+
+  <h4>Grafting your own shapes</h4>
+  <p>Set <strong>Source</strong> to <strong>Custom Set</strong> to graft a shape you've drawn yourself instead of a generated n-gon — any polygon or open-curve set already saved in this project (the same library your sprites' own base geometry is drawn from), no separate authoring tool needed. Click <strong>Add shape</strong> under <strong>Custom Shapes</strong> and choose a saved set from the list.</p>
+  <ol class="steps">
+    <li>Draw and save a shape in the <strong>Geometry</strong> tab exactly as you would for a sprite's own base geometry — closed polygon or open curve, either works.</li>
+    <li>Back in this Graft section, set <strong>Source</strong> to <strong>Custom Set</strong>, then click <strong>Add shape</strong> and pick that saved set.</li>
+    <li>Add more than one shape to give each graft instance a rotating cast — which one is used is chosen at random per graft, the same way Sides picks a side count under Generated. One shape always uses it; several add variety.</li>
+    <li><strong>Scale</strong>, <strong>Distortion</strong>, <strong>Edge Matching</strong>, <strong>Attachment</strong>, <strong>Curvature</strong>, and <strong>Articulation</strong> all still apply to a custom shape exactly as they do to a generated one.</li>
+  </ol>
+  <div class="note">A shape removed or renamed after being added here simply falls back to a generated primitive for that entry, rather than erroring — if every added shape has gone missing, Graft falls all the way back to Generated behavior for that pass.</div>
 
   <h4>Generational parameter reference and safe input values</h4>
   <table>
@@ -2882,7 +2940,9 @@
       <tr><td>Split Displacement</td><td>0.02–0.3</td><td>Range for how far the new point (from splitting a random edge) is displaced, resampled each generation — outward from the shape's centre for a closed polygon; for an open curve (Include Open Curves on), the edge's own randomly-chosen side instead, same as Extrude/Graft on curves. Only the new point moves — its neighbouring control points stay put, which pulls the boundary into a rounded spike rather than a sharp corner.</td></tr>
       <tr><td>Split Bulge / Pinch</td><td>-0.1–0.1</td><td>0–0 (default): the two control points flanking the new split point stay exactly where the split placed them (the rounded-spike behavior above, unchanged). Positive values flare the base into a fuller, rounder bulge; negative values straighten the sides into a sharper point/pinch. Independent of Displacement — its own canvas-unit range, not a multiplier.</td></tr>
       <tr><td>Graft Weight</td><td>0–1 (relative)</td><td>Selection weight for the graft operator each generation, relative to Extrude/Split Weight. 0 (default) excludes grafting entirely.</td></tr>
-      <tr><td>Graft Sides</td><td>1–8</td><td>Range for the grafted primitive's side count `n`, resampled each graft. 1–2 always resolves to a bare line (no meaningful 2-sided polygon); 3+ is a plain regular n-gon, not limited to any fixed set of shapes.</td></tr>
+      <tr><td>Graft Source</td><td>—</td><td>Generated (default): an RPSR-sampled n-gon/line, per Sides. Custom Set: a shape from Custom Shapes below instead.</td></tr>
+      <tr><td>Graft Sides</td><td>1–8</td><td>Generated only. Range for the grafted primitive's side count `n`, resampled each graft. 1–2 always resolves to a bare line (no meaningful 2-sided polygon); 3+ is a plain regular n-gon, not limited to any fixed set of shapes.</td></tr>
+      <tr><td>Graft Custom Shapes</td><td>—</td><td>Custom Set only. One or more saved polygon/curve sets eligible as the grafted shape. One entry always uses that shape; several are RPSR-picked per graft for variety. A missing/renamed shape falls back to Generated.</td></tr>
       <tr><td>Graft Scale</td><td>0.05–0.3</td><td>Uniform size multiplier for the grafted primitive, resampled each graft. Primitives generate at a fixed unit size regardless of the target shape's own scale, so grafts can appear far too large (or small) without this — lower it to match small geometry. Independent of Distortion below, which only affects aspect ratio. 1–1 (default) = unit size.</td></tr>
       <tr><td>Graft Distortion</td><td>0.5–1.5</td><td>Independent per-axis scale range applied to the primitive before attachment (on top of Scale above), so repeated grafts don't look identical. 1–1 (default) = no distortion.</td></tr>
       <tr><td>Graft Edge Matching</td><td>—</td><td>Preserve Size: the grafted primitive keeps its own native scale at the joint. Match Length: additionally rescaled so its attachment edge/span matches the parent's exactly. No effect for Single Point attachment (a point has no length).</td></tr>
@@ -2966,21 +3026,33 @@
   <li>In the Transform tab inspector, select a transform set and expand the <strong>Dissolution</strong> stage section.</li>
   <li>Click <strong>+</strong> to add a dissolution pass. Select it to open the Dissolution inspector.</li>
   <li>Under <strong>Entropy</strong>, enable <strong>Enabled</strong>.</li>
-  <li>Choose a <strong>Target</strong>: <em>Smoothed</em> rounds corners while retaining the polygon's overall gesture; <em>Centroid</em> collapses the form inward to a point; <em>Circle</em> normalises vertices to a best-fit circle radius.</li>
+  <li>Choose a <strong>Target</strong>: <em>Smoothed</em> rounds corners while retaining the polygon's overall gesture; <em>Centroid</em> collapses the form inward to a point; <em>Circle</em> normalises vertices to a best-fit circle radius. Closed polygons only — see "Entropy on open curves" below for how open curves behave instead.</li>
   <li>Set <strong>Rate</strong>. At 0.005, the form reaches roughly half-decay after 140 frames (about 6 seconds at 24 fps). At 0.02, half-decay in about 35 frames. Rates above 0.05 decay very fast.</li>
-  <li>Leave <strong>Noise</strong> at 0 for uniform decay. Increase it (try 1���5 canvas units) to introduce per-vertex irregularity so the path toward simplicity feels organic rather than mechanical.</li>
+  <li>Leave <strong>Scale</strong> at 0 for no size change. Set it negative to also shrink toward the centre as entropy completes (e.g. −0.5 = half size), or positive to grow (e.g. 1.0 = double size) — combined with whichever shape change Target/straightening produces.</li>
+  <li>Leave <strong>Noise</strong> at 0 for uniform decay. Increase it (try 1–5 canvas units) to introduce per-vertex irregularity so the path toward simplicity feels organic rather than mechanical. Closed polygons only.</li>
   <li>Change <strong>Seed</strong> to get a different noise pattern without altering any other behaviour.</li>
 </ol>
 <table>
   <thead><tr><th>Parameter</th><th>Safe range</th><th>Effect</th></tr></thead>
   <tbody>
     <tr><td>Rate</td><td>0.001–0.05</td><td>Fraction of remaining distance to target consumed per frame, compounded. 0.005 = very slow erosion; 0.02 = moderate; above 0.1 may feel abrupt. The decay is exponential: each frame closes the same <em>fraction</em> of the remaining gap, not a fixed amount.</td></tr>
-    <tr><td>Target</td><td>—</td><td><strong>Smoothed:</strong> each anchor moves toward the average of its two neighbours (Laplacian step). Corners round; curves and overall polygon direction are retained longest. <strong>Centroid:</strong> all anchors converge to the polygon's centre ��� the form implodes. <strong>Circle:</strong> anchors normalise to a best-fit radius �� angular polygons become progressively circular.</td></tr>
-    <tr><td>Noise</td><td>0–10 units</td><td>Random per-anchor perturbation added during erosion. At 0 the decay is perfectly uniform and geometric. Values above 0 break the symmetry so different anchors decay at slightly different rates and in slightly different directions. Keep under 5 for subtle organic texture; above 10 the noise dominates the signal.</td></tr>
+    <tr><td>Target</td><td>—</td><td>Closed polygons only. <strong>Smoothed:</strong> each anchor moves toward the average of its two neighbours (Laplacian step). Corners round; curves and overall polygon direction are retained longest. <strong>Centroid:</strong> all anchors converge to the polygon's centre — the form implodes. <strong>Circle:</strong> anchors normalise to a best-fit radius — angular polygons become progressively circular.</td></tr>
+    <tr><td>Scale</td><td>−1.0–1.0</td><td>Uniform size trend, around the same centre the shape/straightening change already uses. 0 (default) = no size change. Negative shrinks toward 0 as entropy completes; positive grows. Applies to both closed polygons and open curves.</td></tr>
+    <tr><td>Noise</td><td>0–10 units</td><td>Closed polygons only. Random per-anchor perturbation added during erosion. At 0 the decay is perfectly uniform and geometric. Values above 0 break the symmetry so different anchors decay at slightly different rates and in slightly different directions. Keep under 5 for subtle organic texture; above 10 the noise dominates the signal.</td></tr>
     <tr><td>Seed</td><td>any integer</td><td>Deterministic seed for the per-anchor noise. Change to get a different erosion character. The noise pattern is constant across frames for a given seed — it modifies the direction/magnitude of erosion, not the timing.</td></tr>
   </tbody>
 </table>
 <div class="tip"><strong>Entropy + Evolution:</strong> Add a Convergence Pressure pass (Evolution) targeting a simpler polygon, then add a Dissolution Entropy pass with Target = Smoothed. The Evolution pass actively lerps the subdivision parameters toward simplicity; the Entropy pass additionally softens the output geometry. Together they produce a form that simplifies at two levels simultaneously — in how it subdivides, and in the shape of the resulting polygons.</div>
+
+<h4>Entropy on open curves: straightening, not a shape target</h4>
+<p>None of Smoothed/Centroid/Circle mean anything for an open curve — there's no interior to collapse toward and no natural neighbour wraparound at the two ends. So on an <code>openSpline</code> polygon, Entropy always means the same thing regardless of Target: the curve <em>straightens</em>, losing both its curvature and its zigzag structure over time, using the same Rate-driven decay curve as closed-polygon entropy.</p>
+<p>Two relaxations run together, both scaled by the same decay factor as Rate above:</p>
+<ul>
+  <li><strong>Losing articulation</strong> — every anchor point migrates toward the straight line between the curve's own start and end. Anchors are weighted by their position along the curve (by cumulative distance between anchors, not simply by how many segments away they are), so unevenly-spaced anchors end up evenly spaced on the final line rather than bunching up.</li>
+  <li><strong>Losing curvature</strong> — each segment's own control points relax toward that segment's own straight chord, removing bow independently of the anchor migration above.</li>
+</ul>
+<p>At full decay, a curve that started as a bowed zigzag ends up as essentially a single straight line from its original start to its original end. Nothing is ever deleted from the point list — both relaxations are pure position interpolation, so any frame is still independently computable and seekable exactly like closed-polygon entropy, with no sudden jumps as complexity is "lost."</p>
+<div class="note">Target, Noise, and Seed have no effect on open-curve entropy — straightening is fully deterministic from the curve's own geometry, with no random component. Only Rate (the decay speed) and Scale (the size trend) apply.</div>
 
 <!-- ────────────────────────────────────────────────── -->
 <h3 id="dissolution-collapse">Dissolution — Collapse</h3>

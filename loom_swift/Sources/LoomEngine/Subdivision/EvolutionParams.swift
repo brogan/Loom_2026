@@ -85,6 +85,16 @@ public enum GraftArticulationPattern: String, Codable, CaseIterable, Equatable, 
     case zigzag = "Zig Zag"
 }
 
+/// Where a Graft primitive's base shape comes from (2026-07-12). `.generated`
+/// (default) is the original behavior — an RPSR-sampled n-gon/line from
+/// `AssemblyPrimitiveKit`, unchanged. `.customSet` instead pulls a user-drawn
+/// shape from the project's existing polygon/curve set library (the same
+/// storage a sprite's own base geometry uses) — see `graftCustomSetNames`.
+public enum GraftPrimitiveSource: String, Codable, CaseIterable, Equatable, Sendable {
+    case generated = "Generated"
+    case customSet = "Custom Set"
+}
+
 public struct EvolutionParams: Equatable, Codable, Sendable {
     public var name:          String
     public var enabled:       Bool
@@ -210,6 +220,21 @@ public struct EvolutionParams: Equatable, Codable, Sendable {
     public var graftScaleMin: Double
     public var graftScaleMax: Double
 
+    /// `.generated` (default) reproduces the original n-gon/line behavior
+    /// exactly, unaffected by `graftCustomSetNames` below. `.customSet` uses a
+    /// user-drawn shape instead — see `graftCustomSetNames`.
+    public var graftPrimitiveSource: GraftPrimitiveSource
+
+    /// Names of saved polygon/curve sets (the same library a sprite's own base
+    /// geometry is drawn from) eligible as Graft's base shape when
+    /// `graftPrimitiveSource == .customSet`. One entry always uses that shape;
+    /// several give each graft instance a rotating cast, RPSR-picked per
+    /// instance the same way `graftSidesMin/Max` picks a side count. A name
+    /// with no matching saved set (typo, deleted shape) is simply skipped in
+    /// the roll — falls back to `.generated` if none resolve. Empty (default)
+    /// = no effect, same as `.generated`.
+    public var graftCustomSetNames: [String]
+
     /// Relative selection weight alongside `extrudeWeight`/`splitWeight` (same
     /// three-way roll, widened from two). 0 (default) excludes Graft from
     /// selection entirely — every existing preset with no opinion on Graft
@@ -289,9 +314,13 @@ public struct EvolutionParams: Equatable, Codable, Sendable {
 
     public var graftArticulationPattern: GraftArticulationPattern
 
-    /// Displacement magnitude per joint, canvas-normalized units,
-    /// perpendicular to the edge's own local (chord) direction. 0–0 (default)
-    /// = no effect even if the articulation count range is nonzero.
+    /// Displacement magnitude per joint, as a fraction of the edge's own
+    /// length (same edge-relative convention `graftEdgeCurvatureAmountMin/Max`
+    /// above uses, not an absolute canvas-scale unit), perpendicular to the
+    /// edge's own local (chord) direction — so it shrinks along with a piece
+    /// scaled down via `graftScaleMin/Max` rather than staying fixed-size
+    /// regardless of the piece's own scale. 0–0 (default) = no effect even if
+    /// the articulation count range is nonzero.
     public var graftArticulationAmountMin: Double
     public var graftArticulationAmountMax: Double
 
@@ -360,6 +389,8 @@ public struct EvolutionParams: Equatable, Codable, Sendable {
         graftDistortionMax:       Double                  = 1.0,
         graftScaleMin:            Double                  = 1.0,
         graftScaleMax:            Double                  = 1.0,
+        graftPrimitiveSource:     GraftPrimitiveSource    = .generated,
+        graftCustomSetNames:      [String]                = [],
         graftWeight:              Double                  = 0.0,
         graftEdgeMatching:        AssemblyEdgeMatching    = .preserveSize,
         graftAttachmentMode:      GraftAttachmentMode     = .wholeEdge,
@@ -419,6 +450,8 @@ public struct EvolutionParams: Equatable, Codable, Sendable {
         self.graftDistortionMax       = graftDistortionMax
         self.graftScaleMin            = graftScaleMin
         self.graftScaleMax            = graftScaleMax
+        self.graftPrimitiveSource     = graftPrimitiveSource
+        self.graftCustomSetNames      = graftCustomSetNames
         self.graftWeight              = graftWeight
         self.graftEdgeMatching        = graftEdgeMatching
         self.graftAttachmentMode      = graftAttachmentMode
@@ -460,6 +493,7 @@ public struct EvolutionParams: Equatable, Codable, Sendable {
         case splitBulgePinchMin, splitBulgePinchMax
         case graftSidesMin, graftSidesMax, graftDistortionMin, graftDistortionMax
         case graftScaleMin, graftScaleMax
+        case graftPrimitiveSource, graftCustomSetNames
         case graftWeight, graftEdgeMatching
         case graftAttachmentMode, graftDepartureAngleMin, graftDepartureAngleMax, graftPointSource
         case graftPartialPositionMin, graftPartialPositionMax, graftPartialSpanMin, graftPartialSpanMax
@@ -526,6 +560,8 @@ public struct EvolutionParams: Equatable, Codable, Sendable {
         graftDistortionMax       = try c.decodeIfPresent(Double.self,                  forKey: .graftDistortionMax)       ?? 1.0
         graftScaleMin            = try c.decodeIfPresent(Double.self,                  forKey: .graftScaleMin)            ?? 1.0
         graftScaleMax            = try c.decodeIfPresent(Double.self,                  forKey: .graftScaleMax)            ?? 1.0
+        graftPrimitiveSource     = try c.decodeIfPresent(GraftPrimitiveSource.self,     forKey: .graftPrimitiveSource)     ?? .generated
+        graftCustomSetNames      = try c.decodeIfPresent([String].self,               forKey: .graftCustomSetNames)      ?? []
         graftWeight              = try c.decodeIfPresent(Double.self,                  forKey: .graftWeight)              ?? 0.0
         graftEdgeMatching        = try c.decodeIfPresent(AssemblyEdgeMatching.self,     forKey: .graftEdgeMatching)        ?? .preserveSize
         graftAttachmentMode      = try c.decodeIfPresent(GraftAttachmentMode.self,      forKey: .graftAttachmentMode)      ?? .wholeEdge

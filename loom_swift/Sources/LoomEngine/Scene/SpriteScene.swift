@@ -92,6 +92,16 @@ public struct SpriteScene: @unchecked Sendable {
     /// Named sprite cycles keyed by name for O(1) lookup during render.
     private let allCycles: [String: SpriteCycle]
 
+    /// User-drawn shapes eligible as Graft's base primitive (`EvolutionParams
+    /// .graftCustomSetNames`, 2026-07-12), keyed by set name — every polygon
+    /// set and open-curve set in the project, loaded once here rather than
+    /// per-frame, the same "load once at scene assembly" convention
+    /// `allSubdivisionSets`/`allRendererSets`/`allCycles` above already use.
+    /// One `Polygon2D` per set (its first shape) — a Graft prototype is
+    /// conceptually a single piece, unlike a sprite's own base geometry, which
+    /// can be a whole multi-polygon set.
+    private let allGraftCustomPrimitives: [String: Polygon2D]
+
     // MARK: - Convenience (testing)
 
     /// Directly construct a scene from pre-built instances.
@@ -106,6 +116,7 @@ public struct SpriteScene: @unchecked Sendable {
         self.allSubdivisionSets = [:]
         self.allCurveRefinementSets = [:]
         self.allCycles         = [:]
+        self.allGraftCustomPrimitives = [:]
     }
 
     // MARK: - Assembly
@@ -174,8 +185,48 @@ public struct SpriteScene: @unchecked Sendable {
             config.cycles.map { ($0.name, $0) },
             uniquingKeysWith: { first, _ in first }
         )
+        self.allGraftCustomPrimitives = SpriteScene.loadGraftCustomPrimitives(
+            config: config, projectDirectory: projectDirectory
+        )
         self.layers         = config.layers
         self.lightingConfig = config.lightingConfig
+    }
+
+    /// Every polygon set and open-curve set in the project, resolved to its
+    /// first shape and keyed by name — see `allGraftCustomPrimitives`. Reuses
+    /// `loadBasePolygons` directly (via a minimal synthetic `ShapeDef`) rather
+    /// than a parallel loader, so JSON editable-geometry documents, XML files,
+    /// and algorithmically-generated regular polygons all work identically to
+    /// how a sprite's own base geometry already loads them. A set that fails
+    /// to load (missing file, empty) is simply absent from the result, not an
+    /// error — `GraftEngine` already treats an unresolved name as "skip it."
+    /// `public` (not just used internally at scene assembly above) so
+    /// one-shot callers outside this module that invoke
+    /// `GenerationalEvolutionEngine` directly — e.g. `Loom_Swift_Integration`'s
+    /// bake/wireframe-preview paths, which don't go through a full
+    /// `SpriteScene` — can build the same cache rather than silently falling
+    /// back to `.generated` for a `.customSet` Graft pass.
+    public static func loadGraftCustomPrimitives(
+        config: ProjectConfig, projectDirectory: URL
+    ) -> [String: Polygon2D] {
+        var result: [String: Polygon2D] = [:]
+        for polyDef in config.polygonConfig.library.polygonSets {
+            let sd = ShapeDef(name: polyDef.name, sourceType: .polygonSet, polygonSetName: polyDef.name)
+            if let first = (try? SpriteScene.loadBasePolygons(
+                shapeDef: sd, config: config, projectDirectory: projectDirectory
+            ))?.first {
+                result[polyDef.name] = first
+            }
+        }
+        for curveDef in config.curveConfig.library.curveSets {
+            let sd = ShapeDef(name: curveDef.name, sourceType: .openCurveSet, openCurveSetName: curveDef.name)
+            if let first = (try? SpriteScene.loadBasePolygons(
+                shapeDef: sd, config: config, projectDirectory: projectDirectory
+            ))?.first {
+                result[curveDef.name] = first
+            }
+        }
+        return result
     }
 
     private static func makeInstance(
@@ -1574,7 +1625,8 @@ public struct SpriteScene: @unchecked Sendable {
                 passes:        activeInstance.evolutionParams,
                 elapsedFrames: elapsedFrames,
                 targetFPS:     targetFPS,
-                spriteIndex:   spriteIndex
+                spriteIndex:   spriteIndex,
+                customPrimitives: allGraftCustomPrimitives
             )
         }
 
