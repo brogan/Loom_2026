@@ -81,6 +81,25 @@ struct RunControlBar: View {
                 iconButton("photo", help: "Save Still") { controller.saveStill() }
                     .disabled(controller.engine == nil || controller.isExporting)
 
+                Button {
+                    controller.cropSelectionActive.toggle()
+                } label: {
+                    Image(systemName: "crop")
+                        .font(.system(size: 14))
+                        .frame(width: 28, height: 28)
+                        .contentShape(Rectangle())
+                        .foregroundStyle(controller.cropSelectionActive ? Color.accentColor : Color.primary)
+                }
+                .buttonStyle(.plain)
+                .disabled(controller.engine == nil || controller.isExporting)
+                .help(controller.cropSelectionActive ? "Hide Crop Selection" : "Show Crop Selection")
+                .modifier(LoomHoverHelp(controller.cropSelectionActive ? "Hide Crop Selection" : "Show Crop Selection"))
+
+                iconButton("square.dashed.inset.filled", help: "Export Selection…") {
+                    controller.saveStillSelection()
+                }
+                .disabled(controller.engine == nil || controller.isExporting || controller.cropRect == nil)
+
                 iconButton("doc.text", help: "Save SVG…") { controller.saveSVG() }
                     .disabled(controller.engine == nil || controller.isExporting)
 

@@ -858,4 +858,119 @@ final class EditableGeometryTests: XCTestCase {
         XCTAssertEqual(loaded[0].type, .openSpline)
         XCTAssertEqual(loaded[0].pressures, [0.2, 0.9])
     }
+
+    // MARK: - Selection inversion (2026-07-14)
+
+    private func makeSelectionTestDocument() throws -> (
+        document: EditableGeometryDocument, layerID: EditableGeometryID,
+        polyA: EditableClosedPolygon, polyB: EditableClosedPolygon,
+        curve: EditableOpenCurve, standalone: EditableStandalonePoint
+    ) {
+        let polyA = try EditableClosedPolygon(name: "A", anchors: [
+            Vector2D(x: 0, y: 0), Vector2D(x: 1, y: 0), Vector2D(x: 1, y: 1), Vector2D(x: 0, y: 1),
+        ])
+        let polyB = try EditableClosedPolygon(name: "B", anchors: [
+            Vector2D(x: 2, y: 0), Vector2D(x: 3, y: 0), Vector2D(x: 3, y: 1), Vector2D(x: 2, y: 1),
+        ])
+        let curve = EditableOpenCurve(name: "C", anchors: [Vector2D(x: 0, y: 2), Vector2D(x: 1, y: 2)])
+        let standalone = EditableStandalonePoint(name: "P", position: Vector2D(x: 5, y: 5))
+        let layer = EditableGeometryLayer(name: "Layer", polygons: [polyA, polyB], openCurves: [curve], points: [standalone])
+        let document = EditableGeometryDocument(name: "Doc", layers: [layer])
+        return (document, layer.id, polyA, polyB, curve, standalone)
+    }
+
+    func testInvertSelectionWithNothingSelectedSelectsAllPointsInLayer() throws {
+        let (document, layerID, polyA, polyB, curve, standalone) = try makeSelectionTestDocument()
+        let empty = EditableGeometrySelection(layerID: layerID)
+
+        let inverted = document.invertedSelection(from: empty)
+
+        let expectedCount = polyA.points.count + polyB.points.count + curve.points.count + 1
+        XCTAssertEqual(inverted.pointIDs.count, expectedCount)
+        XCTAssertEqual(inverted.polygonIDs, Set([polyA.id, polyB.id]))
+        XCTAssertEqual(inverted.openCurveIDs, [curve.id])
+        XCTAssertEqual(inverted.standalonePointIDs, [standalone.id])
+        XCTAssertTrue(inverted.segmentIDs.isEmpty)
+    }
+
+    func testInvertSelectionOfEveryPointReturnsEmpty() throws {
+        let (document, layerID, polyA, polyB, curve, standalone) = try makeSelectionTestDocument()
+        let allPointIDs = Set(polyA.points.map(\.id) + polyB.points.map(\.id) + curve.points.map(\.id) + [standalone.id])
+        let full = EditableGeometrySelection(
+            layerID: layerID,
+            polygonIDs: [polyA.id, polyB.id],
+            openCurveIDs: [curve.id],
+            standalonePointIDs: [standalone.id],
+            pointIDs: allPointIDs
+        )
+
+        XCTAssertEqual(document.invertedSelection(from: full), .empty)
+    }
+
+    func testInvertSelectionOfSomePointsComplementsExactlyAndRebuildsContainerBookkeeping() throws {
+        let (document, layerID, polyA, polyB, curve, standalone) = try makeSelectionTestDocument()
+        // Every point of polyA selected — after inverting, polyA should have
+        // no selected points and must drop out of `polygonIDs` entirely.
+        let current = EditableGeometrySelection(
+            layerID: layerID, polygonIDs: [polyA.id], pointIDs: Set(polyA.points.map(\.id))
+        )
+
+        let inverted = document.invertedSelection(from: current)
+
+        let expectedPointIDs = Set(polyB.points.map(\.id) + curve.points.map(\.id) + [standalone.id])
+        XCTAssertEqual(inverted.pointIDs, expectedPointIDs)
+        XCTAssertFalse(inverted.polygonIDs.contains(polyA.id))
+        XCTAssertTrue(inverted.polygonIDs.contains(polyB.id))
+        XCTAssertEqual(inverted.openCurveIDs, [curve.id])
+        XCTAssertEqual(inverted.standalonePointIDs, [standalone.id])
+    }
+
+    func testInvertSelectionInSegmentModeComplementsSegmentsAndStaysInSegmentMode() throws {
+        let (document, layerID, polyA, polyB, curve, _) = try makeSelectionTestDocument()
+        // Every one of polyA's segments selected — after inverting, none of
+        // its segments remain selected, so it must drop out of `polygonIDs`.
+        let allOfPolyASegments = Set(polyA.segments.map(\.id))
+        let current = EditableGeometrySelection(layerID: layerID, polygonIDs: [polyA.id], segmentIDs: allOfPolyASegments)
+
+        let inverted = document.invertedSelection(from: current)
+
+        XCTAssertTrue(inverted.pointIDs.isEmpty, "must stay in segment mode, not switch to point mode")
+        let allSegmentIDs = Set(polyA.segments.map(\.id) + polyB.segments.map(\.id) + curve.segments.map(\.id))
+        XCTAssertEqual(inverted.segmentIDs, allSegmentIDs.subtracting(allOfPolyASegments))
+        XCTAssertFalse(inverted.polygonIDs.contains(polyA.id), "every one of polyA's segments is now deselected")
+        XCTAssertTrue(inverted.polygonIDs.contains(polyB.id))
+        XCTAssertEqual(inverted.openCurveIDs, [curve.id])
+    }
+
+    func testInvertSelectionInWholeObjectModeComplementsPolygonsAndCurves() throws {
+        let (document, layerID, polyA, polyB, curve, _) = try makeSelectionTestDocument()
+        let current = EditableGeometrySelection(layerID: layerID, polygonIDs: [polyA.id])
+
+        let inverted = document.invertedSelection(from: current)
+
+        XCTAssertTrue(inverted.pointIDs.isEmpty)
+        XCTAssertTrue(inverted.segmentIDs.isEmpty)
+        XCTAssertEqual(inverted.polygonIDs, [polyB.id])
+        XCTAssertEqual(inverted.openCurveIDs, [curve.id])
+    }
+
+    func testInvertSelectionTwiceReturnsToTheOriginalSelection() throws {
+        let (document, layerID, polyA, _, _, _) = try makeSelectionTestDocument()
+        let original = EditableGeometrySelection(
+            layerID: layerID, polygonIDs: [polyA.id], pointIDs: Set(polyA.points.prefix(4).map(\.id))
+        )
+
+        let onceInverted  = document.invertedSelection(from: original)
+        let twiceInverted = document.invertedSelection(from: onceInverted)
+
+        XCTAssertEqual(twiceInverted.pointIDs, original.pointIDs)
+        XCTAssertEqual(twiceInverted.polygonIDs, original.polygonIDs)
+    }
+
+    func testInvertSelectionWithUnknownLayerReturnsSelectionUnchanged() throws {
+        let (document, _, _, _, _, _) = try makeSelectionTestDocument()
+        let bogus = EditableGeometrySelection(layerID: EditableGeometryID(), pointIDs: [EditableGeometryID()])
+
+        XCTAssertEqual(document.invertedSelection(from: bogus), bogus)
+    }
 }

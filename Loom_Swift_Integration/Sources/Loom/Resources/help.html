@@ -350,6 +350,7 @@
   <div class="nav-section">Export</div>
   <a class="nav-link" href="#export">Output Options</a>
   <a class="nav-link nav-sub" href="#export-still">Still Image</a>
+  <a class="nav-link nav-sub" href="#export-crop">Cropped Region</a>
   <a class="nav-link nav-sub" href="#export-svg">SVG Export</a>
   <a class="nav-link nav-sub" href="#export-video">Video Export</a>
   <a class="nav-link nav-sub" href="#export-frame-range">Frame Range</a>
@@ -480,6 +481,7 @@
   <div class="toc-group">Export</div>
   <div class="toc-entry"><a href="#export">Output Options</a><span class="toc-fill"></span></div>
   <div class="toc-entry sub"><a href="#export-still">Still Image</a><span class="toc-fill"></span></div>
+  <div class="toc-entry sub"><a href="#export-crop">Cropped Region</a><span class="toc-fill"></span></div>
   <div class="toc-entry sub"><a href="#export-svg">SVG Export</a><span class="toc-fill"></span></div>
   <div class="toc-entry sub"><a href="#export-video">Video Export</a><span class="toc-fill"></span></div>
   <div class="toc-entry sub"><a href="#export-frame-range">Frame Range</a><span class="toc-fill"></span></div>
@@ -1038,6 +1040,7 @@
     <li>Rubber-band point selection captures all points in the rectangle, including overlapping welded stacks. Rubber-band edge selection selects edges by their midpoints.</li>
     <li>For point and edge groups, movement begins only when the drag starts inside the overall selected bounds. Clicking outside those bounds drops the selection unless you drag a new rubber-band rectangle.</li>
     <li>Scaling and rotation use the same selected geometry path as canvas dragging, so whole objects, edges, and point groups can all be transformed.</li>
+    <li><strong>Edit ▸ Invert Selection</strong> (<kbd>⌘I</kbd>) flips the selection within the active layer, staying in whichever mode is currently active — points, edges, or whole polygons/curves. With nothing selected, it selects everything in the layer (the same mode points are in by default).</li>
   </ul>
 
   <h4>Weld controls</h4>
@@ -4273,6 +4276,16 @@
   <p>The save panel has a <strong>Transparent Background</strong> checkbox — off by default (the still exports with the Global tab's Background color/image, same as on-screen). On: the background pass is skipped entirely, so the PNG's alpha channel is transparent everywhere no geometry was drawn, for compositing the still over other content in an image editor. This doesn't change the project's own Background setting — it only affects that one export. Same idea as Video export's ProRes 4444 codec (which preserves alpha for the same reason), just for stills.</p>
   <div class="note">The transparent-background option doesn't take effect if the Global tab's <strong>Draw Background Once</strong> (accumulation mode) is on — that mode reuses one persistent canvas across frames rather than starting fresh each time, so there's no single "background pass" to skip for a one-off export. Turn Draw Background Once off first if you need a transparent still from an accumulation-mode project.</div>
 
+  <h3 id="export-crop">Exporting a cropped region</h3>
+  <p>Click the <strong>crop</strong> icon in the toolbar to overlay a draggable selection rectangle on the render — useful when you only need part of the canvas (e.g. matching a specific document size in another app) and would otherwise crop the exported still afterward in an image editor.</p>
+  <ul>
+    <li>Drag anywhere on the canvas to draw a new selection. A live <strong>width × height</strong> readout in actual output pixels (canvas size × Quality, the same resolution a full still would export at) appears above the selection.</li>
+    <li>Drag inside an existing selection to move it; drag a corner handle to resize it. Both are clamped to the canvas bounds.</li>
+    <li>Click the small <strong>×</strong> at the selection's top-right corner to clear it, or drag a new one anywhere outside the current selection to replace it.</li>
+    <li>Once a selection exists, the <strong>dashed-square</strong> icon (next to the crop icon) exports just that region as a PNG — same save panel and Transparent Background checkbox as a regular still export, and the same <code>renders/stills/</code> destination.</li>
+  </ul>
+  <div class="note">The selection is a temporary tool, not a saved project setting — it resets when you open a different project, and toggling the crop icon off/on again within the same project keeps whatever selection you last drew.</div>
+
   <h3 id="export-svg">SVG — export and import</h3>
   <p>Loom treats SVG as a two-way format. You can export geometry out for editing in Inkscape, then reimport the results — either as geometry or as rendered sprite images.</p>
 
@@ -4358,6 +4371,7 @@
       <tr><td><kbd>⌘⇧Z</kbd></td><td>Redo (geometry editor)</td></tr>
       <tr><td><kbd>⌘C</kbd></td><td>Copy selected geometry</td></tr>
       <tr><td><kbd>⌘V</kbd></td><td>Paste geometry</td></tr>
+      <tr><td><kbd>⌘I</kbd></td><td>Edit ▸ Invert Selection — invert the current selection within its layer (points, segments, or whole polygons/curves, whichever is currently selected). Selects everything in the active layer if nothing is selected yet.</td></tr>
       <tr><td><kbd>Delete</kbd> / <kbd>Backspace</kbd></td><td>Delete selected geometry or selected timeline keyframes, depending on focus</td></tr>
       <tr><td><kbd>Shift</kbd>-click</td><td>Add to selection in the Geometry Editor or Timeline</td></tr>
       <tr><td><kbd>⌘</kbd>-click</td><td>Subtract from geometry selection</td></tr>

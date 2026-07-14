@@ -94,6 +94,128 @@ final class StillExporterPNGTests: XCTestCase {
     }
 }
 
+// MARK: - StillExporter — crop tests (2026-07-14)
+
+/// A 4×4 RGBA image, one solid color per quadrant, built directly from a raw
+/// byte buffer (row 0 = the image's top row — a `CGImage`'s only convention,
+/// with no separate "flip" flag) rather than via any `CGContext` drawing, so
+/// the fixture's own top/bottom is unambiguous and independent of anything
+/// `StillExporter.crop` itself does.
+private func quadrantImage() -> CGImage {
+    let w = 4, h = 4
+    var data = [UInt8](repeating: 0, count: w * h * 4)
+    let red:   (UInt8, UInt8, UInt8, UInt8) = (255, 0, 0, 255)
+    let green: (UInt8, UInt8, UInt8, UInt8) = (0, 255, 0, 255)
+    let blue:  (UInt8, UInt8, UInt8, UInt8) = (0, 0, 255, 255)
+    let white: (UInt8, UInt8, UInt8, UInt8) = (255, 255, 255, 255)
+    for y in 0..<h {
+        for x in 0..<w {
+            let idx = (y * w + x) * 4
+            let color = (y < h / 2, x < w / 2) == (true, true)  ? red
+                       : (y < h / 2, x < w / 2) == (true, false) ? green
+                       : (y < h / 2, x < w / 2) == (false, true) ? blue
+                       : white
+            data[idx] = color.0; data[idx + 1] = color.1
+            data[idx + 2] = color.2; data[idx + 3] = color.3
+        }
+    }
+    let context = CGContext(
+        data: &data, width: w, height: h, bitsPerComponent: 8, bytesPerRow: w * 4,
+        space: CGColorSpaceCreateDeviceRGB(), bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+    )!
+    return context.makeImage()!
+}
+
+private func averageColor(_ image: CGImage) -> (UInt8, UInt8, UInt8, UInt8) {
+    let w = image.width, h = image.height
+    var data = [UInt8](repeating: 0, count: w * h * 4)
+    let context = CGContext(
+        data: &data, width: w, height: h, bitsPerComponent: 8, bytesPerRow: w * 4,
+        space: CGColorSpaceCreateDeviceRGB(), bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+    )!
+    context.draw(image, in: CGRect(x: 0, y: 0, width: w, height: h))
+    var sums = [Int](repeating: 0, count: 4)
+    for p in 0..<(w * h) {
+        for c in 0..<4 { sums[c] += Int(data[p * 4 + c]) }
+    }
+    let n = w * h
+    return (UInt8(sums[0] / n), UInt8(sums[1] / n), UInt8(sums[2] / n), UInt8(sums[3] / n))
+}
+
+final class StillExporterCropTests: XCTestCase {
+
+    func testCropTopLeftQuadrantIsRed() {
+        let image = quadrantImage()
+        let cropped = StillExporter.crop(image, to: CGRect(x: 0, y: 0, width: 2, height: 2))
+        XCTAssertNotNil(cropped)
+        let (r, g, b, _) = averageColor(cropped!)
+        XCTAssertEqual(r, 255); XCTAssertEqual(g, 0); XCTAssertEqual(b, 0)
+    }
+
+    func testCropTopRightQuadrantIsGreen() {
+        let image = quadrantImage()
+        let cropped = StillExporter.crop(image, to: CGRect(x: 2, y: 0, width: 2, height: 2))
+        let (r, g, b, _) = averageColor(cropped!)
+        XCTAssertEqual(r, 0); XCTAssertEqual(g, 255); XCTAssertEqual(b, 0)
+    }
+
+    func testCropBottomLeftQuadrantIsBlue() {
+        let image = quadrantImage()
+        let cropped = StillExporter.crop(image, to: CGRect(x: 0, y: 2, width: 2, height: 2))
+        let (r, g, b, _) = averageColor(cropped!)
+        XCTAssertEqual(r, 0); XCTAssertEqual(g, 0); XCTAssertEqual(b, 255)
+    }
+
+    func testCropBottomRightQuadrantIsWhite() {
+        let image = quadrantImage()
+        let cropped = StillExporter.crop(image, to: CGRect(x: 2, y: 2, width: 2, height: 2))
+        let (r, g, b, _) = averageColor(cropped!)
+        XCTAssertEqual(r, 255); XCTAssertEqual(g, 255); XCTAssertEqual(b, 255)
+    }
+
+    func testCropFullImageMatchesOriginalAverage() {
+        // A no-op crop (the whole image) should reproduce the same overall
+        // average as the source — a coarse but real end-to-end sanity check
+        // distinct from the quadrant-identity tests above.
+        let image = quadrantImage()
+        let cropped = StillExporter.crop(image, to: CGRect(x: 0, y: 0, width: 4, height: 4))
+        let (r, g, b, a) = averageColor(cropped!)
+        let (origR, origG, origB, origA) = averageColor(image)
+        XCTAssertEqual(r, origR); XCTAssertEqual(g, origG)
+        XCTAssertEqual(b, origB); XCTAssertEqual(a, origA)
+    }
+
+    func testCropOffCenterRegionSpanningQuadrantsAveragesCorrectly() {
+        // A 2×2 region centered on the image (columns/rows 1-2) straddles all
+        // four quadrants exactly once each — its average should be the mean of
+        // all four colors, a check that doesn't depend on the crop aligning
+        // with any single quadrant boundary (unlike the four tests above).
+        let image = quadrantImage()
+        let cropped = StillExporter.crop(image, to: CGRect(x: 1, y: 1, width: 2, height: 2))
+        let (r, g, b, _) = averageColor(cropped!)
+        // (red + green + blue + white) / 4 per channel, integer division:
+        // R=(255+0+0+255)/4=127, G=(0+255+0+255)/4=127, B=(0+0+255+255)/4=127.
+        XCTAssertEqual(r, 127); XCTAssertEqual(g, 127); XCTAssertEqual(b, 127)
+    }
+
+    func testExportPNGWithCropPixelRectWritesOnlyTheCroppedRegion() throws {
+        let engine = try Engine(projectDirectory: fixtureDir052)
+        let url = tempURL(ext: "png")
+        defer { cleanup(url) }
+
+        let full = engine.canvasSize
+        let cropRect = CGRect(x: 0, y: 0, width: full.width / 2, height: full.height / 2)
+        try StillExporter.exportPNG(engine: engine, to: url, cropPixelRect: cropRect)
+
+        guard let source = CGImageSourceCreateWithURL(url as CFURL, nil),
+              let image  = CGImageSourceCreateImageAtIndex(source, 0, nil) else {
+            return XCTFail("Could not read back exported PNG")
+        }
+        XCTAssertEqual(image.width, Int(cropRect.width))
+        XCTAssertEqual(image.height, Int(cropRect.height))
+    }
+}
+
 // MARK: - StillExporter — JPEG tests
 
 final class StillExporterJPEGTests: XCTestCase {

@@ -1522,6 +1522,117 @@ public struct EditableGeometryDocument: Codable, Equatable, Identifiable, Sendab
     }
 }
 
+// MARK: - Selection inversion (2026-07-14)
+
+extension EditableGeometryDocument {
+    /// Inverts `selection` within its own layer (Edit ▸ Invert Selection, ⌘I).
+    ///
+    /// The editor's selection has three mutually exclusive modes, each
+    /// maintained by its own family of `AppController.selectGeometry*`
+    /// functions: **point** (`pointIDs` non-empty, the common case — clicking
+    /// or marquee-selecting anchors/control points), **segment**
+    /// (`segmentIDs` non-empty — edge selection for mesh-extend/knife-style
+    /// operations), and **whole-object** (`polygonIDs`/`openCurveIDs`
+    /// non-empty with *no* points or segments selected — selecting entire
+    /// shapes for move/duplicate/delete). Inversion stays within whichever
+    /// mode is currently active, complementing that mode's own universe
+    /// (every point in the layer, every segment in the layer, or every
+    /// polygon+curve in the layer, respectively) — switching modes as a side
+    /// effect of inverting would be surprising. Nothing selected defaults to
+    /// point mode, so the first ⌘I with an empty selection selects every
+    /// point in the layer, matching "select all" in most editors.
+    ///
+    /// `polygonIDs`/`openCurveIDs`/`standalonePointIDs` are rebuilt to stay
+    /// consistent with the new `pointIDs`/`segmentIDs`, mirroring exactly how
+    /// `selectGeometryPoints`/`selectGeometrySegments` already maintain them
+    /// (each tracks "which container has at least one selected point/segment").
+    /// Standalone points have no separate segment concept, so they only ever
+    /// participate in point-mode inversion.
+    public func invertedSelection(from selection: EditableGeometrySelection) -> EditableGeometrySelection {
+        guard let layerID = selection.layerID,
+              let layer = layers.first(where: { $0.id == layerID })
+        else { return selection }
+
+        if !selection.segmentIDs.isEmpty {
+            return invertedSegmentSelection(layerID: layerID, layer: layer, current: selection)
+        }
+        if selection.pointIDs.isEmpty && (!selection.polygonIDs.isEmpty || !selection.openCurveIDs.isEmpty) {
+            return invertedWholeObjectSelection(layerID: layerID, layer: layer, current: selection)
+        }
+        return invertedPointSelection(layerID: layerID, layer: layer, current: selection)
+    }
+
+    private func invertedPointSelection(
+        layerID: EditableGeometryID, layer: EditableGeometryLayer, current: EditableGeometrySelection
+    ) -> EditableGeometrySelection {
+        var newPointIDs      = Set<EditableGeometryID>()
+        var newPolygonIDs    = Set<EditableGeometryID>()
+        var newOpenCurveIDs  = Set<EditableGeometryID>()
+        var newStandaloneIDs = Set<EditableGeometryID>()
+
+        for polygon in layer.polygons {
+            for point in polygon.points where !current.pointIDs.contains(point.id) {
+                newPointIDs.insert(point.id)
+                newPolygonIDs.insert(polygon.id)
+            }
+        }
+        for curve in layer.openCurves {
+            for point in curve.points where !current.pointIDs.contains(point.id) {
+                newPointIDs.insert(point.id)
+                newOpenCurveIDs.insert(curve.id)
+            }
+        }
+        for point in layer.points where !current.pointIDs.contains(point.id) {
+            newPointIDs.insert(point.id)
+            newStandaloneIDs.insert(point.id)
+        }
+
+        guard !newPointIDs.isEmpty else { return .empty }
+        return EditableGeometrySelection(
+            layerID: layerID,
+            polygonIDs: newPolygonIDs,
+            openCurveIDs: newOpenCurveIDs,
+            standalonePointIDs: newStandaloneIDs,
+            pointIDs: newPointIDs
+        )
+    }
+
+    private func invertedSegmentSelection(
+        layerID: EditableGeometryID, layer: EditableGeometryLayer, current: EditableGeometrySelection
+    ) -> EditableGeometrySelection {
+        var newSegmentIDs   = Set<EditableGeometryID>()
+        var newPolygonIDs   = Set<EditableGeometryID>()
+        var newOpenCurveIDs = Set<EditableGeometryID>()
+
+        for polygon in layer.polygons {
+            for segment in polygon.segments where !current.segmentIDs.contains(segment.id) {
+                newSegmentIDs.insert(segment.id)
+                newPolygonIDs.insert(polygon.id)
+            }
+        }
+        for curve in layer.openCurves {
+            for segment in curve.segments where !current.segmentIDs.contains(segment.id) {
+                newSegmentIDs.insert(segment.id)
+                newOpenCurveIDs.insert(curve.id)
+            }
+        }
+
+        guard !newSegmentIDs.isEmpty else { return .empty }
+        return EditableGeometrySelection(
+            layerID: layerID, polygonIDs: newPolygonIDs, openCurveIDs: newOpenCurveIDs, segmentIDs: newSegmentIDs
+        )
+    }
+
+    private func invertedWholeObjectSelection(
+        layerID: EditableGeometryID, layer: EditableGeometryLayer, current: EditableGeometrySelection
+    ) -> EditableGeometrySelection {
+        let newPolygonIDs   = Set(layer.polygons.map(\.id)).subtracting(current.polygonIDs)
+        let newOpenCurveIDs = Set(layer.openCurves.map(\.id)).subtracting(current.openCurveIDs)
+        guard !newPolygonIDs.isEmpty || !newOpenCurveIDs.isEmpty else { return .empty }
+        return EditableGeometrySelection(layerID: layerID, polygonIDs: newPolygonIDs, openCurveIDs: newOpenCurveIDs)
+    }
+}
+
 public struct EditableGeometrySnapshot: Codable, Equatable, Sendable {
     public var document: EditableGeometryDocument
     public var selection: EditableGeometrySelection

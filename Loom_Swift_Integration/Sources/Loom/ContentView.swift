@@ -329,26 +329,54 @@ struct ContentView: View {
     }
 
     private var liveCanvas: some View {
-        ZStack {
-            Color.black
-            if let engine = controller.engine {
-                let size   = controller.engineCanvasSize
-                let aspect = size.width / max(size.height, 1)
-                RenderSurfaceView(
-                    engine:              engine,
-                    playbackState:       controller.isExporting ? .paused : controller.playbackState,
-                    seekFrame:           seekFrame,
-                    onFrameTick:         {
-                        currentFrame = $0
-                        controller.currentTimelineFrame = $0
-                    },
-                    onAnimationComplete: { controller.animationDidComplete() },
-                    onRenderProgress:    { renderProgress = $0 }
-                )
-                .aspectRatio(aspect, contentMode: .fit)
+        GeometryReader { geo in
+            ZStack {
+                Color.black
+                if let engine = controller.engine {
+                    let size   = controller.engineCanvasSize
+                    let aspect = size.width / max(size.height, 1)
+                    RenderSurfaceView(
+                        engine:              engine,
+                        playbackState:       controller.isExporting ? .paused : controller.playbackState,
+                        seekFrame:           seekFrame,
+                        onFrameTick:         {
+                            currentFrame = $0
+                            controller.currentTimelineFrame = $0
+                        },
+                        onAnimationComplete: { controller.animationDidComplete() },
+                        onRenderProgress:    { renderProgress = $0 }
+                    )
+                    .aspectRatio(aspect, contentMode: .fit)
+
+                    if controller.cropSelectionActive {
+                        let fitted = fittedCanvasRect(containerSize: geo.size, aspect: aspect)
+                        CropSelectionOverlay(
+                            canvasRect:      fitted,
+                            canvasPixelSize: size,
+                            cropRect:        $controller.cropRect
+                        )
+                        .position(x: fitted.midX, y: fitted.midY)
+                    }
+                }
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    /// Letterboxed sub-rect where the canvas actually renders within
+    /// `containerSize`, matching `.aspectRatio(aspect, contentMode: .fit)`'s
+    /// own centering — used to align `CropSelectionOverlay` exactly with the
+    /// rendered image rather than the (possibly wider/taller) full view frame.
+    /// Same math `SubdivisionWireframeView.canvasRect(viewSize:)` already uses.
+    private func fittedCanvasRect(containerSize: CGSize, aspect: CGFloat) -> CGRect {
+        let containerAspect = containerSize.width / max(containerSize.height, 1)
+        if aspect > containerAspect {
+            let h = containerSize.width / aspect
+            return CGRect(x: 0, y: (containerSize.height - h) / 2, width: containerSize.width, height: h)
+        } else {
+            let w = containerSize.height * aspect
+            return CGRect(x: (containerSize.width - w) / 2, y: 0, width: w, height: containerSize.height)
+        }
     }
 
     // MARK: - Landing view (no project open)

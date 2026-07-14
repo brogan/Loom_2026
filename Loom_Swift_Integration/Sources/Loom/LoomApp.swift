@@ -38,6 +38,11 @@ struct LoomCommands: Commands {
                 .keyboardShortcut("s", modifiers: [.command, .shift])
                 .disabled(controller?.projectURL == nil)
         }
+        CommandGroup(after: .pasteboard) {
+            Button("Invert Selection") { controller?.invertGeometryEditorSelection() }
+                .keyboardShortcut("i", modifiers: .command)
+                .disabled(controller?.canInvertGeometryEditorSelection != true)
+        }
         CommandMenu("Playback") {
             Button(controller?.playbackState == .paused ? "Resume" : "Pause") {
                 switch controller?.playbackState {

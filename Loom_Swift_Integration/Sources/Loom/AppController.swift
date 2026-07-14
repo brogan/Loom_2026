@@ -315,6 +315,19 @@ final class AppController: ObservableObject, @unchecked Sendable {
     @Published var showingExportSheet:      Bool              = false
     @Published private(set) var lastRenderOutputType: RenderOutputType? = nil
 
+    // MARK: - Published: crop selection (2026-07-14)
+
+    /// Whether the crop-selection overlay is shown on the main render view.
+    /// Transient UI state, deliberately not part of `ProjectConfig` — a crop
+    /// region is a per-export decision, not a project property like canvas
+    /// width/height.
+    @Published var cropSelectionActive: Bool = false
+    /// The current crop selection, normalized to [0, 1] within the canvas,
+    /// origin at the top-left, Y increasing downward (matching the overlay's
+    /// own SwiftUI drag-gesture coordinates). `nil` until the user has dragged
+    /// out a region. Reset on project load — see `loadEngine`.
+    @Published var cropRect: CGRect? = nil
+
     // MARK: - Constants
 
     private static let recentKey = "li.recentProjects"
@@ -3923,6 +3936,31 @@ final class AppController: ObservableObject, @unchecked Sendable {
         clearGeometryEditorAutoWeldCandidates()
     }
 
+    /// Edit ▸ Invert Selection (⌘I, 2026-07-14). Operates on whichever layer
+    /// the current selection belongs to, falling back to the active layer
+    /// when nothing is selected yet (so the first ⌘I with no selection
+    /// selects every point in that layer). See `EditableGeometryDocument
+    /// .invertedSelection(from:)` for the actual set-complement logic and the
+    /// three selection modes it preserves.
+    func invertGeometryEditorSelection() {
+        guard let document = geometryEditorDocument,
+              let layerID = geometryEditorSelection.layerID ?? selectedGeometryEditorLayerID,
+              layerCanEdit(layerID)
+        else { return }
+        var current = geometryEditorSelection
+        current.layerID = layerID
+        geometryEditorSelection = document.invertedSelection(from: current)
+    }
+
+    /// Whether Edit ▸ Invert Selection should be enabled — mirrors
+    /// `invertGeometryEditorSelection()`'s own guard, so the menu item is
+    /// disabled exactly when invoking it would be a no-op.
+    var canInvertGeometryEditorSelection: Bool {
+        isGeometryEditorActive
+            && geometryEditorDocument != nil
+            && (geometryEditorSelection.layerID ?? selectedGeometryEditorLayerID).map(layerCanEdit) ?? false
+    }
+
     func postStatus(_ message: String) {
         appStatusMessage = message
         LoomLogger.info("Status: \(message)")
@@ -7231,6 +7269,59 @@ final class AppController: ObservableObject, @unchecked Sendable {
         }
     }
 
+    /// Exports only the region defined by `cropRect` (2026-07-14) — otherwise
+    /// identical to `saveStill()` (same transparent-background checkbox, same
+    /// save panel, same thread-safety routing through the shared render
+    /// queue). `cropRect` is normalized [0, 1], top-left origin; converted to
+    /// pixel units here since `StillExporter.exportPNG(cropPixelRect:)` works
+    /// in the canvas's actual output pixel space (`engineCanvasSize`, which is
+    /// already width/height × qualityMultiple).
+    func saveStillSelection() {
+        guard let engine = engine, let cropRect else { return }
+        let canvasSize = engineCanvasSize
+        let cropPixelRect = CGRect(
+            x: cropRect.minX * canvasSize.width,
+            y: cropRect.minY * canvasSize.height,
+            width: cropRect.width * canvasSize.width,
+            height: cropRect.height * canvasSize.height
+        )
+        guard cropPixelRect.width >= 1, cropPixelRect.height >= 1 else { return }
+
+        let name = engine.globalConfig.name.isEmpty
+            ? (projectURL?.lastPathComponent ?? "loom")
+            : engine.globalConfig.name
+        let f = DateFormatter()
+        f.dateFormat = "yyyyMMdd_HHmmss"
+        let panel = NSSavePanel()
+        panel.allowedContentTypes  = [UTType.png]
+        panel.nameFieldStringValue = "\(name)_selection_\(f.string(from: Date())).png"
+        panel.directoryURL         = stillRendersDirectory()
+
+        let transparentCheckbox = NSButton(checkboxWithTitle: "Transparent Background", target: nil, action: nil)
+        transparentCheckbox.state = .off
+        transparentCheckbox.sizeToFit()
+        let accessory = NSView(frame: NSRect(x: 0, y: 0, width: transparentCheckbox.frame.width + 40, height: 32))
+        transparentCheckbox.frame.origin = NSPoint(x: 20, y: 6)
+        accessory.addSubview(transparentCheckbox)
+        panel.accessoryView = accessory
+
+        panel.begin { [weak self] response in
+            guard response == .OK, let url = panel.url else { return }
+            let transparentBackground = transparentCheckbox.state == .on
+            RenderSurfaceNSView.sharedRenderQueue.async {
+                do {
+                    try StillExporter.exportPNG(engine: engine, to: url,
+                                                transparentBackground: transparentBackground,
+                                                cropPixelRect: cropPixelRect)
+                    DispatchQueue.main.async { LoomLogger.info("Saved still selection: \(url.path)") }
+                } catch {
+                    DispatchQueue.main.async { LoomLogger.error("Still selection export failed", error: error) }
+                }
+                DispatchQueue.main.async { self?.lastRenderOutputType = .still }
+            }
+        }
+    }
+
     // MARK: - Renders directories
 
     func animationRendersDirectory() -> URL? { existingRendersDir(["animation", "animations"]) }
@@ -7850,10 +7941,12 @@ final class AppController: ObservableObject, @unchecked Sendable {
             engine        = loadedEngine
             projectConfig = try? ProjectLoader.load(projectDirectory: url)
             loadError     = nil
+            cropRect      = nil
             LoomLogger.info("Loaded engine: \(url.path)")
         } catch {
             engine        = nil
             engineCanvasSize = CGSize(width: 1, height: 1)
+            cropRect      = nil
             // Still load the config so missing-file recovery is accessible in the UI.
             projectConfig = try? ProjectLoader.load(projectDirectory: url)
             loadError     = error.localizedDescription
