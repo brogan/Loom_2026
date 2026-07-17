@@ -546,6 +546,7 @@ private struct GeometryEditorShellInspector: View {
     @State private var multiplyCollapsed = false
     @State private var transformCollapsed = false
     @State private var deformCollapsed = false
+    @State private var sculptCollapsed = false
     @State private var showSavePointSetPopover = false
     @State private var newPointSetName = ""
     @State private var editingPointSetID: UUID? = nil
@@ -1201,6 +1202,40 @@ private struct GeometryEditorShellInspector: View {
                     .modifier(LoomHoverHelp("Apply current deform parameters as a new undo step"))
                 }
                 .padding(.top, 4)
+            }
+
+            InspectorSection(
+                "Sculpt",
+                isCollapsed: $sculptCollapsed,
+                isHighlighted: controller.geometryEditorTool == .sculptGrab || controller.geometryEditorTool == .sculptFalloff
+            ) {
+                InspectorField("Radius") {
+                    HStack(spacing: 6) {
+                        Slider(value: Binding(
+                            get: { controller.sculptFalloffRadius },
+                            set: { controller.sculptFalloffRadius = $0 }
+                        ), in: 0.01...1.0)
+                        Text(String(format: "%.2f", controller.sculptFalloffRadius))
+                            .font(.system(size: 11, design: .monospaced))
+                            .foregroundStyle(.secondary)
+                            .frame(width: 38, alignment: .trailing)
+                    }
+                }
+                .modifier(LoomHoverHelp("Radius of influence for the Sculpt (Falloff) brush"))
+
+                InspectorField("Hardness") {
+                    HStack(spacing: 6) {
+                        Slider(value: Binding(
+                            get: { controller.sculptFalloffHardness },
+                            set: { controller.sculptFalloffHardness = $0 }
+                        ), in: 0.0...1.0)
+                        Text(String(format: "%.2f", controller.sculptFalloffHardness))
+                            .font(.system(size: 11, design: .monospaced))
+                            .foregroundStyle(.secondary)
+                            .frame(width: 38, alignment: .trailing)
+                    }
+                }
+                .modifier(LoomHoverHelp("0 = soft, broad gentle taper — 1 = hard, disc-like cutoff. Only affects Sculpt (Falloff); Sculpt (Grab) always moves exactly one point."))
             }
 
             InspectorSection("View", isCollapsed: $viewCollapsed) {
@@ -3198,7 +3233,22 @@ private struct QuickSetupSection: View {
     private var recommendedShapeSetName: String { "\(baseStem)_Shapes" }
     private var recommendedShapeName: String { "\(sourceNameStem)_Shape" }
     private var recommendedSpriteSetName: String { stem }
-    private var recommendedSpriteName: String { baseStem }
+    /// Source-specific (`sourceNameStem`, not the shared-container `baseStem`)
+    /// as the doc comment above already specifies — but until 2026-07-16 this
+    /// actually used `baseStem`, the bare layer name with no geometry-file
+    /// qualifier. Two different geometry files sharing a layer name (e.g. a
+    /// duplicated file's "t" layer and the original's "t" layer) then both
+    /// suggested the identical sprite name. Sprite identity throughout Loom
+    /// is just its bare `name` (no stable ID) shared globally across every
+    /// sprite set, unlike shape/renderer/subdivision items which are always
+    /// addressed as (setName, itemName) pairs — so a sprite name collision is
+    /// far more damaging: `SpriteWireframeView`'s several name-keyed instance
+    /// maps (`Dictionary(..., uniquingKeysWith: { a, _ in a })`) silently drop
+    /// one of the two sprites, making it invisible and unselectable in the
+    /// Sprites tab even though both still render correctly. `uniqueSpriteName`
+    /// below is a defensive backstop on top of this naming fix, for the rarer
+    /// case a sanitized name still collides (or the user hand-edits one).
+    private var recommendedSpriteName: String { uniqueSpriteName(sourceNameStem) }
     private var recommendedRendererSetName: String { "\(stem)_\(baseStem)" }
     private var recommendedRendererName: String { baseStem }
     private var recommendedQuickSetupRendererMode: RendererMode {
@@ -3341,6 +3391,33 @@ private struct QuickSetupSection: View {
             seen.insert(name)
         }
         return options
+    }
+
+    /// Guarantees `base` doesn't collide with an *unrelated* sprite anywhere
+    /// in the project — see `recommendedSpriteName`'s doc comment for why
+    /// this matters more for sprites than for shape/renderer/subdivision
+    /// items. "Unrelated" excludes a sprite that's already this exact
+    /// pipeline's own sprite (matched by shape reference, the same way
+    /// `pipelineExists` identifies it) — otherwise revisiting an
+    /// already-created pipeline would see its own sprite as a "collision"
+    /// and keep suggesting a new suffixed name instead of the correct
+    /// existing one, breaking the pipeline-exists badge.
+    private func uniqueSpriteName(_ base: String) -> String {
+        let shapeSetName = recommendedShapeSetName
+        let shapeName = recommendedShapeName
+        let existing = Set(
+            (controller.projectConfig?.spriteConfig.library.allSprites ?? [])
+                .filter { !($0.shapeSetName == shapeSetName && $0.shapeName == shapeName) }
+                .map(\.name)
+        )
+        guard existing.contains(base) else { return base }
+        var suffix = 2
+        var candidate = "\(base)_\(suffix)"
+        while existing.contains(candidate) {
+            suffix += 1
+            candidate = "\(base)_\(suffix)"
+        }
+        return candidate
     }
 }
 

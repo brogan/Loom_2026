@@ -1063,6 +1063,24 @@ private struct GeometryEditorMainShell: View {
                     ControlHandleIcon()
                 } action: { controller.toggleControlPointOnlyEdit() }
 
+                Divider().frame(height: 16)
+
+                toolbarIconButton(
+                    help: "Sculpt (Grab): grab and drag any point directly — no select step needed",
+                    disabled: morphLocked,
+                    selected: controller.geometryEditorTool == .sculptGrab
+                ) {
+                    Image(systemName: "hand.draw.fill").font(.system(size: 13))
+                } action: { controller.startGeometryEditMode(.sculptGrab) }
+
+                toolbarIconButton(
+                    help: "Sculpt (Falloff): drag a point and nearby points follow, weighted by Radius/Hardness in the inspector",
+                    disabled: morphLocked,
+                    selected: controller.geometryEditorTool == .sculptFalloff
+                ) {
+                    Image(systemName: "paintbrush.pointed.fill").font(.system(size: 13))
+                } action: { controller.startGeometryEditMode(.sculptFalloff) }
+
                 toolbarIconButton(
                     help: "Deform: click canvas to place influence centre, then apply radial falloff deformation via the inspector",
                     disabled: morphLocked,
@@ -1211,12 +1229,15 @@ private struct EditableGeometryCanvas: View {
     @State private var activePolygonDragTarget: GeometryPolygonHit?
     @State private var activeOpenCurveDragTarget: GeometryOpenCurveHit?
     @State private var activeSegmentDragTarget: GeometrySegmentHit?
+    @State private var activeSculptGrabDragTarget: GeometryPointHit?
+    @State private var activeSculptFalloffDragTarget: GeometryPointHit?
     @State private var activeMeshAnchorIndex: Int?
     @State private var activeMeshPreviewDrag = false
     @State private var lastDragWorldPoint: Vector2D?
     @State private var rubberBandStart: CGPoint?
     @State private var rubberBandEnd: CGPoint?
     @State private var rubberBandAddsToSelection = false
+    @State private var rubberBandSubtractsFromSelection = false
     @State private var dragUndoRecorded = false
     @State private var lastPanScreenPoint: CGPoint?
     @State private var activeSelectionCanvasDrag = false
@@ -1274,18 +1295,26 @@ private struct EditableGeometryCanvas: View {
                                     lastDragWorldPoint = start
                                 } else if hasPointGroupSelection &&
                                             !additiveSelectionModifierActive &&
-                                            !toggleSelectionModifierActive {
+                                            !toggleSelectionModifierActive &&
+                                            !subtractiveSelectionModifierActive {
                                     rubberBandStart = value.startLocation
                                     rubberBandAddsToSelection = false
+                                    rubberBandSubtractsFromSelection = false
                                 } else {
                                     activeDragTarget = hitTestPoint(at: value.location, canvasSize: canvasSize)
                                     if let target = activeDragTarget {
-                                        selectPointStack(target, additive: additiveSelectionModifierActive, toggle: toggleSelectionModifierActive)
-                                        activeClickOnlySelection = additiveSelectionModifierActive || toggleSelectionModifierActive
+                                        selectPointStack(
+                                            target,
+                                            additive: additiveSelectionModifierActive,
+                                            toggle: toggleSelectionModifierActive,
+                                            subtract: subtractiveSelectionModifierActive
+                                        )
+                                        activeClickOnlySelection = additiveSelectionModifierActive || toggleSelectionModifierActive || subtractiveSelectionModifierActive
                                         lastDragWorldPoint = current
                                     } else {
                                         rubberBandStart = value.startLocation
                                         rubberBandAddsToSelection = additiveSelectionModifierActive || toggleSelectionModifierActive
+                                        rubberBandSubtractsFromSelection = subtractiveSelectionModifierActive
                                     }
                                 }
                             }
@@ -1321,7 +1350,13 @@ private struct EditableGeometryCanvas: View {
                             if activePolygonDragTarget == nil && rubberBandStart == nil {
                                 activePolygonDragTarget = hitTestPolygon(at: value.startLocation, canvasSize: canvasSize)
                                 if let target = activePolygonDragTarget {
-                                    if !controller.geometryEditorSelection.polygonIDs.contains(target.polygonID) ||
+                                    if subtractiveSelectionModifierActive {
+                                        controller.selectGeometryPolygon(
+                                            layerID: target.layerID,
+                                            polygonID: target.polygonID,
+                                            subtract: true
+                                        )
+                                    } else if !controller.geometryEditorSelection.polygonIDs.contains(target.polygonID) ||
                                         controller.geometryEditorSelection.layerID != target.layerID ||
                                         !controller.geometryEditorSelection.pointIDs.isEmpty ||
                                         !controller.geometryEditorSelection.segmentIDs.isEmpty {
@@ -1336,6 +1371,7 @@ private struct EditableGeometryCanvas: View {
                                 } else {
                                     rubberBandStart = value.startLocation
                                     rubberBandAddsToSelection = additiveSelectionModifierActive || toggleSelectionModifierActive
+                                    rubberBandSubtractsFromSelection = subtractiveSelectionModifierActive
                                 }
                             }
                             if activePolygonDragTarget == nil {
@@ -1358,7 +1394,13 @@ private struct EditableGeometryCanvas: View {
                             if activeOpenCurveDragTarget == nil && rubberBandStart == nil {
                                 activeOpenCurveDragTarget = hitTestOpenCurve(at: value.startLocation, canvasSize: canvasSize)
                                 if let target = activeOpenCurveDragTarget {
-                                    if !controller.geometryEditorSelection.openCurveIDs.contains(target.openCurveID) ||
+                                    if subtractiveSelectionModifierActive {
+                                        controller.selectGeometryOpenCurve(
+                                            layerID: target.layerID,
+                                            openCurveID: target.openCurveID,
+                                            subtract: true
+                                        )
+                                    } else if !controller.geometryEditorSelection.openCurveIDs.contains(target.openCurveID) ||
                                         controller.geometryEditorSelection.layerID != target.layerID ||
                                         !controller.geometryEditorSelection.pointIDs.isEmpty ||
                                         !controller.geometryEditorSelection.segmentIDs.isEmpty {
@@ -1373,6 +1415,7 @@ private struct EditableGeometryCanvas: View {
                                 } else {
                                     rubberBandStart = value.startLocation
                                     rubberBandAddsToSelection = additiveSelectionModifierActive || toggleSelectionModifierActive
+                                    rubberBandSubtractsFromSelection = subtractiveSelectionModifierActive
                                 }
                             }
                             if activeOpenCurveDragTarget == nil {
@@ -1403,17 +1446,25 @@ private struct EditableGeometryCanvas: View {
                                     lastDragWorldPoint = start
                                 } else if hasSegmentGroupSelection &&
                                             !additiveSelectionModifierActive &&
-                                            !toggleSelectionModifierActive {
+                                            !toggleSelectionModifierActive &&
+                                            !subtractiveSelectionModifierActive {
                                     rubberBandStart = value.startLocation
                                     rubberBandAddsToSelection = false
+                                    rubberBandSubtractsFromSelection = false
                                 } else {
                                     activeSegmentDragTarget = hitTestSegment(at: value.startLocation, canvasSize: canvasSize)
                                     if let target = activeSegmentDragTarget {
-                                        selectSegment(target, additive: additiveSelectionModifierActive, toggle: toggleSelectionModifierActive)
+                                        selectSegment(
+                                            target,
+                                            additive: additiveSelectionModifierActive,
+                                            toggle: toggleSelectionModifierActive,
+                                            subtract: subtractiveSelectionModifierActive
+                                        )
                                         lastDragWorldPoint = current
                                     } else {
                                         rubberBandStart = value.startLocation
                                         rubberBandAddsToSelection = additiveSelectionModifierActive || toggleSelectionModifierActive
+                                        rubberBandSubtractsFromSelection = subtractiveSelectionModifierActive
                                     }
                                 }
                             }
@@ -1601,6 +1652,41 @@ private struct EditableGeometryCanvas: View {
                             }
                             controller.updateGeometryExtrudeDrag(to: point)
 
+                        case .sculptGrab:
+                            let current = unproject(value.location, canvasSize: canvasSize)
+                            if activeSculptGrabDragTarget == nil {
+                                activeSculptGrabDragTarget = hitTestPoint(at: value.startLocation, canvasSize: canvasSize)
+                                lastDragWorldPoint = current
+                            }
+                            guard let target = activeSculptGrabDragTarget, let previous = lastDragWorldPoint else { return }
+                            let grabDelta = current - previous
+                            guard grabDelta.length > 0.0000001 else { return }
+                            if !dragUndoRecorded {
+                                controller.recordGeometryEditorUndoSnapshot()
+                                dragUndoRecorded = true
+                            }
+                            controller.moveSculptGrabPoint(target.pointID, in: target.layerID, delta: grabDelta)
+                            lastDragWorldPoint = current
+
+                        case .sculptFalloff:
+                            let current = unproject(value.location, canvasSize: canvasSize)
+                            if activeSculptFalloffDragTarget == nil {
+                                activeSculptFalloffDragTarget = hitTestPoint(at: value.startLocation, canvasSize: canvasSize)
+                                if let target = activeSculptFalloffDragTarget {
+                                    controller.beginSculptFalloffDrag(seedPointID: target.pointID, layerID: target.layerID)
+                                }
+                                lastDragWorldPoint = current
+                            }
+                            guard activeSculptFalloffDragTarget != nil, let previous = lastDragWorldPoint else { return }
+                            let falloffDelta = current - previous
+                            guard falloffDelta.length > 0.0000001 else { return }
+                            if !dragUndoRecorded {
+                                controller.recordGeometryEditorUndoSnapshot()
+                                dragUndoRecorded = true
+                            }
+                            controller.updateSculptFalloffDrag(delta: falloffDelta)
+                            lastDragWorldPoint = current
+
                         case .deform:
                             let currentWorld = unproject(value.location, canvasSize: canvasSize)
                             // Latch handle on first movement
@@ -1703,11 +1789,21 @@ private struct EditableGeometryCanvas: View {
                                let end = rubberBandEnd,
                                rubberBandRect(start: start, end: end).width > 4,
                                rubberBandRect(start: start, end: end).height > 4 {
-                                selectPoints(in: rubberBandRect(start: start, end: end), canvasSize: canvasSize, additive: rubberBandAddsToSelection)
+                                selectPoints(
+                                    in: rubberBandRect(start: start, end: end),
+                                    canvasSize: canvasSize,
+                                    additive: rubberBandAddsToSelection,
+                                    subtract: rubberBandSubtractsFromSelection
+                                )
                             } else if activeDragTarget == nil,
                                       let target = hitTestPoint(at: value.location, canvasSize: canvasSize) {
-                                selectPointStack(target, additive: additiveSelectionModifierActive, toggle: toggleSelectionModifierActive)
-                            } else if activeDragTarget == nil {
+                                selectPointStack(
+                                    target,
+                                    additive: additiveSelectionModifierActive,
+                                    toggle: toggleSelectionModifierActive,
+                                    subtract: subtractiveSelectionModifierActive
+                                )
+                            } else if activeDragTarget == nil, !subtractiveSelectionModifierActive {
                                 controller.clearGeometryEditorSelection()
                             }
                             activeDragTarget = nil
@@ -1718,6 +1814,7 @@ private struct EditableGeometryCanvas: View {
                             rubberBandStart = nil
                             rubberBandEnd = nil
                             rubberBandAddsToSelection = false
+                            rubberBandSubtractsFromSelection = false
                             dragUndoRecorded = false
                         case .edges:
                             if activeSelectionCanvasDrag {
@@ -1728,11 +1825,21 @@ private struct EditableGeometryCanvas: View {
                                let end = rubberBandEnd,
                                rubberBandRect(start: start, end: end).width > 4,
                                rubberBandRect(start: start, end: end).height > 4 {
-                                selectSegments(in: rubberBandRect(start: start, end: end), canvasSize: canvasSize, additive: rubberBandAddsToSelection)
+                                selectSegments(
+                                    in: rubberBandRect(start: start, end: end),
+                                    canvasSize: canvasSize,
+                                    additive: rubberBandAddsToSelection,
+                                    subtract: rubberBandSubtractsFromSelection
+                                )
                             } else if activeSegmentDragTarget == nil,
                                let target = hitTestSegment(at: value.location, canvasSize: canvasSize) {
-                                selectSegment(target, additive: additiveSelectionModifierActive, toggle: toggleSelectionModifierActive)
-                            } else if activeSegmentDragTarget == nil {
+                                selectSegment(
+                                    target,
+                                    additive: additiveSelectionModifierActive,
+                                    toggle: toggleSelectionModifierActive,
+                                    subtract: subtractiveSelectionModifierActive
+                                )
+                            } else if activeSegmentDragTarget == nil, !subtractiveSelectionModifierActive {
                                 controller.clearGeometryEditorSelection()
                             }
                             activeSegmentDragTarget = nil
@@ -1742,6 +1849,7 @@ private struct EditableGeometryCanvas: View {
                             rubberBandStart = nil
                             rubberBandEnd = nil
                             rubberBandAddsToSelection = false
+                            rubberBandSubtractsFromSelection = false
                             dragUndoRecorded = false
                         case .polygons:
                             if activePolygonDragTarget == nil,
@@ -1752,7 +1860,8 @@ private struct EditableGeometryCanvas: View {
                                 selectPolygons(
                                     in: rubberBandRect(start: start, end: end),
                                     canvasSize: canvasSize,
-                                    additive: rubberBandAddsToSelection
+                                    additive: rubberBandAddsToSelection,
+                                    subtract: rubberBandSubtractsFromSelection
                                 )
                             } else if activePolygonDragTarget == nil,
                                       let target = hitTestPolygon(at: value.location, canvasSize: canvasSize) {
@@ -1760,9 +1869,10 @@ private struct EditableGeometryCanvas: View {
                                     layerID: target.layerID,
                                     polygonID: target.polygonID,
                                     additive: additiveSelectionModifierActive,
-                                    toggle: toggleSelectionModifierActive
+                                    toggle: toggleSelectionModifierActive,
+                                    subtract: subtractiveSelectionModifierActive
                                 )
-                            } else if activePolygonDragTarget == nil {
+                            } else if activePolygonDragTarget == nil, !subtractiveSelectionModifierActive {
                                 controller.clearGeometryEditorSelection()
                             }
                             activePolygonDragTarget = nil
@@ -1771,6 +1881,7 @@ private struct EditableGeometryCanvas: View {
                             rubberBandStart = nil
                             rubberBandEnd = nil
                             rubberBandAddsToSelection = false
+                            rubberBandSubtractsFromSelection = false
                             dragUndoRecorded = false
                         case .openCurves:
                             if activeOpenCurveDragTarget == nil,
@@ -1781,7 +1892,8 @@ private struct EditableGeometryCanvas: View {
                                 selectOpenCurves(
                                     in: rubberBandRect(start: start, end: end),
                                     canvasSize: canvasSize,
-                                    additive: rubberBandAddsToSelection
+                                    additive: rubberBandAddsToSelection,
+                                    subtract: rubberBandSubtractsFromSelection
                                 )
                             } else if activeOpenCurveDragTarget == nil,
                                let target = hitTestOpenCurve(at: value.location, canvasSize: canvasSize) {
@@ -1789,9 +1901,10 @@ private struct EditableGeometryCanvas: View {
                                     layerID: target.layerID,
                                     openCurveID: target.openCurveID,
                                     additive: additiveSelectionModifierActive,
-                                    toggle: toggleSelectionModifierActive
+                                    toggle: toggleSelectionModifierActive,
+                                    subtract: subtractiveSelectionModifierActive
                                 )
-                            } else if activeOpenCurveDragTarget == nil {
+                            } else if activeOpenCurveDragTarget == nil, !subtractiveSelectionModifierActive {
                                 controller.clearGeometryEditorSelection()
                             }
                             activeOpenCurveDragTarget = nil
@@ -1800,6 +1913,7 @@ private struct EditableGeometryCanvas: View {
                             rubberBandStart = nil
                             rubberBandEnd = nil
                             rubberBandAddsToSelection = false
+                            rubberBandSubtractsFromSelection = false
                             dragUndoRecorded = false
                         case .knife:
                             if isAnchorKnifeClick {
@@ -1828,6 +1942,17 @@ private struct EditableGeometryCanvas: View {
                         case .displacementExtrude, .scaleExtrude:
                             controller.updateGeometryExtrudeDrag(to: unproject(value.location, canvasSize: canvasSize))
                             controller.finishGeometryExtrude()
+
+                        case .sculptGrab:
+                            activeSculptGrabDragTarget = nil
+                            lastDragWorldPoint = nil
+                            dragUndoRecorded = false
+
+                        case .sculptFalloff:
+                            controller.endSculptFalloffDrag()
+                            activeSculptFalloffDragTarget = nil
+                            lastDragWorldPoint = nil
+                            dragUndoRecorded = false
 
                         case .deform:
                             if deformActiveDragHandle == .none {
@@ -1861,20 +1986,25 @@ private struct EditableGeometryCanvas: View {
                         if !controller.isCurrentGeometryMorphTargetLocked { controller.pasteGeometry() }
                         return true
                     }
-                    // ⌫ Delete key (keyCode 51) — delete selected geometry (blocked when morph locked)
+                    // ⌫ / ⇧⌫ Delete key (keyCode 51) — delete selected / delete all layer geometry
+                    // (both blocked when morph locked, matching their toolbar buttons)
                     if !cmd && event.keyCode == 51 {
-                        if !controller.isCurrentGeometryMorphTargetLocked {
+                        if shft {
+                            if controller.canDeleteAllLayerGeometry && !controller.isCurrentGeometryMorphTargetLocked {
+                                controller.deleteAllLayerGeometry()
+                            }
+                        } else if !controller.isCurrentGeometryMorphTargetLocked {
                             controller.deleteSelectedGeometry()
                         }
                         return true
                     }
-                    // p — finalise polygon/open-curve draft
-                    if key == "p" {
-                        controller.finaliseGeometryDraftPolygon()
-                        return true
-                    }
-                    // k — commit curved knife cut
-                    if key == "k" || key == "\r" {
+                    // Return / ⇧Return — commit whatever draft or cut is currently in progress.
+                    // Consolidated from the old "P" (finalise polygon/open-curve draft) and "K"
+                    // (commit curved-knife cut) so those letters are free to become tool-switch
+                    // keys below. NOTE: switching tools always clears an in-progress draft (see
+                    // startGeometryEditMode), so old muscle memory of pressing "P" mid-draft will
+                    // now discard it instead of finishing it — use Return going forward.
+                    if key == "\r" {
                         // Anchor-point knife (both tools): commit if both points are selected.
                         if let anchor = controller.geometryKnifeAnchorState, anchor.pointID2 != nil {
                             controller.commitAnchorKnifeCut()
@@ -1885,6 +2015,28 @@ private struct EditableGeometryCanvas: View {
                             controller.finishGeometryCurvedKnifeCut()
                             return true
                         }
+                        if shft {
+                            // Explicit: finalise as a closed polygon (or mesh-extend/close/extend,
+                            // whichever finaliseGeometryDraftPolygon determines applies).
+                            controller.finaliseGeometryDraftPolygon()
+                            return true
+                        }
+                        // Bare Return: prefer finishing the current Point-By-Point draft as an
+                        // open curve — the common case when building a sequence of discrete open
+                        // curves, so pressing Return immediately clears the draft and lets you
+                        // start the next curve without switching tools — unless the draft is
+                        // actually extending an already-selected open curve, in which case
+                        // finaliseGeometryDraftPolygon already knows how to continue that curve
+                        // instead of starting a new one. Falls back to finaliseGeometryDraftPolygon
+                        // when an open curve isn't a valid option (e.g. Mesh Extend, or fewer than
+                        // 2 draft points).
+                        if controller.selectedOpenCurveForExtension == nil,
+                           controller.canFinaliseGeometryDraftOpenCurve {
+                            controller.finaliseGeometryDraftOpenCurve()
+                        } else {
+                            controller.finaliseGeometryDraftPolygon()
+                        }
+                        return true
                     }
                     // Escape — cancel mesh extend draft / curved knife / anchor state
                     if key == "\u{1B}" {
@@ -1892,6 +2044,102 @@ private struct EditableGeometryCanvas: View {
                         controller.cancelGeometryCurvedKnifeLine()
                         controller.cancelGeometryKnifeAnchorState()
                         return true
+                    }
+                    // Illustrator-style single-letter tool shortcuts (bare = primary tool,
+                    // Shift+letter = its variant, e.g. Knife/Curved Knife). See help.html's
+                    // Geometry Editor Shortcuts table for the full list.
+                    if !cmd {
+                        let morphLocked = controller.isCurrentGeometryMorphTargetLocked
+                        switch key {
+                        // Edit modes
+                        case "p": controller.startGeometryEditMode(.points); return true
+                        case "e": controller.startGeometryEditMode(.edges); return true
+                        case "u": controller.startGeometryEditMode(.openCurves); return true
+                        case "g": controller.startGeometryEditMode(.polygons); return true
+                        // Transform toggles
+                        case "a": controller.toggleAnchorOnlyEdit(); return true
+                        case "l": controller.toggleControlPointOnlyEdit(); return true
+                        // Sculpt & Deform (morph-lock gated, matching their toolbar buttons)
+                        case "s":
+                            guard !morphLocked else { return true }
+                            controller.startGeometryEditMode(shft ? .sculptFalloff : .sculptGrab)
+                            return true
+                        case "d":
+                            guard !morphLocked else { return true }
+                            controller.startDeformTool()
+                            return true
+                        // Centre & snap
+                        case "c": controller.centreGeometryEditorViewOnSelectionOrLayer(); return true
+                        case "n":
+                            controller.snapGeometryEditorSelectionToGrid(anchorOnly: !shft)
+                            return true
+                        // Create (morph-lock gated, matching the Create section)
+                        case "i":
+                            guard !morphLocked else { return true }
+                            controller.startStandalonePointGeometryCreation()
+                            return true
+                        case "o":
+                            guard !morphLocked else { return true }
+                            controller.createOvalGeometry()
+                            return true
+                        case "r":
+                            guard !morphLocked else { return true }
+                            controller.createRegularPolygonGeometry()
+                            return true
+                        case "b":
+                            guard !morphLocked else { return true }
+                            controller.startPointByPointGeometryCreation()
+                            return true
+                        case "m":
+                            guard !morphLocked else { return true }
+                            controller.startMeshExtendGeometryCreation()
+                            return true
+                        case "f":
+                            guard !morphLocked else { return true }
+                            controller.startFreehandGeometryCreation()
+                            return true
+                        case "t":
+                            guard !morphLocked, controller.canPressureTraceSelectedGeometry else { return true }
+                            controller.startPressureTraceGeometryEdit()
+                            return true
+                        // Weld (not morph-lock gated, matching the Weld section)
+                        case "w":
+                            if shft { controller.weldAdjacentGeometryEdges() }
+                            else    { controller.weldSelectedGeometry() }
+                            return true
+                        case "j": controller.geometryEditorAutoWeld.toggle(); return true
+                        case "q": controller.unweldSelectedGeometry(); return true
+                        // Multiply (morph-lock gated, matching the Multiply section)
+                        case "v":
+                            guard !morphLocked else { return true }
+                            if shft { controller.duplicateSelectedGeometryToNewLayer(named: "") }
+                            else    { controller.duplicateSelectedGeometry() }
+                            return true
+                        case "x":
+                            guard !morphLocked else { return true }
+                            if shft { controller.startScaleExtrude() }
+                            else    { controller.startDisplacementExtrude() }
+                            return true
+                        case "k":
+                            guard !morphLocked else { return true }
+                            if shft { controller.startCurvedKnifeGeometryCut() }
+                            else    { controller.startKnifeGeometryCut() }
+                            return true
+                        // View
+                        case "z":
+                            if shft { controller.zoomGeometryEditorOut() }
+                            else    { controller.zoomGeometryEditorIn() }
+                            return true
+                        case "h":
+                            if controller.geometryEditorTool == .panView {
+                                controller.startGeometryEditMode(.points)
+                            } else {
+                                controller.startGeometryEditMode(.panView)
+                            }
+                            return true
+                        default:
+                            break
+                        }
                     }
                     return false
                 }
@@ -3161,6 +3409,7 @@ private struct EditableGeometryCanvas: View {
         guard hasPointGroupSelection,
               !additiveSelectionModifierActive,
               !toggleSelectionModifierActive,
+              !subtractiveSelectionModifierActive,
               let bounds = selectedPointGroupBounds(canvasSize: canvasSize)
         else { return false }
         return bounds.insetBy(dx: -14, dy: -14).contains(location)
@@ -3170,6 +3419,7 @@ private struct EditableGeometryCanvas: View {
         guard hasSegmentGroupSelection,
               !additiveSelectionModifierActive,
               !toggleSelectionModifierActive,
+              !subtractiveSelectionModifierActive,
               let bounds = selectedSegmentGroupBounds(canvasSize: canvasSize)
         else { return false }
         return bounds.insetBy(dx: -14, dy: -14).contains(location)
@@ -3486,12 +3736,14 @@ private struct EditableGeometryCanvas: View {
         return bestHit
     }
 
-    private func selectPolygons(in rect: CGRect, canvasSize: CGFloat, additive: Bool = false) {
+    private func selectPolygons(in rect: CGRect, canvasSize: CGFloat, additive: Bool = false, subtract: Bool = false) {
+        if subtract, controller.geometryEditorSelection.layerID == nil { return }
+        let restrictToLayerID = subtract ? controller.geometryEditorSelection.layerID : nil
         let (scale, origin) = viewTransform(canvasSize: canvasSize)
         var firstLayerID: EditableGeometryID?
         var selected = Set<EditableGeometryID>()
 
-        for layer in document.layers where layerCanEdit(layer) {
+        for layer in document.layers where layerCanEdit(layer) && (restrictToLayerID == nil || layer.id == restrictToLayerID) {
             for polygon in layer.polygons where polygon.isVisible {
                 let box = screenBounds(for: polygon, scale: scale, origin: origin)
                 guard rect.intersects(box) else { continue }
@@ -3505,8 +3757,8 @@ private struct EditableGeometryCanvas: View {
         }
 
         if let firstLayerID, !selected.isEmpty {
-            controller.selectGeometryPolygons(layerID: firstLayerID, polygonIDs: selected, additive: additive)
-        } else if !additive {
+            controller.selectGeometryPolygons(layerID: firstLayerID, polygonIDs: selected, additive: additive, subtract: subtract)
+        } else if !additive && !subtract {
             controller.clearGeometryEditorSelection()
         }
     }
@@ -3644,14 +3896,15 @@ private struct EditableGeometryCanvas: View {
         ctx.stroke(selected, with: .color(Color.orange), lineWidth: 2)
     }
 
-    private func selectPoint(_ target: GeometryPointHit, additive: Bool = false, toggle: Bool = false) {
+    private func selectPoint(_ target: GeometryPointHit, additive: Bool = false, toggle: Bool = false, subtract: Bool = false) {
         if let polygonID = target.polygonID {
             controller.selectGeometryPoint(
                 layerID: target.layerID,
                 polygonID: polygonID,
                 pointID: target.pointID,
                 additive: additive,
-                toggle: toggle
+                toggle: toggle,
+                subtract: subtract
             )
         } else if let openCurveID = target.openCurveID {
             controller.selectGeometryOpenCurvePoint(
@@ -3659,24 +3912,26 @@ private struct EditableGeometryCanvas: View {
                 openCurveID: openCurveID,
                 pointID: target.pointID,
                 additive: additive,
-                toggle: toggle
+                toggle: toggle,
+                subtract: subtract
             )
         } else if let standalonePointID = target.standalonePointID {
             controller.selectGeometryStandalonePoint(
                 layerID: target.layerID,
                 pointID: standalonePointID,
                 additive: additive,
-                toggle: toggle
+                toggle: toggle,
+                subtract: subtract
             )
         }
     }
 
-    private func selectPointStack(_ target: GeometryPointHit, additive: Bool = false, toggle: Bool = false) {
+    private func selectPointStack(_ target: GeometryPointHit, additive: Bool = false, toggle: Bool = false, subtract: Bool = false) {
         guard !toggle,
               let layer = document.layers.first(where: { $0.id == target.layerID }),
               let targetPosition = pointPosition(id: target.pointID, in: layer)
         else {
-            selectPoint(target, additive: additive, toggle: toggle)
+            selectPoint(target, additive: additive, toggle: toggle, subtract: subtract)
             return
         }
 
@@ -3707,10 +3962,11 @@ private struct EditableGeometryCanvas: View {
                 polygonPoints: polygonPoints,
                 openCurvePoints: openCurvePoints,
                 standalonePointIDs: standalonePointIDs,
-                additive: additive
+                additive: additive,
+                subtract: subtract
             )
         } else {
-            selectPoint(target, additive: additive, toggle: toggle)
+            selectPoint(target, additive: additive, toggle: toggle, subtract: subtract)
         }
     }
 
@@ -3736,14 +3992,22 @@ private struct EditableGeometryCanvas: View {
         NSEvent.modifierFlags.contains(.command)
     }
 
-    private func selectSegment(_ target: GeometrySegmentHit, additive: Bool = false, toggle: Bool = false) {
+    /// Option-click/drag always removes from the current selection, never adds
+    /// (2026-07-19). Distinct from `toggleSelectionModifierActive`, which adds
+    /// when the item isn't already selected.
+    private var subtractiveSelectionModifierActive: Bool {
+        NSEvent.modifierFlags.contains(.option)
+    }
+
+    private func selectSegment(_ target: GeometrySegmentHit, additive: Bool = false, toggle: Bool = false, subtract: Bool = false) {
         if let polygonID = target.polygonID {
             controller.selectGeometrySegment(
                 layerID: target.layerID,
                 polygonID: polygonID,
                 segmentID: target.segmentID,
                 additive: additive,
-                toggle: toggle
+                toggle: toggle,
+                subtract: subtract
             )
         } else if let openCurveID = target.openCurveID {
             controller.selectGeometryOpenCurveSegment(
@@ -3751,7 +4015,8 @@ private struct EditableGeometryCanvas: View {
                 openCurveID: openCurveID,
                 segmentID: target.segmentID,
                 additive: additive,
-                toggle: toggle
+                toggle: toggle,
+                subtract: subtract
             )
         }
     }
@@ -3769,7 +4034,8 @@ private struct EditableGeometryCanvas: View {
         let rect = rubberBandRect(start: start, end: end)
         guard rect.width > 1, rect.height > 1 else { return }
         let path = Path(rect)
-        ctx.fill(path, with: .color(Color.accentColor.opacity(0.12)))
+        let bandColor = rubberBandSubtractsFromSelection ? Color.red : Color.accentColor
+        ctx.fill(path, with: .color(bandColor.opacity(0.12)))
         ctx.stroke(path, with: .color(Color.white.opacity(0.75)), style: StrokeStyle(lineWidth: 1, dash: [5, 4]))
     }
 
@@ -3782,14 +4048,16 @@ private struct EditableGeometryCanvas: View {
         )
     }
 
-    private func selectPoints(in rect: CGRect, canvasSize: CGFloat, additive: Bool) {
+    private func selectPoints(in rect: CGRect, canvasSize: CGFloat, additive: Bool, subtract: Bool = false) {
+        if subtract, controller.geometryEditorSelection.layerID == nil { return }
+        let restrictToLayerID = subtract ? controller.geometryEditorSelection.layerID : nil
         let (scale, origin) = viewTransform(canvasSize: canvasSize)
         var firstLayerID: EditableGeometryID?
         var polygonPoints: [(polygonID: EditableGeometryID, pointID: EditableGeometryID)] = []
         var openCurvePoints: [(openCurveID: EditableGeometryID, pointID: EditableGeometryID)] = []
         var standalonePointIDs = Set<EditableGeometryID>()
 
-        for layer in document.layers where layerCanEdit(layer) {
+        for layer in document.layers where layerCanEdit(layer) && (restrictToLayerID == nil || layer.id == restrictToLayerID) {
             for polygon in layer.polygons where polygon.isVisible {
                 for point in polygon.points where point.kind == .anchor || controller.geometryEditorShowsControlPoints {
                     let screen = project(point.position, scale: scale, origin: origin)
@@ -3832,19 +4100,22 @@ private struct EditableGeometryCanvas: View {
                 polygonPoints: polygonPoints,
                 openCurvePoints: openCurvePoints,
                 standalonePointIDs: standalonePointIDs,
-                additive: additive
+                additive: additive,
+                subtract: subtract
             )
-        } else if !additive {
+        } else if !additive && !subtract {
             controller.clearGeometryEditorSelection()
         }
     }
 
-    private func selectOpenCurves(in rect: CGRect, canvasSize: CGFloat, additive: Bool) {
+    private func selectOpenCurves(in rect: CGRect, canvasSize: CGFloat, additive: Bool, subtract: Bool = false) {
+        if subtract, controller.geometryEditorSelection.layerID == nil { return }
+        let restrictToLayerID = subtract ? controller.geometryEditorSelection.layerID : nil
         let (scale, origin) = viewTransform(canvasSize: canvasSize)
         var firstLayerID: EditableGeometryID?
         var selected = Set<EditableGeometryID>()
 
-        for layer in document.layers where layerCanEdit(layer) {
+        for layer in document.layers where layerCanEdit(layer) && (restrictToLayerID == nil || layer.id == restrictToLayerID) {
             for curve in layer.openCurves where curve.isVisible {
                 let box = screenBounds(for: curve, scale: scale, origin: origin)
                 guard rect.intersects(box) else { continue }
@@ -3858,19 +4129,21 @@ private struct EditableGeometryCanvas: View {
         }
 
         if let firstLayerID, !selected.isEmpty {
-            controller.selectGeometryOpenCurves(layerID: firstLayerID, openCurveIDs: selected, additive: additive)
-        } else if !additive {
+            controller.selectGeometryOpenCurves(layerID: firstLayerID, openCurveIDs: selected, additive: additive, subtract: subtract)
+        } else if !additive && !subtract {
             controller.clearGeometryEditorSelection()
         }
     }
 
-    private func selectSegments(in rect: CGRect, canvasSize: CGFloat, additive: Bool) {
+    private func selectSegments(in rect: CGRect, canvasSize: CGFloat, additive: Bool, subtract: Bool = false) {
+        if subtract, controller.geometryEditorSelection.layerID == nil { return }
+        let restrictToLayerID = subtract ? controller.geometryEditorSelection.layerID : nil
         let (scale, origin) = viewTransform(canvasSize: canvasSize)
         var firstLayerID: EditableGeometryID?
         var polygonSegments: [(polygonID: EditableGeometryID, segmentID: EditableGeometryID)] = []
         var openCurveSegments: [(openCurveID: EditableGeometryID, segmentID: EditableGeometryID)] = []
 
-        for layer in document.layers where layerCanEdit(layer) {
+        for layer in document.layers where layerCanEdit(layer) && (restrictToLayerID == nil || layer.id == restrictToLayerID) {
             for polygon in layer.polygons where polygon.isVisible {
                 let pointMap = Dictionary(uniqueKeysWithValues: polygon.points.map { ($0.id, $0.position) })
                 for segment in polygon.segments {
@@ -3918,9 +4191,10 @@ private struct EditableGeometryCanvas: View {
                 layerID: firstLayerID,
                 polygonSegments: polygonSegments,
                 openCurveSegments: openCurveSegments,
-                additive: additive
+                additive: additive,
+                subtract: subtract
             )
-        } else if !additive {
+        } else if !additive && !subtract {
             controller.clearGeometryEditorSelection()
         }
     }

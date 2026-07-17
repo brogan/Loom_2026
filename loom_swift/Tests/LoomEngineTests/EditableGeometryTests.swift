@@ -312,6 +312,329 @@ final class EditableGeometryTests: XCTestCase {
         assertVec(runtime.points[11], Vector2D(x: 0, y: 1))
     }
 
+    // MARK: - Open curve anchor/segment deletion (2026-07-16)
+
+    /// A→B→C→D, three segments — the open-curve counterpart of the box
+    /// fixture the closed-polygon deletion tests above use.
+    private func fourAnchorOpenCurve() -> EditableOpenCurve {
+        EditableOpenCurve(name: "Curve", anchors: [
+            Vector2D(x: 0, y: 1),
+            Vector2D(x: 1, y: 1),
+            Vector2D(x: 1, y: 0),
+            Vector2D(x: 0, y: 0),
+        ])
+    }
+
+    func testDeletingFirstAnchorFromOpenCurveShortensFromTheStart() throws {
+        let curve = fourAnchorOpenCurve()
+        guard case .shortened(let result) = curve.deletingAnchor(id: curve.anchorIDs[0]) else {
+            return XCTFail("Expected a shortened curve after deleting the first anchor")
+        }
+        let runtime = try result.toPolygon2D()
+
+        XCTAssertEqual(result.anchorIDs.count, 3)
+        XCTAssertEqual(result.segments.count, 2)
+        XCTAssertEqual(runtime.type, .openSpline)
+        assertVec(runtime.points[0], Vector2D(x: 1, y: 1))
+        assertVec(runtime.points[7], Vector2D(x: 0, y: 0))
+    }
+
+    func testDeletingLastAnchorFromOpenCurveShortensFromTheEnd() throws {
+        let curve = fourAnchorOpenCurve()
+        guard case .shortened(let result) = curve.deletingAnchor(id: curve.anchorIDs[3]) else {
+            return XCTFail("Expected a shortened curve after deleting the last anchor")
+        }
+        let runtime = try result.toPolygon2D()
+
+        XCTAssertEqual(result.anchorIDs.count, 3)
+        XCTAssertEqual(result.segments.count, 2)
+        assertVec(runtime.points[0], Vector2D(x: 0, y: 1))
+        assertVec(runtime.points[7], Vector2D(x: 1, y: 0))
+    }
+
+    func testDeletingInteriorAnchorFromOpenCurveInterpolatesAcrossTheGap() throws {
+        let curve = fourAnchorOpenCurve()
+        guard case .shortened(let result) = curve.deletingAnchor(id: curve.anchorIDs[1]) else {
+            return XCTFail("Expected a shortened curve after deleting an interior anchor")
+        }
+        let runtime = try result.toPolygon2D()
+
+        XCTAssertEqual(result.anchorIDs.count, 3)
+        XCTAssertEqual(result.segments.count, 2)
+        // Straight-line interpolation between A(0,1) and C(1,0), same 1/3-2/3
+        // control placement the closed-polygon interior case uses.
+        assertVec(runtime.points[0], Vector2D(x: 0, y: 1))
+        assertVec(runtime.points[1], Vector2D(x: 1.0 / 3.0, y: 2.0 / 3.0))
+        assertVec(runtime.points[2], Vector2D(x: 2.0 / 3.0, y: 1.0 / 3.0))
+        assertVec(runtime.points[3], Vector2D(x: 1, y: 0))
+    }
+
+    func testDeletingEitherAnchorOfATwoAnchorCurveEmptiesIt() throws {
+        let curve = EditableOpenCurve(name: "Line", anchors: [Vector2D(x: 0, y: 0), Vector2D(x: 1, y: 1)])
+        XCTAssertEqual(curve.deletingAnchor(id: curve.anchorIDs[0]), .emptied)
+        XCTAssertEqual(curve.deletingAnchor(id: curve.anchorIDs[1]), .emptied)
+    }
+
+    func testDeletingNonAnchorPointReturnsNil() throws {
+        let curve = fourAnchorOpenCurve()
+        let controlPointID = curve.segments[0].controlOutID
+        XCTAssertNil(curve.deletingAnchor(id: controlPointID))
+    }
+
+    func testDeletingFirstSegmentFromOpenCurveShortensFromTheStart() throws {
+        let curve = fourAnchorOpenCurve()
+        guard case .shortened(let result) = curve.deletingSegment(id: curve.segments[0].id) else {
+            return XCTFail("Expected a shortened curve after deleting the first segment")
+        }
+        let runtime = try result.toPolygon2D()
+
+        XCTAssertEqual(result.segments.count, 2)
+        assertVec(runtime.points[0], Vector2D(x: 1, y: 1))
+        assertVec(runtime.points[7], Vector2D(x: 0, y: 0))
+    }
+
+    func testDeletingLastSegmentFromOpenCurveShortensFromTheEnd() throws {
+        let curve = fourAnchorOpenCurve()
+        guard case .shortened(let result) = curve.deletingSegment(id: curve.segments[2].id) else {
+            return XCTFail("Expected a shortened curve after deleting the last segment")
+        }
+        let runtime = try result.toPolygon2D()
+
+        XCTAssertEqual(result.segments.count, 2)
+        assertVec(runtime.points[0], Vector2D(x: 0, y: 1))
+        assertVec(runtime.points[7], Vector2D(x: 1, y: 0))
+    }
+
+    func testDeletingInteriorSegmentFromOpenCurveSplitsIntoTwoCurves() throws {
+        let curve = fourAnchorOpenCurve()
+        guard case .split(let first, let second) = curve.deletingSegment(id: curve.segments[1].id) else {
+            return XCTFail("Expected a split after deleting an interior segment")
+        }
+        let firstRuntime = try first.toPolygon2D()
+        let secondRuntime = try second.toPolygon2D()
+
+        XCTAssertEqual(first.segments.count, 1)
+        XCTAssertEqual(second.segments.count, 1)
+        assertVec(firstRuntime.points[0], Vector2D(x: 0, y: 1))
+        assertVec(firstRuntime.points[3], Vector2D(x: 1, y: 1))
+        assertVec(secondRuntime.points[0], Vector2D(x: 1, y: 0))
+        assertVec(secondRuntime.points[3], Vector2D(x: 0, y: 0))
+        // Each half only carries the points it actually references.
+        XCTAssertEqual(first.points.count, 4)
+        XCTAssertEqual(second.points.count, 4)
+    }
+
+    func testDeletingTheOnlySegmentOfASingleSegmentCurveEmptiesIt() throws {
+        let curve = EditableOpenCurve(name: "Line", anchors: [Vector2D(x: 0, y: 0), Vector2D(x: 1, y: 1)])
+        XCTAssertEqual(curve.deletingSegment(id: curve.segments[0].id), .emptied)
+    }
+
+    func testDeletingUnknownSegmentIDReturnsNil() throws {
+        let curve = fourAnchorOpenCurve()
+        XCTAssertNil(curve.deletingSegment(id: EditableGeometryID()))
+    }
+
+    // MARK: - Multi-select anchor/segment deletion (2026-07-19)
+
+    private func pentagon() throws -> EditableClosedPolygon {
+        try EditableClosedPolygon(name: "Pentagon", anchors: [
+            Vector2D(x: 0, y: 1),
+            Vector2D(x: 0.95, y: 0.31),
+            Vector2D(x: 0.59, y: -0.81),
+            Vector2D(x: -0.59, y: -0.81),
+            Vector2D(x: -0.95, y: 0.31),
+        ])
+    }
+
+    /// A→B→C→D→E, four segments — a longer open curve than
+    /// `fourAnchorOpenCurve()` for tests where one deletion needs to split
+    /// the curve and a later deletion needs to further modify one half.
+    private func fiveAnchorOpenCurve() -> EditableOpenCurve {
+        EditableOpenCurve(name: "Curve", anchors: [
+            Vector2D(x: 0, y: 0),
+            Vector2D(x: 1, y: 0),
+            Vector2D(x: 2, y: 0),
+            Vector2D(x: 3, y: 0),
+            Vector2D(x: 4, y: 0),
+        ])
+    }
+
+    func testDeletingTwoNonAdjacentAnchorsFromPentagonShrinksToTriangle() throws {
+        let polygon = try pentagon()
+        let ids: Set = [polygon.anchorIDs[0], polygon.anchorIDs[2]]
+
+        guard case .closedPolygon(let result) = polygon.deletingAnchors(ids: ids) else {
+            return XCTFail("Expected a smaller closed polygon")
+        }
+        XCTAssertEqual(result.anchorIDs.count, 3)
+        XCTAssertEqual(result.segments.count, 3)
+    }
+
+    func testDeletingEnoughAnchorsFromSquareConvertsToOpenCurve() throws {
+        let square = try EditableClosedPolygon(name: "Box", anchors: [
+            Vector2D(x: 0, y: 1), Vector2D(x: 1, y: 1), Vector2D(x: 1, y: 0), Vector2D(x: 0, y: 0),
+        ])
+        let ids: Set = [square.anchorIDs[0], square.anchorIDs[1]]
+
+        guard case .openCurve(let result) = square.deletingAnchors(ids: ids) else {
+            return XCTFail("Expected conversion to an open curve")
+        }
+        XCTAssertEqual(result.anchorIDs.count, 2)
+        XCTAssertEqual(result.segments.count, 1)
+    }
+
+    func testDeletingFourOfFiveAnchorsFromPentagonEmptiesIt() throws {
+        let polygon = try pentagon()
+        let ids = Set(polygon.anchorIDs.prefix(4))
+
+        XCTAssertEqual(polygon.deletingAnchors(ids: ids), .emptied)
+    }
+
+    func testDeletingNoMatchingAnchorsFromPolygonLeavesItUnchanged() throws {
+        let polygon = try pentagon()
+
+        guard case .closedPolygon(let result) = polygon.deletingAnchors(ids: [EditableGeometryID()]) else {
+            return XCTFail("Expected the original polygon back")
+        }
+        XCTAssertEqual(result, polygon)
+    }
+
+    func testDeletingTwoNonAdjacentSegmentsFromSquareProducesTwoOpenCurves() throws {
+        let square = try EditableClosedPolygon(name: "Box", anchors: [
+            Vector2D(x: 0, y: 1), Vector2D(x: 1, y: 1), Vector2D(x: 1, y: 0), Vector2D(x: 0, y: 0),
+        ])
+        let ids: Set = [square.segments[0].id, square.segments[2].id]
+
+        guard case .replaced(let pieces) = square.deletingSegments(ids: ids) else {
+            return XCTFail("Expected replacement pieces")
+        }
+        XCTAssertEqual(pieces.count, 2)
+        XCTAssertEqual(pieces[0].segments.count, 1)
+        XCTAssertEqual(pieces[1].segments.count, 1)
+        let firstRuntime = try pieces[0].toPolygon2D()
+        let secondRuntime = try pieces[1].toPolygon2D()
+        // seg0 (A-B) deleted first turns the square into curve B-C-D-A; seg2
+        // (originally C-D) is then interior to that curve and splits it into
+        // B-C and D-A.
+        assertVec(firstRuntime.points[0], Vector2D(x: 1, y: 1))
+        assertVec(firstRuntime.points[3], Vector2D(x: 1, y: 0))
+        assertVec(secondRuntime.points[0], Vector2D(x: 0, y: 0))
+        assertVec(secondRuntime.points[3], Vector2D(x: 0, y: 1))
+    }
+
+    func testDeletingTwoAdjacentSegmentsFromSquareProducesOneShorterCurve() throws {
+        let square = try EditableClosedPolygon(name: "Box", anchors: [
+            Vector2D(x: 0, y: 1), Vector2D(x: 1, y: 1), Vector2D(x: 1, y: 0), Vector2D(x: 0, y: 0),
+        ])
+        let ids: Set = [square.segments[0].id, square.segments[1].id]
+
+        guard case .replaced(let pieces) = square.deletingSegments(ids: ids) else {
+            return XCTFail("Expected replacement pieces")
+        }
+        XCTAssertEqual(pieces.count, 1)
+        XCTAssertEqual(pieces[0].segments.count, 2)
+        let runtime = try pieces[0].toPolygon2D()
+        assertVec(runtime.points[0], Vector2D(x: 1, y: 0))
+        assertVec(runtime.points[7], Vector2D(x: 0, y: 1))
+    }
+
+    func testDeletingNoMatchingSegmentsFromPolygonIsUnchanged() throws {
+        let polygon = try pentagon()
+        XCTAssertEqual(polygon.deletingSegments(ids: [EditableGeometryID()]), .unchanged)
+    }
+
+    func testDeletingFirstAndLastAnchorFromOpenCurveShortensProgressively() throws {
+        let curve = fourAnchorOpenCurve()
+        let ids: Set = [curve.anchorIDs[0], curve.anchorIDs[3]]
+
+        guard case .shortened(let result) = curve.deletingAnchors(ids: ids) else {
+            return XCTFail("Expected a shortened curve")
+        }
+        XCTAssertEqual(result.anchorIDs.count, 2)
+        XCTAssertEqual(result.segments.count, 1)
+        let runtime = try result.toPolygon2D()
+        assertVec(runtime.points[0], Vector2D(x: 1, y: 1))
+        assertVec(runtime.points[3], Vector2D(x: 1, y: 0))
+    }
+
+    func testDeletingBothInteriorAnchorsFromOpenCurveInterpolatesTwice() throws {
+        let curve = fourAnchorOpenCurve()
+        let ids: Set = [curve.anchorIDs[1], curve.anchorIDs[2]]
+
+        guard case .shortened(let result) = curve.deletingAnchors(ids: ids) else {
+            return XCTFail("Expected a shortened curve")
+        }
+        XCTAssertEqual(result.anchorIDs.count, 2)
+        XCTAssertEqual(result.segments.count, 1)
+        let runtime = try result.toPolygon2D()
+        // Straight line directly from A(0,1) to D(0,0) — both interior
+        // anchors interpolated away in sequence.
+        assertVec(runtime.points[0], Vector2D(x: 0, y: 1))
+        assertVec(runtime.points[3], Vector2D(x: 0, y: 0))
+    }
+
+    func testDeletingSegmentsFromOpenCurveCanSplitThenShortenOnePiece() throws {
+        let curve = fiveAnchorOpenCurve()
+        let ids: Set = [curve.segments[1].id, curve.segments[3].id]
+
+        guard case .replaced(let pieces) = curve.deletingSegments(ids: ids) else {
+            return XCTFail("Expected replacement pieces")
+        }
+        XCTAssertEqual(pieces.count, 2)
+        // seg[1] (B-C) is interior, splitting into [A-B] and [C-D-E]; seg[3]
+        // (D-E) is then the terminal segment of the second piece, shortening
+        // it to [C-D].
+        let totalSegments = pieces.reduce(0) { $0 + $1.segments.count }
+        XCTAssertEqual(totalSegments, 2)
+        XCTAssertTrue(pieces.allSatisfy { $0.segments.count == 1 })
+    }
+
+    func testLayerDeletingAnchorsOnlyTouchesObjectsWithMatchingAnchors() throws {
+        let untouchedPolygon = try pentagon()
+        let targetPolygon = try EditableClosedPolygon(name: "Box", anchors: [
+            Vector2D(x: 0, y: 1), Vector2D(x: 1, y: 1), Vector2D(x: 1, y: 0), Vector2D(x: 0, y: 0),
+        ])
+        let untouchedCurve = fourAnchorOpenCurve()
+        let layer = EditableGeometryLayer(
+            name: "Layer", polygons: [untouchedPolygon, targetPolygon], openCurves: [untouchedCurve]
+        )
+
+        let result = layer.deletingAnchors(ids: [targetPolygon.anchorIDs[0]])
+
+        XCTAssertEqual(result.polygons.count, 2)
+        XCTAssertTrue(result.polygons.contains(untouchedPolygon), "untouched polygon must be returned as-is")
+        XCTAssertTrue(result.polygons.contains { $0.anchorIDs.count == 3 }, "target polygon should have lost one anchor")
+        XCTAssertEqual(result.openCurves, [untouchedCurve])
+    }
+
+    func testLayerDeletingSegmentsMovesConvertedPolygonIntoOpenCurves() throws {
+        let untouchedCurve = fourAnchorOpenCurve()
+        let targetPolygon = try EditableClosedPolygon(name: "Box", anchors: [
+            Vector2D(x: 0, y: 1), Vector2D(x: 1, y: 1), Vector2D(x: 1, y: 0), Vector2D(x: 0, y: 0),
+        ])
+        let layer = EditableGeometryLayer(
+            name: "Layer", polygons: [targetPolygon], openCurves: [untouchedCurve]
+        )
+
+        let result = layer.deletingSegments(ids: [targetPolygon.segments[0].id])
+
+        XCTAssertTrue(result.polygons.isEmpty, "the only polygon converted away entirely")
+        XCTAssertEqual(result.openCurves.count, 2)
+        XCTAssertTrue(result.openCurves.contains(untouchedCurve), "untouched curve must be returned as-is")
+    }
+
+    func testLayerDeletingAnchorsWithEmptySetIsANoOp() throws {
+        let polygon = try pentagon()
+        let layer = EditableGeometryLayer(name: "Layer", polygons: [polygon])
+        XCTAssertEqual(layer.deletingAnchors(ids: []), layer)
+    }
+
+    func testLayerDeletingSegmentsWithEmptySetIsANoOp() throws {
+        let polygon = try pentagon()
+        let layer = EditableGeometryLayer(name: "Layer", polygons: [polygon])
+        XCTAssertEqual(layer.deletingSegments(ids: []), layer)
+    }
+
     func testClosingOpenCurveCreatesClosedPolygon() throws {
         let curve = EditableOpenCurve(name: "Curve", anchors: [
             Vector2D(x: 0, y: 1),

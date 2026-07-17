@@ -234,6 +234,35 @@ struct SpritesInspector: View {
                       xKP: \.scale.x, yKP: \.scale.y,
                       setIdx: setIdx, spriteIdx: spriteIdx)
             .loomHelp("Scale multiplier (1.0 = original size). Applied around the sprite's anchor point.")
+            InspectorField("Flip") {
+                Toggle("Horizontal", isOn: Binding(
+                    get: { sprite.scale.x < 0 },
+                    set: { flipped in
+                        ctl.updateProjectConfig { cfg in
+                            guard si < cfg.spriteConfig.library.spriteSets.count,
+                                  pi < cfg.spriteConfig.library.spriteSets[si].sprites.count else { return }
+                            let current = cfg.spriteConfig.library.spriteSets[si].sprites[pi].scale.x
+                            cfg.spriteConfig.library.spriteSets[si].sprites[pi].scale.x = flipped ? -abs(current) : abs(current)
+                        }
+                    }
+                ))
+                .toggleStyle(.checkbox)
+                .font(.system(size: 11))
+                Toggle("Vertical", isOn: Binding(
+                    get: { sprite.scale.y < 0 },
+                    set: { flipped in
+                        ctl.updateProjectConfig { cfg in
+                            guard si < cfg.spriteConfig.library.spriteSets.count,
+                                  pi < cfg.spriteConfig.library.spriteSets[si].sprites.count else { return }
+                            let current = cfg.spriteConfig.library.spriteSets[si].sprites[pi].scale.y
+                            cfg.spriteConfig.library.spriteSets[si].sprites[pi].scale.y = flipped ? -abs(current) : abs(current)
+                        }
+                    }
+                ))
+                .toggleStyle(.checkbox)
+                .font(.system(size: 11))
+            }
+            .loomHelp("Mirror the sprite horizontally and/or vertically by flipping the sign of Scale X/Y. Magnitude is preserved — only the sign toggles — so this combines cleanly with the Scale field. Applied around the sprite's anchor point, same as Scale.")
             InspectorField("Rotation") {
                 FloatEntryField(value: rotationBinding(setIdx, spriteIdx), width: 65, fractionDigits: 2)
                 Text("°").font(.system(size: 11)).foregroundStyle(.secondary)

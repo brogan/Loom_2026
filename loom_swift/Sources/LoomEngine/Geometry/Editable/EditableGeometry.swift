@@ -81,6 +81,62 @@ public enum EditableAnchorDeletionResult: Equatable, Sendable {
     case openCurve(EditableOpenCurve)
 }
 
+/// Result of `EditableOpenCurve.deletingAnchor(id:)` (2026-07-16). Unlike a
+/// closed polygon, an open curve has no wraparound, so removing an anchor
+/// never produces two results — it can only shorten the curve (removing a
+/// terminal anchor drops its one adjacent segment; removing an interior
+/// anchor merges its two neighboring segments into one straight one, "healing"
+/// across the gap) or, if fewer than two anchors would remain, empty it out
+/// entirely (a one-point "curve" isn't a valid shape).
+public enum EditableOpenCurveAnchorDeletionResult: Equatable, Sendable {
+    case shortened(EditableOpenCurve)
+    case emptied
+}
+
+/// Result of `EditableOpenCurve.deletingSegment(id:)` (2026-07-16). Deleting a
+/// terminal segment shortens the curve (same as deleting its outer anchor);
+/// deleting an interior segment splits the curve in two at the gap, since
+/// unlike a closed polygon's ring there's no way to walk around and rejoin
+/// the two remaining pieces into one path. Deleting a single-segment curve's
+/// only segment empties it out entirely.
+public enum EditableOpenCurveSegmentDeletionResult: Equatable, Sendable {
+    case shortened(EditableOpenCurve)
+    case split(EditableOpenCurve, EditableOpenCurve)
+    case emptied
+}
+
+/// Result of `EditableClosedPolygon.deletingAnchors(ids:)` /
+/// `EditableOpenCurve.deletingAnchors(ids:)` (2026-07-19) — multi-select
+/// Delete Selected Geometry for anchors. Each requested anchor is deleted one
+/// at a time against whatever the *current* state has become, so the result
+/// is exactly what repeating the single-anchor delete once per anchor would
+/// produce — a polygon can shrink down through smaller polygons into an open
+/// curve partway through (see `EditableAnchorDeletionResult`), and an open
+/// curve can shorten down to nothing (`.emptied`) if enough of its anchors
+/// are deleted. A polygon never re-closes once it has become a curve, since
+/// `EditableOpenCurve.deletingAnchor(id:)` has no closed-polygon case.
+public enum EditableMultiAnchorDeletionResult: Equatable, Sendable {
+    case closedPolygon(EditableClosedPolygon)
+    case openCurve(EditableOpenCurve)
+    case emptied
+}
+
+/// Result of `EditableClosedPolygon.deletingSegments(ids:)` /
+/// `EditableOpenCurve.deletingSegments(ids:)` (2026-07-19) — multi-select
+/// Delete Selected Geometry for segments. `.unchanged` means none of the
+/// requested segment IDs were actually present (a true no-op — the caller
+/// should keep the original object, polygon-ness included). Otherwise
+/// `.replaced` carries every surviving piece: a polygon's first deleted
+/// segment always converts it to one open curve (same as the single-segment
+/// case), and every segment deleted after that — from either a polygon's own
+/// conversion or an originally-open curve — can further shorten, split, or
+/// empty out whichever piece currently contains it, so the final count can be
+/// zero, one, or many independent curves.
+public enum EditableMultiSegmentDeletionResult: Equatable, Sendable {
+    case unchanged
+    case replaced([EditableOpenCurve])
+}
+
 public struct EditableRegularPolygonParameters: Codable, Equatable, Sendable {
     public var sides: Int
     public var centre: Vector2D
@@ -586,6 +642,57 @@ public struct EditableClosedPolygon: Codable, Equatable, Identifiable, Sendable 
         )
     }
 
+    /// Deletes every anchor in `anchorIDs` that's actually present, one at a
+    /// time, each against whatever the *current* state has become — see
+    /// `EditableMultiAnchorDeletionResult`. Processed in the polygon's own
+    /// structural order (not `anchorIDs`' own — a `Set`'s iteration order is
+    /// unspecified), so the result is deterministic regardless of how the
+    /// caller built the set. An anchor ID that's no longer present (already
+    /// consumed by an earlier step in this same call, or never valid) is
+    /// simply skipped rather than treated as an error.
+    public func deletingAnchors(ids anchorIDs: Set<EditableGeometryID>) -> EditableMultiAnchorDeletionResult {
+        let orderedIDs = self.anchorIDs.filter { anchorIDs.contains($0) }
+        var current: EditableMultiAnchorDeletionResult = .closedPolygon(self)
+        for anchorID in orderedIDs {
+            switch current {
+            case .closedPolygon(let polygon):
+                guard polygon.point(id: anchorID)?.kind == .anchor,
+                      let result = polygon.deletingAnchor(id: anchorID)
+                else { continue }
+                switch result {
+                case .closedPolygon(let next): current = .closedPolygon(next)
+                case .openCurve(let next):     current = .openCurve(next)
+                }
+            case .openCurve(let curve):
+                guard curve.point(id: anchorID)?.kind == .anchor,
+                      let result = curve.deletingAnchor(id: anchorID)
+                else { continue }
+                switch result {
+                case .shortened(let next): current = .openCurve(next)
+                case .emptied:              current = .emptied
+                }
+            case .emptied:
+                break  // Nothing left to delete further; remaining IDs are moot.
+            }
+        }
+        return current
+    }
+
+    /// Deletes every segment in `segmentIDs` that's actually present, one at
+    /// a time, each against whatever piece(s) the object has become so far —
+    /// see `EditableMultiSegmentDeletionResult`. The first deleted segment
+    /// always converts this polygon to one open curve (same as
+    /// `deletingSegment(id:)`); each segment deleted after that can further
+    /// shorten, split, or empty out whichever resulting piece currently
+    /// contains it. Processed in the polygon's own structural order for the
+    /// same determinism reason as `deletingAnchors(ids:)`.
+    public func deletingSegments(ids segmentIDs: Set<EditableGeometryID>) -> EditableMultiSegmentDeletionResult {
+        let orderedIDs = segments.map(\.id).filter { segmentIDs.contains($0) }
+        guard let firstID = orderedIDs.first, let firstCurve = deletingSegment(id: firstID) else { return .unchanged }
+        let pieces = EditableOpenCurve.applyingSegmentDeletions(to: [firstCurve], ids: Array(orderedIDs.dropFirst()))
+        return .replaced(pieces)
+    }
+
     public func deletingSegment(id segmentID: EditableGeometryID) -> EditableOpenCurve? {
         guard let deletedIndex = segments.firstIndex(where: { $0.id == segmentID }),
               segments.count >= 2
@@ -915,6 +1022,193 @@ public struct EditableOpenCurve: Codable, Equatable, Identifiable, Sendable {
         )
     }
 
+    /// Deletes anchor `anchorID`, per §Edit ▸ Delete Selected Geometry
+    /// (2026-07-16). A terminal anchor (the curve's first or last) is removed
+    /// along with its one adjacent segment, shortening the curve from that
+    /// end. An interior anchor is removed and its two neighboring segments
+    /// are replaced by one new straight segment directly between its former
+    /// neighbors — the same "interpolate across the gap" rebuild
+    /// `EditableClosedPolygon.deletingAnchor(id:)` already does for its own
+    /// interior case, just without that method's wraparound (there's no
+    /// "previous" of the first anchor or "next" of the last, so those cases
+    /// naturally fall through to reusing the existing segment instead of
+    /// synthesizing a new one — terminal and interior deletion are actually
+    /// the same algorithm here, not two separate cases).
+    public func deletingAnchor(id anchorID: EditableGeometryID) -> EditableOpenCurveAnchorDeletionResult? {
+        guard let anchor = point(id: anchorID), anchor.kind == .anchor else { return nil }
+        let anchors = anchorIDs
+        guard let deletedIndex = anchors.firstIndex(of: anchorID), anchors.count >= 2 else { return nil }
+        let remainingAnchors = anchors.filter { $0 != anchorID }
+        guard remainingAnchors.count >= 2 else { return .emptied }
+
+        let pointMap = Dictionary(uniqueKeysWithValues: points.map { ($0.id, $0) })
+        let deletedPrevious = deletedIndex > 0 ? anchors[deletedIndex - 1] : nil
+        let deletedNext = deletedIndex < anchors.count - 1 ? anchors[deletedIndex + 1] : nil
+
+        var rebuiltPoints: [EditableCubicPoint] = []
+        var rebuiltSegments: [EditableCubicSegment] = []
+        func appendPointIfNeeded(_ point: EditableCubicPoint) {
+            if !rebuiltPoints.contains(where: { $0.id == point.id }) { rebuiltPoints.append(point) }
+        }
+
+        for index in 0..<(remainingAnchors.count - 1) {
+            let startAnchorID = remainingAnchors[index]
+            let endAnchorID = remainingAnchors[index + 1]
+            guard let startAnchor = pointMap[startAnchorID], let endAnchor = pointMap[endAnchorID]
+            else { return nil }
+            appendPointIfNeeded(startAnchor)
+            if startAnchorID == deletedPrevious && endAnchorID == deletedNext {
+                let delta = endAnchor.position - startAnchor.position
+                let controlOut = EditableCubicPoint(position: startAnchor.position + delta * (1.0 / 3.0), kind: .control)
+                let controlIn  = EditableCubicPoint(position: startAnchor.position + delta * (2.0 / 3.0), kind: .control)
+                rebuiltPoints.append(contentsOf: [controlOut, controlIn])
+                rebuiltSegments.append(
+                    EditableCubicSegment(
+                        startAnchorID: startAnchorID,
+                        controlOutID: controlOut.id,
+                        controlInID: controlIn.id,
+                        endAnchorID: endAnchorID
+                    )
+                )
+            } else {
+                guard let segment = segments.first(where: {
+                    $0.startAnchorID == startAnchorID && $0.endAnchorID == endAnchorID
+                }),
+                      let controlOut = pointMap[segment.controlOutID],
+                      let controlIn = pointMap[segment.controlInID]
+                else { return nil }
+                rebuiltPoints.append(contentsOf: [controlOut, controlIn])
+                rebuiltSegments.append(segment)
+            }
+            appendPointIfNeeded(endAnchor)
+        }
+
+        guard !rebuiltSegments.isEmpty else { return .emptied }
+        return .shortened(
+            EditableOpenCurve(
+                id: id,
+                name: name,
+                points: rebuiltPoints,
+                segments: rebuiltSegments,
+                pressures: Array(repeating: 1.0, count: rebuiltSegments.count),
+                isVisible: isVisible
+            )
+        )
+    }
+
+    /// Deletes segment `segmentID`, per §Edit ▸ Delete Selected Geometry
+    /// (2026-07-16). A terminal segment (the curve's first or last) is simply
+    /// dropped, shortening the curve. An interior segment is removed and the
+    /// curve splits into two independent curves at the gap — the piece before
+    /// it and the piece after it — since (unlike a closed polygon's ring,
+    /// where deleting one edge still leaves a single connected path all the
+    /// way around) there's no way to rejoin the two remaining pieces of an
+    /// open curve into one. Deleting a single-segment curve's only segment
+    /// leaves nothing.
+    public func deletingSegment(id segmentID: EditableGeometryID) -> EditableOpenCurveSegmentDeletionResult? {
+        guard let deletedIndex = segments.firstIndex(where: { $0.id == segmentID }) else { return nil }
+
+        let beforeSegments = Array(segments[0..<deletedIndex])
+        let afterSegments = Array(segments[(deletedIndex + 1)...])
+
+        switch (beforeSegments.isEmpty, afterSegments.isEmpty) {
+        case (true, true):
+            return .emptied
+        case (false, true):
+            return .shortened(
+                EditableOpenCurve(
+                    id: id, name: name, points: points, segments: beforeSegments,
+                    pressures: Array(repeating: 1.0, count: beforeSegments.count),
+                    isVisible: isVisible
+                ).prunedToReferencedPoints()
+            )
+        case (true, false):
+            return .shortened(
+                EditableOpenCurve(
+                    id: id, name: name, points: points, segments: afterSegments,
+                    pressures: Array(repeating: 1.0, count: afterSegments.count),
+                    isVisible: isVisible
+                ).prunedToReferencedPoints()
+            )
+        case (false, false):
+            let first = EditableOpenCurve(
+                name: "\(name) 1", points: points, segments: beforeSegments,
+                pressures: Array(repeating: 1.0, count: beforeSegments.count),
+                isVisible: isVisible
+            ).prunedToReferencedPoints()
+            let second = EditableOpenCurve(
+                name: "\(name) 2", points: points, segments: afterSegments,
+                pressures: Array(repeating: 1.0, count: afterSegments.count),
+                isVisible: isVisible
+            ).prunedToReferencedPoints()
+            return .split(first, second)
+        }
+    }
+
+    /// Deletes every anchor in `anchorIDs` that's actually present, one at a
+    /// time, each against whatever the curve has shortened to so far —
+    /// mirrors `EditableClosedPolygon.deletingAnchors(ids:)`. Processed in
+    /// the curve's own structural order for the same determinism reason (a
+    /// `Set`'s iteration order is unspecified). `.emptied` once fewer than
+    /// two anchors remain, matching the single-anchor case.
+    public func deletingAnchors(ids anchorIDs: Set<EditableGeometryID>) -> EditableOpenCurveAnchorDeletionResult {
+        let orderedIDs = self.anchorIDs.filter { anchorIDs.contains($0) }
+        var current = self
+        for anchorID in orderedIDs {
+            guard current.point(id: anchorID)?.kind == .anchor,
+                  let result = current.deletingAnchor(id: anchorID)
+            else { continue }
+            switch result {
+            case .shortened(let next): current = next
+            case .emptied:              return .emptied
+            }
+        }
+        return .shortened(current)
+    }
+
+    /// Deletes every segment in `segmentIDs` that's actually present, one at
+    /// a time, against whichever resulting piece currently contains it —
+    /// mirrors `EditableClosedPolygon.deletingSegments(ids:)`. A single
+    /// interior deletion can split this curve into two; a later deletion
+    /// targeting a segment that ended up in one of those two pieces is
+    /// applied to that piece specifically, so the final count can be zero,
+    /// one, or many independent curves. `.unchanged` when none of
+    /// `segmentIDs` were actually present, so the caller can leave the
+    /// original curve untouched rather than treating "nothing to delete" as
+    /// "delete everything."
+    public func deletingSegments(ids segmentIDs: Set<EditableGeometryID>) -> EditableMultiSegmentDeletionResult {
+        let orderedIDs = segments.map(\.id).filter { segmentIDs.contains($0) }
+        guard !orderedIDs.isEmpty else { return .unchanged }
+        return .replaced(Self.applyingSegmentDeletions(to: [self], ids: orderedIDs))
+    }
+
+    /// Shared multi-segment-deletion core for both
+    /// `EditableClosedPolygon.deletingSegments(ids:)` (which seeds `pieces`
+    /// with the one curve its first deleted segment always produces) and
+    /// `EditableOpenCurve.deletingSegments(ids:)` (which seeds `pieces` with
+    /// itself). Applies each remaining segment ID to whichever piece in the
+    /// working list currently contains it — a segment ID whose piece already
+    /// vanished (emptied by an earlier step) or was never valid is skipped.
+    fileprivate static func applyingSegmentDeletions(
+        to pieces: [EditableOpenCurve], ids segmentIDs: [EditableGeometryID]
+    ) -> [EditableOpenCurve] {
+        var pieces = pieces
+        for segmentID in segmentIDs {
+            guard let pieceIndex = pieces.firstIndex(where: { piece in piece.segments.contains { $0.id == segmentID } }),
+                  let result = pieces[pieceIndex].deletingSegment(id: segmentID)
+            else { continue }
+            switch result {
+            case .shortened(let next):
+                pieces[pieceIndex] = next
+            case .split(let first, let second):
+                pieces.replaceSubrange(pieceIndex...pieceIndex, with: [first, second])
+            case .emptied:
+                pieces.remove(at: pieceIndex)
+            }
+        }
+        return pieces
+    }
+
     public func closingToPolygon(name: String? = nil) -> EditableClosedPolygon? {
         guard let firstID = anchorIDs.first,
               let lastID = anchorIDs.last,
@@ -1148,6 +1442,72 @@ public struct EditableGeometryLayer: Codable, Equatable, Identifiable, Sendable 
             openCurves: openCurves.map { $0.duplicated(name: $0.name) },
             points: points.map { $0.duplicated(name: $0.name) }
         )
+    }
+
+    /// Applies `EditableClosedPolygon.deletingAnchors(ids:)` /
+    /// `EditableOpenCurve.deletingAnchors(ids:)` across every polygon and
+    /// open curve in the layer (2026-07-19) — the layer-level entry point for
+    /// a multi-select Delete Selected Geometry on anchors, possibly spanning
+    /// several different objects at once (e.g. one edge selected on each of
+    /// two different shapes). Objects with none of `anchorIDs` are left
+    /// completely untouched (not even reconstructed); a polygon that
+    /// converts to a curve, or a curve/polygon that empties out, is removed
+    /// from its original array and any survivor added to `openCurves`.
+    public func deletingAnchors(ids anchorIDs: Set<EditableGeometryID>) -> EditableGeometryLayer {
+        guard !anchorIDs.isEmpty else { return self }
+        var updated = self
+        var resultPolygons: [EditableClosedPolygon] = []
+        var producedCurves: [EditableOpenCurve] = []
+        for polygon in polygons {
+            let touchesThis = polygon.anchorIDs.contains { anchorIDs.contains($0) }
+            guard touchesThis else { resultPolygons.append(polygon); continue }
+            switch polygon.deletingAnchors(ids: anchorIDs) {
+            case .closedPolygon(let next): resultPolygons.append(next)
+            case .openCurve(let next):     producedCurves.append(next)
+            case .emptied:                 break
+            }
+        }
+        var resultCurves: [EditableOpenCurve] = []
+        for curve in openCurves {
+            let touchesThis = curve.anchorIDs.contains { anchorIDs.contains($0) }
+            guard touchesThis else { resultCurves.append(curve); continue }
+            switch curve.deletingAnchors(ids: anchorIDs) {
+            case .shortened(let next): resultCurves.append(next)
+            case .emptied:              break
+            }
+        }
+        updated.polygons = resultPolygons
+        updated.openCurves = resultCurves + producedCurves
+        return updated
+    }
+
+    /// Applies `EditableClosedPolygon.deletingSegments(ids:)` /
+    /// `EditableOpenCurve.deletingSegments(ids:)` across every polygon and
+    /// open curve in the layer (2026-07-19) — the layer-level entry point for
+    /// a multi-select Delete Selected Geometry on segments/edges, possibly
+    /// spanning several different objects at once. Objects with none of
+    /// `segmentIDs` are left completely untouched.
+    public func deletingSegments(ids segmentIDs: Set<EditableGeometryID>) -> EditableGeometryLayer {
+        guard !segmentIDs.isEmpty else { return self }
+        var updated = self
+        var resultPolygons: [EditableClosedPolygon] = []
+        var producedCurves: [EditableOpenCurve] = []
+        for polygon in polygons {
+            switch polygon.deletingSegments(ids: segmentIDs) {
+            case .unchanged:            resultPolygons.append(polygon)
+            case .replaced(let curves): producedCurves.append(contentsOf: curves)
+            }
+        }
+        var resultCurves: [EditableOpenCurve] = []
+        for curve in openCurves {
+            switch curve.deletingSegments(ids: segmentIDs) {
+            case .unchanged:             resultCurves.append(curve)
+            case .replaced(let curves):  resultCurves.append(contentsOf: curves)
+            }
+        }
+        updated.polygons = resultPolygons
+        updated.openCurves = resultCurves + producedCurves
+        return updated
     }
 }
 

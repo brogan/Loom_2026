@@ -266,6 +266,7 @@
   <a class="nav-link nav-sub" href="#geometry-svg-import">SVG Geometry Import</a>
   <a class="nav-link nav-sub" href="#geometry-deform">Deform Tool</a>
   <a class="nav-link nav-sub" href="#geometry-deform-walkthrough">Walkthrough: Fish Tail</a>
+  <a class="nav-link nav-sub" href="#geometry-sculpt">Sculpt Tools</a>
   <a class="nav-link" href="#sprites">Sprites</a>
   <a class="nav-link nav-sub" href="#sprites-coordinates">Coordinate System</a>
   <a class="nav-link nav-sub" href="#sprites-hierarchy">Hierarchy</a>
@@ -357,6 +358,7 @@
 
   <div class="nav-section">Reference</div>
   <a class="nav-link" href="#shortcuts">Keyboard Shortcuts</a>
+  <a class="nav-link nav-sub" href="#geometry-editor-shortcuts">Geometry Editor Tool Shortcuts</a>
   <a class="nav-link" href="#fileformat">File Formats</a>
 </nav>
 
@@ -397,6 +399,7 @@
   <div class="toc-entry sub"><a href="#geometry-svg-import">SVG Geometry Import</a><span class="toc-fill"></span></div>
   <div class="toc-entry sub"><a href="#geometry-deform">Deform Tool</a><span class="toc-fill"></span></div>
   <div class="toc-entry sub"><a href="#geometry-deform-walkthrough">Walkthrough: Fish Tail</a><span class="toc-fill"></span></div>
+  <div class="toc-entry sub"><a href="#geometry-sculpt">Sculpt Tools</a><span class="toc-fill"></span></div>
   <div class="toc-entry"><a href="#sprites">Sprites</a><span class="toc-fill"></span></div>
   <div class="toc-entry sub"><a href="#sprites-coordinates">Coordinate System</a><span class="toc-fill"></span></div>
   <div class="toc-entry sub"><a href="#sprites-hierarchy">Hierarchy</a><span class="toc-fill"></span></div>
@@ -488,6 +491,7 @@
 
   <div class="toc-group">Reference</div>
   <div class="toc-entry"><a href="#shortcuts">Keyboard Shortcuts</a><span class="toc-fill"></span></div>
+  <div class="toc-entry sub"><a href="#geometry-editor-shortcuts">Geometry Editor Tool Shortcuts</a><span class="toc-fill"></span></div>
   <div class="toc-entry"><a href="#fileformat">File Formats</a><span class="toc-fill"></span></div>
 </section>
 
@@ -1035,12 +1039,13 @@
   <h4>Selection behavior</h4>
   <ul>
     <li>The edit modes are mutually exclusive: points, edges, open curves, and polygons. The active mode is highlighted.</li>
-    <li>Hold <kbd>Shift</kbd> while clicking to add to the current selection. Hold <kbd>⌘</kbd> while clicking to toggle/remove from it.</li>
-    <li>Point clicks are stack-aware: when overlapping welded points sit in the same location, selecting one selects the stack so mesh corners stay coherent.</li>
-    <li>Rubber-band point selection captures all points in the rectangle, including overlapping welded stacks. Rubber-band edge selection selects edges by their midpoints.</li>
-    <li>For point and edge groups, movement begins only when the drag starts inside the overall selected bounds. Clicking outside those bounds drops the selection unless you drag a new rubber-band rectangle.</li>
+    <li>Hold <kbd>Shift</kbd> while clicking to add to the current selection. Hold <kbd>⌘</kbd> while clicking to toggle/remove from it. Hold <kbd>⌥</kbd> (Option) while clicking or dragging a rubber-band rectangle to subtract from the current selection — unlike toggle, Option always removes and never adds, so it's safe to drag it back over already-deselected geometry.</li>
+    <li>Point clicks are stack-aware: when overlapping welded points sit in the same location, selecting one selects the stack so mesh corners stay coherent. Option-click removes the whole stack from the selection the same way.</li>
+    <li>Rubber-band point selection captures all points in the rectangle, including overlapping welded stacks. Rubber-band edge selection selects edges by their midpoints. An Option-drag rubber band draws in red and removes everything inside it from the current selection instead of adding to it.</li>
+    <li>For point and edge groups, movement begins only when the drag starts inside the overall selected bounds. Clicking outside those bounds drops the selection unless you drag a new rubber-band rectangle. Holding Option over a selected group always starts a subtract rubber-band rather than moving the group.</li>
     <li>Scaling and rotation use the same selected geometry path as canvas dragging, so whole objects, edges, and point groups can all be transformed.</li>
     <li><strong>Edit ▸ Invert Selection</strong> (<kbd>⌘I</kbd>) flips the selection within the active layer, staying in whichever mode is currently active — points, edges, or whole polygons/curves. With nothing selected, it selects everything in the layer (the same mode points are in by default).</li>
+    <li>Delete/Backspace deletes every selected point, edge, polygon, open curve, or standalone point at once — selecting several points or edges (via Shift-click or a rubber band) and pressing Delete removes all of them in a single step, not just one at a time.</li>
   </ul>
 
   <h4>Weld controls</h4>
@@ -1171,7 +1176,12 @@
   <table class="control-table">
     <thead><tr><th>Icon / Control</th><th>Description</th></tr></thead>
     <tbody>
-      <tr><td><span class="icon-key">⌫</span>Delete selected</td><td>Delete selected geometry. Deleting a polygon removes it. Deleting a polygon anchor replaces its two adjoining edges with one edge. Deleting one polygon edge converts that polygon to an open curve. Selecting two matching internal cut edges and deleting heals the cut into one polygon.</td></tr>
+      <tr><td><span class="icon-key">⌫</span>Delete selected</td><td>Delete selected geometry. Multiple selected anchors or edges — from Shift-clicking several, or a rubber band — are all deleted together in one step, not just one at a time; each is removed in turn against whatever the shape has become after the previous deletion, so the rules below apply repeatedly.
+        <ul>
+          <li><strong>Closed polygon:</strong> deleting the whole polygon removes it. Deleting an anchor replaces its two adjoining edges with one straight edge between its former neighbors (or, if only two anchors would remain, converts it to an open curve). Deleting one edge breaks the polygon open into an open curve at that gap. Selecting two matching internal cut edges and deleting heals the cut back into one polygon. Deleting enough anchors or edges from one polygon can shrink it through several smaller polygons and eventually convert it to an open curve, or empty it out entirely.</li>
+          <li><strong>Open curve:</strong> deleting the whole curve removes it. Deleting a beginning or end anchor/edge shortens the curve from that end. Deleting an interior anchor removes it and joins its two neighboring edges into one straight edge between them (the curve stays in one piece, just shorter by one point). Deleting an interior edge splits the curve into two separate open curves at the gap, since — unlike a closed polygon's ring — there's no way around to rejoin the two remaining pieces. Deleting enough of a curve's edges can split it into several shorter curves in one step, or empty it out entirely.</li>
+        </ul>
+      </td></tr>
       <tr><td><span class="icon-key">⌧</span>Delete all</td><td>Remove all geometry from the active editable layer.</td></tr>
       <tr><td>Name</td><td>Rename the current geometry document.</td></tr>
       <tr><td><span class="icon-key">SVG</span>Export SVG</td><td>Save the active layer's raw geometry as an SVG wireframe to the project's <code>svgs/</code> folder.</td></tr>
@@ -1461,6 +1471,22 @@
 
   <div class="note"><strong>Note:</strong> The Deform tool affects all point types — anchors and both control handles. This preserves Bézier curve continuity across the deformation so subdivision output stays smooth even on heavily deformed shapes.</div>
 
+  <h3 id="geometry-sculpt">Sculpt Tools</h3>
+  <p>The two <strong>Sculpt</strong> tools, in the toolbar between the Anchor-only/Handle-only toggles and Deform, move points directly with no select/deselect step: grab any point, drag it, release, then immediately grab a different point. There is no persistent selection to clear between grabs.</p>
+  <table class="control-table">
+    <thead><tr><th>Icon / Control</th><th>Description</th></tr></thead>
+    <tbody>
+      <tr><td><em>hand.draw</em> Sculpt (Grab)</td><td>Grab and move exactly one point at a time. Respects the Anchor-only/Handle-only toggles: with neither active, dragging an anchor carries its control handles; Anchor-only moves just the anchor; Handle-only moves just the control handles.</td></tr>
+      <tr><td><em>paintbrush.pointed</em> Sculpt (Falloff)</td><td>Grab a point and drag — every other point in the active layer within the Sculpt inspector's <strong>Radius</strong> also moves, weighted by distance according to <strong>Hardness</strong>. Also respects the Anchor-only/Handle-only toggles, restricting which points are eligible to be carried along.</td></tr>
+    </tbody>
+  </table>
+  <p>The Sculpt inspector section has two sliders that only affect the Falloff brush (Sculpt (Grab) always moves exactly one point, so it has no sliders of its own):</p>
+  <ul>
+    <li><strong>Radius</strong> — range of influence around the grabbed point. Small values only move points immediately next to the one grabbed; larger values sweep in most or all of the active layer.</li>
+    <li><strong>Hardness</strong> — shapes the falloff curve. At <strong>0</strong> the effect is soft and broad: influence tapers gently across the whole radius, so distant points still move a little. At <strong>1</strong> the effect is hard: points move at nearly full strength until close to the radius edge, then cut off sharply, like a solid disc.</li>
+  </ul>
+  <div class="note"><strong>Note:</strong> Each grab-drag-release is a single undo step, same as any other point drag. Sculpting a vertex of a parametric (Regular Polygon) shape un-parametrizes it, the same as dragging that point normally would.</div>
+
 </section>
 
 <!-- ────────────────────────────────────────────────── -->
@@ -1619,7 +1645,7 @@
     <thead><tr><th>Section</th><th>Contents</th></tr></thead>
     <tbody>
       <tr><td>Sprite</td><td>Name, renderer set, subdivision set, and SVG sprite picker (when <code>svgs/sprites/</code> contains files — see <a href="#sprites-svg">SVG Sprites</a>)</td></tr>
-      <tr><td>Transform</td><td>X/Y position, X/Y scale, rotation in degrees, pivot X/Y offset, depth (see below and <a href="#sprites-pivot">Pivot Offset</a>)</td></tr>
+      <tr><td>Transform</td><td>X/Y position, X/Y scale, Flip Horizontal/Vertical checkboxes, rotation in degrees, pivot X/Y offset, depth (see below and <a href="#sprites-pivot">Pivot Offset</a>)</td></tr>
       <tr><td>Animation</td><td>Six per-property animation drivers: position, scale, rotation, morph, shape index, and opacity. Each driver section header shows a <strong>keyframe indicator</strong> (circle — green when keyframes exist) and an <strong>enabled checkbox</strong>. A batch eye above all six sections collapses unused driver panels at once. See <a href="#animation-lane-controls">Driver enabled state and lane visibility</a> and <a href="#animation">Animation</a>.</td></tr>
       <tr><td>Hierarchy</td><td>Parent selector, P/R/S inherit toggles</td></tr>
     </tbody>
@@ -1854,6 +1880,8 @@
   <p><strong>Pivot and hierarchy.</strong> For a rigged character with parent–child sprites, set the pivot on each child individually. The child's rotation is always applied around <code>child.position + child.pivot</code> in local space, before the parent's transform is composed on top. This means pivots work correctly at any depth in the hierarchy.</p>
 
   <p><strong>Reset Transform</strong> clears Pivot X and Y back to (0, 0) along with Position, Scale, and Rotation.</p>
+
+  <p><strong>Flip Horizontal / Flip Vertical</strong> (checkboxes next to Scale) mirror the sprite by flipping the sign of Scale X or Scale Y respectively — Horizontal mirrors left-right, Vertical mirrors top-bottom. Toggling a Flip checkbox only changes the sign, not the magnitude, of the corresponding Scale value, so it combines cleanly with any scale you've already set; unchecking it restores the original (positive) sign. The mirror is applied around the sprite's anchor point, same as Scale, and works the same whether the sprite is a shape, an SVG, or a container/rig root.</p>
 
   <h4 id="sprites-pivot-constraint">Rotation arc constraint</h4>
   <p>A pivot can optionally be locked to a fixed angular range — like a physical joint stop preventing a knee from bending backwards or an elbow from hyper-extending. Enable <strong>Rot range</strong> in the Transform section (a checkbox below the Pivot row) to activate the constraint for the selected sprite.</p>
@@ -4369,16 +4397,75 @@
       <tr><td><kbd>⌘R</kbd></td><td>Reload project from disk</td></tr>
       <tr><td><kbd>⌘Z</kbd></td><td>Undo (geometry editor)</td></tr>
       <tr><td><kbd>⌘⇧Z</kbd></td><td>Redo (geometry editor)</td></tr>
+      <tr><td><kbd>⌘X</kbd></td><td>Cut selected geometry — for whole selected polygons/curves/standalone points, copies them to the clipboard and removes them (same as the toolbar Cut button). For a selected point or edge within a polygon/curve, there's nothing meaningful to put on the clipboard, so this just deletes it (same as <kbd>Delete</kbd>/<kbd>Backspace</kbd>) rather than cutting the whole containing shape.</td></tr>
       <tr><td><kbd>⌘C</kbd></td><td>Copy selected geometry</td></tr>
       <tr><td><kbd>⌘V</kbd></td><td>Paste geometry</td></tr>
       <tr><td><kbd>⌘I</kbd></td><td>Edit ▸ Invert Selection — invert the current selection within its layer (points, segments, or whole polygons/curves, whichever is currently selected). Selects everything in the active layer if nothing is selected yet.</td></tr>
-      <tr><td><kbd>Delete</kbd> / <kbd>Backspace</kbd></td><td>Delete selected geometry or selected timeline keyframes, depending on focus</td></tr>
+      <tr><td><kbd>Delete</kbd> / <kbd>Backspace</kbd></td><td>Delete selected geometry (or selected timeline keyframes, depending on focus). <kbd>⇧Delete</kbd> deletes <em>all</em> geometry in the active layer instead — see the Geometry Editor table below.</td></tr>
       <tr><td><kbd>Shift</kbd>-click</td><td>Add to selection in the Geometry Editor or Timeline</td></tr>
-      <tr><td><kbd>⌘</kbd>-click</td><td>Subtract from geometry selection</td></tr>
-      <tr><td><kbd>P</kbd></td><td>Finalise provisional mesh geometry as a polygon in Mesh build mode</td></tr>
+      <tr><td><kbd>⌘</kbd>-click</td><td>Toggle geometry selection — adds the clicked item if it isn't selected, removes it if it is</td></tr>
+      <tr><td><kbd>⌥</kbd>-click / <kbd>⌥</kbd>-drag</td><td>Subtract from geometry selection — always removes, never adds, whether clicking a single item or dragging a rubber-band rectangle over several</td></tr>
       <tr><td>Timeline ruler click/drag</td><td>Move or scrub the playhead</td></tr>
     </tbody>
   </table>
+
+  <h3 id="geometry-editor-shortcuts">Geometry Editor Tool Shortcuts</h3>
+  <p>Every tool and mode in the Geometry Editor also has an Illustrator-style single-letter shortcut — press the letter with the canvas focused (no <kbd>⌘</kbd>) to switch tools directly, without going to the toolbar. Where a tool has a closely related variant, <kbd>Shift</kbd> plus the same letter picks the variant (e.g. <kbd>K</kbd> = Knife, <kbd>⇧K</kbd> = Curved Knife).</p>
+
+  <div class="note"><strong>Behavior change:</strong> <kbd>P</kbd> used to finalise a Point-By-Point (or Mesh Extend) draft; it now switches to the <strong>Points</strong> tool instead, matching its letter. <kbd>K</kbd> used to commit a curved-knife cut; it now activates the <strong>Knife</strong> tool instead. Finalising or committing whatever draft/cut is currently in progress is now done with <kbd>Return</kbd> — <strong>switching tools always discards an unfinished draft</strong>, so if you're mid-draft, press Return to finish it before pressing a tool letter.</div>
+
+  <table class="control-table">
+    <thead><tr><th>Keys</th><th>Tool / Action</th></tr></thead>
+    <tbody>
+      <tr><td colspan="2"><strong>Edit modes</strong></td></tr>
+      <tr><td><kbd>P</kbd></td><td>Points</td></tr>
+      <tr><td><kbd>E</kbd></td><td>Edges</td></tr>
+      <tr><td><kbd>U</kbd></td><td>Open Curves</td></tr>
+      <tr><td><kbd>G</kbd></td><td>Polygons</td></tr>
+      <tr><td colspan="2"><strong>Transform toggles</strong></td></tr>
+      <tr><td><kbd>A</kbd></td><td>Anchor-only (transforms affect anchors, not control handles)</td></tr>
+      <tr><td><kbd>L</kbd></td><td>Handle-only (transforms affect control handles, not anchors)</td></tr>
+      <tr><td colspan="2"><strong>Sculpt &amp; Deform</strong></td></tr>
+      <tr><td><kbd>S</kbd></td><td>Sculpt (Grab)</td></tr>
+      <tr><td><kbd>⇧S</kbd></td><td>Sculpt (Falloff)</td></tr>
+      <tr><td><kbd>D</kbd></td><td>Deform</td></tr>
+      <tr><td colspan="2"><strong>Centre &amp; snap</strong></td></tr>
+      <tr><td><kbd>C</kbd></td><td>Centre selected geometry, or the active layer if nothing is selected</td></tr>
+      <tr><td><kbd>N</kbd></td><td>Snap selected anchors to grid (control points unchanged)</td></tr>
+      <tr><td><kbd>⇧N</kbd></td><td>Snap all selected points to grid, or the whole active layer if nothing is selected</td></tr>
+      <tr><td colspan="2"><strong>Create</strong></td></tr>
+      <tr><td><kbd>I</kbd></td><td>Create standalone points</td></tr>
+      <tr><td><kbd>O</kbd></td><td>Create oval</td></tr>
+      <tr><td><kbd>R</kbd></td><td>Create regular polygon</td></tr>
+      <tr><td><kbd>B</kbd></td><td>Point By Point</td></tr>
+      <tr><td><kbd>M</kbd></td><td>Mesh Extend</td></tr>
+      <tr><td><kbd>F</kbd></td><td>Freehand</td></tr>
+      <tr><td><kbd>T</kbd></td><td>Pressure Trace</td></tr>
+      <tr><td colspan="2"><strong>Weld</strong></td></tr>
+      <tr><td><kbd>W</kbd></td><td>Weld selected points or edges</td></tr>
+      <tr><td><kbd>⇧W</kbd></td><td>Weld adjacent edges</td></tr>
+      <tr><td><kbd>J</kbd></td><td>Toggle Auto Weld</td></tr>
+      <tr><td><kbd>Q</kbd></td><td>Explode / break welds on selected geometry</td></tr>
+      <tr><td colspan="2"><strong>Multiply</strong></td></tr>
+      <tr><td><kbd>V</kbd></td><td>Duplicate to the same layer</td></tr>
+      <tr><td><kbd>⇧V</kbd></td><td>Duplicate to a new layer (auto-named)</td></tr>
+      <tr><td><kbd>X</kbd></td><td>Displacement Extrude</td></tr>
+      <tr><td><kbd>⇧X</kbd></td><td>Scale Extrude</td></tr>
+      <tr><td><kbd>K</kbd></td><td>Knife</td></tr>
+      <tr><td><kbd>⇧K</kbd></td><td>Curved Knife</td></tr>
+      <tr><td colspan="2"><strong>View</strong></td></tr>
+      <tr><td><kbd>Z</kbd></td><td>Zoom in</td></tr>
+      <tr><td><kbd>⇧Z</kbd></td><td>Zoom out</td></tr>
+      <tr><td><kbd>H</kbd></td><td>Pan (Hand) — press again to return to the Points tool</td></tr>
+      <tr><td colspan="2"><strong>Commit / cancel / delete</strong></td></tr>
+      <tr><td><kbd>Return</kbd></td><td>Finalise the current Point-By-Point draft — as an <strong>open curve</strong> by default (so you can immediately start the next one without switching tools), or by committing a curved-knife/anchor-point knife cut, or finalising a Mesh Extend draft, whichever is currently in progress.</td></tr>
+      <tr><td><kbd>⇧Return</kbd></td><td>Finalise the current draft as a <strong>closed polygon</strong> instead (or close/extend an already-selected open curve, or finish a Mesh Extend draft) — use this when you specifically want a closed shape rather than an open curve.</td></tr>
+      <tr><td><kbd>Escape</kbd></td><td>Cancel the current mesh-extend draft, curved-knife line, or knife anchor state</td></tr>
+      <tr><td><kbd>Delete</kbd> / <kbd>Backspace</kbd></td><td>Delete selected geometry</td></tr>
+      <tr><td><kbd>⇧Delete</kbd> / <kbd>⇧Backspace</kbd></td><td>Delete <em>all</em> geometry in the active layer (extra modifier required since this can't be undone selectively)</td></tr>
+    </tbody>
+  </table>
+  <p>Not every button in the Geometry Editor has a letter — settings and one-off sub-actions stay toolbar/inspector-only: fill triangle/quad/hole, clear draft, the Knife/Curved-Knife "cut all visible layers" toggles, reset control points, weld tolerance, reference image/geometry controls, grid visibility, show/hide control points, canvas frame guide, and the morph target lock.</p>
 </section>
 
 <!-- ────────────────────────────────────────────────── -->

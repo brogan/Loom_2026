@@ -23,6 +23,8 @@ enum GeometryEditorTool: String {
     case scaleExtrude = "Extrude (Scale)"
     case curvedKnife = "Curved Knife"
     case deform      = "Deform"
+    case sculptGrab    = "Sculpt (Grab)"
+    case sculptFalloff = "Sculpt (Falloff)"
 
     /// True only for tools that create geometry from nothing.
     var isCreateMode: Bool {
@@ -39,7 +41,7 @@ enum GeometryEditorTool: String {
         switch self {
         case .points, .edges, .openCurves, .polygons,
              .knife, .curvedKnife, .meshExtend, .displacementExtrude, .scaleExtrude, .pressureTrace,
-             .deform:
+             .deform, .sculptGrab, .sculptFalloff:
             return true
         default:
             return false
@@ -267,6 +269,20 @@ final class AppController: ObservableObject, @unchecked Sendable {
     @Published var activeDeformPointSetID: UUID?        = nil
     private var deformOriginSnapshot:   EditableGeometryLayer? = nil
     private var deformPreviewSnapshot:  EditableGeometryLayer? = nil
+
+    // MARK: - Sculpt tools
+    @Published var sculptFalloffRadius:   Double = 0.15
+    @Published var sculptFalloffHardness: Double = 0.5
+    private var sculptFalloffActiveLayerID: EditableGeometryID?
+    private var sculptFalloffWeights: [EditableGeometryID: Double] = [:]
+
+    /// Maps the Hardness slider (0 = soft, broad taper — 1 = hard, disc-like cutoff) to the
+    /// falloff exponent used by `beginSculptFalloffDrag`: `weight = (1 - distance/radius)^exponent`.
+    private var sculptFalloffExponent: Double {
+        let h = min(max(sculptFalloffHardness, 0), 1)
+        return 8.0 + (0.25 - 8.0) * h
+    }
+
     @Published var geometryEditorWeldTolerance:   Double = 0.5
     @Published var geometryEditorAutoWeldSegmentIDs: Set<EditableGeometryID> = []
     @Published var selectedGeometryEditorLayerID: UUID?   = nil
@@ -3627,9 +3643,17 @@ final class AppController: ObservableObject, @unchecked Sendable {
         polygonID: EditableGeometryID,
         pointID: EditableGeometryID,
         additive: Bool = false,
-        toggle: Bool = false
+        toggle: Bool = false,
+        subtract: Bool = false
     ) {
         guard layerCanEdit(layerID) else { return }
+        if subtract {
+            guard geometryEditorSelection.layerID == layerID else { return }
+            var selection = geometryEditorSelection
+            selection.pointIDs.remove(pointID)
+            geometryEditorSelection = selection.pointIDs.isEmpty ? .empty : selection
+            return
+        }
         selectGeometryEditorLayer(id: layerID)
         if (additive || toggle), geometryEditorSelection.layerID == layerID {
             var selection = geometryEditorSelection
@@ -3660,9 +3684,17 @@ final class AppController: ObservableObject, @unchecked Sendable {
         openCurveID: EditableGeometryID,
         pointID: EditableGeometryID,
         additive: Bool = false,
-        toggle: Bool = false
+        toggle: Bool = false,
+        subtract: Bool = false
     ) {
         guard layerCanEdit(layerID) else { return }
+        if subtract {
+            guard geometryEditorSelection.layerID == layerID else { return }
+            var selection = geometryEditorSelection
+            selection.pointIDs.remove(pointID)
+            geometryEditorSelection = selection.pointIDs.isEmpty ? .empty : selection
+            return
+        }
         selectGeometryEditorLayer(id: layerID)
         if (additive || toggle), geometryEditorSelection.layerID == layerID {
             var selection = geometryEditorSelection
@@ -3692,9 +3724,18 @@ final class AppController: ObservableObject, @unchecked Sendable {
         layerID: EditableGeometryID,
         pointID: EditableGeometryID,
         additive: Bool = false,
-        toggle: Bool = false
+        toggle: Bool = false,
+        subtract: Bool = false
     ) {
         guard layerCanEdit(layerID) else { return }
+        if subtract {
+            guard geometryEditorSelection.layerID == layerID else { return }
+            var selection = geometryEditorSelection
+            selection.pointIDs.remove(pointID)
+            selection.standalonePointIDs.remove(pointID)
+            geometryEditorSelection = selection.pointIDs.isEmpty ? .empty : selection
+            return
+        }
         selectGeometryEditorLayer(id: layerID)
         if (additive || toggle), geometryEditorSelection.layerID == layerID {
             var selection = geometryEditorSelection
@@ -3722,11 +3763,20 @@ final class AppController: ObservableObject, @unchecked Sendable {
         polygonPoints: [(polygonID: EditableGeometryID, pointID: EditableGeometryID)],
         openCurvePoints: [(openCurveID: EditableGeometryID, pointID: EditableGeometryID)],
         standalonePointIDs: Set<EditableGeometryID>,
-        additive: Bool = false
+        additive: Bool = false,
+        subtract: Bool = false
     ) {
         guard layerCanEdit(layerID) else { return }
-        let newPointIDs = Set(polygonPoints.map(\.pointID) + openCurvePoints.map(\.pointID)).union(standalonePointIDs)
-        guard !newPointIDs.isEmpty else {
+        let candidatePointIDs = Set(polygonPoints.map(\.pointID) + openCurvePoints.map(\.pointID)).union(standalonePointIDs)
+        if subtract {
+            guard geometryEditorSelection.layerID == layerID else { return }
+            var selection = geometryEditorSelection
+            selection.pointIDs.subtract(candidatePointIDs)
+            selection.standalonePointIDs.subtract(standalonePointIDs)
+            geometryEditorSelection = selection.pointIDs.isEmpty ? .empty : selection
+            return
+        }
+        guard !candidatePointIDs.isEmpty else {
             if !additive { clearGeometryEditorSelection() }
             return
         }
@@ -3739,7 +3789,7 @@ final class AppController: ObservableObject, @unchecked Sendable {
         selection.polygonIDs.formUnion(polygonPoints.map(\.polygonID))
         selection.openCurveIDs.formUnion(openCurvePoints.map(\.openCurveID))
         selection.standalonePointIDs.formUnion(standalonePointIDs)
-        selection.pointIDs.formUnion(newPointIDs)
+        selection.pointIDs.formUnion(candidatePointIDs)
         geometryEditorSelection = selection
     }
 
@@ -3747,9 +3797,17 @@ final class AppController: ObservableObject, @unchecked Sendable {
         layerID: EditableGeometryID,
         polygonID: EditableGeometryID,
         additive: Bool = false,
-        toggle: Bool = false
+        toggle: Bool = false,
+        subtract: Bool = false
     ) {
         guard layerCanEdit(layerID) else { return }
+        if subtract {
+            guard geometryEditorSelection.layerID == layerID else { return }
+            var selection = geometryEditorSelection
+            selection.polygonIDs.remove(polygonID)
+            geometryEditorSelection = selection.polygonIDs.isEmpty ? .empty : selection
+            return
+        }
         selectGeometryEditorLayer(id: layerID)
         if (additive || toggle), geometryEditorSelection.layerID == layerID {
             var selection = geometryEditorSelection
@@ -3770,7 +3828,19 @@ final class AppController: ObservableObject, @unchecked Sendable {
         )
     }
 
-    func selectGeometryPolygons(layerID: EditableGeometryID, polygonIDs: Set<EditableGeometryID>, additive: Bool = false) {
+    func selectGeometryPolygons(
+        layerID: EditableGeometryID,
+        polygonIDs: Set<EditableGeometryID>,
+        additive: Bool = false,
+        subtract: Bool = false
+    ) {
+        if subtract {
+            guard geometryEditorSelection.layerID == layerID else { return }
+            var selection = geometryEditorSelection
+            selection.polygonIDs.subtract(polygonIDs)
+            geometryEditorSelection = selection.polygonIDs.isEmpty ? .empty : selection
+            return
+        }
         guard !polygonIDs.isEmpty else {
             if !additive { clearGeometryEditorSelection() }
             return
@@ -3791,9 +3861,17 @@ final class AppController: ObservableObject, @unchecked Sendable {
         layerID: EditableGeometryID,
         openCurveID: EditableGeometryID,
         additive: Bool = false,
-        toggle: Bool = false
+        toggle: Bool = false,
+        subtract: Bool = false
     ) {
         guard layerCanEdit(layerID) else { return }
+        if subtract {
+            guard geometryEditorSelection.layerID == layerID else { return }
+            var selection = geometryEditorSelection
+            selection.openCurveIDs.remove(openCurveID)
+            geometryEditorSelection = selection.openCurveIDs.isEmpty ? .empty : selection
+            return
+        }
         selectGeometryEditorLayer(id: layerID)
         if (additive || toggle), geometryEditorSelection.layerID == layerID {
             var selection = geometryEditorSelection
@@ -3817,8 +3895,16 @@ final class AppController: ObservableObject, @unchecked Sendable {
     func selectGeometryOpenCurves(
         layerID: EditableGeometryID,
         openCurveIDs: Set<EditableGeometryID>,
-        additive: Bool = false
+        additive: Bool = false,
+        subtract: Bool = false
     ) {
+        if subtract {
+            guard geometryEditorSelection.layerID == layerID else { return }
+            var selection = geometryEditorSelection
+            selection.openCurveIDs.subtract(openCurveIDs)
+            geometryEditorSelection = selection.openCurveIDs.isEmpty ? .empty : selection
+            return
+        }
         guard !openCurveIDs.isEmpty else {
             if !additive { clearGeometryEditorSelection() }
             return
@@ -3840,9 +3926,17 @@ final class AppController: ObservableObject, @unchecked Sendable {
         polygonID: EditableGeometryID,
         segmentID: EditableGeometryID,
         additive: Bool = false,
-        toggle: Bool = false
+        toggle: Bool = false,
+        subtract: Bool = false
     ) {
         guard layerCanEdit(layerID) else { return }
+        if subtract {
+            guard geometryEditorSelection.layerID == layerID else { return }
+            var selection = geometryEditorSelection
+            selection.segmentIDs.remove(segmentID)
+            geometryEditorSelection = selection.segmentIDs.isEmpty ? .empty : selection
+            return
+        }
         selectGeometryEditorLayer(id: layerID)
         if (additive || toggle), geometryEditorSelection.layerID == layerID {
             var selection = geometryEditorSelection
@@ -3876,9 +3970,17 @@ final class AppController: ObservableObject, @unchecked Sendable {
         openCurveID: EditableGeometryID,
         segmentID: EditableGeometryID,
         additive: Bool = false,
-        toggle: Bool = false
+        toggle: Bool = false,
+        subtract: Bool = false
     ) {
         guard layerCanEdit(layerID) else { return }
+        if subtract {
+            guard geometryEditorSelection.layerID == layerID else { return }
+            var selection = geometryEditorSelection
+            selection.segmentIDs.remove(segmentID)
+            geometryEditorSelection = selection.segmentIDs.isEmpty ? .empty : selection
+            return
+        }
         selectGeometryEditorLayer(id: layerID)
         if (additive || toggle), geometryEditorSelection.layerID == layerID {
             var selection = geometryEditorSelection
@@ -3911,11 +4013,19 @@ final class AppController: ObservableObject, @unchecked Sendable {
         layerID: EditableGeometryID,
         polygonSegments: [(polygonID: EditableGeometryID, segmentID: EditableGeometryID)],
         openCurveSegments: [(openCurveID: EditableGeometryID, segmentID: EditableGeometryID)],
-        additive: Bool = false
+        additive: Bool = false,
+        subtract: Bool = false
     ) {
         guard layerCanEdit(layerID) else { return }
-        let newSegmentIDs = Set(polygonSegments.map(\.segmentID) + openCurveSegments.map(\.segmentID))
-        guard !newSegmentIDs.isEmpty else {
+        let candidateSegmentIDs = Set(polygonSegments.map(\.segmentID) + openCurveSegments.map(\.segmentID))
+        if subtract {
+            guard geometryEditorSelection.layerID == layerID else { return }
+            var selection = geometryEditorSelection
+            selection.segmentIDs.subtract(candidateSegmentIDs)
+            geometryEditorSelection = selection.segmentIDs.isEmpty ? .empty : selection
+            return
+        }
+        guard !candidateSegmentIDs.isEmpty else {
             if !additive { clearGeometryEditorSelection() }
             return
         }
@@ -3927,7 +4037,7 @@ final class AppController: ObservableObject, @unchecked Sendable {
         selection.pointIDs.removeAll()
         selection.polygonIDs.formUnion(polygonSegments.map(\.polygonID))
         selection.openCurveIDs.formUnion(openCurveSegments.map(\.openCurveID))
-        selection.segmentIDs.formUnion(newSegmentIDs)
+        selection.segmentIDs.formUnion(candidateSegmentIDs)
         geometryEditorSelection = selection
     }
 
@@ -4171,15 +4281,20 @@ final class AppController: ObservableObject, @unchecked Sendable {
            geometryEditorSelection.pointIDs.allSatisfy({ pointID in layer.points.contains { $0.id == pointID } }) {
             return true
         }
-        if geometryEditorSelection.pointIDs.count == 1,
-           let pointID = geometryEditorSelection.pointIDs.first {
-            return layer.polygons.contains {
-                geometryEditorSelection.polygonIDs.contains($0.id) &&
-                $0.point(id: pointID)?.kind == .anchor
-            }
-        }
-        if geometryEditorSelection.segmentIDs.count == 1 {
-            return layer.polygons.contains { geometryEditorSelection.polygonIDs.contains($0.id) }
+        // Any number of selected anchors is deletable at once (2026-07-19),
+        // not just exactly one — see `EditableGeometryLayer
+        // .deletingAnchors(ids:)`. Only requires that at least one of the
+        // selected points actually resolves to an anchor somewhere in this
+        // layer; a selection of pure control points (which can't be deleted
+        // independently — that's not a real operation) correctly stays
+        // disabled.
+        if !geometryEditorSelection.pointIDs.isEmpty {
+            let pointIDs = geometryEditorSelection.pointIDs
+            return layer.polygons.contains(where: { polygon in
+                pointIDs.contains { polygon.point(id: $0)?.kind == .anchor }
+            }) || layer.openCurves.contains(where: { curve in
+                pointIDs.contains { curve.point(id: $0)?.kind == .anchor }
+            })
         }
         if geometryEditorSelection.pointIDs.isEmpty,
            geometryEditorSelection.segmentIDs.count == 2 {
@@ -4187,6 +4302,21 @@ final class AppController: ObservableObject, @unchecked Sendable {
             if let layerIndex, selectedInternalHealPair(in: document, layerIndex: layerIndex) != nil {
                 return true
             }
+        }
+        // Any number of selected segments is deletable at once (2026-07-19),
+        // not just exactly one — see `EditableGeometryLayer
+        // .deletingSegments(ids:)`. Checked after the exact-2-segments heal
+        // case above so a genuine matching internal-cut pair still offers
+        // healing first; if it isn't a matching pair (or there are more/fewer
+        // than two), this still makes them deletable instead of silently
+        // doing nothing.
+        if !geometryEditorSelection.segmentIDs.isEmpty {
+            let segmentIDs = geometryEditorSelection.segmentIDs
+            return layer.polygons.contains(where: { polygon in
+                segmentIDs.contains { id in polygon.segments.contains { $0.id == id } }
+            }) || layer.openCurves.contains(where: { curve in
+                segmentIDs.contains { id in curve.segments.contains { $0.id == id } }
+            })
         }
         return false
     }
@@ -4409,6 +4539,22 @@ final class AppController: ObservableObject, @unchecked Sendable {
     }
 
     func cutSelectedGeometry() {
+        // A point/segment selection (as opposed to whole polygons/curves/
+        // standalone points) has no sensible "cut to clipboard" semantic —
+        // there's nothing meaningful to paste back later for a lone point or
+        // edge. Previously this fell through to the whole-object logic below
+        // regardless, which deleted the *entire* containing polygon/curve
+        // (its ID is always present in `polygonIDs`/`openCurveIDs` as
+        // selection bookkeeping, even when only one of its points or
+        // segments is actually selected — see `selectGeometryPoint`/
+        // `selectGeometrySegment`) rather than just the selected point/edge —
+        // a destructive surprise (2026-07-16). Delegate to the same
+        // mode-aware deletion `deleteSelectedGeometry()` already does for
+        // the Delete key instead.
+        if !geometryEditorSelection.pointIDs.isEmpty || !geometryEditorSelection.segmentIDs.isEmpty {
+            deleteSelectedGeometry()
+            return
+        }
         guard var document = geometryEditorDocument,
               let layerID = geometryEditorSelection.layerID,
               layerCanEdit(layerID),
@@ -5190,6 +5336,103 @@ final class AppController: ObservableObject, @unchecked Sendable {
             translateRelationalPointIDs(seedIDs, by: delta, in: &document)
         }
         setGeometryEditorDocument(document)
+    }
+
+    // MARK: - Sculpt tools
+
+    /// Directly moves a single hit-tested point with no selection step. Called every drag frame
+    /// by the Sculpt (Grab) tool with the incremental per-frame delta.
+    func moveSculptGrabPoint(_ pointID: EditableGeometryID, in layerID: EditableGeometryID, delta: Vector2D) {
+        guard delta.length > 0, var document = geometryEditorDocument, layerCanEdit(layerID) else { return }
+        clearParametricSourceForPointIDs(document.relationalPointIDs(startingWith: [pointID]), in: &document)
+        if geometryEditorAnchorOnlyEdit {
+            translateAnchorPointIDs([pointID], by: delta, in: &document)
+        } else if geometryEditorControlPointOnlyEdit {
+            translateControlPointIDs([pointID], by: delta, in: &document)
+        } else {
+            translateRelationalPointIDs([pointID], by: delta, in: &document)
+        }
+        setGeometryEditorDocument(document)
+    }
+
+    /// Begins a falloff-brush stroke: precomputes a fixed weight for every eligible point in the
+    /// layer, based on its distance from the grabbed point's position at the moment of grab.
+    func beginSculptFalloffDrag(seedPointID: EditableGeometryID, layerID: EditableGeometryID) {
+        sculptFalloffActiveLayerID = nil
+        sculptFalloffWeights = [:]
+        guard let document = geometryEditorDocument, layerCanEdit(layerID),
+              let layer = document.layers.first(where: { $0.id == layerID }),
+              let origin = document.point(id: seedPointID)?.position
+        else { return }
+
+        let r = max(sculptFalloffRadius, 1e-9)
+        let exponent = sculptFalloffExponent
+        var weights: [EditableGeometryID: Double] = [:]
+
+        func consider(_ id: EditableGeometryID, _ position: Vector2D, isAnchorKind: Bool) {
+            if geometryEditorAnchorOnlyEdit && !isAnchorKind { return }
+            if geometryEditorControlPointOnlyEdit && isAnchorKind { return }
+            let t = position.distance(to: origin) / r
+            guard t < 1 else { return }
+            weights[id] = pow(1 - t, exponent)
+        }
+
+        for polygon in layer.polygons {
+            for p in polygon.points { consider(p.id, p.position, isAnchorKind: p.kind == .anchor) }
+        }
+        for curve in layer.openCurves {
+            for p in curve.points { consider(p.id, p.position, isAnchorKind: p.kind == .anchor) }
+        }
+        for p in layer.points { consider(p.id, p.position, isAnchorKind: true) }  // standalone points count as anchor-kind
+
+        weights[seedPointID] = 1.0  // grabbed point always tracks the cursor exactly
+        sculptFalloffActiveLayerID = layerID
+        sculptFalloffWeights = weights
+    }
+
+    /// Applies one frame's incremental delta to every point captured by beginSculptFalloffDrag,
+    /// each scaled by its precomputed weight. Mutates the layer's point arrays directly in one
+    /// pass rather than via repeated document.point/setPointPosition calls.
+    func updateSculptFalloffDrag(delta: Vector2D) {
+        guard delta.length > 0,
+              let layerID = sculptFalloffActiveLayerID,
+              !sculptFalloffWeights.isEmpty,
+              var document = geometryEditorDocument,
+              layerCanEdit(layerID),
+              let layerIndex = document.layers.firstIndex(where: { $0.id == layerID })
+        else { return }
+
+        clearParametricSourceForPointIDs(Set(sculptFalloffWeights.keys), in: &document)
+
+        for pi in document.layers[layerIndex].polygons.indices {
+            for pti in document.layers[layerIndex].polygons[pi].points.indices {
+                let id = document.layers[layerIndex].polygons[pi].points[pti].id
+                guard let w = sculptFalloffWeights[id], w > 0 else { continue }
+                let p = document.layers[layerIndex].polygons[pi].points[pti].position
+                document.layers[layerIndex].polygons[pi].points[pti].position = p + delta * w
+            }
+        }
+        for ci in document.layers[layerIndex].openCurves.indices {
+            for pti in document.layers[layerIndex].openCurves[ci].points.indices {
+                let id = document.layers[layerIndex].openCurves[ci].points[pti].id
+                guard let w = sculptFalloffWeights[id], w > 0 else { continue }
+                let p = document.layers[layerIndex].openCurves[ci].points[pti].position
+                document.layers[layerIndex].openCurves[ci].points[pti].position = p + delta * w
+            }
+        }
+        for pti in document.layers[layerIndex].points.indices {
+            let id = document.layers[layerIndex].points[pti].id
+            guard let w = sculptFalloffWeights[id], w > 0 else { continue }
+            let p = document.layers[layerIndex].points[pti].position
+            document.layers[layerIndex].points[pti].position = p + delta * w
+        }
+
+        setGeometryEditorDocument(document)
+    }
+
+    func endSculptFalloffDrag() {
+        sculptFalloffActiveLayerID = nil
+        sculptFalloffWeights = [:]
     }
 
     func moveSelectedGeometryPolygons(by delta: Vector2D) {
@@ -6322,13 +6565,13 @@ final class AppController: ObservableObject, @unchecked Sendable {
             return
         }
 
-        if geometryEditorSelection.pointIDs.count == 1 {
-            deleteSelectedGeometryAnchor(in: &document, layerIndex: layerIndex)
+        if !geometryEditorSelection.pointIDs.isEmpty {
+            deleteSelectedGeometryAnchors(in: &document, layerIndex: layerIndex)
             return
         }
 
-        if geometryEditorSelection.segmentIDs.count == 1 {
-            deleteSelectedGeometrySegment(in: &document, layerIndex: layerIndex)
+        if !geometryEditorSelection.segmentIDs.isEmpty {
+            deleteSelectedGeometrySegments(in: &document, layerIndex: layerIndex)
         }
     }
 
@@ -6464,35 +6707,39 @@ final class AppController: ObservableObject, @unchecked Sendable {
         return "\(first) + \(second)"
     }
 
-    private func deleteSelectedGeometryAnchor(in document: inout EditableGeometryDocument, layerIndex: Int) {
-        guard let pointID = geometryEditorSelection.pointIDs.first,
-              let polygonID = geometryEditorSelection.polygonIDs.first,
-              let polygonIndex = document.layers[layerIndex].polygons.firstIndex(where: { $0.id == polygonID }),
-              let result = document.layers[layerIndex].polygons[polygonIndex].deletingAnchor(id: pointID)
-        else { return }
-
+    /// Deletes every selected anchor, across as many different polygons/open
+    /// curves as are touched at once (2026-07-19) — a single selected anchor
+    /// is just the `ids.count == 1` degenerate case of the same operation.
+    /// See `EditableGeometryLayer.deletingAnchors(ids:)` for the actual
+    /// per-object rules (terminal vs. interior anchors, polygon → curve
+    /// conversion, emptying out). Point IDs belonging to standalone points
+    /// are handled by `deleteSelectedGeometry()` before this is ever reached.
+    private func deleteSelectedGeometryAnchors(in document: inout EditableGeometryDocument, layerIndex: Int) {
+        let pointIDs = geometryEditorSelection.pointIDs
+        guard !pointIDs.isEmpty else { return }
+        let before = document.layers[layerIndex]
+        let after = before.deletingAnchors(ids: pointIDs)
+        guard after != before else { return }
         recordGeometryEditorUndoSnapshot()
-        switch result {
-        case .closedPolygon(let polygon):
-            document.layers[layerIndex].polygons[polygonIndex] = polygon
-        case .openCurve(let curve):
-            document.layers[layerIndex].polygons.remove(at: polygonIndex)
-            document.layers[layerIndex].openCurves.append(curve)
-        }
+        document.layers[layerIndex] = after
         geometryEditorSelection = .empty
         setGeometryEditorDocument(document)
     }
 
-    private func deleteSelectedGeometrySegment(in document: inout EditableGeometryDocument, layerIndex: Int) {
-        guard let segmentID = geometryEditorSelection.segmentIDs.first,
-              let polygonID = geometryEditorSelection.polygonIDs.first,
-              let polygonIndex = document.layers[layerIndex].polygons.firstIndex(where: { $0.id == polygonID }),
-              let curve = document.layers[layerIndex].polygons[polygonIndex].deletingSegment(id: segmentID)
-        else { return }
-
+    /// Deletes every selected segment, across as many different polygons/open
+    /// curves as are touched at once (2026-07-19) — a single selected segment
+    /// is just the `ids.count == 1` degenerate case of the same operation.
+    /// See `EditableGeometryLayer.deletingSegments(ids:)` for the actual
+    /// per-object rules (terminal shortening, interior splitting, polygon →
+    /// curve conversion, emptying out).
+    private func deleteSelectedGeometrySegments(in document: inout EditableGeometryDocument, layerIndex: Int) {
+        let segmentIDs = geometryEditorSelection.segmentIDs
+        guard !segmentIDs.isEmpty else { return }
+        let before = document.layers[layerIndex]
+        let after = before.deletingSegments(ids: segmentIDs)
+        guard after != before else { return }
         recordGeometryEditorUndoSnapshot()
-        document.layers[layerIndex].polygons.remove(at: polygonIndex)
-        document.layers[layerIndex].openCurves.append(curve)
+        document.layers[layerIndex] = after
         geometryEditorSelection = .empty
         setGeometryEditorDocument(document)
     }
