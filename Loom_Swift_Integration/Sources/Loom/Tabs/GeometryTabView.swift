@@ -248,6 +248,7 @@ struct GeometryTabView: View {
                     panel.allowsMultipleSelection = false
                     panel.canChooseDirectories = false
                     panel.allowedContentTypes = [UTType(filenameExtension: "svg") ?? .xml]
+                    panel.directoryURL = AppController.defaultProjectsDirectory
                     panel.begin { response in
                         guard response == .OK, let url = panel.url else { return }
                         controller.importSVGGeometry(from: url)

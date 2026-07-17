@@ -348,13 +348,20 @@ final class AppController: ObservableObject, @unchecked Sendable {
 
     private static let recentKey = "li.recentProjects"
     private static let maxRecent = 10
+    private static let declinedMigrationKey = "li.declinedProjectsMigration"
 
+    /// Projects live in ~/Documents/Loom by default. Falls back to the legacy
+    /// ~/.loom_projects location if that's the only one that exists yet (e.g.
+    /// migration was declined), and to ~/Documents/Loom for fresh installs
+    /// where neither exists — NSSavePanel/NSOpenPanel tolerate a directoryURL
+    /// that doesn't exist yet, and project creation itself creates the folder.
     static var defaultProjectsDirectory: URL {
-        let candidate = FileManager.default.homeDirectoryForCurrentUser
-            .appendingPathComponent(".loom_projects")
-        return FileManager.default.fileExists(atPath: candidate.path)
-            ? candidate
-            : FileManager.default.homeDirectoryForCurrentUser
+        let documents = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Documents")
+        let newDefault = documents.appendingPathComponent("Loom")
+        if FileManager.default.fileExists(atPath: newDefault.path) { return newDefault }
+        let legacy = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".loom_projects")
+        if FileManager.default.fileExists(atPath: legacy.path) { return legacy }
+        return newDefault
     }
 
     // MARK: - Private
@@ -429,8 +436,51 @@ final class AppController: ObservableObject, @unchecked Sendable {
     // MARK: - Init
 
     init() {
+        migrateLegacyProjectsDirectoryIfNeeded()
         loadRecentProjectsFromDefaults()
         openFromCommandLineIfPresent()
+    }
+
+    /// One-time move of ~/.loom_projects to the new ~/Documents/Loom default,
+    /// gated by a confirm dialog so existing users aren't surprised. Remaps
+    /// Recent Projects (stored as raw absolute path strings) so they keep
+    /// working immediately after the move. Declining sets a flag so the
+    /// dialog doesn't nag on every subsequent launch — the three-tier
+    /// defaultProjectsDirectory above picks up the new location automatically
+    /// whenever the user does move it (in-app or via Finder).
+    private func migrateLegacyProjectsDirectoryIfNeeded() {
+        let fm = FileManager.default
+        let legacy = fm.homeDirectoryForCurrentUser.appendingPathComponent(".loom_projects")
+        let newDefault = fm.homeDirectoryForCurrentUser.appendingPathComponent("Documents").appendingPathComponent("Loom")
+        guard fm.fileExists(atPath: legacy.path),
+              !fm.fileExists(atPath: newDefault.path),
+              !UserDefaults.standard.bool(forKey: Self.declinedMigrationKey)
+        else { return }
+
+        let alert = NSAlert()
+        alert.messageText = "Move Loom Projects to Documents?"
+        alert.informativeText = "Loom now stores projects in ~/Documents/Loom by default (previously ~/.loom_projects). Move your existing projects there now? Your Recent Projects list will be updated automatically."
+        alert.addButton(withTitle: "Move")
+        alert.addButton(withTitle: "Not Now")
+        guard alert.runModal() == .alertFirstButtonReturn else {
+            UserDefaults.standard.set(true, forKey: Self.declinedMigrationKey)
+            return
+        }
+
+        do {
+            try fm.moveItem(at: legacy, to: newDefault)
+            let oldPrefix = legacy.path
+            let newPrefix = newDefault.path
+            let remapped = (UserDefaults.standard.stringArray(forKey: Self.recentKey) ?? []).map { path in
+                path.hasPrefix(oldPrefix) ? newPrefix + path.dropFirst(oldPrefix.count) : path
+            }
+            UserDefaults.standard.set(remapped, forKey: Self.recentKey)
+        } catch {
+            let failure = NSAlert()
+            failure.messageText = "Couldn't move projects folder"
+            failure.informativeText = error.localizedDescription
+            failure.runModal()
+        }
     }
 
     // MARK: - Config mutation (parameter editor)

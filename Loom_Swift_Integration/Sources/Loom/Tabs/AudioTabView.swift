@@ -274,11 +274,12 @@ struct AudioTabView: View {
     // MARK: - Helpers
 
     private func importAudio() {
-        guard controller.projectURL != nil else { return }
+        guard let projectURL = controller.projectURL else { return }
         let panel = NSOpenPanel()
         panel.title              = "Import Audio"
         panel.allowsMultipleSelection = false
         panel.allowedContentTypes = supportedAudioTypes()
+        panel.directoryURL = projectURL.appendingPathComponent("audio")
         guard panel.runModal() == .OK, let url = panel.url else { return }
         audio.importAudio(from: url)
     }

@@ -163,6 +163,7 @@ struct BrushLibraryView: View {
         ensureDir(base)
         let panel = NSOpenPanel()
         panel.title = "Import \(dir.capitalized)"
+        panel.directoryURL = base
         panel.allowedContentTypes = [.png]
         panel.allowsMultipleSelection = true
         panel.canChooseFiles = true

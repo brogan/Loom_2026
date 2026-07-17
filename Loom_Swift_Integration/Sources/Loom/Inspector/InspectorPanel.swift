@@ -487,6 +487,7 @@ private struct GeometryInspector: View {
                     panel.allowsMultipleSelection = false
                     panel.canChooseDirectories    = false
                     panel.allowedContentTypes     = [.json, .xml]
+                    panel.directoryURL            = controller.projectURL?.appendingPathComponent(folder)
                     panel.begin { response in
                         guard response == .OK, let url = panel.url else { return }
                         controller.relinkGeometryFile(name: name, folder: folder, toURL: url)

@@ -626,6 +626,9 @@ struct SpriteCycleEditorView: View {
         panel.canChooseDirectories = false
         panel.allowsMultipleSelection = false
         panel.message = "Select an image file (SVG, PNG, JPG, TIFF, GIF) for this cycle state"
+        if let projectURL = controller.projectURL {
+            panel.directoryURL = projectURL.appendingPathComponent("svgs/sprites")
+        }
         panel.begin { response in
             guard response == .OK, let url = panel.url else { return }
             guard let projectURL = controller.projectURL else { return }

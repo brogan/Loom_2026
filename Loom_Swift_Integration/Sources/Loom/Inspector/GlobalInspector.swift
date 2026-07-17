@@ -392,6 +392,7 @@ struct GlobalInspector: View {
         let panel = NSOpenPanel()
         panel.allowedContentTypes = [.png, .jpeg, .tiff, .bmp, .heic]
         panel.allowsMultipleSelection = false
+        panel.directoryURL = controller.projectURL?.appendingPathComponent("background_image")
         if panel.runModal() == .OK, let url = panel.url {
             controller.updateProjectConfig { $0.globalConfig.backgroundImagePath = url.path }
         }
