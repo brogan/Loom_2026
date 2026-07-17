@@ -1033,16 +1033,16 @@ private struct GeometryEditorMainShell: View {
                     .foregroundStyle(controller.geometryEditorTool.isEditMode ? Color.accentColor : .secondary)
                     .fixedSize()
 
-                toolbarIconButton(help: "Edit points", selected: controller.geometryEditorTool == .points) {
+                toolbarIconButton(help: "Edit points (P)", selected: controller.geometryEditorTool == .points) {
                     EditPointsIcon()
                 } action: { controller.startGeometryEditMode(.points) }
-                toolbarIconButton(help: "Edit edges", selected: controller.geometryEditorTool == .edges) {
+                toolbarIconButton(help: "Edit edges (E)", selected: controller.geometryEditorTool == .edges) {
                     EdgeGeometryIcon()
                 } action: { controller.startGeometryEditMode(.edges) }
-                toolbarIconButton(help: "Edit open curves", selected: controller.geometryEditorTool == .openCurves) {
+                toolbarIconButton(help: "Edit open curves (U)", selected: controller.geometryEditorTool == .openCurves) {
                     OpenCurveGeometryIcon()
                 } action: { controller.startGeometryEditMode(.openCurves) }
-                toolbarIconButton(help: "Edit polygons", selected: controller.geometryEditorTool == .polygons) {
+                toolbarIconButton(help: "Edit polygons (G)", selected: controller.geometryEditorTool == .polygons) {
                     PolygonGeometryIcon()
                 } action: { controller.startGeometryEditMode(.polygons) }
 
@@ -1050,14 +1050,14 @@ private struct GeometryEditorMainShell: View {
 
                 // Point filter toggles — mutually exclusive; both off = all points affected.
                 toolbarIconButton(
-                    help: "Anchor-only: all transforms affect anchor points only, leaving control handles fixed",
+                    help: "Anchor-only: all transforms affect anchor points only, leaving control handles fixed (A)",
                     selected: controller.geometryEditorAnchorOnlyEdit
                 ) {
                     CrosshairAnchorIcon()
                 } action: { controller.toggleAnchorOnlyEdit() }
 
                 toolbarIconButton(
-                    help: "Handle-only: all transforms affect control handles only, leaving anchor points fixed",
+                    help: "Handle-only: all transforms affect control handles only, leaving anchor points fixed (L)",
                     selected: controller.geometryEditorControlPointOnlyEdit
                 ) {
                     ControlHandleIcon()
@@ -1066,7 +1066,7 @@ private struct GeometryEditorMainShell: View {
                 Divider().frame(height: 16)
 
                 toolbarIconButton(
-                    help: "Sculpt (Grab): grab and drag any point directly — no select step needed",
+                    help: "Sculpt (Grab): grab and drag any point directly — no select step needed (S)",
                     disabled: morphLocked,
                     selected: controller.geometryEditorTool == .sculptGrab
                 ) {
@@ -1074,7 +1074,7 @@ private struct GeometryEditorMainShell: View {
                 } action: { controller.startGeometryEditMode(.sculptGrab) }
 
                 toolbarIconButton(
-                    help: "Sculpt (Falloff): drag a point and nearby points follow, weighted by Radius/Hardness in the inspector",
+                    help: "Sculpt (Falloff): drag a point and nearby points follow, weighted by Radius/Hardness in the inspector (⇧S)",
                     disabled: morphLocked,
                     selected: controller.geometryEditorTool == .sculptFalloff
                 ) {
@@ -1082,7 +1082,7 @@ private struct GeometryEditorMainShell: View {
                 } action: { controller.startGeometryEditMode(.sculptFalloff) }
 
                 toolbarIconButton(
-                    help: "Deform: click canvas to place influence centre, then apply radial falloff deformation via the inspector",
+                    help: "Deform: click canvas to place influence centre, then apply radial falloff deformation via the inspector (D)",
                     disabled: morphLocked,
                     selected: controller.geometryEditorTool == .deform
                 ) {
@@ -1092,26 +1092,26 @@ private struct GeometryEditorMainShell: View {
                 Divider().frame(height: 16)
 
                 // Clipboard group
-                toolbarIconButton(help: "Cut selected objects", disabled: !controller.canCutCopySelectedGeometry || morphLocked) {
+                toolbarIconButton(help: "Cut selected objects (⌘X)", disabled: !controller.canCutCopySelectedGeometry || morphLocked) {
                     Image(systemName: "scissors").font(.system(size: 15))
                 } action: { controller.cutSelectedGeometry() }
-                toolbarIconButton(help: "Copy selected objects", disabled: !controller.canCutCopySelectedGeometry) {
+                toolbarIconButton(help: "Copy selected objects (⌘C)", disabled: !controller.canCutCopySelectedGeometry) {
                     CopyGeometryIcon()
                 } action: { controller.copySelectedGeometry() }
-                toolbarIconButton(help: "Paste at last click position", disabled: !controller.canPasteGeometry || morphLocked) {
+                toolbarIconButton(help: "Paste at last click position (⌘V)", disabled: !controller.canPasteGeometry || morphLocked) {
                     PasteGeometryIcon()
                 } action: { controller.pasteGeometry() }
 
                 Divider().frame(height: 16)
 
                 // View & snap group: centre + snap anchors + snap all + reset controls
-                toolbarIconButton(help: "Centre selected geometry, or the active layer if nothing is selected") {
+                toolbarIconButton(help: "Centre selected geometry, or the active layer if nothing is selected (C)") {
                     Image(systemName: "scope").font(.system(size: 15))
                 } action: { controller.centreGeometryEditorViewOnSelectionOrLayer() }
-                toolbarIconButton(help: "Snap selected anchors to grid, leaving control points unchanged") {
+                toolbarIconButton(help: "Snap selected anchors to grid, leaving control points unchanged (N)") {
                     AnchorSnapIcon()
                 } action: { controller.snapGeometryEditorSelectionToGrid(anchorOnly: true) }
-                toolbarIconButton(help: "Snap selected points to grid, or all active layer points if nothing is selected") {
+                toolbarIconButton(help: "Snap selected points to grid, or all active layer points if nothing is selected (⇧N)") {
                     SnapAllPointsIcon()
                 } action: { controller.snapGeometryEditorSelectionToGrid(anchorOnly: false) }
                 toolbarIconButton(help: "Reset control points", disabled: !controller.canResetSelectedGeometryControls) {
@@ -1121,10 +1121,10 @@ private struct GeometryEditorMainShell: View {
                 Divider().frame(height: 16)
 
                 // Delete group
-                toolbarIconButton(help: "Delete selected geometry", disabled: !controller.canDeleteSelectedGeometry || morphLocked) {
+                toolbarIconButton(help: "Delete selected geometry (Delete)", disabled: !controller.canDeleteSelectedGeometry || morphLocked) {
                     DeleteSelectedGeometryIcon()
                 } action: { controller.deleteSelectedGeometry() }
-                toolbarIconButton(help: "Delete all geometry in active layer", disabled: !controller.canDeleteAllLayerGeometry || morphLocked) {
+                toolbarIconButton(help: "Delete all geometry in active layer (⇧Delete)", disabled: !controller.canDeleteAllLayerGeometry || morphLocked) {
                     DeleteAllLayerGeometryIcon()
                 } action: { controller.deleteAllLayerGeometry() }
 

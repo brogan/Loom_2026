@@ -585,7 +585,7 @@ private struct GeometryEditorShellInspector: View {
             InspectorSection("Create", isCollapsed: $createCollapsed, isHighlighted: controller.geometryEditorTool.isCreateMode) {
                 iconRow {
                     iconButton(
-                        help: "Create standalone points",
+                        help: "Create standalone points (I)",
                         disabled: !controller.selectedGeometryEditorLayerCanEditForUI,
                         selected: controller.geometryEditorTool == .standalonePoints
                     ) {
@@ -593,12 +593,12 @@ private struct GeometryEditorShellInspector: View {
                     } action: {
                         controller.startStandalonePointGeometryCreation()
                     }
-                    iconButton(help: "Create oval") {
+                    iconButton(help: "Create oval (O)") {
                         OvalGeometryIcon()
                     } action: {
                         controller.createOvalGeometry()
                     }
-                    iconButton(help: "Create regular polygon") {
+                    iconButton(help: "Create regular polygon (R)") {
                         Image(systemName: "star").font(.system(size: 15))
                     } action: {
                         controller.createRegularPolygonGeometry()
@@ -607,7 +607,7 @@ private struct GeometryEditorShellInspector: View {
                 }
                 iconRow {
                     iconButton(
-                        help: "Point by point",
+                        help: "Point by point (B)",
                         disabled: false,
                         selected: controller.geometryEditorTool == .pointByPoint
                     ) {
@@ -619,12 +619,12 @@ private struct GeometryEditorShellInspector: View {
                         .font(.system(size: 11))
                         .foregroundStyle(.secondary)
                         .padding(.leading, 8)
-                    iconButton(help: "Finalise polygon", disabled: !controller.canFinaliseGeometryDraftPolygon) {
+                    iconButton(help: "Finalise polygon (⇧Return)", disabled: !controller.canFinaliseGeometryDraftPolygon) {
                         PolygonGeometryIcon()
                     } action: {
                         controller.finaliseGeometryDraftPolygon()
                     }
-                    iconButton(help: "Finalise open curve", disabled: !controller.canFinaliseGeometryDraftOpenCurve) {
+                    iconButton(help: "Finalise open curve (Return)", disabled: !controller.canFinaliseGeometryDraftOpenCurve) {
                         OpenCurveGeometryIcon()
                     } action: {
                         controller.finaliseGeometryDraftOpenCurve()
@@ -638,7 +638,7 @@ private struct GeometryEditorShellInspector: View {
                 }
                 iconRow {
                     iconButton(
-                        help: "Mesh extend: drag from an edge, release to add a temporary vertex, drag temporary vertices to adjust, P or Finalise Polygon to commit. Click again to leave mesh mode.",
+                        help: "Mesh extend: drag from an edge, release to add a temporary vertex, drag temporary vertices to adjust, Return to commit. Click again to leave mesh mode. (M)",
                         disabled: !controller.selectedGeometryEditorLayerCanEditForUI,
                         selected: controller.geometryEditorTool == .meshExtend
                     ) {
@@ -665,7 +665,7 @@ private struct GeometryEditorShellInspector: View {
                 }
                 iconRow {
                     iconButton(
-                        help: "Freehand draw",
+                        help: "Freehand draw (F)",
                         disabled: !controller.selectedGeometryEditorLayerCanEditForUI,
                         selected: controller.geometryEditorTool == .freehand
                     ) {
@@ -679,7 +679,7 @@ private struct GeometryEditorShellInspector: View {
                 }
                 iconRow {
                     iconButton(
-                        help: "Pressure Trace: trace over selected geometry to add pressure sensitivity",
+                        help: "Pressure Trace: trace over selected geometry to add pressure sensitivity (T)",
                         disabled: !controller.canPressureTraceSelectedGeometry || morphLocked,
                         selected: controller.geometryEditorTool == .pressureTrace
                     ) {
@@ -704,14 +704,14 @@ private struct GeometryEditorShellInspector: View {
                 iconRow {
                     Toggle("", isOn: $controller.geometryEditorAutoWeld)
                         .labelsHidden()
-                        .help("Auto weld")
-                        .modifier(LoomHoverHelp("Auto weld"))
-                    iconButton(help: "Weld selected points or edges", disabled: !controller.canWeldSelectedGeometry) {
+                        .help("Auto weld (J)")
+                        .modifier(LoomHoverHelp("Auto weld (J)"))
+                    iconButton(help: "Weld selected points or edges (W)", disabled: !controller.canWeldSelectedGeometry) {
                         Image(systemName: "link.badge.plus").font(.system(size: 15))
                     } action: {
                         controller.weldSelectedGeometry()
                     }
-                    iconButton(help: "Weld adjacent edges", disabled: !controller.canWeldAdjacentGeometryEdges) {
+                    iconButton(help: "Weld adjacent edges (⇧W)", disabled: !controller.canWeldAdjacentGeometryEdges) {
                         Image(systemName: "link").font(.system(size: 15))
                     } action: {
                         controller.weldAdjacentGeometryEdges()
@@ -720,7 +720,7 @@ private struct GeometryEditorShellInspector: View {
                         .frame(width: 58)
                         .help("Weld tolerance: left is stricter, right accepts looser edge matches")
                         .modifier(LoomHoverHelp("Weld tolerance: left is stricter, right accepts looser edge matches"))
-                    iconButton(help: "Break welds on selected geometry", disabled: !controller.canUnweldSelectedGeometry) {
+                    iconButton(help: "Break welds on selected geometry (Q)", disabled: !controller.canUnweldSelectedGeometry) {
                         ExplodeWeldIcon()
                     } action: {
                         controller.unweldSelectedGeometry()
@@ -731,19 +731,19 @@ private struct GeometryEditorShellInspector: View {
 
             InspectorSection("Multiply", isCollapsed: $multiplyCollapsed) {
                 iconRow {
-                    iconButton(help: "Duplicate to same layer", disabled: !controller.canDuplicateSelectedGeometry) {
+                    iconButton(help: "Duplicate to same layer (V)", disabled: !controller.canDuplicateSelectedGeometry) {
                         Image(systemName: "plus.square.fill").font(.system(size: 15))
                     } action: {
                         controller.duplicateSelectedGeometry()
                     }
-                    iconButton(help: "Duplicate to new layer", disabled: !controller.canDuplicateSelectedGeometry) {
+                    iconButton(help: "Duplicate to new layer (⇧V)", disabled: !controller.canDuplicateSelectedGeometry) {
                         Image(systemName: "plus.square.on.square").font(.system(size: 15))
                     } action: {
                         duplicateLayerName = ""
                         showingDuplicateToLayerAlert = true
                     }
                     iconButton(
-                        help: "Displacement extrude: select edges, polygons, or open curves, then drag to push a copy sideways and stitch quads back to the originals. Choose another tool to leave extrude mode.",
+                        help: "Displacement extrude: select edges, polygons, or open curves, then drag to push a copy sideways and stitch quads back to the originals. Choose another tool to leave extrude mode. (X)",
                         disabled: !controller.selectedGeometryEditorLayerCanEditForUI,
                         selected: controller.geometryEditorTool == .displacementExtrude
                     ) {
@@ -752,7 +752,7 @@ private struct GeometryEditorShellInspector: View {
                         controller.startDisplacementExtrude()
                     }
                     iconButton(
-                        help: "Scale extrude: select edges, polygons, or open curves, then drag right/up to grow an outer ring or left/down for an inner ring, stitched to the originals. Choose another tool to leave extrude mode.",
+                        help: "Scale extrude: select edges, polygons, or open curves, then drag right/up to grow an outer ring or left/down for an inner ring, stitched to the originals. Choose another tool to leave extrude mode. (⇧X)",
                         disabled: !controller.selectedGeometryEditorLayerCanEditForUI,
                         selected: controller.geometryEditorTool == .scaleExtrude
                     ) {
@@ -761,7 +761,7 @@ private struct GeometryEditorShellInspector: View {
                         controller.startScaleExtrude()
                     }
                     iconButton(
-                        help: "Knife: drag a cut line through polygons or open curves. Choose another tool to leave knife mode.",
+                        help: "Knife: drag a cut line through polygons or open curves. Choose another tool to leave knife mode. (K)",
                         disabled: !controller.selectedGeometryEditorLayerCanEditForUI,
                         selected: controller.geometryEditorTool == .knife
                     ) {
@@ -779,7 +779,7 @@ private struct GeometryEditorShellInspector: View {
                         controller.geometryEditorKnifeCutsAllVisibleLayers.toggle()
                     }
                     iconButton(
-                        help: "Curved knife: drag a cut curve, adjust control handles, then press K to cut.",
+                        help: "Curved knife: drag a cut curve, adjust control handles, then press Return to cut. (⇧K)",
                         disabled: !controller.selectedGeometryEditorLayerCanEditForUI,
                         selected: controller.geometryEditorTool == .curvedKnife
                     ) {
@@ -1240,12 +1240,12 @@ private struct GeometryEditorShellInspector: View {
 
             InspectorSection("View", isCollapsed: $viewCollapsed) {
                 iconRow {
-                    iconButton(help: "Zoom in") {
+                    iconButton(help: "Zoom in (Z)") {
                         Image(systemName: "plus.magnifyingglass").font(.system(size: 15))
                     } action: {
                         controller.zoomGeometryEditorIn()
                     }
-                    iconButton(help: "Zoom out") {
+                    iconButton(help: "Zoom out (⇧Z)") {
                         Image(systemName: "minus.magnifyingglass").font(.system(size: 15))
                     } action: {
                         controller.zoomGeometryEditorOut()
@@ -1272,7 +1272,7 @@ private struct GeometryEditorShellInspector: View {
                             controller.startGeometryEditMode(.panView)
                         }
                     }
-                    .modifier(InstantGeometryTooltip("Pan view: drag canvas to scroll the editor view. Double-click to reset pan position."))
+                    .modifier(InstantGeometryTooltip("Pan view: drag canvas to scroll the editor view. Double-click to reset pan position. (H)"))
                     iconButton(
                         help: "Show or hide grid",
                         selected: controller.geometryEditorShowsGrid
@@ -1422,12 +1422,12 @@ private struct GeometryEditorShellInspector: View {
             Divider()
             HStack(spacing: 8) {
                 HStack(spacing: 7) {
-                    iconButton(help: "Undo", disabled: !controller.canUndoGeometryEdit) {
+                    iconButton(help: "Undo (⌘Z)", disabled: !controller.canUndoGeometryEdit) {
                         Image(systemName: "arrow.uturn.backward").font(.system(size: 15))
                     } action: {
                         controller.undoGeometryEdit()
                     }
-                    iconButton(help: "Redo", disabled: !controller.canRedoGeometryEdit) {
+                    iconButton(help: "Redo (⌘⇧Z)", disabled: !controller.canRedoGeometryEdit) {
                         Image(systemName: "arrow.uturn.forward").font(.system(size: 15))
                     } action: {
                         controller.redoGeometryEdit()
