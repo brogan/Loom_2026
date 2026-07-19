@@ -7669,11 +7669,19 @@ final class AppController: ObservableObject, @unchecked Sendable {
                 return
             }
 
-            guard let entries = try? fm.contentsOfDirectory(
-                at: projectsDir,
-                includingPropertiesForKeys: [.isDirectoryKey],
-                options: [.skipsHiddenFiles]
-            ) else {
+            func isDirectory(_ url: URL) -> Bool {
+                var isDir: ObjCBool = false
+                return fm.fileExists(atPath: url.path, isDirectory: &isDir) && isDir.boolValue
+            }
+
+            // NOTE: options: [.skipsHiddenFiles] treats the chflags "hidden" flag as hidden, not
+            // just dot-prefixed names — if a project folder ever gets flagged hidden (e.g. via a
+            // manual `chflags hidden`), that option silently drops it with no thrown error. Filter
+            // dot-prefixed names manually instead so a stray hidden flag can't zero out the scan.
+            let entries: [URL]
+            do {
+                entries = try fm.contentsOfDirectory(at: projectsDir, includingPropertiesForKeys: nil, options: [])
+            } catch {
                 await MainActor.run {
                     self.appStatusMessage    = "Could not read \(projectsDir.lastPathComponent)"
                     self.isCollectingRenders = false
@@ -7684,7 +7692,8 @@ final class AppController: ObservableObject, @unchecked Sendable {
             let projectDirs = entries
                 .filter {
                     $0.lastPathComponent != "All" &&
-                    ((try? $0.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true)
+                    !$0.lastPathComponent.hasPrefix(".") &&
+                    isDirectory($0)
                 }
                 .sorted { $0.lastPathComponent.lowercased() < $1.lastPathComponent.lowercased() }
 
@@ -7698,16 +7707,14 @@ final class AppController: ObservableObject, @unchecked Sendable {
             var skipped:     Int   = 0
 
             func filesIn(_ dir: URL, exts: Set<String>) -> [(url: URL, date: Date, size: Int64)] {
-                guard let items = try? fm.contentsOfDirectory(
-                    at: dir,
-                    includingPropertiesForKeys: [.contentModificationDateKey, .fileSizeKey],
-                    options: [.skipsHiddenFiles]
-                ) else { return [] }
-                return items.compactMap { u in
-                    guard exts.contains(u.pathExtension.lowercased()) else { return nil }
-                    let rv   = try? u.resourceValues(forKeys: [.contentModificationDateKey, .fileSizeKey])
-                    let date = rv?.contentModificationDate ?? Date.distantPast
-                    let size = Int64(rv?.fileSize ?? 0)
+                guard let items = try? fm.contentsOfDirectory(at: dir, includingPropertiesForKeys: nil, options: [])
+                else { return [] }
+                return items.compactMap { u -> (url: URL, date: Date, size: Int64)? in
+                    guard !u.lastPathComponent.hasPrefix("."),
+                          exts.contains(u.pathExtension.lowercased()) else { return nil }
+                    let attrs = try? fm.attributesOfItem(atPath: u.path)
+                    let date  = attrs?[.modificationDate] as? Date ?? Date.distantPast
+                    let size  = (attrs?[.size] as? NSNumber)?.int64Value ?? 0
                     return (u, date, size)
                 }.sorted { $0.date < $1.date }
             }
@@ -7736,9 +7743,12 @@ final class AppController: ObservableObject, @unchecked Sendable {
                     for f in filesIn(dir, exts: stillExts) {
                         let dest = allStills.appendingPathComponent(
                             String(format: "%@_%04d.%@", projName, si, f.url.pathExtension.lowercased()))
-                        if (try? fm.moveItem(at: f.url, to: dest)) != nil {
+                        do {
+                            try fm.moveItem(at: f.url, to: dest)
                             movedStills += 1; stillBytes += f.size; si += 1
-                        } else { skipped += 1 }
+                        } catch {
+                            skipped += 1
+                        }
                     }
                     break
                 }
@@ -7751,9 +7761,12 @@ final class AppController: ObservableObject, @unchecked Sendable {
                     for f in filesIn(dir, exts: animExts) {
                         let dest = allAnims.appendingPathComponent(
                             String(format: "%@_%04d.%@", projName, ai, f.url.pathExtension.lowercased()))
-                        if (try? fm.moveItem(at: f.url, to: dest)) != nil {
+                        do {
+                            try fm.moveItem(at: f.url, to: dest)
                             movedAnims += 1; animBytes += f.size; ai += 1
-                        } else { skipped += 1 }
+                        } catch {
+                            skipped += 1
+                        }
                     }
                     break
                 }
