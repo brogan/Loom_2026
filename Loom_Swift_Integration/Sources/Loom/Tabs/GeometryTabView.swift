@@ -236,7 +236,7 @@ struct GeometryTabView: View {
                     }
                 }
                 .disabled(controller.selectedGeometryKey == nil)
-                .foregroundStyle(controller.selectedGeometryKey != nil ? Color.red : Color.secondary)
+                .foregroundStyle(controller.selectedGeometryKey != nil ? Color.orange : Color.secondary)
             }
 
             HStack {
@@ -1125,7 +1125,7 @@ private struct GeometryEditorMainShell: View {
                 toolbarIconButton(help: "Delete selected geometry (Delete)", disabled: !controller.canDeleteSelectedGeometry || morphLocked) {
                     DeleteSelectedGeometryIcon()
                 } action: { controller.deleteSelectedGeometry() }
-                toolbarIconButton(help: "Delete all geometry in active layer (⇧Delete)", disabled: !controller.canDeleteAllLayerGeometry || morphLocked) {
+                toolbarIconButton(help: "Delete all geometry in active layer (⇧Delete)", disabled: !controller.canDeleteAllLayerGeometry || morphLocked, tint: .orange) {
                     DeleteAllLayerGeometryIcon()
                 } action: { controller.deleteAllLayerGeometry() }
 
@@ -1198,6 +1198,7 @@ private struct GeometryEditorMainShell: View {
         help: String = "",
         disabled: Bool = false,
         selected: Bool = false,
+        tint: Color? = nil,
         @ViewBuilder label: () -> Content,
         action: @escaping () -> Void
     ) -> some View {
@@ -1209,6 +1210,7 @@ private struct GeometryEditorMainShell: View {
                 .foregroundStyle(
                     selected  ? Color.accentColor :
                     disabled  ? Color.secondary.opacity(0.35) :
+                    tint != nil ? tint! :
                                 Color.primary
                 )
                 .background(
