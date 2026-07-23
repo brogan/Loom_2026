@@ -117,6 +117,15 @@
   .icon-muted { color: var(--text-dim); }
   .control-table td:first-child { width: 170px; }
 
+  /* ── Applies-to badges (open curve / closed polygon / both) ───── */
+  .badge { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; white-space: nowrap; color: #fff; }
+  .badge-open   { background: #0e7fd4; }
+  .badge-closed { background: #c47f0e; }
+  .badge-both   { background: #3a9d4f; }
+  .badge-legend { display: flex; align-items: center; gap: 18px; flex-wrap: wrap; margin: 10px 0 16px; font-size: 12px; color: var(--text-dim); }
+  .badge-legend .badge { margin-right: 4px; }
+  .stage-row td { background: var(--surface2); color: var(--text-bright); font-weight: 700; text-transform: uppercase; font-size: 11px; letter-spacing: 0.06em; }
+
   /* ── Search highlights ───────────────────────────── */
   mark { background: var(--highlight); color: #000; border-radius: 2px; padding: 0 2px; }
   .search-hidden { display: none !important; }
@@ -293,6 +302,7 @@
   <a class="nav-link nav-sub" href="#layers-blend">Blend Modes</a>
   <a class="nav-link nav-sub" href="#layers-redraw">Redraw Modes</a>
   <a class="nav-link" href="#subdivision">Transform Tab</a>
+  <a class="nav-link nav-sub" href="#transform-quickref">Quick Reference &amp; Pipeline</a>
   <a class="nav-link nav-sub" href="#subdivision-algorithms">Algorithms</a>
   <a class="nav-link nav-sub" href="#subdivision-edge-curvature">Edge Curvature</a>
   <a class="nav-link nav-sub" href="#subdivision-ptw">PTW</a>
@@ -426,6 +436,7 @@
   <div class="toc-entry sub"><a href="#layers-blend">Blend Modes</a><span class="toc-fill"></span></div>
   <div class="toc-entry sub"><a href="#layers-redraw">Redraw Modes</a><span class="toc-fill"></span></div>
   <div class="toc-entry"><a href="#subdivision">Transform Tab</a><span class="toc-fill"></span></div>
+  <div class="toc-entry sub"><a href="#transform-quickref">Quick Reference &amp; Pipeline</a><span class="toc-fill"></span></div>
   <div class="toc-entry sub"><a href="#subdivision-algorithms">Algorithms</a><span class="toc-fill"></span></div>
   <div class="toc-entry sub"><a href="#subdivision-edge-curvature">Edge Curvature</a><span class="toc-fill"></span></div>
   <div class="toc-entry sub"><a href="#subdivision-ptw">PTW</a><span class="toc-fill"></span></div>
@@ -2287,6 +2298,193 @@
     </svg>
     <figcaption>A two-step subdivision chain: Quad → Echo → Tri</figcaption>
   </div>
+
+  <h3 id="transform-quickref">Quick Reference &amp; Pipeline</h3>
+  <p>Every transform set runs through the same fixed sequence of stages, in this order, each stage optional. The diagram below shows the actual execution order — note that <strong>Evolution runs twice</strong>: once early as a parameter perturbation before Involution, and again later as a geometry mutation after Extension. The table beneath it lists every individual transform with a sensible starting point and what that starting point gets you, so you can look up a transform without reading the full walkthrough below.</p>
+
+  <div class="diagram">
+    <svg width="460" height="660" viewBox="0 0 460 660" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <defs>
+        <marker id="arrPipeline" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
+          <path d="M0,0 L0,6 L8,3 z" fill="#0e7fd4"/>
+        </marker>
+      </defs>
+
+      <!-- 1: Base geometry -->
+      <rect x="20" y="20" width="340" height="40" rx="4" fill="none" stroke="#3c3c3c" stroke-width="1.5" stroke-dasharray="4,3"/>
+      <text x="190" y="45" text-anchor="middle" font-size="11" font-weight="600" fill="#aaaaaa" font-family="-apple-system">Base geometry</text>
+      <line x1="190" y1="60" x2="190" y2="92" stroke="#0e7fd4" stroke-width="1.5" marker-end="url(#arrPipeline)"/>
+
+      <!-- 2: Evolution pre-shaping -->
+      <rect x="20" y="92" width="340" height="52" rx="4" fill="none" stroke="#3c3c3c" stroke-width="1.5"/>
+      <circle cx="352" cy="100" r="8" fill="#0e7fd4"/>
+      <text x="352" y="103.5" text-anchor="middle" font-size="9" font-weight="700" fill="#ffffff" font-family="-apple-system">1</text>
+      <text x="190" y="113" text-anchor="middle" font-size="11" font-weight="600" fill="#aaaaaa" font-family="-apple-system">EVOLUTION — pre-shaping</text>
+      <text x="190" y="130" text-anchor="middle" font-size="9" fill="#888" font-family="-apple-system">Momentum Drift · Convergence Pressure (parameters only)</text>
+      <line x1="190" y1="144" x2="190" y2="176" stroke="#0e7fd4" stroke-width="1.5" marker-end="url(#arrPipeline)"/>
+
+      <!-- 3: Involution -->
+      <rect x="20" y="176" width="340" height="52" rx="4" fill="none" stroke="#3c3c3c" stroke-width="1.5"/>
+      <text x="190" y="197" text-anchor="middle" font-size="11" font-weight="600" fill="#aaaaaa" font-family="-apple-system">INVOLUTION</text>
+      <text x="190" y="214" text-anchor="middle" font-size="9" fill="#888" font-family="-apple-system">Subdivision (closed) · Curve Refinement + Segment Extraction (open)</text>
+      <line x1="190" y1="228" x2="190" y2="260" stroke="#0e7fd4" stroke-width="1.5" marker-end="url(#arrPipeline)"/>
+
+      <!-- 4: Extension -->
+      <rect x="20" y="260" width="340" height="52" rx="4" fill="none" stroke="#3c3c3c" stroke-width="1.5"/>
+      <text x="190" y="281" text-anchor="middle" font-size="11" font-weight="600" fill="#aaaaaa" font-family="-apple-system">EXTENSION</text>
+      <text x="190" y="298" text-anchor="middle" font-size="9" fill="#888" font-family="-apple-system">Branch (open curves) · Extrude (closed polygons)</text>
+      <line x1="190" y1="312" x2="190" y2="344" stroke="#0e7fd4" stroke-width="1.5" marker-end="url(#arrPipeline)"/>
+
+      <!-- 5: Evolution generational -->
+      <rect x="20" y="344" width="340" height="52" rx="4" fill="none" stroke="#3c3c3c" stroke-width="1.5"/>
+      <circle cx="352" cy="352" r="8" fill="#0e7fd4"/>
+      <text x="352" y="355.5" text-anchor="middle" font-size="9" font-weight="700" fill="#ffffff" font-family="-apple-system">2</text>
+      <text x="190" y="365" text-anchor="middle" font-size="11" font-weight="600" fill="#aaaaaa" font-family="-apple-system">EVOLUTION — Generational</text>
+      <text x="190" y="382" text-anchor="middle" font-size="9" fill="#888" font-family="-apple-system">Extrude · Split · Graft (materialized geometry)</text>
+      <line x1="190" y1="396" x2="190" y2="428" stroke="#0e7fd4" stroke-width="1.5" marker-end="url(#arrPipeline)"/>
+
+      <!-- 6: Fulguration -->
+      <rect x="20" y="428" width="340" height="52" rx="4" fill="none" stroke="#3c3c3c" stroke-width="1.5"/>
+      <text x="190" y="449" text-anchor="middle" font-size="11" font-weight="600" fill="#aaaaaa" font-family="-apple-system">FULGURATION</text>
+      <text x="190" y="466" text-anchor="middle" font-size="9" fill="#888" font-family="-apple-system">Frame Cycle trigger → Transform or Assembly content</text>
+      <line x1="190" y1="480" x2="190" y2="512" stroke="#0e7fd4" stroke-width="1.5" marker-end="url(#arrPipeline)"/>
+
+      <!-- 7: Dissolution -->
+      <rect x="20" y="512" width="340" height="52" rx="4" fill="none" stroke="#3c3c3c" stroke-width="1.5"/>
+      <text x="190" y="533" text-anchor="middle" font-size="11" font-weight="600" fill="#aaaaaa" font-family="-apple-system">DISSOLUTION</text>
+      <text x="190" y="550" text-anchor="middle" font-size="9" fill="#888" font-family="-apple-system">Entropy · Collapse · Partial Loss · Drift</text>
+      <line x1="190" y1="564" x2="190" y2="596" stroke="#0e7fd4" stroke-width="1.5" marker-end="url(#arrPipeline)"/>
+
+      <!-- 8: Render -->
+      <rect x="20" y="596" width="340" height="40" rx="4" fill="none" stroke="#3c3c3c" stroke-width="1.5" stroke-dasharray="4,3"/>
+      <text x="190" y="621" text-anchor="middle" font-size="11" font-weight="600" fill="#aaaaaa" font-family="-apple-system">Render</text>
+    </svg>
+    <figcaption>The fixed Geometric Lifecycle pipeline order. Every stage is optional — skip one and the next stage simply receives the previous stage's output unchanged. <strong>①</strong> and <strong>②</strong> mark Evolution's two distinct mechanisms: pre-shaping perturbs parameters before Involution runs; Generational mutates already-materialized geometry after Extension runs.</figcaption>
+  </div>
+
+  <div class="badge-legend">
+    <span><span class="badge badge-open">Open</span> open curves only</span>
+    <span><span class="badge badge-closed">Closed</span> closed polygons only</span>
+    <span><span class="badge badge-both">Both</span> works on either (a toggle is noted in the cell where one exists)</span>
+  </div>
+
+  <table class="control-table">
+    <thead><tr><th>Transform</th><th>Applies to</th><th>Suggested starting point</th><th>What you get</th></tr></thead>
+    <tbody>
+
+      <tr class="stage-row"><td colspan="4">Evolution — pre-shaping (parameters only) ①</td></tr>
+      <tr>
+        <td>Momentum Drift</td>
+        <td><span class="badge badge-both">Both</span></td>
+        <td>Target: Line ratios X/Y (closed) or Curve Displacement (open) · Momentum 0.85 · Strength 0.1 · Frequency 0.02</td>
+        <td>Smooth organic wander of one parameter over time — no snapping, no repeat. Raise Momentum toward 0.95 for slow majestic sway; drop toward 0.5 for nervous jitter. Raise Strength cautiously — above ~0.3 the subdivided geometry can visibly overshoot.</td>
+      </tr>
+      <tr>
+        <td>Convergence Pressure</td>
+        <td><span class="badge badge-both">Both</span></td>
+        <td>Pick a target transform set · Mode Hold · Duration 120 fr · Pressure driver ramping 0→1</td>
+        <td>Directed morph from this set's shape toward the target set's shape. Drive Pressure with a keyframe ramp for a one-way transformation, or switch Mode to Oscillate/Loop for a shape that breathes between the two.</td>
+      </tr>
+
+      <tr class="stage-row"><td colspan="4">Involution — self-analysis</td></tr>
+      <tr>
+        <td>Subdivision</td>
+        <td><span class="badge badge-closed">Closed only</span></td>
+        <td>Algorithm Quad · Line ratios 0.5 / 0.5 · CP ratios 0.25 / 0.75 · CP normals 0 / 0</td>
+        <td>Splits each polygon into child polygons. Quad at 0.5/0.5 gives four even quadrants — the safest first algorithm to try. Once comfortable, push CP normals away from 0 to bow the internal connector edges (see <a href="#subdivision-edge-curvature">Edge Curvature</a>).</td>
+      </tr>
+      <tr>
+        <td>Curve Refinement</td>
+        <td><span class="badge badge-open">Open only</span></td>
+        <td>Insertion Count 2 · Distribution Linear · Displacement 0 · CP Mode Smooth</td>
+        <td>The open-curve equivalent of Subdivision — inserts new anchor points along the curve without altering its overall gesture. Raise Insertion Count for a denser curve; switch Distribution to Random for irregular spacing.</td>
+      </tr>
+      <tr>
+        <td>Segment Extraction</td>
+        <td><span class="badge badge-open">Open only</span></td>
+        <td>Mode Every Nth · N 2 · Output Open curve</td>
+        <td>Filters a refined/subdivided mesh down to a sparser subset of segments — every other edge, the longest edges, etc. Use after Curve Refinement to thin out a dense result rather than generate new geometry.</td>
+      </tr>
+
+      <tr class="stage-row"><td colspan="4">Extension — outward growth</td></tr>
+      <tr>
+        <td>Branch</td>
+        <td><span class="badge badge-open">Open (primarily)</span></td>
+        <td>Depth 2 · Count 2 · Scale ratio 0.6 · Branch angle 45° · Angle jitter 0</td>
+        <td>Recursive fractal tree from a curve's endpoints. This starting point gives a balanced, symmetric fork (20 branches). Raise Scale ratio toward 0.8 for a wide bush; lower toward 0.4 for sparse, spindly growth; add 5–15° Angle jitter for organic irregularity. Keep Depth ≤ 4 — the engine hard-caps at 256 branches per input polygon.</td>
+      </tr>
+      <tr>
+        <td>Extrude</td>
+        <td><span class="badge badge-closed">Closed (open via toggle)</span></td>
+        <td>Target All Edges · Distance 0.1 · Width 1.0 · Curvature 0 · Generations 1</td>
+        <td>Grows polygon edges outward into walls. This starting point gives one uniform wall per edge. Set Width below 1 to taper toward a point, above 1 to flare; give Generations min/max different values for randomized "tower" heights across edges.</td>
+      </tr>
+
+      <tr class="stage-row"><td colspan="4">Evolution — Generational, materialized geometry ②</td></tr>
+      <tr>
+        <td>Generational</td>
+        <td><span class="badge badge-both">Both (open via toggle)</span></td>
+        <td>Generations 5 · Vertex budget 512 · Extrude weight 1.0 · Split weight 1.0 · Graft weight 0 (off)</td>
+        <td>Artificial-life mutation of real geometry, generation by generation. This starting point alternates Extrude/Split growth only. Raise Graft's weight above 0 once the basics feel stable — it attaches separate shapes edge-to-edge and is the most dramatic and least predictable of the three operators.</td>
+      </tr>
+
+      <tr class="stage-row"><td colspan="4">Fulguration — emergence</td></tr>
+      <tr>
+        <td>Frame Cycle</td>
+        <td><span class="badge badge-both">Both</span></td>
+        <td>Interval 30–90 fr · Hold 6–20 fr</td>
+        <td>Always-active trigger that periodically reveals the form for the Hold window, then hides it again — the heartbeat every other Fulguration setting rides on.</td>
+      </tr>
+      <tr>
+        <td>Transform (content)</td>
+        <td><span class="badge badge-both">Both</span></td>
+        <td>Development Instant · Scale 1/1 · Rotation 0</td>
+        <td>Flashes the sprite's own geometry with a per-cycle rigid transform variation. Switch Development to Grow-Shrink (4 fr in/out) for a softer pop instead of an instant flash.</td>
+      </tr>
+      <tr>
+        <td>Assembly (content)</td>
+        <td><span class="badge badge-both">Both</span></td>
+        <td>Piece Count 4–8 · Size 0.15–0.35 · Deform 0.7–1.3 · Exit Instant</td>
+        <td>Builds a small combinatorial shape from primitive pieces for the Hold window instead of reusing the sprite's own geometry. Try Exit: Shatter for a more violent dispersal at each cycle's end.</td>
+      </tr>
+
+      <tr class="stage-row"><td colspan="4">Dissolution — loss of specificity</td></tr>
+      <tr>
+        <td>Entropy</td>
+        <td><span class="badge badge-both">Both</span></td>
+        <td>Rate 0.005 (safe range 0.001–0.02) · Target Smoothed · Scale delta 0</td>
+        <td>Gradual complexity loss — vertices migrate toward a simpler shape (or straighten, for curves) without the form vanishing. Keep Rate low; above ~0.02 the shape simplifies within a few seconds.</td>
+      </tr>
+      <tr>
+        <td>Collapse</td>
+        <td><span class="badge badge-both">Both</span></td>
+        <td>Trigger Frame count 120 fr · Mode Instant</td>
+        <td>The form disappears entirely at the trigger point. Switch Mode to Brief (6 fr) for a quick centroid-shrink instead of an instant cut, paired with Contraction Anchor below to choose where it shrinks toward.</td>
+      </tr>
+      <tr>
+        <td>Contraction Anchor</td>
+        <td><span class="badge badge-both">Both</span></td>
+        <td>Anchor Centroid</td>
+        <td>Where Collapse's Brief mode shrinks to — in place (Centroid), toward one edge, or toward one vertex.</td>
+      </tr>
+      <tr>
+        <td>Partial Loss</td>
+        <td><span class="badge badge-both">Both (multi-polygon sets)</span></td>
+        <td>Max fraction 0.3</td>
+        <td>Prunes a fraction of polygons from a set outright, rather than shrinking or fading everything together. No effect on a single-shape sprite.</td>
+      </tr>
+      <tr>
+        <td>Drift</td>
+        <td><span class="badge badge-both">Both</span></td>
+        <td>Distance 0.05 · Rotation 0</td>
+        <td>Surviving polygons translate/rotate away from their original placement — a slow seeded scatter rather than a collapse.</td>
+      </tr>
+
+    </tbody>
+  </table>
+
+  <div class="note"><strong>Shared driver mechanism:</strong> Generational Evolution's Reveal driver and Dissolution's Phase/Seed driver (see <a href="#dissolution-driver">Dissolution — Driver</a>) use the same underlying two-track system — a Phase progress value from 0 to 1 controlling how much is applied, and a Seed controlling which polygons/directions are chosen. They are not separate transforms in the table above; they animate the transforms already listed rather than shaping geometry on their own.</div>
+
 
   <h3>Working with sets</h3>
   <ol class="steps">
