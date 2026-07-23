@@ -314,6 +314,7 @@
   <a class="nav-link nav-sub" href="#segment-extraction">Segment Extraction</a>
   <a class="nav-link nav-sub" href="#extension-branch">Branch (open curves)</a>
   <a class="nav-link nav-sub" href="#extension-extrude">Extrude (closed)</a>
+  <a class="nav-link nav-sub" href="#convolution">Convolution — Torsion &amp; Shear</a>
   <a class="nav-link nav-sub" href="#evolution-drift">Evolution — Momentum Drift</a>
   <a class="nav-link nav-sub" href="#evolution-convergence">Evolution — Convergence Pressure</a>
   <a class="nav-link nav-sub" href="#evolution-generational">Evolution — Generational</a>
@@ -448,6 +449,7 @@
   <div class="toc-entry sub"><a href="#segment-extraction">Segment Extraction</a><span class="toc-fill"></span></div>
   <div class="toc-entry sub"><a href="#extension-branch">Branch (open curves)</a><span class="toc-fill"></span></div>
   <div class="toc-entry sub"><a href="#extension-extrude">Extrude (closed)</a><span class="toc-fill"></span></div>
+  <div class="toc-entry sub"><a href="#convolution">Convolution — Torsion &amp; Shear</a><span class="toc-fill"></span></div>
   <div class="toc-entry sub"><a href="#evolution-drift">Evolution — Momentum Drift</a><span class="toc-fill"></span></div>
   <div class="toc-entry sub"><a href="#evolution-convergence">Evolution — Convergence Pressure</a><span class="toc-fill"></span></div>
   <div class="toc-entry sub"><a href="#evolution-generational">Evolution — Generational</a><span class="toc-fill"></span></div>
@@ -2300,10 +2302,10 @@
   </div>
 
   <h3 id="transform-quickref">Quick Reference &amp; Pipeline</h3>
-  <p>Every transform set runs through the same fixed sequence of stages, in this order, each stage optional. The diagram below shows the actual execution order — note that <strong>Evolution runs twice</strong>: once early as a parameter perturbation before Involution, and again later as a geometry mutation after Extension. The table beneath it lists every individual transform with a sensible starting point and what that starting point gets you, so you can look up a transform without reading the full walkthrough below.</p>
+  <p>Every transform set runs through the same fixed sequence of stages, in this order, each stage optional. The diagram below shows the actual execution order — note that <strong>Evolution runs twice</strong>: once early as a parameter perturbation before Involution, and again later as a geometry mutation after Extension, with <strong>Convolution</strong> sitting between the two so any grown structure is captured in the same coordinate-space warp before generational mutation builds on it. The table beneath it lists every individual transform with a sensible starting point and what that starting point gets you, so you can look up a transform without reading the full walkthrough below.</p>
 
   <div class="diagram">
-    <svg width="460" height="660" viewBox="0 0 460 660" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <svg width="460" height="740" viewBox="0 0 460 740" fill="none" xmlns="http://www.w3.org/2000/svg">
       <defs>
         <marker id="arrPipeline" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
           <path d="M0,0 L0,6 L8,3 z" fill="#0e7fd4"/>
@@ -2335,31 +2337,37 @@
       <text x="190" y="298" text-anchor="middle" font-size="9" fill="#888" font-family="-apple-system">Branch (open curves) · Extrude (closed polygons)</text>
       <line x1="190" y1="312" x2="190" y2="344" stroke="#0e7fd4" stroke-width="1.5" marker-end="url(#arrPipeline)"/>
 
-      <!-- 5: Evolution generational -->
+      <!-- 5: Convolution -->
       <rect x="20" y="344" width="340" height="52" rx="4" fill="none" stroke="#3c3c3c" stroke-width="1.5"/>
-      <circle cx="352" cy="352" r="8" fill="#0e7fd4"/>
-      <text x="352" y="355.5" text-anchor="middle" font-size="9" font-weight="700" fill="#ffffff" font-family="-apple-system">2</text>
-      <text x="190" y="365" text-anchor="middle" font-size="11" font-weight="600" fill="#aaaaaa" font-family="-apple-system">EVOLUTION — Generational</text>
-      <text x="190" y="382" text-anchor="middle" font-size="9" fill="#888" font-family="-apple-system">Extrude · Split · Graft (materialized geometry)</text>
+      <text x="190" y="365" text-anchor="middle" font-size="11" font-weight="600" fill="#aaaaaa" font-family="-apple-system">CONVOLUTION</text>
+      <text x="190" y="382" text-anchor="middle" font-size="9" fill="#888" font-family="-apple-system">Torsion · Shear — coordinate-space warp of resolved geometry</text>
       <line x1="190" y1="396" x2="190" y2="428" stroke="#0e7fd4" stroke-width="1.5" marker-end="url(#arrPipeline)"/>
 
-      <!-- 6: Fulguration -->
+      <!-- 6: Evolution generational -->
       <rect x="20" y="428" width="340" height="52" rx="4" fill="none" stroke="#3c3c3c" stroke-width="1.5"/>
-      <text x="190" y="449" text-anchor="middle" font-size="11" font-weight="600" fill="#aaaaaa" font-family="-apple-system">FULGURATION</text>
-      <text x="190" y="466" text-anchor="middle" font-size="9" fill="#888" font-family="-apple-system">Frame Cycle trigger → Transform or Assembly content</text>
+      <circle cx="352" cy="436" r="8" fill="#0e7fd4"/>
+      <text x="352" y="439.5" text-anchor="middle" font-size="9" font-weight="700" fill="#ffffff" font-family="-apple-system">2</text>
+      <text x="190" y="449" text-anchor="middle" font-size="11" font-weight="600" fill="#aaaaaa" font-family="-apple-system">EVOLUTION — Generational</text>
+      <text x="190" y="466" text-anchor="middle" font-size="9" fill="#888" font-family="-apple-system">Extrude · Split · Graft (materialized geometry)</text>
       <line x1="190" y1="480" x2="190" y2="512" stroke="#0e7fd4" stroke-width="1.5" marker-end="url(#arrPipeline)"/>
 
-      <!-- 7: Dissolution -->
+      <!-- 7: Fulguration -->
       <rect x="20" y="512" width="340" height="52" rx="4" fill="none" stroke="#3c3c3c" stroke-width="1.5"/>
-      <text x="190" y="533" text-anchor="middle" font-size="11" font-weight="600" fill="#aaaaaa" font-family="-apple-system">DISSOLUTION</text>
-      <text x="190" y="550" text-anchor="middle" font-size="9" fill="#888" font-family="-apple-system">Entropy · Collapse · Partial Loss · Drift</text>
+      <text x="190" y="533" text-anchor="middle" font-size="11" font-weight="600" fill="#aaaaaa" font-family="-apple-system">FULGURATION</text>
+      <text x="190" y="550" text-anchor="middle" font-size="9" fill="#888" font-family="-apple-system">Frame Cycle trigger → Transform or Assembly content</text>
       <line x1="190" y1="564" x2="190" y2="596" stroke="#0e7fd4" stroke-width="1.5" marker-end="url(#arrPipeline)"/>
 
-      <!-- 8: Render -->
-      <rect x="20" y="596" width="340" height="40" rx="4" fill="none" stroke="#3c3c3c" stroke-width="1.5" stroke-dasharray="4,3"/>
-      <text x="190" y="621" text-anchor="middle" font-size="11" font-weight="600" fill="#aaaaaa" font-family="-apple-system">Render</text>
+      <!-- 8: Dissolution -->
+      <rect x="20" y="596" width="340" height="52" rx="4" fill="none" stroke="#3c3c3c" stroke-width="1.5"/>
+      <text x="190" y="617" text-anchor="middle" font-size="11" font-weight="600" fill="#aaaaaa" font-family="-apple-system">DISSOLUTION</text>
+      <text x="190" y="634" text-anchor="middle" font-size="9" fill="#888" font-family="-apple-system">Entropy · Collapse · Partial Loss · Drift</text>
+      <line x1="190" y1="648" x2="190" y2="680" stroke="#0e7fd4" stroke-width="1.5" marker-end="url(#arrPipeline)"/>
+
+      <!-- 9: Render -->
+      <rect x="20" y="680" width="340" height="40" rx="4" fill="none" stroke="#3c3c3c" stroke-width="1.5" stroke-dasharray="4,3"/>
+      <text x="190" y="705" text-anchor="middle" font-size="11" font-weight="600" fill="#aaaaaa" font-family="-apple-system">Render</text>
     </svg>
-    <figcaption>The fixed Geometric Lifecycle pipeline order. Every stage is optional — skip one and the next stage simply receives the previous stage's output unchanged. <strong>①</strong> and <strong>②</strong> mark Evolution's two distinct mechanisms: pre-shaping perturbs parameters before Involution runs; Generational mutates already-materialized geometry after Extension runs.</figcaption>
+    <figcaption>The fixed Geometric Lifecycle pipeline order. Every stage is optional — skip one and the next stage simply receives the previous stage's output unchanged. <strong>①</strong> and <strong>②</strong> mark Evolution's two distinct mechanisms: pre-shaping perturbs parameters before Involution runs; Generational mutates already-materialized geometry after Extension and Convolution run.</figcaption>
   </div>
 
   <div class="badge-legend">
@@ -2418,6 +2426,20 @@
         <td><span class="badge badge-closed">Closed (open via toggle)</span></td>
         <td>Target All Edges · Distance 0.1 · Width 1.0 · Curvature 0 · Generations 1</td>
         <td>Grows polygon edges outward into walls. This starting point gives one uniform wall per edge. Set Width below 1 to taper toward a point, above 1 to flare; give Generations min/max different values for randomized "tower" heights across edges.</td>
+      </tr>
+
+      <tr class="stage-row"><td colspan="4">Convolution — coordinate-space warp</td></tr>
+      <tr>
+        <td>Torsion</td>
+        <td><span class="badge badge-both">Both</span></td>
+        <td>Centre Centroid · Falloff Linear · Reference radius 0.5 · Twist amount 30°</td>
+        <td>Rotates points around a centre by an angle that grows with distance from it — a spiral warp. This starting point gives a gentle, readable twist. Switch Falloff to Inverse for a gentler, localized torsion that never over-rotates distant points, or to Constant for a plain rigid rotation. Raise Twist amount well past 90° for a pronounced pinwheel.</td>
+      </tr>
+      <tr>
+        <td>Shear</td>
+        <td><span class="badge badge-both">Both</span></td>
+        <td>Axis 0° · Origin Centroid · Shear amount 0.3</td>
+        <td>Displaces points along Axis proportional to their distance from Origin — geometrically exact, not an approximation, since shear is affine. 0.3 gives a gentle slant; push toward 1.0 for a pronounced lean. Add a second Convolution pass with a different Axis to combine two shears, or pair with a Torsion pass — order follows pass-list order since the two don't commute.</td>
       </tr>
 
       <tr class="stage-row"><td colspan="4">Evolution — Generational, materialized geometry ②</td></tr>
@@ -3013,6 +3035,55 @@
   <div class="note">If Tolerance is too tight for the shape in question, zero edges may qualify — Extrude then simply produces no additional geometry for that pass, rather than an error. Widen Tolerance or check Target angle against the shape's actual orientation if nothing appears.</div>
 
   <div class="tip"><strong>Combining Branch and Extrude:</strong> Branch and Extrude are separate Extension passes and can both be enabled in the same transform set. By default they run independently on their respective polygon types — Branch on open curves, Extrude on closed polygons — but with <strong>Open curves</strong> enabled, Extrude can target the same open curve a Branch pass produces, bridging its edges into closed polygons in the same transform set. A common pattern: draw an open curve tree (Branch pass) alongside a subdivided polygon mesh (Extrude pass) in the same sprite so that the branching organic structure and the extruded rigid structure share the same transform and renderer.</div>
+
+  <!-- ═══════════════════════════════════════════════════════════════════ -->
+  <h3 id="convolution">Convolution — Torsion and Shear</h3>
+  <p>Convolution warps the coordinates of already-resolved geometry — it neither adds nor removes a single vertex, unlike Involution (which splits polygons into more of them) or Extension (which grows new connected structure). It runs after Extension so any branches or extruded walls are captured in the same warp, and before Generational Evolution so subsequent structural mutation builds on the already-warped shape. Because it operates purely on the point list, it applies identically to open curves and closed polygons — there is no toggle or special case for either.</p>
+
+  <p>Each Convolution pass picks exactly one operation type, <strong>Torsion</strong> or <strong>Shear</strong>. To combine both on the same shape, add a second Convolution pass — the two don't commute (twist-then-shear looks different from shear-then-twist), so stacking passes rather than baking both into one pass keeps the order explicit and under your control, exactly like stacking Subdivision or Extension passes already works.</p>
+
+  <h4 id="convolution-torsion">Torsion</h4>
+  <p>Torsion rotates every point around a reference centre by an angle that depends on its distance from that centre — a spiral warp, not a rigid rotation of the whole shape (sprite-level rotation already covers that case). <strong>Falloff</strong> controls how the angle varies with distance:</p>
+  <ul>
+    <li><strong>Linear</strong> — angle grows proportionally with distance, unbounded outward. The classic spiral/pinwheel look; points far from centre can rotate well past the driven Twist amount itself.</li>
+    <li><strong>Inverse</strong> — angle is strongest near the centre and fades smoothly outward, never exceeding Twist amount. A gentler, more localized torsion that won't over-rotate distant points.</li>
+    <li><strong>Constant</strong> — every point rotates by exactly the same angle regardless of distance. This degenerates to a plain rigid rotation (already available at the sprite level) — kept as a clearly labelled corner case rather than removed, so the three options span a complete range.</li>
+  </ul>
+
+  <h5>Step-by-step: spiraling a subdivided polygon</h5>
+  <ol class="steps">
+    <li>Create a transform set with at least one Involution or Extension pass so there's visible internal structure to see the twist against (a plain unsubdivided square shows the warp less clearly).</li>
+    <li>In the <strong>Convolution</strong> section, click <strong>+</strong> to add a pass. Leave <strong>Type</strong> at <strong>Torsion</strong>.</li>
+    <li>Leave <strong>Centre</strong> at <strong>Centroid</strong> — the average of all points, sensible for both open and closed shapes.</li>
+    <li>Leave <strong>Falloff</strong> at <strong>Linear</strong> and <strong>Reference radius</strong> at <strong>0.5</strong>.</li>
+    <li>Open the <strong>Twist amount</strong> driver and set it to a constant <strong>30°</strong> to start. Increase toward 90–180° for a pronounced spiral, or wire an Oscillator driver for a shape that twists back and forth continuously.</li>
+  </ol>
+
+  <h4 id="convolution-shear">Shear</h4>
+  <p>Shear displaces points along an axis by an amount proportional to their distance from that axis, measured through an origin point — a generalized shear, not fixed to horizontal/vertical. Unlike Torsion, Shear is an affine transform, so it's geometrically exact for every Bézier control point, not an approximation.</p>
+
+  <h5>Step-by-step: adding a shear lean</h5>
+  <ol class="steps">
+    <li>In the <strong>Convolution</strong> section, add a pass and set <strong>Type</strong> to <strong>Shear</strong>.</li>
+    <li>Leave <strong>Axis</strong> at <strong>0°</strong> for a classic horizontal shear (points shift sideways based on their vertical distance from Origin), or set it to <strong>90°</strong> for a vertical shear instead.</li>
+    <li>Leave <strong>Origin</strong> at <strong>Centroid</strong>.</li>
+    <li>Open the <strong>Shear amount</strong> driver and set it to a constant <strong>0.3</strong> for a gentle lean. Push toward 1.0 for a pronounced slant, or wire an Oscillator for a shape that sways.</li>
+  </ol>
+
+  <h4>Torsion and Shear parameter reference and safe input values</h4>
+  <table>
+    <thead><tr><th>Parameter</th><th>Safe range</th><th>Effect</th></tr></thead>
+    <tbody>
+      <tr><td>Centre / Origin</td><td>—</td><td><strong>Centroid</strong> (default): average of all points, works for both open and closed shapes. <strong>Bounding Box Centre</strong>: geometric centre of the point list's bounding box — differs from Centroid when points are unevenly distributed. <strong>Custom</strong>: a fixed canvas point you enter directly.</td></tr>
+      <tr><td>Twist amount</td><td>10°–180°</td><td>Rotation at Reference radius (Torsion only). 30° is a gentle, readable twist; beyond 180° the spiral starts to fold connector edges over each other on dense meshes.</td></tr>
+      <tr><td>Falloff</td><td>—</td><td><strong>Linear</strong>: unbounded spiral, distant points rotate furthest. <strong>Inverse</strong>: bounded, gentler, concentrated near centre. <strong>Constant</strong>: uniform — a plain rigid rotation.</td></tr>
+      <tr><td>Reference radius</td><td>0.2–1.0</td><td>Canvas-unit distance at which Twist amount applies at full strength (Linear/Inverse only). Smaller values make the same Twist amount feel stronger since less distance is needed to reach it.</td></tr>
+      <tr><td>Shear amount</td><td>−1.0–1.0</td><td>Displacement per unit distance from Origin along Axis's perpendicular. 0.3 is a gentle lean; beyond ±1.0 the shape can fold over itself on elongated shapes.</td></tr>
+      <tr><td>Axis</td><td>0°–180°</td><td>Direction of the shear axis (Shear only). 0° = horizontal shear, 90° = vertical. Values beyond 180° repeat the same effect as their 180°-lower equivalent.</td></tr>
+    </tbody>
+  </table>
+
+  <div class="tip"><strong>Combining Torsion and Shear:</strong> add two Convolution passes — one Torsion, one Shear — to the same transform set. They apply in list order, so a Torsion pass followed by a Shear pass produces a different result than the reverse order. Reorder by deleting and re-adding, or duplicate a pass to experiment with both orderings side by side across two transform sets.</div>
 
   <h3 id="evolution-drift">Evolution — Momentum Drift</h3>
   <p>Momentum Drift displaces a chosen subdivision parameter over time using a slowly-changing noise field. Unlike a DoubleDriver, which applies an independent value each frame, drift has <em>inertia</em>: the direction of change accumulates, producing organic wandering rather than oscillation. The displacement is fully deterministic and seekable — the value at any frame is computed directly from the seed and frame index without simulating prior frames.</p>
