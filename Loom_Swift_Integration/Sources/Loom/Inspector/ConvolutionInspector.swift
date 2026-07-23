@@ -16,16 +16,22 @@ struct ConvolutionInspector: View {
     @AppStorage("convinsp.shearCollapsed")   private var shearCollapsed   = false
     @AppStorage("convinsp.twistAmountCollapsed") private var twistAmountCollapsed = true
     @AppStorage("convinsp.shearAmountCollapsed") private var shearAmountCollapsed = true
+    @AppStorage("convinsp.bendCollapsed")        private var bendCollapsed        = false
+    @AppStorage("convinsp.bendCurvatureCollapsed") private var bendCurvatureCollapsed = true
 
     var body: some View {
         generalSection
         operationSection
-        if bindConv(\.operationType).wrappedValue == .torsion {
+        switch bindConv(\.operationType).wrappedValue {
+        case .torsion:
             torsionSection
             twistAmountDriverSection
-        } else {
+        case .shear:
             shearSection
             shearAmountDriverSection
+        case .bend:
+            bendSection
+            bendCurvatureDriverSection
         }
     }
 
@@ -57,9 +63,9 @@ struct ConvolutionInspector: View {
                 }
                 .labelsHidden()
                 .pickerStyle(.segmented)
-                .frame(maxWidth: 160)
+                .frame(maxWidth: 210)
             }
-            .loomHelp("Torsion: rotate points around a centre by an angle that varies with distance from it — a spiral warp. Shear: displace points along an axis proportional to their distance from it. Applies unconditionally to both open curves and closed polygons. Add another Convolution pass to combine Torsion and Shear — order follows pass-list order.")
+            .loomHelp("Torsion: rotate points around a centre by an angle that varies with distance from it — a spiral warp. Shear: displace points along an axis proportional to their distance from it. Bend: wrap the shape around a virtual circular arc, like a 3D bend deformer. Applies unconditionally to both open curves and closed polygons. Add another Convolution pass to combine operations — order follows pass-list order.")
         }
     }
 
@@ -159,6 +165,55 @@ struct ConvolutionInspector: View {
             isCollapsed: $shearAmountCollapsed
         )
         .loomHelp("Displacement per unit distance from Origin along the perpendicular of Axis. 0 = no shear. Positive and negative values shear in opposite directions. Shear is an affine transform, so this is geometrically exact — not an approximation, unlike Torsion.")
+        .padding(.bottom, 2)
+    }
+
+    // MARK: - Bend settings
+
+    private var bendSection: some View {
+        InspectorSection("Bend", isCollapsed: $bendCollapsed) {
+            InspectorField("Axis") {
+                FloatEntryField(value: bindConv(\.bendAxis), width: 60)
+                Text("°").font(.system(size: 11)).foregroundStyle(.secondary)
+            }
+            .loomHelp("Direction of the \"along\" bend axis in degrees. 0° bends left-to-right; 90° bends bottom-to-top. Points are carried along a virtual arc in this direction; cross-sections perpendicular to it stay rigid rather than shearing.")
+
+            InspectorField("Centre") {
+                Picker("", selection: bindConv(\.bendCentre)) {
+                    ForEach(ConvolutionCentre.allCases, id: \.self) { c in
+                        Text(c.rawValue).tag(c)
+                    }
+                }
+                .labelsHidden()
+                .pickerStyle(.menu)
+                .frame(maxWidth: 160)
+            }
+            .loomHelp("The reference point the bend axis passes through. Centroid: average of all points. Bounding Box Centre: geometric centre of the point list's bounding box. Custom: a fixed canvas point below.")
+
+            if bindConv(\.bendCentre).wrappedValue == .custom {
+                InspectorField("Centre X") {
+                    FloatEntryField(value: bindConv(\.bendCentreCustomX), width: 60)
+                }
+                InspectorField("Centre Y") {
+                    FloatEntryField(value: bindConv(\.bendCentreCustomY), width: 60)
+                }
+            }
+
+            InspectorField("Origin") {
+                FloatEntryField(value: bindConv(\.bendOrigin), width: 60)
+            }
+            .loomHelp("0–1 position along the shape's own extent on Axis where the bend is centred. 0.5 (default) bends symmetrically outward from the middle — the shape's centre point on the axis stays fixed. 0 or 1 pins one end instead, so the whole shape sweeps around from that end.")
+        }
+    }
+
+    @ViewBuilder
+    private var bendCurvatureDriverSection: some View {
+        DoubleDriverEditor(
+            label: "Curvature",
+            driver: bindConvDriver(\.bendCurvature),
+            isCollapsed: $bendCurvatureCollapsed
+        )
+        .loomHelp("Inverse radius of the virtual bend circle. 0 = straight, no bend. 1.0 gives a gentle, readable curve for typically-sized geometry. Wire an Oscillator for a shape that flexes back and forth, or a Keyframe ramp to bend in gradually over time.")
         .padding(.bottom, 2)
     }
 

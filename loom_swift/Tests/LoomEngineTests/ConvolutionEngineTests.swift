@@ -148,6 +148,70 @@ final class ConvolutionEngineTests: XCTestCase {
         }
     }
 
+    // MARK: - Multi-polygon coherence (regression: a subdivided mesh is one shape)
+
+    func testBendTreatsMultiplePolygonsAsOneCoherentShape() {
+        // Two small "quads" sitting at very different absolute positions along
+        // the bend axis, mimicking two cells of a subdivided mesh (e.g. two of
+        // the ~1000 quads produced by five stacked Quad subdivision passes).
+        // The bend's along-axis extent must be resolved once across BOTH
+        // polygons together, not per polygon — otherwise every quad computes
+        // its own near-zero-width local extent and collapses toward itself
+        // regardless of where it actually sits. This is the exact bug reported
+        // from production: a finely subdivided square collapsed into a narrow
+        // vertical spire under Bend.
+        let polyA = Polygon2D(points: [Vector2D(x: 0, y: 0), Vector2D(x: 0, y: 0),
+                                        Vector2D(x: 0, y: 0), Vector2D(x: 0, y: 0)], type: .spline)
+        let polyB = Polygon2D(points: [Vector2D(x: 10, y: 0), Vector2D(x: 10, y: 0),
+                                        Vector2D(x: 10, y: 0), Vector2D(x: 10, y: 0)], type: .spline)
+        let curvature = 0.05
+        let params = ConvolutionParams(operationType: .bend,
+                                        bendAxis: 0,
+                                        bendCurvature: .constant(curvature),
+                                        bendCentre: .custom,
+                                        bendCentreCustomX: 0, bendCentreCustomY: 0,
+                                        bendOrigin: 0.5)
+        let result = ConvolutionEngine.process(polygons: [polyA, polyB], paramSet: [params])
+
+        // Global extent across BOTH polygons is 0...10, so sOrigin = 5 —
+        // each polygon's own point is 5 units from that shared origin, not 0
+        // (which is what a per-polygon-local extent would wrongly compute).
+        let radius = 1.0 / curvature
+        let thetaA = (0.0 - 5.0) * curvature
+        let thetaB = (10.0 - 5.0) * curvature
+        let expectedA = Vector2D(x: radius * sin(thetaA), y: radius - radius * cos(thetaA))
+        let expectedB = Vector2D(x: radius * sin(thetaB), y: radius - radius * cos(thetaB))
+
+        XCTAssertEqual(result[0].points[0].x, expectedA.x, accuracy: 1e-9)
+        XCTAssertEqual(result[0].points[0].y, expectedA.y, accuracy: 1e-9)
+        XCTAssertEqual(result[1].points[0].x, expectedB.x, accuracy: 1e-9)
+        XCTAssertEqual(result[1].points[0].y, expectedB.y, accuracy: 1e-9)
+
+        // The two polygons must land meaningfully apart, not collapsed onto
+        // (or near) each other — the visible symptom of the per-polygon bug.
+        XCTAssertGreaterThan(result[0].points[0].distance(to: result[1].points[0]), 1.0)
+    }
+
+    func testTorsionCentroidResolvedAcrossWholeMeshNotPerPolygon() {
+        // Same class of bug for Torsion's Centroid mode: two far-apart
+        // polygons must share ONE combined centroid, not each rotate around
+        // its own individual (and here, degenerately self-cancelling) centroid.
+        let polyA = Polygon2D(points: [Vector2D(x: 0, y: 0), Vector2D(x: 0, y: 0),
+                                        Vector2D(x: 0, y: 0), Vector2D(x: 0, y: 0)], type: .spline)
+        let polyB = Polygon2D(points: [Vector2D(x: 10, y: 0), Vector2D(x: 10, y: 0),
+                                        Vector2D(x: 10, y: 0), Vector2D(x: 10, y: 0)], type: .spline)
+        let params = ConvolutionParams(operationType: .torsion,
+                                        twistCentre: .centroid,
+                                        twistAmount: .constant(90),
+                                        twistFalloff: .constant)
+        let result = ConvolutionEngine.process(polygons: [polyA, polyB], paramSet: [params])
+
+        let combinedCentroid = Vector2D(x: 5, y: 0)
+        let expectedA = Vector2D(x: 0, y: 0).rotated(by: .pi / 2, around: combinedCentroid)
+        XCTAssertEqual(result[0].points[0].x, expectedA.x, accuracy: 1e-9)
+        XCTAssertEqual(result[0].points[0].y, expectedA.y, accuracy: 1e-9)
+    }
+
     // MARK: - Non-warpable types pass through unchanged
 
     func testOvalTypeIsUnaffected() {
@@ -180,6 +244,83 @@ final class ConvolutionEngineTests: XCTestCase {
         let xs = poly.points.map(\.x)
         let bboxCentreX = (xs.min()! + xs.max()!) / 2.0
         XCTAssertEqual(bboxCentreX, 5.0, accuracy: 1e-9)
+    }
+
+    // MARK: - Bend
+
+    func testBendZeroCurvatureIsNoOp() {
+        let square = makeSquare()
+        let params = ConvolutionParams(operationType: .bend, bendCurvature: .constant(0))
+        let result = ConvolutionEngine.process(polygons: [square], paramSet: [params])
+        XCTAssertEqual(result, [square])
+    }
+
+    func testBendMatchesClosedFormArcFormula() {
+        // axis = 0°, centre = (0,0), origin = 0 (sOrigin = sMin = 0): a point at
+        // (s, t) should map to (radius - t) * sin(s*curvature) along the axis and
+        // radius - (radius - t) * cos(s*curvature) across it.
+        let a = Vector2D(x: 0, y: 0)   // s=0, t=0 — the pinned origin point
+        let b = Vector2D(x: 1, y: 0)   // s=1, t=0
+        let poly = Polygon2D(points: [a, a, a, b], type: .spline)
+        let curvature = 1.0
+        let params = ConvolutionParams(operationType: .bend,
+                                        bendAxis: 0,
+                                        bendCurvature: .constant(curvature),
+                                        bendCentre: .custom,
+                                        bendCentreCustomX: 0, bendCentreCustomY: 0,
+                                        bendOrigin: 0.0)
+        let result = ConvolutionEngine.process(polygons: [poly], paramSet: [params])[0]
+
+        // The pinned point (s=0) must stay exactly at the origin.
+        XCTAssertEqual(result.points[0].x, 0, accuracy: 1e-9)
+        XCTAssertEqual(result.points[0].y, 0, accuracy: 1e-9)
+
+        // s=1, t=0 with radius = 1/curvature = 1: expected = (sin(1), 1 - cos(1)).
+        let radius = 1.0 / curvature
+        let theta = 1.0 * curvature
+        let expected = Vector2D(x: radius * sin(theta), y: radius - radius * cos(theta))
+        XCTAssertEqual(result.points[3].x, expected.x, accuracy: 1e-9)
+        XCTAssertEqual(result.points[3].y, expected.y, accuracy: 1e-9)
+    }
+
+    func testBendKeepsCrossSectionsRigid() {
+        // Two points sharing the same "along" position but different "across"
+        // offsets (a straight cross-section) must stay the same distance apart
+        // after bending — a bend deformer rotates cross-sections rigidly rather
+        // than shearing them.
+        let s = 0.7
+        let pointNearAxis = Vector2D(x: s, y: 0.0)
+        let pointOffAxis  = Vector2D(x: s, y: 0.2)
+        let poly = Polygon2D(points: [pointNearAxis, pointNearAxis, pointNearAxis, pointOffAxis], type: .spline)
+        let params = ConvolutionParams(operationType: .bend,
+                                        bendAxis: 0,
+                                        bendCurvature: .constant(1.3),
+                                        bendCentre: .custom,
+                                        bendCentreCustomX: 0, bendCentreCustomY: 0,
+                                        bendOrigin: 0.0)
+        let result = ConvolutionEngine.process(polygons: [poly], paramSet: [params])[0]
+        let distanceBefore = pointNearAxis.distance(to: pointOffAxis)
+        let distanceAfter  = result.points[0].distance(to: result.points[3])
+        XCTAssertEqual(distanceAfter, distanceBefore, accuracy: 1e-9)
+    }
+
+    func testBendOriginShiftsWhichPointIsPinned() {
+        // With bendOrigin = 1.0, the point at the far end of the shape's own
+        // extent (sMax) is the one that stays fixed, not the near end.
+        let a = Vector2D(x: 0, y: 0)
+        let b = Vector2D(x: 1, y: 0)
+        let poly = Polygon2D(points: [a, a, a, b], type: .spline)
+        let params = ConvolutionParams(operationType: .bend,
+                                        bendAxis: 0,
+                                        bendCurvature: .constant(1.0),
+                                        bendCentre: .custom,
+                                        bendCentreCustomX: 0, bendCentreCustomY: 0,
+                                        bendOrigin: 1.0)
+        let result = ConvolutionEngine.process(polygons: [poly], paramSet: [params])[0]
+        // Now b (s=1=sMax) is pinned exactly at (0,0) relative to itself...
+        // its own local (s-sOrigin, t) is (0,0), so it maps to the centre.
+        XCTAssertEqual(result.points[3].x, 0, accuracy: 1e-9)
+        XCTAssertEqual(result.points[3].y, 0, accuracy: 1e-9)
     }
 
     // MARK: - Stacking passes (order matters — shear then torsion vs torsion then shear)

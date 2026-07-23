@@ -314,7 +314,7 @@
   <a class="nav-link nav-sub" href="#segment-extraction">Segment Extraction</a>
   <a class="nav-link nav-sub" href="#extension-branch">Branch (open curves)</a>
   <a class="nav-link nav-sub" href="#extension-extrude">Extrude (closed)</a>
-  <a class="nav-link nav-sub" href="#convolution">Convolution — Torsion &amp; Shear</a>
+  <a class="nav-link nav-sub" href="#convolution">Convolution — Torsion, Shear &amp; Bend</a>
   <a class="nav-link nav-sub" href="#evolution-drift">Evolution — Momentum Drift</a>
   <a class="nav-link nav-sub" href="#evolution-convergence">Evolution — Convergence Pressure</a>
   <a class="nav-link nav-sub" href="#evolution-generational">Evolution — Generational</a>
@@ -449,7 +449,7 @@
   <div class="toc-entry sub"><a href="#segment-extraction">Segment Extraction</a><span class="toc-fill"></span></div>
   <div class="toc-entry sub"><a href="#extension-branch">Branch (open curves)</a><span class="toc-fill"></span></div>
   <div class="toc-entry sub"><a href="#extension-extrude">Extrude (closed)</a><span class="toc-fill"></span></div>
-  <div class="toc-entry sub"><a href="#convolution">Convolution — Torsion &amp; Shear</a><span class="toc-fill"></span></div>
+  <div class="toc-entry sub"><a href="#convolution">Convolution — Torsion, Shear &amp; Bend</a><span class="toc-fill"></span></div>
   <div class="toc-entry sub"><a href="#evolution-drift">Evolution — Momentum Drift</a><span class="toc-fill"></span></div>
   <div class="toc-entry sub"><a href="#evolution-convergence">Evolution — Convergence Pressure</a><span class="toc-fill"></span></div>
   <div class="toc-entry sub"><a href="#evolution-generational">Evolution — Generational</a><span class="toc-fill"></span></div>
@@ -2340,7 +2340,7 @@
       <!-- 5: Convolution -->
       <rect x="20" y="344" width="340" height="52" rx="4" fill="none" stroke="#3c3c3c" stroke-width="1.5"/>
       <text x="190" y="365" text-anchor="middle" font-size="11" font-weight="600" fill="#aaaaaa" font-family="-apple-system">CONVOLUTION</text>
-      <text x="190" y="382" text-anchor="middle" font-size="9" fill="#888" font-family="-apple-system">Torsion · Shear — coordinate-space warp of resolved geometry</text>
+      <text x="190" y="382" text-anchor="middle" font-size="9" fill="#888" font-family="-apple-system">Torsion · Shear · Bend — coordinate-space warp of resolved geometry</text>
       <line x1="190" y1="396" x2="190" y2="428" stroke="#0e7fd4" stroke-width="1.5" marker-end="url(#arrPipeline)"/>
 
       <!-- 6: Evolution generational -->
@@ -2440,6 +2440,12 @@
         <td><span class="badge badge-both">Both</span></td>
         <td>Axis 0° · Origin Centroid · Shear amount 0.3</td>
         <td>Displaces points along Axis proportional to their distance from Origin — geometrically exact, not an approximation, since shear is affine. 0.3 gives a gentle slant; push toward 1.0 for a pronounced lean. Add a second Convolution pass with a different Axis to combine two shears, or pair with a Torsion pass — order follows pass-list order since the two don't commute.</td>
+      </tr>
+      <tr>
+        <td>Bend</td>
+        <td><span class="badge badge-both">Both</span></td>
+        <td>Axis 0° · Centre Centroid · Origin 0.5 · Curvature 1.0</td>
+        <td>Wraps the shape around a virtual circular arc, like a 3D bend deformer — cross-sections perpendicular to Axis stay rigid rather than shearing. This starting point gives a gentle, readable curve. Curvature is an inverse radius, so its visible strength scales with the shape's own size along Axis; lower it if the shape curls past a full turn. On a subdivided mesh (many small polygons), the bend resolves as one coherent shape, not per fragment.</td>
       </tr>
 
       <tr class="stage-row"><td colspan="4">Evolution — Generational, materialized geometry ②</td></tr>
@@ -3037,10 +3043,12 @@
   <div class="tip"><strong>Combining Branch and Extrude:</strong> Branch and Extrude are separate Extension passes and can both be enabled in the same transform set. By default they run independently on their respective polygon types — Branch on open curves, Extrude on closed polygons — but with <strong>Open curves</strong> enabled, Extrude can target the same open curve a Branch pass produces, bridging its edges into closed polygons in the same transform set. A common pattern: draw an open curve tree (Branch pass) alongside a subdivided polygon mesh (Extrude pass) in the same sprite so that the branching organic structure and the extruded rigid structure share the same transform and renderer.</div>
 
   <!-- ═══════════════════════════════════════════════════════════════════ -->
-  <h3 id="convolution">Convolution — Torsion and Shear</h3>
+  <h3 id="convolution">Convolution — Torsion, Shear, and Bend</h3>
   <p>Convolution warps the coordinates of already-resolved geometry — it neither adds nor removes a single vertex, unlike Involution (which splits polygons into more of them) or Extension (which grows new connected structure). It runs after Extension so any branches or extruded walls are captured in the same warp, and before Generational Evolution so subsequent structural mutation builds on the already-warped shape. Because it operates purely on the point list, it applies identically to open curves and closed polygons — there is no toggle or special case for either.</p>
 
-  <p>Each Convolution pass picks exactly one operation type, <strong>Torsion</strong> or <strong>Shear</strong>. To combine both on the same shape, add a second Convolution pass — the two don't commute (twist-then-shear looks different from shear-then-twist), so stacking passes rather than baking both into one pass keeps the order explicit and under your control, exactly like stacking Subdivision or Extension passes already works.</p>
+  <p>Each Convolution pass picks exactly one operation type: <strong>Torsion</strong>, <strong>Shear</strong>, or <strong>Bend</strong>. To combine more than one on the same shape, add another Convolution pass — they don't commute (twist-then-shear looks different from shear-then-twist), so stacking passes rather than baking several into one keeps the order explicit and under your control, exactly like stacking Subdivision or Extension passes already works.</p>
+
+  <div class="note"><strong>Subdivided meshes are treated as one shape.</strong> A transform set with several stacked Subdivision passes produces many small polygons — Convolution resolves its reference centre (and, for Bend, the shape's extent along the bend axis) once across <em>all</em> of them together, not separately per polygon, so the whole mesh warps as one coherent form rather than each tiny piece warping around its own local geometry.</div>
 
   <h4 id="convolution-torsion">Torsion</h4>
   <p>Torsion rotates every point around a reference centre by an angle that depends on its distance from that centre — a spiral warp, not a rigid rotation of the whole shape (sprite-level rotation already covers that case). <strong>Falloff</strong> controls how the angle varies with distance:</p>
@@ -3070,7 +3078,21 @@
     <li>Open the <strong>Shear amount</strong> driver and set it to a constant <strong>0.3</strong> for a gentle lean. Push toward 1.0 for a pronounced slant, or wire an Oscillator for a shape that sways.</li>
   </ol>
 
-  <h4>Torsion and Shear parameter reference and safe input values</h4>
+  <h4 id="convolution-bend">Bend</h4>
+  <p>Bend wraps a shape around a virtual circular arc — the same idea as a "bend deformer" in 3D tools. <strong>Axis</strong> defines the "along" direction the shape sweeps around the arc; the perpendicular ("across") direction stays rigid, so a straight cross-section remains straight, just rotated, rather than shearing. <strong>Origin</strong> (0–1) picks where along the shape's own extent on Axis the curve is centred — 0.5 (default) bends symmetrically outward from the middle; 0 or 1 pins one end and sweeps the whole shape around from there.</p>
+
+  <h5>Step-by-step: bending a subdivided polygon</h5>
+  <ol class="steps">
+    <li>Create a transform set with at least one Involution pass so there's visible internal structure to see the bend against.</li>
+    <li>In the <strong>Convolution</strong> section, add a pass and set <strong>Type</strong> to <strong>Bend</strong>.</li>
+    <li>Leave <strong>Axis</strong> at <strong>0°</strong> (bends left-to-right) and <strong>Centre</strong> at <strong>Centroid</strong>.</li>
+    <li>Leave <strong>Origin</strong> at <strong>0.5</strong> for a symmetric outward bend.</li>
+    <li>Open the <strong>Curvature</strong> driver and set it to a constant <strong>1.0</strong> to start — a gentle, readable curve for typically-sized geometry. Increase toward 2–3 for a pronounced curl, or wire an Oscillator for a shape that flexes back and forth.</li>
+  </ol>
+
+  <div class="note"><strong>Curvature and shape size interact.</strong> Curvature is an inverse radius (1/radius), so its visible strength depends on how far the shape's points extend from the bend Origin along Axis — the same Curvature value bends a large shape's edges through a much bigger angle than a small one's, since a larger extent sweeps further around the same-radius arc. If a shape curls in on itself or folds past a full turn, lower Curvature rather than assuming something is wrong.</div>
+
+  <h4>Torsion, Shear, and Bend parameter reference and safe input values</h4>
   <table>
     <thead><tr><th>Parameter</th><th>Safe range</th><th>Effect</th></tr></thead>
     <tbody>
@@ -3078,12 +3100,14 @@
       <tr><td>Twist amount</td><td>10°–180°</td><td>Rotation at Reference radius (Torsion only). 30° is a gentle, readable twist; beyond 180° the spiral starts to fold connector edges over each other on dense meshes.</td></tr>
       <tr><td>Falloff</td><td>—</td><td><strong>Linear</strong>: unbounded spiral, distant points rotate furthest. <strong>Inverse</strong>: bounded, gentler, concentrated near centre. <strong>Constant</strong>: uniform — a plain rigid rotation.</td></tr>
       <tr><td>Reference radius</td><td>0.2–1.0</td><td>Canvas-unit distance at which Twist amount applies at full strength (Linear/Inverse only). Smaller values make the same Twist amount feel stronger since less distance is needed to reach it.</td></tr>
-      <tr><td>Shear amount</td><td>−1.0–1.0</td><td>Displacement per unit distance from Origin along Axis's perpendicular. 0.3 is a gentle lean; beyond ±1.0 the shape can fold over itself on elongated shapes.</td></tr>
-      <tr><td>Axis</td><td>0°–180°</td><td>Direction of the shear axis (Shear only). 0° = horizontal shear, 90° = vertical. Values beyond 180° repeat the same effect as their 180°-lower equivalent.</td></tr>
+      <tr><td>Shear amount</td><td>−1.0–1.0</td><td>Displacement per unit distance from Origin along Axis's perpendicular (Shear only). 0.3 is a gentle lean; beyond ±1.0 the shape can fold over itself on elongated shapes.</td></tr>
+      <tr><td>Axis</td><td>0°–180°</td><td>Direction of the shear or bend axis (Shear/Bend). 0° = horizontal, 90° = vertical. Values beyond 180° repeat the same effect as their 180°-lower equivalent.</td></tr>
+      <tr><td>Bend Origin</td><td>0–1</td><td>Position along the shape's own extent on Axis where curvature is centred (Bend only). 0.5 = symmetric outward bend from the middle. 0 or 1 = pin one end, sweep the rest around it.</td></tr>
+      <tr><td>Curvature</td><td>0.2–3.0</td><td>Inverse radius of the bend (Bend only). 1.0 is a gentle, readable curve; push higher for a tighter curl. Beyond roughly 3–4 on typical geometry, the shape can sweep past a full turn and fold over itself.</td></tr>
     </tbody>
   </table>
 
-  <div class="tip"><strong>Combining Torsion and Shear:</strong> add two Convolution passes — one Torsion, one Shear — to the same transform set. They apply in list order, so a Torsion pass followed by a Shear pass produces a different result than the reverse order. Reorder by deleting and re-adding, or duplicate a pass to experiment with both orderings side by side across two transform sets.</div>
+  <div class="tip"><strong>Combining Torsion, Shear, and Bend:</strong> add multiple Convolution passes — any mix of the three — to the same transform set. They apply in list order, so a Torsion pass followed by a Bend pass produces a different result than the reverse order. Reorder by deleting and re-adding, or duplicate a pass to experiment with different orderings side by side across two transform sets.</div>
 
   <h3 id="evolution-drift">Evolution — Momentum Drift</h3>
   <p>Momentum Drift displaces a chosen subdivision parameter over time using a slowly-changing noise field. Unlike a DoubleDriver, which applies an independent value each frame, drift has <em>inertia</em>: the direction of change accumulates, producing organic wandering rather than oscillation. The displacement is fully deterministic and seekable — the value at any frame is computed directly from the seed and frame index without simulating prior frames.</p>
