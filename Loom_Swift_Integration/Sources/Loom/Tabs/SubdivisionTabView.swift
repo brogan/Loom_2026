@@ -565,7 +565,7 @@ struct SubdivisionTabView: View {
             return
         }
 
-        // Run evolution (modifies params) → subdivision → refinement → extraction → extension.
+        // Run evolution (modifies params) → subdivision → refinement → extraction → extension → convolution.
         let paramSet     = cfg.subdivisionConfig.paramsSets[setIdx]
         var evolvedParams = paramSet.params
         var evolvedCurveParams = paramSet.curveRefinement
@@ -584,6 +584,9 @@ struct SubdivisionTabView: View {
         }
         if !paramSet.extensionPasses.isEmpty {
             result = ExtensionEngine.process(polygons: result, paramSet: paramSet.extensionPasses)
+        }
+        if !paramSet.convolutionPasses.isEmpty {
+            result = ConvolutionEngine.process(polygons: result, paramSet: paramSet.convolutionPasses)
         }
         if paramSet.evolutionPasses.contains(where: { $0.enabled && $0.operationType == .generational }) {
             let customPrimitives = SpriteScene.loadGraftCustomPrimitives(config: cfg, projectDirectory: projectURL)
@@ -687,6 +690,9 @@ struct SubdivisionTabView: View {
         }
         if !paramSet2.extensionPasses.isEmpty {
             result = ExtensionEngine.process(polygons: result, paramSet: paramSet2.extensionPasses)
+        }
+        if !paramSet2.convolutionPasses.isEmpty {
+            result = ConvolutionEngine.process(polygons: result, paramSet: paramSet2.convolutionPasses)
         }
         if paramSet2.evolutionPasses.contains(where: { $0.enabled && $0.operationType == .generational }) {
             let customPrimitives2 = SpriteScene.loadGraftCustomPrimitives(config: cfg, projectDirectory: projectURL)

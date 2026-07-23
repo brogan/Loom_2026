@@ -291,6 +291,7 @@ final class AppController: ObservableObject, @unchecked Sendable {
     @Published var selectedCurveRefinementParamIndex:  Int?    = nil   // curve refinement param within selected set
     @Published var selectedSegmentExtractionParamIndex: Int?   = nil   // segment extraction param within selected set
     @Published var selectedExtensionParamIndex:         Int?   = nil   // extension param within selected set
+    @Published var selectedConvolutionParamIndex:       Int?   = nil   // convolution param within selected set
     @Published var selectedEvolutionParamIndex:         Int?   = nil   // evolution param within selected set
     @Published var selectedFulgurationParamIndex:       Int?   = nil   // fulguration param within selected set
     @Published var selectedDissolutionParamIndex:       Int?   = nil   // dissolution param within selected set
@@ -8415,6 +8416,7 @@ final class AppController: ObservableObject, @unchecked Sendable {
         selectedCurveRefinementParamIndex    = nil
         selectedSegmentExtractionParamIndex  = nil
         selectedExtensionParamIndex          = nil
+        selectedConvolutionParamIndex        = nil
         selectedSpriteID              = nil
         subdivSelectedSpriteID        = nil
         subdivPreviewSetName          = nil

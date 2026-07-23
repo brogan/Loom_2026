@@ -333,6 +333,7 @@ public struct SpriteScene: @unchecked Sendable {
         let curveRefinementParams:   [CurveRefinementParams]
         let segmentExtractionParams: [SegmentExtractionParams]
         let extensionParams:         [ExtensionParams]
+        let convolutionParams:       [ConvolutionParams]
         let evolutionParams:         [EvolutionParams]
         let fulgurationParams:       [FulgurationParams]
         let dissolutionParams:       [DissolutionParams]
@@ -341,6 +342,7 @@ public struct SpriteScene: @unchecked Sendable {
             curveRefinementParams    = []
             segmentExtractionParams  = []
             extensionParams          = []
+            convolutionParams        = []
             evolutionParams          = []
             fulgurationParams        = []
             dissolutionParams        = []
@@ -350,6 +352,7 @@ public struct SpriteScene: @unchecked Sendable {
             curveRefinementParams    = resolvedSet?.curveRefinement ?? []
             segmentExtractionParams  = resolvedSet?.segmentExtraction ?? []
             extensionParams          = resolvedSet?.extensionPasses ?? []
+            convolutionParams        = resolvedSet?.convolutionPasses ?? []
             evolutionParams          = resolvedSet?.evolutionPasses ?? []
             fulgurationParams        = resolvedSet?.fulgurationPasses ?? []
             dissolutionParams        = resolvedSet?.dissolutionPasses ?? []
@@ -444,6 +447,7 @@ public struct SpriteScene: @unchecked Sendable {
             curveRefinementParams:   curveRefinementParams,
             segmentExtractionParams: segmentExtractionParams,
             extensionParams:         extensionParams,
+            convolutionParams:       convolutionParams,
             evolutionParams:         evolutionParams,
             fulgurationParams:       fulgurationParams,
             dissolutionParams:       dissolutionParams,
@@ -1618,7 +1622,22 @@ public struct SpriteScene: @unchecked Sendable {
             )
         }
 
-        // 2e. Generational evolution (structural mutation across generations —
+        // 2e. Convolution (torsion / shear — continuous coordinate-space warp of
+        // the fully-composed geometry; see Specs/Convolution.md). Runs after
+        // Extension so any grown structure is captured in the same warp, before
+        // Generational Evolution so subsequent structural mutation builds on the
+        // already-warped base.
+        if !activeInstance.convolutionParams.isEmpty {
+            subdivided = ConvolutionEngine.process(
+                polygons:      subdivided,
+                paramSet:      activeInstance.convolutionParams,
+                elapsedFrames: elapsedFrames,
+                targetFPS:     targetFPS,
+                spriteIndex:   spriteIndex
+            )
+        }
+
+        // 2f. Generational evolution (structural mutation across generations —
         // artificial life; operates on the fully-composed geometry, unlike the
         // momentum-drift/convergence-pressure evolution types applied at 2a).
         if activeInstance.evolutionParams.contains(where: { $0.enabled && $0.operationType == .generational }) {
@@ -1632,7 +1651,7 @@ public struct SpriteScene: @unchecked Sendable {
             )
         }
 
-        // 2f. Fulguration (frame-cycle visibility gate, transform variation, and
+        // 2g. Fulguration (frame-cycle visibility gate, transform variation, and
         // brief grow-in/shrink-out development — V1, see Specs/GeometricLifecycle.md §5).
         if !activeInstance.fulgurationParams.isEmpty {
             subdivided = FulgurationEngine.apply(
@@ -1643,7 +1662,7 @@ public struct SpriteScene: @unchecked Sendable {
             )
         }
 
-        // 2g. Dissolution (entropy and collapse applied to output geometry)
+        // 2h. Dissolution (entropy and collapse applied to output geometry)
         if !activeInstance.dissolutionParams.isEmpty {
             subdivided = DissolutionEngine.apply(
                 polygons:      subdivided,

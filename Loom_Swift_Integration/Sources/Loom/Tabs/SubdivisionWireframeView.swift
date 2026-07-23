@@ -36,6 +36,7 @@ struct SubdivisionWireframeView: View {
             var curveRefinement   = inputs.curveRefinement
             let segmentExtraction = inputs.segmentExtraction
             let extensionPasses   = inputs.extensionPasses
+            let convolutionPasses = inputs.convolutionPasses
             let evolutionPasses   = inputs.evolutionPasses
             let fulgurationPasses = inputs.fulgurationPasses
             let dissolutionPasses = inputs.dissolutionPasses
@@ -56,6 +57,9 @@ struct SubdivisionWireframeView: View {
                 }
                 if !extensionPasses.isEmpty {
                     subdivided = ExtensionEngine.process(polygons: subdivided, paramSet: extensionPasses)
+                }
+                if !convolutionPasses.isEmpty {
+                    subdivided = ConvolutionEngine.process(polygons: subdivided, paramSet: convolutionPasses)
                 }
                 if !fulgurationPasses.isEmpty {
                     subdivided = FulgurationEngine.apply(polygons: subdivided, passes: fulgurationPasses,
@@ -81,6 +85,7 @@ struct SubdivisionWireframeView: View {
         let curveRefinement:  [CurveRefinementParams]
         let segmentExtraction: [SegmentExtractionParams]
         let extensionPasses:   [ExtensionParams]
+        let convolutionPasses: [ConvolutionParams]
         let evolutionPasses:   [EvolutionParams]
         let fulgurationPasses: [FulgurationParams]
         let dissolutionPasses: [DissolutionParams]
@@ -99,6 +104,7 @@ struct SubdivisionWireframeView: View {
               // silently fell back to the base, untransformed curve (2026-07-13).
               !(paramSet.params.isEmpty && paramSet.curveRefinement.isEmpty
                 && paramSet.segmentExtraction.isEmpty && paramSet.extensionPasses.isEmpty
+                && paramSet.convolutionPasses.isEmpty
                 && paramSet.evolutionPasses.isEmpty && paramSet.fulgurationPasses.isEmpty
                 && paramSet.dissolutionPasses.isEmpty),
               let inst     = makeInstanceMap()[spriteID]
@@ -109,6 +115,7 @@ struct SubdivisionWireframeView: View {
                                   curveRefinement: paramSet.curveRefinement,
                                   segmentExtraction: paramSet.segmentExtraction,
                                   extensionPasses: paramSet.extensionPasses,
+                                  convolutionPasses: paramSet.convolutionPasses,
                                   evolutionPasses: paramSet.evolutionPasses,
                                   fulgurationPasses: paramSet.fulgurationPasses,
                                   dissolutionPasses: paramSet.dissolutionPasses)

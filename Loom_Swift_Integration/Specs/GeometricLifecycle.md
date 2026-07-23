@@ -26,6 +26,16 @@ philosophical weight alongside geometric meaning:
 | **Fulguration** | Form emerges when conditions are met            | Emergence, threshold, encounter     |
 | **Dissolution** | A form loses specificity or suddenly ends       | Entropy, release, ending            |
 
+**Candidate sixth mode (2026-07-23, concept stage — see `Specs/Convolution.md`):
+Convolution** — a form's own material bends and redistributes through space (torsion,
+shear, eventually displacement maps) without gaining or losing extent. Distinct from
+Involution (which changes vertex/polygon count while preserving the outer silhouette)
+and from Evolution as actually built (param-blend toward a target, or generational
+structural mutation) — Convolution is a continuous coordinate-space warp, topology
+preserving, applicable unconditionally to both open curves and closed polygons. Not
+yet implemented; see `Specs/Convolution.md` for the full proposal, taxonomy reasoning,
+and suggested pipeline position (after Extension, before Generational Evolution).
+
 These are not alternatives; they compose. A sprite can have operations from all five modes
 active simultaneously. The pipeline applies them in order: Involution → Extension → Evolution
 → Fulguration → Dissolution, each stage operating on the output of the previous. Any stage
@@ -1815,6 +1825,12 @@ stage ever sees the geometry). No stage currently has visibility into another st
 `targetFPS`/`spriteIndex`, not e.g. Dissolution reading Evolution's current generation
 count. See §13's open question on cross-stage interaction for why this is expected to
 change eventually, and why it's deferred rather than built now.
+
+**Candidate insertion point for Convolution (2026-07-23, not yet built):** proposed to
+land between Extension (2d) and Generational Evolution (2e) — after growth so any
+extended structure is captured in the same warp, before generational mutation so it
+operates on the already-warped base. See `Specs/Convolution.md` §6 for the full
+rationale and an open alternative (running before Involution/Extension instead).
 
 ---
 

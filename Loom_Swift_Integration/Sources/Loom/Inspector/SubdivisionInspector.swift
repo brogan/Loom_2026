@@ -9,6 +9,7 @@ struct SubdivisionInspector: View {
     // Lifecycle stage collapse states
     @AppStorage("subinsp.involutionCollapsed")   private var involutionCollapsed   = false
     @AppStorage("subinsp.extStageCollapsed")     private var extStageCollapsed     = false
+    @AppStorage("subinsp.convolutionCollapsed")  private var convolutionCollapsed  = true
     @AppStorage("subinsp.evolutionCollapsed")    private var evolutionCollapsed    = true
     @AppStorage("subinsp.fulgurationCollapsed")  private var fulgurationCollapsed  = true
     @AppStorage("subinsp.dissolutionCollapsed")  private var dissolutionCollapsed  = true
@@ -130,6 +131,12 @@ struct SubdivisionInspector: View {
             extensionPassesContent(set: set, setIdx: setIdx)
         }
 
+        InspectorSection("Convolution", isCollapsed: $convolutionCollapsed,
+                         isHighlighted: true,
+                         trailing: { passIndicator(hasPasses: !set.convolutionPasses.isEmpty) }) {
+            convolutionPassesContent(set: set, setIdx: setIdx)
+        }
+
         InspectorSection("Evolution", isCollapsed: $evolutionCollapsed,
                          isHighlighted: true,
                          trailing: { passIndicator(hasPasses: !set.evolutionPasses.isEmpty) }) {
@@ -174,6 +181,9 @@ struct SubdivisionInspector: View {
                 .environmentObject(controller)
         } else if let exIdx = controller.selectedExtensionParamIndex {
             ExtensionInspector(setIdx: setIdx, exIdx: exIdx)
+                .environmentObject(controller)
+        } else if let convIdx = controller.selectedConvolutionParamIndex {
+            ConvolutionInspector(setIdx: setIdx, convIdx: convIdx)
                 .environmentObject(controller)
         } else if let seIdx = controller.selectedSegmentExtractionParamIndex {
             SegmentExtractionInspector(setIdx: setIdx, seIdx: seIdx)
@@ -221,6 +231,7 @@ struct SubdivisionInspector: View {
         controller.selectedCurveRefinementParamIndex   = nil
         controller.selectedSegmentExtractionParamIndex = nil
         controller.selectedExtensionParamIndex         = nil
+        controller.selectedConvolutionParamIndex       = nil
         controller.selectedEvolutionParamIndex         = nil
         controller.selectedFulgurationParamIndex       = nil
         controller.selectedDissolutionParamIndex       = nil
@@ -237,9 +248,10 @@ struct SubdivisionInspector: View {
                     .font(.system(size: 12))
                     .frame(maxWidth: 120)
             }
-            let invCount = set.params.count + set.curveRefinement.count + set.segmentExtraction.count
-            let extCount = set.extensionPasses.count
-            if invCount > 0 || extCount > 0 {
+            let anyPasses = !set.params.isEmpty || !set.curveRefinement.isEmpty || !set.segmentExtraction.isEmpty
+                || !set.extensionPasses.isEmpty || !set.convolutionPasses.isEmpty
+                || !set.evolutionPasses.isEmpty || !set.fulgurationPasses.isEmpty || !set.dissolutionPasses.isEmpty
+            if anyPasses {
                 InspectorRow(label: "Passes",
                              value: passCountSummary(set: set))
             }
@@ -252,6 +264,7 @@ struct SubdivisionInspector: View {
         if set.curveRefinement.count > 0 { parts.append("\(set.curveRefinement.count) refine") }
         if set.segmentExtraction.count > 0 { parts.append("\(set.segmentExtraction.count) extract") }
         if set.extensionPasses.count > 0 { parts.append("\(set.extensionPasses.count) ext") }
+        if set.convolutionPasses.count > 0 { parts.append("\(set.convolutionPasses.count) conv") }
         if set.evolutionPasses.count   > 0 { parts.append("\(set.evolutionPasses.count) evol") }
         if set.fulgurationPasses.count > 0 { parts.append("\(set.fulgurationPasses.count) ful") }
         if set.dissolutionPasses.count > 0 { parts.append("\(set.dissolutionPasses.count) dis") }
@@ -326,6 +339,7 @@ struct SubdivisionInspector: View {
             controller.selectedCurveRefinementParamIndex   = nil
             controller.selectedSegmentExtractionParamIndex = nil
             controller.selectedExtensionParamIndex         = nil
+            controller.selectedConvolutionParamIndex       = nil
             controller.selectedEvolutionParamIndex         = nil
             controller.selectedFulgurationParamIndex       = nil
             controller.selectedDissolutionParamIndex       = nil
@@ -649,6 +663,94 @@ struct SubdivisionInspector: View {
             config.subdivisionConfig.paramsSets[setIdx].extensionPasses.insert(copy, at: exIdx + 1)
         }
         controller.selectedExtensionParamIndex = exIdx + 1
+    }
+
+    // MARK: - Convolution passes mini-list
+
+    @ViewBuilder
+    private func convolutionPassesContent(set: SubdivisionParamsSet, setIdx: Int) -> some View {
+        if set.convolutionPasses.isEmpty {
+            HStack {
+                Spacer()
+                addConvolutionButton(setIdx: setIdx)
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 6)
+        } else {
+            InspectorPickList(
+                items: set.convolutionPasses,
+                labelFor: { $0.name.isEmpty ? "(unnamed)" : $0.name },
+                selection: Binding(
+                    get: { controller.selectedConvolutionParamIndex },
+                    set: { newVal in selectPass(\.selectedConvolutionParamIndex, newVal) }
+                )
+            )
+            HStack(spacing: 4) {
+                addConvolutionButton(setIdx: setIdx)
+                if let convIdx = controller.selectedConvolutionParamIndex {
+                    Button(action: { deleteConvolutionParam(setIdx: setIdx, convIdx: convIdx) }) {
+                        Image(systemName: "minus.circle").font(.system(size: 13))
+                    }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(.secondary)
+                    .help("Delete selected convolution pass")
+                    Button(action: { duplicateConvolutionParam(setIdx: setIdx, convIdx: convIdx) }) {
+                        Image(systemName: "plus.square.on.square").font(.system(size: 12))
+                    }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(.secondary)
+                    .help("Duplicate selected convolution pass")
+                }
+                Spacer()
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 4)
+        }
+    }
+
+    private func addConvolutionButton(setIdx: Int) -> some View {
+        Button(action: { addConvolutionParam(setIdx: setIdx) }) {
+            Image(systemName: "plus.circle").font(.system(size: 13))
+        }
+        .buttonStyle(.plain)
+        .foregroundStyle(.secondary)
+        .help("Add convolution pass")
+    }
+
+    private func addConvolutionParam(setIdx: Int) {
+        guard let cfg = controller.projectConfig,
+              setIdx < cfg.subdivisionConfig.paramsSets.count else { return }
+        let newParam = ConvolutionParams()
+        controller.updateProjectConfig { config in
+            config.subdivisionConfig.paramsSets[setIdx].convolutionPasses.append(newParam)
+        }
+        let newIdx = (controller.projectConfig?.subdivisionConfig.paramsSets[setIdx].convolutionPasses.count ?? 1) - 1
+        selectPass(\.selectedConvolutionParamIndex, newIdx)
+    }
+
+    private func deleteConvolutionParam(setIdx: Int, convIdx: Int) {
+        guard let cfg = controller.projectConfig,
+              setIdx  < cfg.subdivisionConfig.paramsSets.count,
+              convIdx < cfg.subdivisionConfig.paramsSets[setIdx].convolutionPasses.count
+        else { return }
+        _ = cfg
+        controller.updateProjectConfig { config in
+            config.subdivisionConfig.paramsSets[setIdx].convolutionPasses.remove(at: convIdx)
+        }
+        let remaining = controller.projectConfig?.subdivisionConfig.paramsSets[safe: setIdx]?.convolutionPasses.count ?? 0
+        controller.selectedConvolutionParamIndex = remaining > 0 ? min(convIdx, remaining - 1) : nil
+    }
+
+    private func duplicateConvolutionParam(setIdx: Int, convIdx: Int) {
+        guard let cfg = controller.projectConfig,
+              setIdx  < cfg.subdivisionConfig.paramsSets.count,
+              convIdx < cfg.subdivisionConfig.paramsSets[setIdx].convolutionPasses.count
+        else { return }
+        let copy = cfg.subdivisionConfig.paramsSets[setIdx].convolutionPasses[convIdx]
+        controller.updateProjectConfig { config in
+            config.subdivisionConfig.paramsSets[setIdx].convolutionPasses.insert(copy, at: convIdx + 1)
+        }
+        controller.selectedConvolutionParamIndex = convIdx + 1
     }
 
     // MARK: - Evolution passes mini-list

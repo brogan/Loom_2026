@@ -41,6 +41,10 @@ public struct SpriteInstance: Sendable {
     /// Empty when the set has no extension entries.
     public var extensionParams: [ExtensionParams]
 
+    /// Ordered convolution passes (torsion / shear) applied after Extension, before
+    /// Generational Evolution. Empty when the set has no convolution entries.
+    public var convolutionParams: [ConvolutionParams]
+
     /// Ordered evolution passes applied to subdivision params before SubdivisionEngine runs.
     /// Empty when the set has no evolution entries.
     public var evolutionParams: [EvolutionParams]
@@ -98,6 +102,7 @@ public struct SpriteInstance: Sendable {
         curveRefinementParams: [CurveRefinementParams] = [],
         segmentExtractionParams: [SegmentExtractionParams] = [],
         extensionParams: [ExtensionParams] = [],
+        convolutionParams: [ConvolutionParams] = [],
         evolutionParams: [EvolutionParams] = [],
         fulgurationParams: [FulgurationParams] = [],
         dissolutionParams: [DissolutionParams] = [],
@@ -118,6 +123,7 @@ public struct SpriteInstance: Sendable {
         self.curveRefinementParams   = curveRefinementParams
         self.segmentExtractionParams = segmentExtractionParams
         self.extensionParams         = extensionParams
+        self.convolutionParams       = convolutionParams
         self.evolutionParams         = evolutionParams
         self.fulgurationParams       = fulgurationParams
         self.dissolutionParams       = dissolutionParams
