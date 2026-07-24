@@ -538,18 +538,24 @@ private struct DriverSection<Content: View>: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             HStack(spacing: 5) {
-                HStack(spacing: 5) {
-                    Image(systemName: isCollapsed ? "chevron.right" : "chevron.down")
-                        .font(.system(size: 9, weight: .semibold))
-                        .foregroundStyle(.secondary)
-                        .frame(width: 10)
-                    Text(label)
-                        .font(.system(size: 11, weight: .semibold))
-                        .foregroundStyle(.secondary)
-                    Spacer()
+                // A real Button, not .onTapGesture — see InspectorSection's
+                // identical fix (InspectorPanel.swift) for why: .onTapGesture
+                // nested inside a ScrollView is an unreliable combination on
+                // macOS and can become permanently unresponsive.
+                Button(action: { isCollapsed = !isCollapsed }) {
+                    HStack(spacing: 5) {
+                        Image(systemName: isCollapsed ? "chevron.right" : "chevron.down")
+                            .font(.system(size: 9, weight: .semibold))
+                            .foregroundStyle(.secondary)
+                            .frame(width: 10)
+                        Text(label)
+                            .font(.system(size: 11, weight: .semibold))
+                            .foregroundStyle(.secondary)
+                        Spacer()
+                    }
+                    .contentShape(Rectangle())
                 }
-                .contentShape(Rectangle())
-                .onTapGesture { isCollapsed = !isCollapsed }
+                .buttonStyle(.plain)
                 Image(systemName: hasKeyframes ? "circle.fill" : "circle")
                     .font(.system(size: 8))
                     .foregroundStyle(hasKeyframes ? Color.green : Color.secondary.opacity(0.4))

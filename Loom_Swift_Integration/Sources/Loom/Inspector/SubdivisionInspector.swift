@@ -39,47 +39,56 @@ struct SubdivisionInspector: View {
     // rather than persisting a maximized state across tab switches or launches.
     @State private var fieldsOnlyMode = false
 
-    // A drag-resizable divider (GeometryReader/DragGesture, continuously mutating a
-    // stored height every pixel of the drag) was tried first and reported jerky,
-    // with both panes flashing during the drag — a known rough edge with nested
-    // ScrollViews under frequent frame-height changes in SwiftUI on macOS. Replaced
-    // with a discrete two-state toggle instead: only one layout transition happens
-    // per click, not a continuous stream of them, which sidesteps that whole class
-    // of problem. The GeometryReader below is still safe to use here — unlike the
-    // drag version, it's read once per layout pass (on resize/state change), never
-    // mutated continuously mid-gesture. Top pane gets at least half the available
-    // height (usually comfortably enough to show every mode's header, since only
-    // Involution/Extension start expanded — see the *Collapsed defaults above) and
-    // scrolls internally if a user expands enough sections to exceed it; bottom
-    // always gets whatever's left. Requires InspectorPanel to give
-    // SubdivisionInspector the full available height (bypassing its usual single
-    // shared ScrollView) — see InspectorPanel.isSubdivisionSplitView — since this
-    // needs a bounded parent height to divide up; nested inside another ScrollView
-    // it would just take its ideal (unclipped, non-independently-scrolling) size.
+    // History: a drag-resizable divider (GeometryReader/DragGesture, continuously
+    // mutating a stored height every pixel of the drag) was tried first and
+    // reported jerky. Replaced with a GeometryReader-computed fixed 50% split
+    // instead — but that turned out to have its own, more serious problem,
+    // root-caused 2026-07-24 from a real report: every disclosure chevron's
+    // underlying @AppStorage state verifiably toggled (confirmed via direct
+    // UserDefaults inspection, and via debug logging showing the correct child
+    // views being constructed in response) while the visible expand/collapse
+    // never changed on screen — until an unrelated window resize forced a
+    // repaint, at which point the already-correct content "popped in"
+    // retroactively. That's a redraw/invalidation failure, not a logic bug:
+    // GeometryReader has a known history of swallowing repaint signals for
+    // content-only changes that don't touch its own geometry (macOS-specific;
+    // this exact code region already had one prior GeometryReader-related
+    // rendering headache, per the paragraph above). Fixed by removing
+    // GeometryReader entirely and using `VSplitView` — SwiftUI's native
+    // split-pane container, backed by mature AppKit layout/redraw machinery
+    // instead of hand-computed percentage math — which doesn't depend on
+    // SwiftUI's invalidation propagation working correctly through a
+    // GeometryReader boundary. Requires InspectorPanel to give
+    // SubdivisionInspector the full available height (bypassing its usual
+    // single shared ScrollView) — see InspectorPanel.isSubdivisionSplitView —
+    // since VSplitView, like the GeometryReader version before it, needs a
+    // bounded parent height to divide up.
     var body: some View {
         let setIdx = controller.selectedSubdivisionIndex ?? 0
-        guard let set = controller.projectConfig?.subdivisionConfig.paramsSets[safe: setIdx] else {
-            return AnyView(EmptyView())
-        }
-        return AnyView(GeometryReader { geo in
-            VStack(alignment: .leading, spacing: 0) {
+        if let set = controller.projectConfig?.subdivisionConfig.paramsSets[safe: setIdx] {
+            VSplitView {
                 if !fieldsOnlyMode {
                     ScrollView {
                         transformSetSection(set: set, setIdx: setIdx)
                             .frame(maxWidth: .infinity, alignment: .leading)
                     }
-                    .frame(height: geo.size.height * 0.5)
+                    .frame(minHeight: 120, maxHeight: .infinity)
                 }
 
-                fieldsOnlyToggle
+                VStack(alignment: .leading, spacing: 0) {
+                    fieldsOnlyToggle
 
-                ScrollView {
-                    selectedTransformationFields(set: set, setIdx: setIdx)
-                        .frame(maxWidth: .infinity, alignment: .leading)
+                    ScrollView {
+                        selectedTransformationFields(set: set, setIdx: setIdx)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                    .frame(maxHeight: .infinity)
                 }
-                .frame(maxHeight: .infinity)
+                .frame(minHeight: 80, maxHeight: .infinity)
             }
-        })
+        } else {
+            EmptyView()
+        }
     }
 
     /// Always visible regardless of `fieldsOnlyMode`, so there's always a way back.

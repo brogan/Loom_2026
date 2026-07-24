@@ -166,21 +166,29 @@ struct InspectorSection<Content: View>: View {
         VStack(alignment: .leading, spacing: 0) {
             if let binding = collapseState {
                 HStack(spacing: 0) {
-                    HStack(spacing: 5) {
-                        Image(systemName: binding.wrappedValue ? "chevron.right" : "chevron.down")
-                            .font(.system(size: 9, weight: .semibold))
-                            .foregroundStyle(.secondary)
-                            .frame(width: 10)
-                        Text(title)
-                            .font(.system(size: 11, weight: .semibold))
-                            .foregroundStyle(isHighlighted ? Color.accentColor : .secondary)
-                        Spacer()
+                    // A real Button, not .onTapGesture — .onTapGesture nested
+                    // inside a ScrollView is an unreliable combination on
+                    // macOS (the scroll-drag gesture recognizer can end up
+                    // swallowing single clicks meant for it, especially with
+                    // trackpad input); a Button integrates with AppKit's own
+                    // click handling and doesn't have that conflict.
+                    Button(action: { binding.wrappedValue.toggle() }) {
+                        HStack(spacing: 5) {
+                            Image(systemName: binding.wrappedValue ? "chevron.right" : "chevron.down")
+                                .font(.system(size: 9, weight: .semibold))
+                                .foregroundStyle(.secondary)
+                                .frame(width: 10)
+                            Text(title)
+                                .font(.system(size: 11, weight: .semibold))
+                                .foregroundStyle(isHighlighted ? Color.accentColor : .secondary)
+                            Spacer()
+                        }
+                        .padding(.horizontal, 12)
+                        .padding(.top, 10)
+                        .padding(.bottom, 4)
+                        .contentShape(Rectangle())
                     }
-                    .padding(.horizontal, 12)
-                    .padding(.top, 10)
-                    .padding(.bottom, 4)
-                    .contentShape(Rectangle())
-                    .onTapGesture { binding.wrappedValue.toggle() }
+                    .buttonStyle(.plain)
                     if let tb = trailingButton {
                         tb.padding(.trailing, 10).padding(.top, 6)
                     }
