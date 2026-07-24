@@ -18,6 +18,9 @@ struct ConvolutionInspector: View {
     @AppStorage("convinsp.shearAmountCollapsed") private var shearAmountCollapsed = true
     @AppStorage("convinsp.bendCollapsed")        private var bendCollapsed        = false
     @AppStorage("convinsp.bendCurvatureCollapsed") private var bendCurvatureCollapsed = true
+    @AppStorage("convinsp.displacementCollapsed")      private var displacementCollapsed      = false
+    @AppStorage("convinsp.displacementStrengthCollapsed") private var displacementStrengthCollapsed = true
+    @AppStorage("convinsp.displacementScrollCollapsed")   private var displacementScrollCollapsed   = true
 
     var body: some View {
         generalSection
@@ -32,6 +35,10 @@ struct ConvolutionInspector: View {
         case .bend:
             bendSection
             bendCurvatureDriverSection
+        case .displacementMap:
+            displacementMapSection
+            displacementStrengthDriverSection
+            displacementScrollRateDriverSection
         }
     }
 
@@ -62,10 +69,10 @@ struct ConvolutionInspector: View {
                     }
                 }
                 .labelsHidden()
-                .pickerStyle(.segmented)
-                .frame(maxWidth: 210)
+                .pickerStyle(.menu)
+                .frame(maxWidth: 180)
             }
-            .loomHelp("Torsion: rotate points around a centre by an angle that varies with distance from it — a spiral warp. Shear: displace points along an axis proportional to their distance from it. Bend: wrap the shape around a virtual circular arc, like a 3D bend deformer. Applies unconditionally to both open curves and closed polygons. Add another Convolution pass to combine operations — order follows pass-list order.")
+            .loomHelp("Torsion: rotate points around a centre by an angle that varies with distance from it — a spiral warp. Shear: displace points along an axis proportional to their distance from it. Bend: wrap the shape around a virtual circular arc, like a 3D bend deformer. Displacement Map: sample a greyscale image to displace points, optionally scrolling across the shape over time. Applies unconditionally to both open curves and closed polygons. Add another Convolution pass to combine operations — order follows pass-list order.")
         }
     }
 
@@ -215,6 +222,113 @@ struct ConvolutionInspector: View {
         )
         .loomHelp("Inverse radius of the virtual bend circle. 0 = straight, no bend. 1.0 gives a gentle, readable curve for typically-sized geometry. Wire an Oscillator for a shape that flexes back and forth, or a Keyframe ramp to bend in gradually over time.")
         .padding(.bottom, 2)
+    }
+
+    // MARK: - Displacement Map settings
+
+    private var displacementMapSection: some View {
+        InspectorSection("Displacement Map", isCollapsed: $displacementCollapsed) {
+            let files = displacementMapFiles()
+            InspectorField("Map") {
+                Picker("", selection: bindConv(\.displacementMapName)) {
+                    Text("None").tag("")
+                    ForEach(files, id: \.self) { name in
+                        Text(name).tag(name)
+                    }
+                }
+                .labelsHidden()
+                .font(.system(size: 12))
+                .frame(maxWidth: 150)
+            }
+            .loomHelp("Greyscale image from the project's displacementMaps/ folder. Mid-grey = no displacement; black and white push in opposite directions. Add image files to that folder (Finder, or Reveal from the Global tab) to make them available here.")
+
+            InspectorField("Invert") {
+                Toggle("", isOn: bindConv(\.displacementInvert)).labelsHidden()
+            }
+            .loomHelp("Flips the map's brightness (black becomes white and vice versa) before displacing — swaps which areas push the shape which way.")
+
+            InspectorField("Wrap") {
+                Toggle("", isOn: bindConv(\.displacementWrap)).labelsHidden()
+            }
+            .loomHelp("On (default): the map tiles seamlessly, repeating indefinitely — right for a repeating texture or a pattern that scrolls across the shape. Off: the map is placed exactly once, positioned by Centre/Offset; anywhere outside that single tile gets zero displacement instead of a repeated copy — right for one decorative feature (e.g. a single ring-and-dot motif) rather than a tiling texture.")
+
+            InspectorField("Axis") {
+                FloatEntryField(value: bindConv(\.displacementAxis), width: 60)
+                Text("°").font(.system(size: 11)).foregroundStyle(.secondary)
+            }
+            .loomHelp("Direction the map's sampling frame is oriented, and the axis it scrolls along. Points displace perpendicular to this axis — 0° scrolls the map horizontally and displaces points vertically, like a wave rolling across the shape left-to-right.")
+
+            InspectorField("Centre") {
+                Picker("", selection: bindConv(\.displacementCentre)) {
+                    ForEach(ConvolutionCentre.allCases, id: \.self) { c in
+                        Text(c.rawValue).tag(c)
+                    }
+                }
+                .labelsHidden()
+                .pickerStyle(.menu)
+                .frame(maxWidth: 160)
+            }
+            .loomHelp("Reference point the map's sampling frame is anchored to. Centroid: average of all points. Bounding Box Centre: geometric centre of the point list's bounding box. Custom: a fixed canvas point below.")
+
+            if bindConv(\.displacementCentre).wrappedValue == .custom {
+                InspectorField("Centre X") {
+                    FloatEntryField(value: bindConv(\.displacementCentreCustomX), width: 60)
+                }
+                InspectorField("Centre Y") {
+                    FloatEntryField(value: bindConv(\.displacementCentreCustomY), width: 60)
+                }
+            }
+
+            InspectorField("Scale") {
+                FloatEntryField(value: bindConv(\.displacementScale), width: 60)
+            }
+            .loomHelp("Canvas units spanned by one full tile of the map along Axis. Smaller values repeat the pattern more densely across the shape; larger values show less of the pattern's own detail per shape-width.")
+
+            InspectorField("Offset X") {
+                FloatEntryField(value: bindConv(\.displacementOffsetU), width: 60)
+            }
+            .loomHelp("Which part of the map lands at Centre, along Axis (0–1 fraction of one tile, wraps like Scroll rate). Default 0.5 centres the map's own middle on Centre. Adjust to reposition a specific feature of the map — e.g. a dot or ring — over the shape's centre.")
+
+            InspectorField("Offset Y") {
+                FloatEntryField(value: bindConv(\.displacementOffsetV), width: 60)
+            }
+            .loomHelp("Same as Offset X, perpendicular to Axis. Static only — unlike Offset X, this never scrolls automatically.")
+        }
+    }
+
+    @ViewBuilder
+    private var displacementStrengthDriverSection: some View {
+        DoubleDriverEditor(
+            label: "Strength",
+            driver: bindConvDriver(\.displacementStrength),
+            isCollapsed: $displacementStrengthCollapsed
+        )
+        .loomHelp("Depth of displacement, in canvas units, at full (white or black) brightness. Wire a Keyframe ramp from 0 to animate from the original geometry into the fully displaced version.")
+        .padding(.bottom, 2)
+    }
+
+    @ViewBuilder
+    private var displacementScrollRateDriverSection: some View {
+        DoubleDriverEditor(
+            label: "Scroll rate",
+            driver: bindConvDriver(\.displacementScrollRate),
+            isCollapsed: $displacementScrollCollapsed
+        )
+        .loomHelp("Cycles per second the map scrolls along Axis. 0 = static, no scrolling. The map tiles seamlessly, so any nonzero rate lets the pattern pass across the shape indefinitely — the same value keeps producing new deformation rather than looping back identically (unless the underlying map itself repeats).")
+        .padding(.bottom, 2)
+    }
+
+    private func displacementMapFiles() -> [String] {
+        guard let url = controller.projectURL else { return [] }
+        let dir = url.appendingPathComponent("displacementMaps")
+        let entries = (try? FileManager.default.contentsOfDirectory(
+            at: dir, includingPropertiesForKeys: nil
+        )) ?? []
+        let supported: Set<String> = ["png", "jpg", "jpeg", "tiff", "tif", "gif"]
+        return entries
+            .filter { supported.contains($0.pathExtension.lowercased()) }
+            .map(\.lastPathComponent)
+            .sorted()
     }
 
     // MARK: - Binding helpers

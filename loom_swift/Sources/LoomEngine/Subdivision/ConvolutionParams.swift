@@ -1,9 +1,10 @@
 import Foundation
 
 public enum ConvolutionOperationType: String, Codable, CaseIterable, Equatable, Sendable {
-    case torsion = "Torsion"
-    case shear   = "Shear"
-    case bend    = "Bend"
+    case torsion         = "Torsion"
+    case shear           = "Shear"
+    case bend            = "Bend"
+    case displacementMap = "Displacement Map"
 }
 
 /// Where a Torsion/Shear pass's reference point is resolved from.
@@ -74,6 +75,56 @@ public struct ConvolutionParams: Equatable, Codable, Sendable {
     public var bendCentreCustomY:  Double
     public var bendOrigin:         Double            // 0–1 position along the shape's own extent on bendAxis where curvature is centred (0.5 = symmetric outward bend from the middle)
 
+    // Displacement Map settings (operationType == .displacementMap)
+    /// Filename in the project's `displacementMaps/` folder. Empty/unresolved
+    /// name is a no-op, matching Graft's "unresolved custom shape = skip"
+    /// convention.
+    public var displacementMapName:      String
+    /// Depth of displacement — canvas-unit scale multiplying the sampled,
+    /// signed (-1...1, mid-grey = 0) brightness value. Wire a Keyframe ramp
+    /// from 0 to animate from the original geometry into the fully displaced
+    /// version; no separate "static vs. animated" mode is needed since this
+    /// driver already covers both.
+    public var displacementStrength:     DoubleDriver
+    /// Flips sampled brightness (`1 - value`) before applying strength —
+    /// swaps which areas of the map push the shape which way.
+    public var displacementInvert:       Bool
+    /// Degrees. Direction the map's sampling frame is oriented, and the axis
+    /// the map scrolls along; points displace *perpendicular* to this axis
+    /// (Specs/Convolution.md §3.4 — the "scrolling wave" convention).
+    public var displacementAxis:         Double
+    /// Canvas units spanned by one full tile of the map along Axis. Smaller
+    /// values repeat the pattern more densely across the shape.
+    public var displacementScale:        Double
+    /// Cycles per second the map scrolls along Axis (same "cycles per
+    /// second" vocabulary as DoubleDriver's oscillator `freqHz`). 0 = static,
+    /// no scrolling. The map tiles seamlessly, so any nonzero rate lets the
+    /// pattern pass across the shape indefinitely rather than just once.
+    public var displacementScrollRate:   DoubleDriver
+    public var displacementCentre:       ConvolutionCentre
+    public var displacementCentreCustomX: Double
+    public var displacementCentreCustomY: Double
+    /// 0–1 tile-fraction shift of which part of the map lands at Centre,
+    /// along Axis. Wraps like every other map coordinate, so values outside
+    /// 0–1 are equivalent to their fractional part. Default 0.5 — the map's
+    /// own middle sits at Centre out of the box, rather than the map's raw
+    /// top-left pixel (0.5 was chosen as the default after exactly this
+    /// surprised a user: an off-centre feature in their map, e.g. a dot
+    /// meant to sit in the middle of the shape, appeared shifted toward one
+    /// corner because unoffset u/v=0 samples the image's top-left corner).
+    public var displacementOffsetU:      Double
+    /// Same as `displacementOffsetU`, perpendicular to Axis. Static only —
+    /// unlike U, V never scrolls automatically (see `displacementScrollRate`).
+    public var displacementOffsetV:      Double
+    /// True (default): the map tiles seamlessly — sampling continues past
+    /// its edges by repeating, so it can cover an arbitrarily large shape or
+    /// scroll indefinitely. False: the map is placed exactly once (positioned
+    /// by Centre/Offset); any point sampling outside that single tile gets
+    /// zero displacement (treated as neutral mid-grey) instead of a repeated
+    /// copy — the right setting for a single decorative feature (e.g. one
+    /// ring-and-dot motif) rather than a repeating texture.
+    public var displacementWrap:         Bool
+
     public init(
         name:                  String                  = "",
         enabled:               Bool                    = true,
@@ -94,7 +145,19 @@ public struct ConvolutionParams: Equatable, Codable, Sendable {
         bendCentre:            ConvolutionCentre        = .centroid,
         bendCentreCustomX:     Double                   = 0.0,
         bendCentreCustomY:     Double                   = 0.0,
-        bendOrigin:            Double                   = 0.5
+        bendOrigin:            Double                   = 0.5,
+        displacementMapName:       String            = "",
+        displacementStrength:      DoubleDriver      = .constant(0.1),
+        displacementInvert:        Bool              = false,
+        displacementAxis:          Double            = 0.0,
+        displacementScale:         Double            = 1.0,
+        displacementScrollRate:    DoubleDriver      = .constant(0.0),
+        displacementCentre:        ConvolutionCentre = .centroid,
+        displacementCentreCustomX: Double            = 0.0,
+        displacementCentreCustomY: Double            = 0.0,
+        displacementOffsetU:       Double            = 0.5,
+        displacementOffsetV:       Double            = 0.5,
+        displacementWrap:          Bool              = true
     ) {
         self.name                 = name
         self.enabled              = enabled
@@ -116,6 +179,18 @@ public struct ConvolutionParams: Equatable, Codable, Sendable {
         self.bendCentreCustomX    = bendCentreCustomX
         self.bendCentreCustomY    = bendCentreCustomY
         self.bendOrigin           = bendOrigin
+        self.displacementMapName       = displacementMapName
+        self.displacementStrength      = displacementStrength
+        self.displacementInvert        = displacementInvert
+        self.displacementAxis          = displacementAxis
+        self.displacementScale         = displacementScale
+        self.displacementScrollRate    = displacementScrollRate
+        self.displacementCentre        = displacementCentre
+        self.displacementCentreCustomX = displacementCentreCustomX
+        self.displacementCentreCustomY = displacementCentreCustomY
+        self.displacementOffsetU       = displacementOffsetU
+        self.displacementOffsetV       = displacementOffsetV
+        self.displacementWrap          = displacementWrap
     }
 
     // MARK: - Codable
@@ -132,6 +207,10 @@ public struct ConvolutionParams: Equatable, Codable, Sendable {
         case twistAmount, twistFalloff, twistReferenceRadius
         case shearAxis, shearAmount, shearOrigin, shearOriginCustomX, shearOriginCustomY
         case bendAxis, bendCurvature, bendCentre, bendCentreCustomX, bendCentreCustomY, bendOrigin
+        case displacementMapName, displacementStrength, displacementInvert
+        case displacementAxis, displacementScale, displacementScrollRate
+        case displacementCentre, displacementCentreCustomX, displacementCentreCustomY
+        case displacementOffsetU, displacementOffsetV, displacementWrap
     }
 
     public init(from decoder: Decoder) throws {
@@ -156,6 +235,18 @@ public struct ConvolutionParams: Equatable, Codable, Sendable {
         bendCentreCustomX    = try c.decodeIfPresent(Double.self,                  forKey: .bendCentreCustomX)    ?? 0.0
         bendCentreCustomY    = try c.decodeIfPresent(Double.self,                  forKey: .bendCentreCustomY)    ?? 0.0
         bendOrigin           = try c.decodeIfPresent(Double.self,                  forKey: .bendOrigin)           ?? 0.5
+        displacementMapName       = try c.decodeIfPresent(String.self,             forKey: .displacementMapName)       ?? ""
+        displacementStrength      = try c.decodeIfPresent(DoubleDriver.self,       forKey: .displacementStrength)      ?? .constant(0.1)
+        displacementInvert        = try c.decodeIfPresent(Bool.self,               forKey: .displacementInvert)        ?? false
+        displacementAxis          = try c.decodeIfPresent(Double.self,             forKey: .displacementAxis)          ?? 0.0
+        displacementScale         = try c.decodeIfPresent(Double.self,             forKey: .displacementScale)         ?? 1.0
+        displacementScrollRate    = try c.decodeIfPresent(DoubleDriver.self,       forKey: .displacementScrollRate)    ?? .constant(0.0)
+        displacementCentre        = try c.decodeIfPresent(ConvolutionCentre.self,  forKey: .displacementCentre)        ?? .centroid
+        displacementCentreCustomX = try c.decodeIfPresent(Double.self,             forKey: .displacementCentreCustomX) ?? 0.0
+        displacementCentreCustomY = try c.decodeIfPresent(Double.self,             forKey: .displacementCentreCustomY) ?? 0.0
+        displacementOffsetU       = try c.decodeIfPresent(Double.self,             forKey: .displacementOffsetU)       ?? 0.5
+        displacementOffsetV       = try c.decodeIfPresent(Double.self,             forKey: .displacementOffsetV)       ?? 0.5
+        displacementWrap          = try c.decodeIfPresent(Bool.self,               forKey: .displacementWrap)          ?? true
     }
 
     public func encode(to encoder: Encoder) throws {
@@ -180,5 +271,17 @@ public struct ConvolutionParams: Equatable, Codable, Sendable {
         try c.encode(bendCentreCustomX,    forKey: .bendCentreCustomX)
         try c.encode(bendCentreCustomY,    forKey: .bendCentreCustomY)
         try c.encode(bendOrigin,           forKey: .bendOrigin)
+        try c.encode(displacementMapName,       forKey: .displacementMapName)
+        try c.encode(displacementStrength,      forKey: .displacementStrength)
+        try c.encode(displacementInvert,        forKey: .displacementInvert)
+        try c.encode(displacementAxis,          forKey: .displacementAxis)
+        try c.encode(displacementScale,         forKey: .displacementScale)
+        try c.encode(displacementScrollRate,    forKey: .displacementScrollRate)
+        try c.encode(displacementCentre,        forKey: .displacementCentre)
+        try c.encode(displacementCentreCustomX, forKey: .displacementCentreCustomX)
+        try c.encode(displacementCentreCustomY, forKey: .displacementCentreCustomY)
+        try c.encode(displacementOffsetU,        forKey: .displacementOffsetU)
+        try c.encode(displacementOffsetV,        forKey: .displacementOffsetV)
+        try c.encode(displacementWrap,            forKey: .displacementWrap)
     }
 }

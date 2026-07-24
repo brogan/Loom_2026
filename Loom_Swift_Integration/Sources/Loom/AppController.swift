@@ -7299,7 +7299,7 @@ final class AppController: ObservableObject, @unchecked Sendable {
             let topLevel = [
                 "polygonSets", "curveSets", "pointSets", "ovalSets", "regularPolygons",
                 "audio", "background_image", "brushes", "configuration", "morphTargets",
-                "palettes", "stamps", "svgs"
+                "palettes", "stamps", "svgs", "displacementMaps"
             ]
             for folder in topLevel {
                 try FileManager.default.createDirectory(
@@ -8245,6 +8245,11 @@ final class AppController: ObservableObject, @unchecked Sendable {
             // Ensure svgs/sprites exists for projects created before this feature.
             try? FileManager.default.createDirectory(
                 at: url.appendingPathComponent("svgs/sprites"),
+                withIntermediateDirectories: true
+            )
+            // Ensure displacementMaps exists for projects created before this feature.
+            try? FileManager.default.createDirectory(
+                at: url.appendingPathComponent("displacementMaps"),
                 withIntermediateDirectories: true
             )
             let loadedEngine = try Engine(projectDirectory: url)

@@ -26,7 +26,8 @@ public enum ConvolutionEngine {
         paramSet:      [ConvolutionParams],
         elapsedFrames: Double = 0,
         targetFPS:     Double = 24,
-        spriteIndex:   Int    = 0
+        spriteIndex:   Int    = 0,
+        displacementMaps: [String: DisplacementMapImage] = [:]
     ) -> [Polygon2D] {
         let active = paramSet.filter { $0.enabled }
         guard !active.isEmpty else { return polygons }
@@ -34,7 +35,8 @@ public enum ConvolutionEngine {
         var result = polygons
         for params in active {
             result = applyPass(to: result, params: params, elapsedFrames: elapsedFrames,
-                                targetFPS: targetFPS, spriteIndex: spriteIndex)
+                                targetFPS: targetFPS, spriteIndex: spriteIndex,
+                                displacementMaps: displacementMaps)
         }
         return result
     }
@@ -55,7 +57,8 @@ public enum ConvolutionEngine {
         params: ConvolutionParams,
         elapsedFrames: Double,
         targetFPS: Double,
-        spriteIndex: Int
+        spriteIndex: Int,
+        displacementMaps: [String: DisplacementMapImage]
     ) -> [Polygon2D] {
         let allPoints = polygons.filter(isWarpable).flatMap(\.points)
         guard !allPoints.isEmpty else { return polygons }
@@ -113,6 +116,33 @@ public enum ConvolutionEngine {
                 guard isWarpable(polygon) else { return polygon }
                 return applyBend(to: polygon, curvature: curvature, centre: centre,
                                   alongDir: alongDir, acrossDir: acrossDir, sOrigin: sOrigin)
+            }
+
+        case .displacementMap:
+            guard let map = displacementMaps[params.displacementMapName] else { return polygons }
+            let strength = DriverEvaluator.evaluate(params.displacementStrength,
+                                                     globalElapsed: elapsedFrames,
+                                                     targetFPS: targetFPS,
+                                                     spriteIndex: spriteIndex)
+            guard abs(strength) > 1e-9 else { return polygons }
+            let scrollCyclesPerSec = DriverEvaluator.evaluate(params.displacementScrollRate,
+                                                               globalElapsed: elapsedFrames,
+                                                               targetFPS: targetFPS,
+                                                               spriteIndex: spriteIndex)
+            let scrollOffset = scrollCyclesPerSec * (elapsedFrames / max(targetFPS, 1e-6))
+            let centre = resolveCentre(params.displacementCentre,
+                                        customX: params.displacementCentreCustomX,
+                                        customY: params.displacementCentreCustomY,
+                                        points: allPoints)
+            let axisRad   = params.displacementAxis * .pi / 180.0
+            let alongDir  = Vector2D(x: cos(axisRad), y: sin(axisRad))
+            let acrossDir = Vector2D(x: -sin(axisRad), y: cos(axisRad))
+            let scale = max(params.displacementScale, 1e-6)
+            return polygons.map { polygon in
+                guard isWarpable(polygon) else { return polygon }
+                return applyDisplacementMap(to: polygon, params: params, map: map, strength: strength,
+                                             scrollOffset: scrollOffset, centre: centre,
+                                             alongDir: alongDir, acrossDir: acrossDir, scale: scale)
             }
         }
     }
@@ -204,6 +234,58 @@ public enum ConvolutionEngine {
             let newAlong  = (radius - t) * sin(theta)
             let newAcross = radius - (radius - t) * cos(theta)
             return centre + newAlong * alongDir + newAcross * acrossDir
+        }
+        return Polygon2D(points: newPoints, type: polygon.type,
+                          pressures: polygon.pressures,
+                          pressureProfiles: polygon.pressureProfiles,
+                          visible: polygon.visible)
+    }
+
+    // MARK: - Displacement Map
+
+    /// Samples a greyscale image at each point's projected position and
+    /// displaces the point perpendicular to `alongDir` (the "scroll" axis) by
+    /// an amount proportional to the sampled brightness — a scrolling
+    /// heightmap/wave, per the confirmed design in Specs/Convolution.md §3.4.
+    /// Mid-grey (0.5) is treated as zero displacement; black and white push
+    /// in opposite directions. `scrollOffset` (in tile units, i.e. already
+    /// divided by `scale`) shifts the sampling position along `alongDir`
+    /// only — `DisplacementMapImage.sample` wraps both coordinates, so the
+    /// pattern tiles seamlessly no matter how large the offset grows.
+    /// `params.displacementOffsetU/V` are a *static* positioning control on
+    /// top of that: they pick which part of the map lands at `centre`
+    /// (default 0.5/0.5, the map's own middle, rather than its raw top-left
+    /// pixel at 0/0). `params.displacementWrap` (default true) controls
+    /// whether the map tiles indefinitely or is placed exactly once — false
+    /// treats any point sampling outside that single tile as neutral
+    /// mid-grey (zero displacement) instead of a repeated copy.
+    private static func applyDisplacementMap(
+        to polygon: Polygon2D,
+        params: ConvolutionParams,
+        map: DisplacementMapImage,
+        strength: Double,
+        scrollOffset: Double,
+        centre: Vector2D,
+        alongDir: Vector2D,
+        acrossDir: Vector2D,
+        scale: Double
+    ) -> Polygon2D {
+        let newPoints = polygon.points.map { p -> Vector2D in
+            let d = p - centre
+            let u = d.dot(alongDir) / scale + params.displacementOffsetU + scrollOffset
+            let v = d.dot(acrossDir) / scale + params.displacementOffsetV
+            var brightness: Double
+            if params.displacementWrap {
+                brightness = map.sample(u: u, v: v)
+            } else if u >= 0 && u < 1 && v >= 0 && v < 1 {
+                brightness = map.sample(u: u, v: v)
+            } else {
+                brightness = 0.5  // outside the single placed tile: no displacement
+            }
+            if params.displacementInvert { brightness = 1.0 - brightness }
+            let signed = (brightness - 0.5) * 2.0  // -1 (black) ... +1 (white), 0 at mid-grey
+            let displacement = signed * strength
+            return p + displacement * acrossDir
         }
         return Polygon2D(points: newPoints, type: polygon.type,
                           pressures: polygon.pressures,

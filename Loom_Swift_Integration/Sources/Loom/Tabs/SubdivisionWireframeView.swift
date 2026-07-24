@@ -40,6 +40,9 @@ struct SubdivisionWireframeView: View {
             let evolutionPasses   = inputs.evolutionPasses
             let fulgurationPasses = inputs.fulgurationPasses
             let dissolutionPasses = inputs.dissolutionPasses
+            let displacementMaps: [String: DisplacementMapImage] = controller.projectURL.map {
+                SpriteScene.loadDisplacementMaps(projectDirectory: $0)
+            } ?? [:]
             let result: [Polygon2D] = await Task.detached(priority: .userInitiated) {
                 var rng = SeededRNG()
                 if !evolutionPasses.isEmpty {
@@ -59,7 +62,8 @@ struct SubdivisionWireframeView: View {
                     subdivided = ExtensionEngine.process(polygons: subdivided, paramSet: extensionPasses)
                 }
                 if !convolutionPasses.isEmpty {
-                    subdivided = ConvolutionEngine.process(polygons: subdivided, paramSet: convolutionPasses)
+                    subdivided = ConvolutionEngine.process(polygons: subdivided, paramSet: convolutionPasses,
+                                                            displacementMaps: displacementMaps)
                 }
                 if !fulgurationPasses.isEmpty {
                     subdivided = FulgurationEngine.apply(polygons: subdivided, passes: fulgurationPasses,

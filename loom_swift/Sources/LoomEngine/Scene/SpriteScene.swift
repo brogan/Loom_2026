@@ -102,6 +102,13 @@ public struct SpriteScene: @unchecked Sendable {
     /// can be a whole multi-polygon set.
     private let allGraftCustomPrimitives: [String: Polygon2D]
 
+    /// Every image in `displacementMaps/`, decoded once and converted to a
+    /// cached greyscale brightness grid — see `DisplacementMapImage` and
+    /// Convolution's Displacement Map operation (Specs/Convolution.md §3.4).
+    /// Loaded once here rather than per-frame, the same convention
+    /// `allGraftCustomPrimitives` above already uses.
+    private let allDisplacementMaps: [String: DisplacementMapImage]
+
     // MARK: - Convenience (testing)
 
     /// Directly construct a scene from pre-built instances.
@@ -117,6 +124,7 @@ public struct SpriteScene: @unchecked Sendable {
         self.allCurveRefinementSets = [:]
         self.allCycles         = [:]
         self.allGraftCustomPrimitives = [:]
+        self.allDisplacementMaps = [:]
     }
 
     // MARK: - Assembly
@@ -188,6 +196,9 @@ public struct SpriteScene: @unchecked Sendable {
         self.allGraftCustomPrimitives = SpriteScene.loadGraftCustomPrimitives(
             config: config, projectDirectory: projectDirectory
         )
+        self.allDisplacementMaps = SpriteScene.loadDisplacementMaps(
+            projectDirectory: projectDirectory
+        )
         self.layers         = config.layers
         self.lightingConfig = config.lightingConfig
     }
@@ -225,6 +236,30 @@ public struct SpriteScene: @unchecked Sendable {
             ))?.first {
                 result[curveDef.name] = first
             }
+        }
+        return result
+    }
+
+    /// Every image file in `displacementMaps/`, decoded once into a cached
+    /// greyscale brightness grid — see `DisplacementMapImage`. `public` for
+    /// the same reason `loadGraftCustomPrimitives` is: bake/SVG-export/
+    /// wireframe-preview call sites outside a full `SpriteScene` need to
+    /// build the identical cache to pass into `ConvolutionEngine.process`.
+    /// A file that fails to decode is simply absent from the result, not an
+    /// error — matches Graft's "unresolved name = skip" convention.
+    public static func loadDisplacementMaps(projectDirectory: URL) -> [String: DisplacementMapImage] {
+        let directory = projectDirectory.appendingPathComponent("displacementMaps")
+        guard let entries = try? FileManager.default.contentsOfDirectory(
+            at: directory, includingPropertiesForKeys: nil
+        ) else { return [:] }
+        let supported: Set<String> = ["png", "jpg", "jpeg", "tiff", "tif", "gif"]
+        var result: [String: DisplacementMapImage] = [:]
+        for url in entries where supported.contains(url.pathExtension.lowercased()) {
+            guard let source = CGImageSourceCreateWithURL(url as CFURL, nil),
+                  let cgImage = CGImageSourceCreateImageAtIndex(source, 0, nil),
+                  let map = DisplacementMapImage.load(from: cgImage)
+            else { continue }
+            result[url.lastPathComponent] = map
         }
         return result
     }
@@ -1622,10 +1657,11 @@ public struct SpriteScene: @unchecked Sendable {
             )
         }
 
-        // 2e. Convolution (torsion / shear — continuous coordinate-space warp of
-        // the fully-composed geometry; see Specs/Convolution.md). Runs after
-        // Extension so any grown structure is captured in the same warp, before
-        // Generational Evolution so subsequent structural mutation builds on the
+        // 2e. Convolution (torsion / shear / bend / displacement map —
+        // continuous coordinate-space warp of the fully-composed geometry;
+        // see Specs/Convolution.md). Runs after Extension so any grown
+        // structure is captured in the same warp, before Generational
+        // Evolution so subsequent structural mutation builds on the
         // already-warped base.
         if !activeInstance.convolutionParams.isEmpty {
             subdivided = ConvolutionEngine.process(
@@ -1633,7 +1669,8 @@ public struct SpriteScene: @unchecked Sendable {
                 paramSet:      activeInstance.convolutionParams,
                 elapsedFrames: elapsedFrames,
                 targetFPS:     targetFPS,
-                spriteIndex:   spriteIndex
+                spriteIndex:   spriteIndex,
+                displacementMaps: allDisplacementMaps
             )
         }
 

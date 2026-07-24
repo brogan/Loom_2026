@@ -212,6 +212,214 @@ final class ConvolutionEngineTests: XCTestCase {
         XCTAssertEqual(result[0].points[0].y, expectedA.y, accuracy: 1e-9)
     }
 
+    // MARK: - Displacement Map
+
+    func testDisplacementMapUnresolvedNameIsNoOp() {
+        let square = makeSquare()
+        let params = ConvolutionParams(operationType: .displacementMap,
+                                        displacementMapName: "missing.png",
+                                        displacementStrength: .constant(1.0))
+        // No entry for "missing.png" in the displacementMaps dictionary.
+        let result = ConvolutionEngine.process(polygons: [square], paramSet: [params], displacementMaps: [:])
+        XCTAssertEqual(result, [square])
+    }
+
+    func testDisplacementMapZeroStrengthIsNoOp() {
+        let square = makeSquare()
+        let map = DisplacementMapImage(width: 2, height: 1, grid: [0.0, 1.0])
+        let params = ConvolutionParams(operationType: .displacementMap,
+                                        displacementMapName: "map.png",
+                                        displacementStrength: .constant(0))
+        let result = ConvolutionEngine.process(polygons: [square], paramSet: [params],
+                                                displacementMaps: ["map.png": map])
+        XCTAssertEqual(result, [square])
+    }
+
+    func testDisplacementMapAppliesSignedDisplacementPerpendicularToAxis() {
+        // Point sits exactly at the resolved centre, axis = 0°, so u = 0
+        // exactly (no scroll) -> samples grid[0] = 0.0 (black) -> signed
+        // brightness -1.0 -> displacement = -strength along acrossDir (0,1).
+        let point = Vector2D(x: 0, y: 0)
+        let poly = Polygon2D(points: [point, point, point, point], type: .spline)
+        let map = DisplacementMapImage(width: 2, height: 1, grid: [0.0, 1.0])
+        let strength = 0.3
+        let params = ConvolutionParams(operationType: .displacementMap,
+                                        displacementMapName: "map.png",
+                                        displacementStrength: .constant(strength),
+                                        displacementAxis: 0,
+                                        displacementScale: 1.0,
+                                        displacementScrollRate: .constant(0),
+                                        displacementCentre: .custom,
+                                        displacementCentreCustomX: 0, displacementCentreCustomY: 0,
+                                        displacementOffsetU: 0, displacementOffsetV: 0)
+        let result = ConvolutionEngine.process(polygons: [poly], paramSet: [params],
+                                                displacementMaps: ["map.png": map])[0]
+        XCTAssertEqual(result.points[0].x, 0, accuracy: 1e-9)
+        XCTAssertEqual(result.points[0].y, -strength, accuracy: 1e-9)
+    }
+
+    func testDisplacementMapInvertFlipsDirection() {
+        let point = Vector2D(x: 0, y: 0)
+        let poly = Polygon2D(points: [point, point, point, point], type: .spline)
+        let map = DisplacementMapImage(width: 2, height: 1, grid: [0.0, 1.0])
+        let strength = 0.3
+        let params = ConvolutionParams(operationType: .displacementMap,
+                                        displacementMapName: "map.png",
+                                        displacementStrength: .constant(strength),
+                                        displacementInvert: true,
+                                        displacementAxis: 0,
+                                        displacementScale: 1.0,
+                                        displacementScrollRate: .constant(0),
+                                        displacementCentre: .custom,
+                                        displacementCentreCustomX: 0, displacementCentreCustomY: 0,
+                                        displacementOffsetU: 0, displacementOffsetV: 0)
+        let result = ConvolutionEngine.process(polygons: [poly], paramSet: [params],
+                                                displacementMaps: ["map.png": map])[0]
+        // Inverted: sampled 0.0 becomes 1.0 -> signed +1.0 -> +strength.
+        XCTAssertEqual(result.points[0].y, strength, accuracy: 1e-9)
+    }
+
+    func testDisplacementMapScrollOffsetShiftsSamplePosition() {
+        // scrollRate 1.0 cycle/sec, 12 of 24 frames elapsed -> offset = 0.5
+        // tile, landing exactly on grid[1] (white, brightness 1.0).
+        let point = Vector2D(x: 0, y: 0)
+        let poly = Polygon2D(points: [point, point, point, point], type: .spline)
+        let map = DisplacementMapImage(width: 2, height: 1, grid: [0.0, 1.0])
+        let strength = 0.3
+        let params = ConvolutionParams(operationType: .displacementMap,
+                                        displacementMapName: "map.png",
+                                        displacementStrength: .constant(strength),
+                                        displacementAxis: 0,
+                                        displacementScale: 1.0,
+                                        displacementScrollRate: .constant(1.0),
+                                        displacementCentre: .custom,
+                                        displacementCentreCustomX: 0, displacementCentreCustomY: 0,
+                                        displacementOffsetU: 0, displacementOffsetV: 0)
+        let result = ConvolutionEngine.process(polygons: [poly], paramSet: [params],
+                                                elapsedFrames: 12, targetFPS: 24,
+                                                displacementMaps: ["map.png": map])[0]
+        XCTAssertEqual(result.points[0].y, strength, accuracy: 1e-9)
+    }
+
+    func testDisplacementMapCentroidResolvedAcrossWholeMesh() {
+        // Same coherence guarantee as Torsion/Bend: the reference centre for
+        // Centroid mode must be resolved once across the whole polygon array,
+        // not per individual polygon.
+        let polyA = Polygon2D(points: [Vector2D(x: 0, y: 0), Vector2D(x: 0, y: 0),
+                                        Vector2D(x: 0, y: 0), Vector2D(x: 0, y: 0)], type: .spline)
+        let polyB = Polygon2D(points: [Vector2D(x: 10, y: 0), Vector2D(x: 10, y: 0),
+                                        Vector2D(x: 10, y: 0), Vector2D(x: 10, y: 0)], type: .spline)
+        let map = DisplacementMapImage(width: 4, height: 1, grid: [0.0, 0.3, 0.6, 1.0])
+        let scale = 3.0
+        let params = ConvolutionParams(operationType: .displacementMap,
+                                        displacementMapName: "map.png",
+                                        displacementStrength: .constant(1.0),
+                                        displacementAxis: 0,
+                                        displacementScale: scale,
+                                        displacementCentre: .centroid)
+        let result = ConvolutionEngine.process(polygons: [polyA, polyB], paramSet: [params],
+                                                displacementMaps: ["map.png": map])
+
+        // Combined centroid across BOTH polygons is (5, 0) — not each
+        // polygon's own degenerate, self-cancelling single-point centroid.
+        // Default displacementOffsetU/V is 0.5 (the map's own middle sits at
+        // centre), so it must be added here to match the engine.
+        let centre = Vector2D(x: 5, y: 0)
+        let uA = (polyA.points[0].x - centre.x) / scale + 0.5
+        let uB = (polyB.points[0].x - centre.x) / scale + 0.5
+        let expectedYA = (map.sample(u: uA, v: 0) - 0.5) * 2.0
+        let expectedYB = (map.sample(u: uB, v: 0) - 0.5) * 2.0
+
+        XCTAssertEqual(result[0].points[0].y, expectedYA, accuracy: 1e-9)
+        XCTAssertEqual(result[1].points[0].y, expectedYB, accuracy: 1e-9)
+        XCTAssertNotEqual(expectedYA, expectedYB)
+    }
+
+    func testDisplacementMapDefaultOffsetCentresTheMapOnCentre() {
+        // Default displacementOffsetU/V is 0.5 — a point exactly at Centre
+        // (u_raw = 0, v_raw = 0) should sample the map's own middle, not its
+        // raw top-left pixel (0,0). Regression for the reported bug: a
+        // feature meant to sit at a shape's centre appeared shifted toward
+        // one corner because the un-offset default sampled u=0,v=0 (image
+        // top-left) at the anchor point.
+        let point = Vector2D(x: 0, y: 0)
+        let poly = Polygon2D(points: [point, point, point, point], type: .spline)
+        // 2x2 grid, distinct corners, so top-left (0.0) and middle (~0.375,
+        // the bilinear blend of all four quadrants at u=v=0.5) are clearly different.
+        let map = DisplacementMapImage(width: 2, height: 2, grid: [0.0, 0.5, 0.5, 1.0])
+        let params = ConvolutionParams(operationType: .displacementMap,
+                                        displacementMapName: "map.png",
+                                        displacementStrength: .constant(1.0),
+                                        displacementAxis: 0,
+                                        displacementScale: 1.0,
+                                        displacementCentre: .custom,
+                                        displacementCentreCustomX: 0, displacementCentreCustomY: 0)
+        // displacementOffsetU/V left at their default (0.5).
+        let result = ConvolutionEngine.process(polygons: [poly], paramSet: [params],
+                                                displacementMaps: ["map.png": map])[0]
+        let expectedBrightness = map.sample(u: 0.5, v: 0.5)
+        let expectedY = (expectedBrightness - 0.5) * 2.0
+        XCTAssertEqual(result.points[0].y, expectedY, accuracy: 1e-9)
+        // And confirm it's genuinely NOT sampling the raw top-left pixel.
+        XCTAssertNotEqual(expectedBrightness, map.grid[0], accuracy: 1e-6)
+    }
+
+    func testDisplacementMapOffsetIsConfigurableAndWraps() {
+        // Explicit offset shifts which part of the map lands at Centre;
+        // offsets outside 0...1 wrap to their fractional part, same as scroll.
+        let point = Vector2D(x: 0, y: 0)
+        let poly = Polygon2D(points: [point, point, point, point], type: .spline)
+        let map = DisplacementMapImage(width: 2, height: 1, grid: [0.0, 1.0])
+        let baseParams: (Double, Double) -> ConvolutionParams = { offU, offV in
+            ConvolutionParams(operationType: .displacementMap,
+                               displacementMapName: "map.png",
+                               displacementStrength: .constant(1.0),
+                               displacementAxis: 0,
+                               displacementScale: 1.0,
+                               displacementCentre: .custom,
+                               displacementCentreCustomX: 0, displacementCentreCustomY: 0,
+                               displacementOffsetU: offU, displacementOffsetV: offV)
+        }
+        let resultAt0_25 = ConvolutionEngine.process(polygons: [poly], paramSet: [baseParams(0.25, 0)],
+                                                      displacementMaps: ["map.png": map])[0]
+        let resultAt1_25 = ConvolutionEngine.process(polygons: [poly], paramSet: [baseParams(1.25, 0)],
+                                                      displacementMaps: ["map.png": map])[0]
+        // 1.25 wraps to the same fractional position as 0.25.
+        XCTAssertEqual(resultAt0_25.points[0].y, resultAt1_25.points[0].y, accuracy: 1e-9)
+    }
+
+    func testDisplacementMapWrapToggleControlsOutOfBoundsSampling() {
+        // A point whose computed u lands outside [0, 1) (here u = 1.5).
+        let point = Vector2D(x: 1.5, y: 0)
+        let poly = Polygon2D(points: [point, point, point, point], type: .spline)
+        let map = DisplacementMapImage(width: 2, height: 1, grid: [0.0, 1.0])
+        let strength = 0.4
+        func params(wrap: Bool) -> ConvolutionParams {
+            ConvolutionParams(operationType: .displacementMap,
+                               displacementMapName: "map.png",
+                               displacementStrength: .constant(strength),
+                               displacementAxis: 0,
+                               displacementScale: 1.0,
+                               displacementCentre: .custom,
+                               displacementCentreCustomX: 0, displacementCentreCustomY: 0,
+                               displacementOffsetU: 0, displacementOffsetV: 0,
+                               displacementWrap: wrap)
+        }
+        let wrapped = ConvolutionEngine.process(polygons: [poly], paramSet: [params(wrap: true)],
+                                                 displacementMaps: ["map.png": map])[0]
+        let unwrapped = ConvolutionEngine.process(polygons: [poly], paramSet: [params(wrap: false)],
+                                                   displacementMaps: ["map.png": map])[0]
+
+        // Wrap on: u=1.5 wraps to 0.5, sampling the bilinear blend there.
+        let expectedWrappedBrightness = map.sample(u: 0.5, v: 0)
+        let expectedWrappedY = (expectedWrappedBrightness - 0.5) * 2.0 * strength
+        XCTAssertEqual(wrapped.points[0].y, expectedWrappedY, accuracy: 1e-9)
+
+        // Wrap off: outside the single placed tile -> neutral -> zero displacement.
+        XCTAssertEqual(unwrapped.points[0].y, 0, accuracy: 1e-9)
+        XCTAssertEqual(unwrapped.points[0].x, 1.5, accuracy: 1e-9)
+    }
+
     // MARK: - Non-warpable types pass through unchanged
 
     func testOvalTypeIsUnaffected() {

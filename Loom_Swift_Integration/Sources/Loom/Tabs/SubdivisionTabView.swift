@@ -586,7 +586,9 @@ struct SubdivisionTabView: View {
             result = ExtensionEngine.process(polygons: result, paramSet: paramSet.extensionPasses)
         }
         if !paramSet.convolutionPasses.isEmpty {
-            result = ConvolutionEngine.process(polygons: result, paramSet: paramSet.convolutionPasses)
+            let displacementMaps = SpriteScene.loadDisplacementMaps(projectDirectory: projectURL)
+            result = ConvolutionEngine.process(polygons: result, paramSet: paramSet.convolutionPasses,
+                                                displacementMaps: displacementMaps)
         }
         if paramSet.evolutionPasses.contains(where: { $0.enabled && $0.operationType == .generational }) {
             let customPrimitives = SpriteScene.loadGraftCustomPrimitives(config: cfg, projectDirectory: projectURL)
@@ -692,7 +694,9 @@ struct SubdivisionTabView: View {
             result = ExtensionEngine.process(polygons: result, paramSet: paramSet2.extensionPasses)
         }
         if !paramSet2.convolutionPasses.isEmpty {
-            result = ConvolutionEngine.process(polygons: result, paramSet: paramSet2.convolutionPasses)
+            let displacementMaps2 = SpriteScene.loadDisplacementMaps(projectDirectory: projectURL)
+            result = ConvolutionEngine.process(polygons: result, paramSet: paramSet2.convolutionPasses,
+                                                displacementMaps: displacementMaps2)
         }
         if paramSet2.evolutionPasses.contains(where: { $0.enabled && $0.operationType == .generational }) {
             let customPrimitives2 = SpriteScene.loadGraftCustomPrimitives(config: cfg, projectDirectory: projectURL)
