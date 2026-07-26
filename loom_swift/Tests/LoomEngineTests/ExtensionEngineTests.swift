@@ -726,4 +726,188 @@ final class ExtensionEngineTests: XCTestCase {
         let b = ExtensionEngine.process(polygons: [square], paramSet: [withPhaseAtMax])
         XCTAssertEqual(a, b, "disabled structurePhase must reproduce the same result as an explicit phase pinned at the hard cap")
     }
+
+    // MARK: - effectiveSeed (varySeedPerCycle plumbing)
+
+    func testEffectiveSeedMatchesBranchSeedWhenVaryingIsOff() {
+        var pass = ExtensionParams(operationType: .branch)
+        pass.branchSeed = 42
+        pass.structurePhase = DoubleDriver(mode: .oscillator, freqHz: 1.0, enabled: true)
+        pass.varySeedPerCycle = false
+        XCTAssertEqual(
+            ExtensionEngine.effectiveSeed(for: pass, elapsedFrames: 999, targetFPS: 30),
+            42
+        )
+    }
+
+    func testEffectiveSeedMatchesBranchSeedWhenDriverDisabledEvenIfVaryingIsOn() {
+        var pass = ExtensionParams(operationType: .branch)
+        pass.branchSeed = 42
+        pass.varySeedPerCycle = true
+        pass.structurePhase.enabled = false
+        XCTAssertEqual(
+            ExtensionEngine.effectiveSeed(for: pass, elapsedFrames: 999, targetFPS: 30),
+            42
+        )
+    }
+
+    func testEffectiveSeedMatchesGenerationalEvolutionEngineCombineSeedWhenVaryingIsOn() {
+        var pass = ExtensionParams(operationType: .branch)
+        pass.branchSeed = 42
+        pass.structurePhase = DoubleDriver(mode: .oscillator, base: 2, amplitude: 2,
+                                           freqHz: 1.0, phase: 0.75, wave: .sine, enabled: true)
+        pass.varySeedPerCycle = true
+
+        let cycle = GenerationalEvolutionEngine.revealCycleIndex(for: pass.structurePhase, elapsedFrames: 12, targetFPS: 8)
+        XCTAssertEqual(
+            ExtensionEngine.effectiveSeed(for: pass, elapsedFrames: 12, targetFPS: 8),
+            GenerationalEvolutionEngine.combineSeed(42, cycle)
+        )
+    }
+
+    func testEffectiveSeedUsesExtrusionSeedForExtrudeOperationType() {
+        var pass = ExtensionParams(operationType: .extrude)
+        pass.extrusionSeed = 99
+        XCTAssertEqual(ExtensionEngine.effectiveSeed(for: pass, elapsedFrames: 0, targetFPS: 30), 99)
+    }
+
+    func testVarySeedPerCycleProducesDifferentBranchesAcrossCycles() {
+        let root = makeOpenLine(segments: 2)
+        var pass = ExtensionParams(operationType: .branch)
+        pass.branchProbability = 0.5
+        pass.branchCount = 4
+        pass.branchSeed = 21
+        pass.structurePhase = DoubleDriver(mode: .oscillator, base: 2, amplitude: 2,
+                                           freqHz: 1.0, phase: 0.75, wave: .sine, enabled: true)
+        pass.varySeedPerCycle = true
+
+        // elapsedFrames 4 and 12 are both a quarter-cycle past their respective troughs
+        // (cycles 0 and 1) at targetFPS 8 — same phase value (so identical structurePhase/
+        // fullDepth/partialDepth), different cycle index, isolating the seed's effect
+        // (mirrors DissolutionEngineTests.testVarySeedPerCycleProducesDifferentPartialLossAcrossCycles).
+        let cycle0 = ExtensionEngine.process(polygons: [root], paramSet: [pass], elapsedFrames: 4, targetFPS: 8)
+        let cycle1 = ExtensionEngine.process(polygons: [root], paramSet: [pass], elapsedFrames: 12, targetFPS: 8)
+        XCTAssertNotEqual(cycle0, cycle1, "different reveal cycles should branch differently when varySeedPerCycle is on")
+
+        let cycle0Again = ExtensionEngine.process(polygons: [root], paramSet: [pass], elapsedFrames: 4, targetFPS: 8)
+        XCTAssertEqual(cycle0, cycle0Again)
+    }
+
+    // MARK: - varySeedPerPiece (lock-step fix)
+
+    func testVarySeedPerPieceOffKeepsIdenticalPolygonsInLockStep() {
+        let roots = [makeOpenLine(segments: 2), makeOpenLine(segments: 2)]
+        var pass = ExtensionParams(operationType: .branch)
+        pass.branchProbability = 0.5
+        pass.branchCount = 4
+        pass.branchSeed = 7
+        pass.varySeedPerPiece = false
+
+        let result = ExtensionEngine.process(polygons: roots, paramSet: [pass])
+        let additions = Array(result.dropFirst(roots.count))
+        XCTAssertFalse(additions.isEmpty, "expected at least one branch to spawn with probability 0.5, count 4")
+        XCTAssertEqual(additions.count % 2, 0,
+                       "identical roots sharing the same seed must produce matching branch counts")
+        let half = additions.count / 2
+        XCTAssertEqual(Array(additions[0..<half]), Array(additions[half...]),
+                       "lock step: identical roots + identical seed must produce identical branches")
+    }
+
+    func testVarySeedPerPieceOnBreaksLockStepForIdenticalPolygons() {
+        let roots = [makeOpenLine(segments: 2), makeOpenLine(segments: 2)]
+        func makePass(varying: Bool) -> ExtensionParams {
+            var pass = ExtensionParams(operationType: .branch)
+            pass.branchProbability = 0.5
+            pass.branchCount = 4
+            pass.branchSeed = 7
+            pass.varySeedPerPiece = varying
+            return pass
+        }
+        let synced = ExtensionEngine.process(polygons: roots, paramSet: [makePass(varying: false)])
+        let varied = ExtensionEngine.process(polygons: roots, paramSet: [makePass(varying: true)])
+        XCTAssertNotEqual(synced, varied, "enabling vary-seed-per-piece should change the result for a multi-polygon pass")
+    }
+
+    // MARK: - structurePhaseMode (per-polygon phase offset)
+
+    func testStructurePhaseModeAllAppliesIdenticalPhaseRegardlessOfPolygonIndex() {
+        let roots = [makeOpenLine(segments: 2), makeOpenLine(segments: 2), makeOpenLine(segments: 2)]
+        var pass = ExtensionParams(operationType: .branch)
+        pass.branchCount = 2
+        pass.structurePhase = DoubleDriver(mode: .oscillator, base: 1, amplitude: 1, freqHz: 0.5, enabled: true)
+        pass.structurePhaseMode = .all // default, explicit for clarity
+
+        let result = ExtensionEngine.process(polygons: roots, paramSet: [pass], elapsedFrames: 5, targetFPS: 10)
+        let additions = Array(result.dropFirst(roots.count))
+        XCTAssertEqual(additions.count % roots.count, 0,
+                       "identical roots sharing identical phase must produce matching branch counts each")
+        let chunkSize = additions.count / roots.count
+        let chunk0 = Array(additions[0..<chunkSize])
+        for i in 1..<roots.count {
+            let chunk = Array(additions[(i * chunkSize)..<((i + 1) * chunkSize)])
+            XCTAssertEqual(chunk0, chunk, "under .all phase mode every polygon should reveal identically regardless of index")
+        }
+    }
+
+    func testStructurePhaseModeRandomBreaksRevealLockStepForIdenticalPolygons() {
+        let roots = [makeOpenLine(segments: 2), makeOpenLine(segments: 2)]
+        var allMode = ExtensionParams(operationType: .branch)
+        allMode.branchCount = 2
+        allMode.structurePhase = DoubleDriver(mode: .oscillator, base: 1, amplitude: 1,
+                                              freqHz: 0.5, phase: 0.3, enabled: true)
+        allMode.structurePhaseMode = .all
+
+        var randomMode = allMode
+        randomMode.structurePhaseMode = .random
+
+        let synced = ExtensionEngine.process(polygons: roots, paramSet: [allMode], elapsedFrames: 5, targetFPS: 10)
+        let varied = ExtensionEngine.process(polygons: roots, paramSet: [randomMode], elapsedFrames: 5, targetFPS: 10)
+        XCTAssertNotEqual(synced, varied, "Random structure-phase mode should change the result for a multi-polygon pass")
+    }
+
+    func testStructurePhaseModeRandomIsDeterministic() {
+        let roots = [makeOpenLine(segments: 2), makeOpenLine(segments: 2)]
+        var pass = ExtensionParams(operationType: .branch)
+        pass.branchCount = 2
+        pass.structurePhase = DoubleDriver(mode: .oscillator, base: 1, amplitude: 1, freqHz: 0.5, enabled: true)
+        pass.structurePhaseMode = .random
+
+        let a = ExtensionEngine.process(polygons: roots, paramSet: [pass], elapsedFrames: 5, targetFPS: 10)
+        let b = ExtensionEngine.process(polygons: roots, paramSet: [pass], elapsedFrames: 5, targetFPS: 10)
+        XCTAssertEqual(a, b, "per-polygon phase offset must still be a deterministic function of index, not true randomness")
+    }
+
+    func testStructurePhaseModeSequentialBreaksLockStepForIdenticalPolygons() {
+        let roots = [makeOpenLine(segments: 2), makeOpenLine(segments: 2)]
+        var allMode = ExtensionParams(operationType: .branch)
+        allMode.branchCount = 2
+        // phase 0.5 (a half-cycle) — not an integer, so a full sequential spread
+        // (last polygon gets offset == phase) actually shifts the wave, unlike
+        // an integer phase which wraps back to an identical result.
+        allMode.structurePhase = DoubleDriver(mode: .oscillator, base: 1, amplitude: 1,
+                                              freqHz: 0.5, phase: 0.5, enabled: true)
+        allMode.structurePhaseMode = .all
+
+        var sequentialMode = allMode
+        sequentialMode.structurePhaseMode = .sequential
+
+        let synced = ExtensionEngine.process(polygons: roots, paramSet: [allMode], elapsedFrames: 5, targetFPS: 10)
+        let varied = ExtensionEngine.process(polygons: roots, paramSet: [sequentialMode], elapsedFrames: 5, targetFPS: 10)
+        XCTAssertNotEqual(synced, varied, "Sequential structure-phase mode should change the result for a multi-polygon pass")
+    }
+
+    func testEffectiveSeedPhaseOffsetShiftsCycleDetection() {
+        var pass = ExtensionParams(operationType: .branch)
+        pass.branchSeed = 30
+        pass.structurePhase = DoubleDriver(mode: .oscillator, base: 2, amplitude: 2,
+                                           freqHz: 1.0, phase: 0.75, wave: .sine, enabled: true)
+        pass.varySeedPerCycle = true
+
+        // At elapsedFrames 4, targetFPS 8: t = 0.5 + 0.75 + phaseOffset. troughOffset (sine) = 0.75.
+        // phaseOffset 0 -> cycle floor(0.5) = 0; phaseOffset 1.0 -> cycle floor(1.5) = 1.
+        let seedNoOffset   = ExtensionEngine.effectiveSeed(for: pass, elapsedFrames: 4, targetFPS: 8, phaseOffset: 0)
+        let seedWithOffset = ExtensionEngine.effectiveSeed(for: pass, elapsedFrames: 4, targetFPS: 8, phaseOffset: 1.0)
+        XCTAssertNotEqual(seedNoOffset, seedWithOffset,
+                          "a phase offset large enough to shift the cycle index must change the effective seed")
+    }
 }

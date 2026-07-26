@@ -234,4 +234,41 @@ final class FulgurationEngineTests: XCTestCase {
         let result = FulgurationEngine.apply(polygons: [square], passes: [pass], elapsedFrames: 5000, spriteIndex: 0)
         XCTAssertTrue(result.isEmpty || result.count == 1)
     }
+
+    // MARK: - varySeedPerPiece (.transform lock-step fix)
+
+    private func variedTransformPass(seed: Int = 7) -> FulgurationParams {
+        var pass = fixedCyclePass(interval: 10, hold: 100, seed: seed)
+        pass.translationRange = 0.3
+        pass.rotationRange = 0.5
+        pass.scaleMin = 0.8
+        pass.scaleMax = 1.2
+        return pass
+    }
+
+    func testTransformVarySeedPerPieceOffKeepsIdenticalPolygonsInLockStep() {
+        let squares = [makeSquare(), makeSquare()]
+        let pass = variedTransformPass()
+        let result = FulgurationEngine.apply(polygons: squares, passes: [pass], elapsedFrames: 12, spriteIndex: 0)
+        XCTAssertEqual(result.count, 2)
+        XCTAssertEqual(result[0], result[1], "identical polygons should transform identically by default")
+    }
+
+    func testTransformVarySeedPerPieceOnBreaksLockStep() {
+        let squares = [makeSquare(), makeSquare()]
+        var pass = variedTransformPass()
+        pass.varySeedPerPiece = true
+        let result = FulgurationEngine.apply(polygons: squares, passes: [pass], elapsedFrames: 12, spriteIndex: 0)
+        XCTAssertEqual(result.count, 2)
+        XCTAssertNotEqual(result[0], result[1], "identical polygons should transform differently once varySeedPerPiece is on")
+    }
+
+    func testTransformVarySeedPerPieceOnIsDeterministic() {
+        let squares = [makeSquare(), makeSquare()]
+        var pass = variedTransformPass()
+        pass.varySeedPerPiece = true
+        let a = FulgurationEngine.apply(polygons: squares, passes: [pass], elapsedFrames: 12, spriteIndex: 0)
+        let b = FulgurationEngine.apply(polygons: squares, passes: [pass], elapsedFrames: 12, spriteIndex: 0)
+        XCTAssertEqual(a, b, "per-piece variation must still be a deterministic function of index, not true randomness")
+    }
 }

@@ -130,6 +130,32 @@ public struct ExtensionParams: Equatable, Codable, Sendable {
     /// finish revealing sooner than edges that rolled a taller one.
     public var structurePhase: DoubleDriver
 
+    /// How each polygon's `structurePhase` evaluation is offset from the
+    /// others when this pass processes more than one — `.all` (default):
+    /// every polygon shares the identical phase, growing in unison. `.sequential`:
+    /// phase spreads linearly by polygon index, producing propagating growth.
+    /// `.random`: each polygon gets a stable scrambled phase offset, so
+    /// similar polygons reach the same reveal progress at different times
+    /// rather than all at once. Reuses `PolygonTransforms.ptwPhaseParams`,
+    /// the same mechanism already used for `SubdivisionParams`' Per-Polygon
+    /// PTW drivers.
+    public var structurePhaseMode: PTWPhaseMode
+
+    /// When true and `structurePhase` loops (Oscillator, or Keyframe with
+    /// Loop/Ping-pong), each full reveal cycle uses a different effective seed
+    /// — derived from `branchSeed`/`extrusionSeed` combined with a cycle
+    /// index, not the seed field itself, which is left untouched. Mirrors
+    /// `EvolutionParams.varySeedPerCycle`/`GenerationalEvolutionEngine`. Has no
+    /// effect when `structurePhase` is disabled or non-looping.
+    public var varySeedPerCycle: Bool
+    /// When true, each root polygon (Branch) or extruded polygon (Extrude)
+    /// processed by this pass gets its own decorrelated seed instead of all
+    /// of them sharing the identical seed-derived rolls — so, for example,
+    /// two similar shapes in the same pass branch/extrude differently from
+    /// each other rather than in lock step. Default false preserves the
+    /// original synced behavior.
+    public var varySeedPerPiece: Bool
+
     public init(
         name:                String              = "",
         enabled:             Bool                = true,
@@ -157,7 +183,10 @@ public struct ExtensionParams: Equatable, Codable, Sendable {
         extrusionSeed:       Int                 = 0,
         extrusionTarget:     ExtrusionTarget     = .allEdges,
         directionalSelector: DirectionalSelector = DirectionalSelector(),
-        structurePhase:      DoubleDriver        = DoubleDriver()
+        structurePhase:      DoubleDriver        = DoubleDriver(),
+        structurePhaseMode:  PTWPhaseMode        = .all,
+        varySeedPerCycle:    Bool                = false,
+        varySeedPerPiece:    Bool                = false
     ) {
         self.name                = name
         self.enabled             = enabled
@@ -186,6 +215,9 @@ public struct ExtensionParams: Equatable, Codable, Sendable {
         self.extrusionTarget     = extrusionTarget
         self.directionalSelector = directionalSelector
         self.structurePhase      = structurePhase
+        self.structurePhaseMode  = structurePhaseMode
+        self.varySeedPerCycle    = varySeedPerCycle
+        self.varySeedPerPiece    = varySeedPerPiece
     }
 
     // MARK: - Codable
@@ -204,7 +236,8 @@ public struct ExtensionParams: Equatable, Codable, Sendable {
         /// new fields identically; no longer written on encode.
         case extrusionGenerations
         case extrudeOpenCurves, extrusionDepartureAngleMin, extrusionDepartureAngleMax, extrusionSeed
-        case structurePhase
+        case structurePhase, structurePhaseMode
+        case varySeedPerCycle, varySeedPerPiece
     }
 
     public init(from decoder: Decoder) throws {
@@ -239,6 +272,9 @@ public struct ExtensionParams: Equatable, Codable, Sendable {
         extrusionTarget      = try c.decodeIfPresent(ExtrusionTarget.self, forKey: .extrusionTarget)      ?? .allEdges
         directionalSelector  = try c.decodeIfPresent(DirectionalSelector.self, forKey: .directionalSelector) ?? DirectionalSelector()
         structurePhase       = try c.decodeIfPresent(DoubleDriver.self, forKey: .structurePhase) ?? DoubleDriver()
+        structurePhaseMode   = try c.decodeIfPresent(PTWPhaseMode.self, forKey: .structurePhaseMode) ?? .all
+        varySeedPerCycle     = try c.decodeIfPresent(Bool.self, forKey: .varySeedPerCycle) ?? false
+        varySeedPerPiece     = try c.decodeIfPresent(Bool.self, forKey: .varySeedPerPiece) ?? false
     }
 
     /// Manual (not synthesized): `CodingKeys` carries the decode-only
@@ -274,5 +310,8 @@ public struct ExtensionParams: Equatable, Codable, Sendable {
         try c.encode(extrusionTarget, forKey: .extrusionTarget)
         try c.encode(directionalSelector, forKey: .directionalSelector)
         try c.encode(structurePhase, forKey: .structurePhase)
+        try c.encode(structurePhaseMode, forKey: .structurePhaseMode)
+        try c.encode(varySeedPerCycle, forKey: .varySeedPerCycle)
+        try c.encode(varySeedPerPiece, forKey: .varySeedPerPiece)
     }
 }

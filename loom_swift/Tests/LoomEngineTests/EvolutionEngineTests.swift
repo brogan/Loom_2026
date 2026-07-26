@@ -244,4 +244,40 @@ final class EvolutionEngineTests: XCTestCase {
         XCTAssertEqual(params[0].lineRatios.x, 0.3, accuracy: 1e-12)
         XCTAssertEqual(curve[0].displacement, 0.2, accuracy: 1e-12)
     }
+
+    // MARK: - driftVarySeedPerPiece (lock-step fix)
+
+    func testDriftVarySeedPerPieceOffKeepsPolygonsInLockStep() {
+        var params = [SubdivisionParams(), SubdivisionParams()]
+        var curve: [CurveRefinementParams] = []
+        let pass = driftPass(target: .lineRatioX, strength: 0.4)
+        EvolutionEngine.apply(params: &params, curveRefinementParams: &curve, passes: [pass],
+                              elapsedFrames: 10, targetFPS: 30, spriteIndex: 0, allSets: [:], allCurveSets: [:])
+        XCTAssertEqual(params[0], params[1], "identical polygons should drift identically by default")
+    }
+
+    func testDriftVarySeedPerPieceOnBreaksLockStep() {
+        var params = [SubdivisionParams(), SubdivisionParams()]
+        var curve: [CurveRefinementParams] = []
+        var pass = driftPass(target: .lineRatioX, strength: 0.4)
+        pass.driftVarySeedPerPiece = true
+        EvolutionEngine.apply(params: &params, curveRefinementParams: &curve, passes: [pass],
+                              elapsedFrames: 10, targetFPS: 30, spriteIndex: 0, allSets: [:], allCurveSets: [:])
+        XCTAssertNotEqual(params[0].lineRatios.x, params[1].lineRatios.x,
+                          "identical polygons should drift differently once driftVarySeedPerPiece is on")
+    }
+
+    func testDriftVarySeedPerPieceOnIsDeterministicPerIndex() {
+        var a = [SubdivisionParams(), SubdivisionParams()]
+        var b = [SubdivisionParams(), SubdivisionParams()]
+        var curveA: [CurveRefinementParams] = []
+        var curveB: [CurveRefinementParams] = []
+        var pass = driftPass(target: .lineRatioX, strength: 0.4)
+        pass.driftVarySeedPerPiece = true
+        EvolutionEngine.apply(params: &a, curveRefinementParams: &curveA, passes: [pass],
+                              elapsedFrames: 10, targetFPS: 30, spriteIndex: 0, allSets: [:], allCurveSets: [:])
+        EvolutionEngine.apply(params: &b, curveRefinementParams: &curveB, passes: [pass],
+                              elapsedFrames: 10, targetFPS: 30, spriteIndex: 0, allSets: [:], allCurveSets: [:])
+        XCTAssertEqual(a, b, "per-piece variation must still be a deterministic function of index, not true randomness")
+    }
 }

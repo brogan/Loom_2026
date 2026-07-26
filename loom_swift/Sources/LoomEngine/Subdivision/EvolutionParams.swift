@@ -138,6 +138,12 @@ public struct EvolutionParams: Equatable, Codable, Sendable {
     public var driftNoiseStrength:  Double   // peak displacement amplitude
     public var driftNoiseFrequency: Double   // temporal noise rate (cycles per frame)
     public var driftSeed:           Int
+    /// When true, each polygon (or curve) this pass drifts gets its own
+    /// decorrelated seed instead of all of them sharing the identical
+    /// noise-derived drift value — so, for example, several similar shapes
+    /// drift differently from each other rather than in lock step. Default
+    /// false preserves the original synced behavior.
+    public var driftVarySeedPerPiece: Bool
 
     // Convergence pressure (operationType == .convergencePressure)
     public var convergenceTargetSetName: String
@@ -427,6 +433,7 @@ public struct EvolutionParams: Equatable, Codable, Sendable {
         driftNoiseStrength:       Double                  = 0.1,
         driftNoiseFrequency:      Double                  = 0.02,
         driftSeed:                Int                     = 0,
+        driftVarySeedPerPiece:    Bool                    = false,
         convergenceTargetSetName: String                  = "",
         convergencePressure:      DoubleDriver            = .constant(0.5),
         convergenceMode:          ConvergenceMode         = .hold,
@@ -492,6 +499,7 @@ public struct EvolutionParams: Equatable, Codable, Sendable {
         self.driftNoiseStrength       = driftNoiseStrength
         self.driftNoiseFrequency      = driftNoiseFrequency
         self.driftSeed                = driftSeed
+        self.driftVarySeedPerPiece    = driftVarySeedPerPiece
         self.convergenceTargetSetName = convergenceTargetSetName
         self.convergencePressure      = convergencePressure
         self.convergenceMode          = convergenceMode
@@ -554,7 +562,7 @@ public struct EvolutionParams: Equatable, Codable, Sendable {
 
     private enum CodingKeys: String, CodingKey {
         case name, enabled, operationType
-        case driftTarget, driftMomentum, driftNoiseStrength, driftNoiseFrequency, driftSeed
+        case driftTarget, driftMomentum, driftNoiseStrength, driftNoiseFrequency, driftSeed, driftVarySeedPerPiece
         case convergenceTargetSetName, convergencePressure, convergenceMode, convergenceDuration
         case generationCount, extrudeWeight, splitWeight
         case extrudeRunLengthMin, extrudeRunLengthMax, extrudeDistanceMin, extrudeDistanceMax
@@ -598,6 +606,7 @@ public struct EvolutionParams: Equatable, Codable, Sendable {
         driftNoiseStrength       = try c.decodeIfPresent(Double.self,                  forKey: .driftNoiseStrength)       ?? 0.1
         driftNoiseFrequency      = try c.decodeIfPresent(Double.self,                  forKey: .driftNoiseFrequency)      ?? 0.02
         driftSeed                = try c.decodeIfPresent(Int.self,                     forKey: .driftSeed)                ?? 0
+        driftVarySeedPerPiece    = try c.decodeIfPresent(Bool.self,                    forKey: .driftVarySeedPerPiece)    ?? false
         convergenceTargetSetName = try c.decodeIfPresent(String.self,                  forKey: .convergenceTargetSetName) ?? ""
         convergencePressure      = try c.decodeIfPresent(DoubleDriver.self,            forKey: .convergencePressure)      ?? .constant(0.5)
         convergenceMode          = try c.decodeIfPresent(ConvergenceMode.self,         forKey: .convergenceMode)          ?? .hold

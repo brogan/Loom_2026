@@ -104,6 +104,11 @@ struct FulgurationInspector: View {
                 Text("rad").font(.system(size: 11)).foregroundStyle(.secondary)
             }
             .loomHelp("Maximum per-cycle rotation, radians, resampled each cycle. 0 = no rotation variation.")
+
+            InspectorField("Vary seed per polygon") {
+                Toggle("", isOn: bindFUL(\.varySeedPerPiece)).labelsHidden()
+            }
+            .loomHelp("Off (default): every polygon in the flash shares the identical sampled translation/scale/rotation, so the whole group reads as one rigid object. On: each polygon gets its own decorrelated sample, so the group's pieces flash with slightly different transforms instead of moving as one.")
         }
     }
 

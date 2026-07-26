@@ -76,8 +76,13 @@ public enum EvolutionEngine {
         elapsedFrames: Double
     ) {
         let frameN = Int(max(0, elapsedFrames))
-        let drift  = computeDrift(atFrame: frameN, pass: pass)
+        // When not varying per piece, compute the shared drift once (no added
+        // cost vs. before this option existed).
+        let sharedDrift = pass.driftVarySeedPerPiece ? nil : computeDrift(atFrame: frameN, seed: pass.driftSeed, pass: pass)
         for i in params.indices {
+            let drift = sharedDrift ?? computeDrift(atFrame: frameN,
+                                                     seed: GenerationalEvolutionEngine.combineSeed(pass.driftSeed, i),
+                                                     pass: pass)
             switch pass.driftTarget {
             case .lineRatioX:
                 params[i].lineRatios.x = clamp01(params[i].lineRatios.x + drift)
@@ -121,8 +126,11 @@ public enum EvolutionEngine {
         elapsedFrames: Double
     ) {
         let frameN = Int(max(0, elapsedFrames))
-        let drift  = computeDrift(atFrame: frameN, pass: pass)
+        let sharedDrift = pass.driftVarySeedPerPiece ? nil : computeDrift(atFrame: frameN, seed: pass.driftSeed, pass: pass)
         for i in params.indices {
+            let drift = sharedDrift ?? computeDrift(atFrame: frameN,
+                                                     seed: GenerationalEvolutionEngine.combineSeed(pass.driftSeed, i),
+                                                     pass: pass)
             switch pass.driftTarget {
             case .curveDisplacement:
                 params[i].displacement += drift
@@ -138,7 +146,11 @@ public enum EvolutionEngine {
         }
     }
 
-    private static func computeDrift(atFrame N: Int, pass: EvolutionParams) -> Double {
+    /// `seed` is passed explicitly (rather than read from `pass.driftSeed`
+    /// directly) so callers can salt it per-polygon when
+    /// `pass.driftVarySeedPerPiece` is on — see `applyMomentumDrift`/
+    /// `applyMomentumDriftToCurve`.
+    private static func computeDrift(atFrame N: Int, seed: Int, pass: EvolutionParams) -> Double {
         let momentum = max(0.0, min(0.9999, pass.driftMomentum))
         let maxK: Int
         if momentum > 1e-6 {
@@ -153,7 +165,7 @@ public enum EvolutionEngine {
         for k in 0...maxK {
             let frame = N - k
             // Hash two inputs (seed xor'd with frame index) to get value in [0,1]
-            let h = stableNoise(seed: pass.driftSeed, frame: frame,
+            let h = stableNoise(seed: seed, frame: frame,
                                 frequency: pass.driftNoiseFrequency)
             drift       += (h * 2.0 - 1.0) * weight
             totalWeight += weight

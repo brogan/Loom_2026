@@ -96,16 +96,23 @@ public enum GenerationalEvolutionEngine {
     /// Only Oscillator and looping Keyframe modes have a well-defined "cycle" —
     /// Constant/Jitter/Noise and non-looping Keyframe return 0 (no variation),
     /// since there's no restart point to key off.
+    /// `phaseOffset` (default 0) shifts the oscillator time argument exactly
+    /// like `DriverEvaluator.evaluate`'s own `phaseOffset` parameter does —
+    /// pass the same per-piece offset here as was used to evaluate the driver
+    /// itself, so a piece's own cycle-boundary detection stays consistent
+    /// with its own phase-shifted position. Ignored by `.keyframe` (matching
+    /// `DriverEvaluator.evaluate`, where `phaseOffset` is oscillator-only).
     public static func revealCycleIndex(
         for driver:      DoubleDriver,
         elapsedFrames:   Double,
-        targetFPS:       Double
+        targetFPS:       Double,
+        phaseOffset:     Double = 0
     ) -> Int {
         guard driver.enabled else { return 0 }
         switch driver.mode {
         case .oscillator:
             let fps = max(1, targetFPS)
-            let t = elapsedFrames * driver.freqHz / fps + driver.phase
+            let t = elapsedFrames * driver.freqHz / fps + driver.phase + phaseOffset
             let troughOffset: Double
             switch driver.wave {
             case .sine, .triangle: troughOffset = 0.75

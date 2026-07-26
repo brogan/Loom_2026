@@ -67,6 +67,14 @@ public struct FulgurationParams: Equatable, Codable, Sendable {
     public var holdMin:     Int = 6
     public var holdMax:     Int = 20
     public var cycleSeed:   Int = 0
+    /// `.transform` content mode only: when true, each polygon in the flash
+    /// gets its own decorrelated transform sample instead of the whole group
+    /// moving as one rigid transform — so, for example, several polygons in
+    /// the same sprite flash with slightly different rotation/scale/
+    /// translation rather than in lock step. Default false preserves the
+    /// original "reads as one object" behavior. `.assembly` content mode's
+    /// shatter exit already varies per piece regardless of this flag.
+    public var varySeedPerPiece: Bool = false
 
     // Appearance transform variation (§5.4) — one rigid transform for the whole
     // flash per cycle, not per-polygon (that's Dissolution's Drift).
@@ -110,7 +118,7 @@ public struct FulgurationParams: Equatable, Codable, Sendable {
 
     private enum CodingKeys: String, CodingKey {
         case name, enabled
-        case intervalMin, intervalMax, holdMin, holdMax, cycleSeed
+        case intervalMin, intervalMax, holdMin, holdMax, cycleSeed, varySeedPerPiece
         case translationRange, scaleMin, scaleMax, rotationRange
         case developmentMode, growInDuration, shrinkOutDuration
         case contentMode
@@ -131,6 +139,7 @@ public struct FulgurationParams: Equatable, Codable, Sendable {
         holdMin     = (try? c.decodeIfPresent(Int.self, forKey: .holdMin))     ?? 6
         holdMax     = (try? c.decodeIfPresent(Int.self, forKey: .holdMax))     ?? 20
         cycleSeed   = (try? c.decodeIfPresent(Int.self, forKey: .cycleSeed))   ?? 0
+        varySeedPerPiece = (try? c.decodeIfPresent(Bool.self, forKey: .varySeedPerPiece)) ?? false
 
         translationRange = (try? c.decodeIfPresent(Double.self, forKey: .translationRange)) ?? 0.0
         scaleMin         = (try? c.decodeIfPresent(Double.self, forKey: .scaleMin))         ?? 1.0
@@ -166,6 +175,7 @@ public struct FulgurationParams: Equatable, Codable, Sendable {
         try c.encode(holdMin,     forKey: .holdMin)
         try c.encode(holdMax,     forKey: .holdMax)
         try c.encode(cycleSeed,   forKey: .cycleSeed)
+        try c.encode(varySeedPerPiece, forKey: .varySeedPerPiece)
         try c.encode(translationRange, forKey: .translationRange)
         try c.encode(scaleMin,         forKey: .scaleMin)
         try c.encode(scaleMax,         forKey: .scaleMax)

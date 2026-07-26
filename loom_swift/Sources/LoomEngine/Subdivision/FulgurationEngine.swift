@@ -105,13 +105,16 @@ public enum FulgurationEngine {
             let factor = developmentFactor(pass: pass, holdElapsed: holdElapsed, holdDuration: holdDuration)
             guard factor > 1e-9 else { return [] }
 
-            let transform = sampleTransform(pass: pass, seed: seed, cycleIndex: cycleIndex)
+            // The group still transforms around one shared centre either way —
+            // only the sampled rotation/scale/translation vary per piece when
+            // `varySeedPerPiece` is on (default off: identical `transform` for
+            // every polygon, unchanged from before this option existed).
             let anchor = groupCentroid(polygons)
-            let combinedScale = factor * transform.scale
-
-            return polygons.map {
-                applyRigidTransform($0, anchor: anchor, rotation: transform.rotation,
-                                   scale: combinedScale, translation: transform.translation)
+            return polygons.enumerated().map { index, polygon in
+                let pieceSeed = pass.varySeedPerPiece ? GenerationalEvolutionEngine.combineSeed(seed, index) : seed
+                let transform = sampleTransform(pass: pass, seed: pieceSeed, cycleIndex: cycleIndex)
+                return applyRigidTransform(polygon, anchor: anchor, rotation: transform.rotation,
+                                           scale: factor * transform.scale, translation: transform.translation)
             }
         }
     }

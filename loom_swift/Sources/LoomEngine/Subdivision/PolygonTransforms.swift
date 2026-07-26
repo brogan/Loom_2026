@@ -146,7 +146,11 @@ enum PolygonTransforms {
     ///               (all moving the same direction); 1.0 for a full standing wave.
     ///   random:     each polygon gets a stable scrambled offset in [0, driverPhase).
     ///   all:        offset = 0 (ignored — all polygons share the base driver.phase).
-    private static func ptwPhaseParams(_ polyIdx: Int, total: Int,
+    ///
+    /// Module-visible (not `private`) so other per-polygon engines (e.g.
+    /// `ExtensionEngine`'s Structure Phase) can reuse the same phase-spread
+    /// mechanism instead of duplicating it.
+    static func ptwPhaseParams(_ polyIdx: Int, total: Int,
                                        mode: PTWPhaseMode,
                                        driverPhase: Double) -> (Int, Double) {
         switch mode {

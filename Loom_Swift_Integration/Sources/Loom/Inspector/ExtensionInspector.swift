@@ -141,6 +141,11 @@ struct ExtensionInspector: View {
             }
             .loomHelp("Deterministic seed for the jitter and probability rolls. Change to produce a different branch topology without altering other settings.")
 
+            InspectorField("Vary seed per polygon") {
+                Toggle("", isOn: bindEX(\.varySeedPerPiece)).labelsHidden()
+            }
+            .loomHelp("Off (default): every root open curve this pass processes shares the identical seed-derived rolls, so similarly-shaped curves branch in lock step. On: each root curve gets its own decorrelated seed, so similar curves in the same pass branch differently from each other.")
+
             if bindEX(\.branchGeometry).wrappedValue == .line {
                 InspectorField("Curvature min") {
                     FloatEntryField(value: bindEX(\.branchCurvatureAmountMin), width: 60)
@@ -242,6 +247,11 @@ struct ExtensionInspector: View {
                 ), width: 60, fractionDigits: 0)
             }
             .loomHelp("Deterministic seed for the per-edge Generations and Departure angle rolls. Change to get a different tower-height/departure arrangement without altering other settings.")
+
+            InspectorField("Vary seed per polygon") {
+                Toggle("", isOn: bindEX(\.varySeedPerPiece)).labelsHidden()
+            }
+            .loomHelp("Off (default): every polygon this pass extrudes shares the identical seed-derived rolls, so similarly-shaped polygons extrude in lock step. On: each polygon gets its own decorrelated seed, so similar shapes in the same pass extrude differently from each other.")
         }
     }
 
@@ -269,10 +279,15 @@ struct ExtensionInspector: View {
         DoubleDriverEditor(
             label: "Structure phase",
             driver: bindEXDriver(\.structurePhase),
-            isCollapsed: $structurePhaseCollapsed
+            isCollapsed: $structurePhaseCollapsed,
+            phaseModeBinding: bindEX(\.structurePhaseMode)
         )
-        .loomHelp("Reveals structural complexity gradually instead of popping in fully the moment this pass is enabled. Off (default): Branch builds its full Depth immediately; Extrude builds each edge's full rolled Generations immediately. On: the driver's value is how many levels/generations have appeared so far — e.g. a ramp from 0 to Depth (Branch) or 0 to 6 (Extrude) grows the tree level-by-level or the tower floor-by-floor, with the currently-growing level/floor scaling up from its own anchor point rather than popping in at full size.")
+        .loomHelp("Reveals structural complexity gradually instead of popping in fully the moment this pass is enabled. Off (default): Branch builds its full Depth immediately; Extrude builds each edge's full rolled Generations immediately. On: the driver's value is how many levels/generations have appeared so far — e.g. a ramp from 0 to Depth (Branch) or 0 to 6 (Extrude) grows the tree level-by-level or the tower floor-by-floor, with the currently-growing level/floor scaling up from its own anchor point rather than popping in at full size. In Oscillator mode, Phase Mode below controls whether every polygon this pass processes shares the same point in the cycle (All), spreads linearly by polygon (Sequential), or gets a stable scrambled starting point (Random) — so similar polygons don't all grow/shrink in lock step.")
         .padding(.bottom, 2)
+        InspectorField("Vary seed per cycle") {
+            Toggle("", isOn: bindEX(\.varySeedPerCycle)).labelsHidden()
+        }
+        .loomHelp("When Structure Phase above loops (Oscillator, or Keyframe with Loop/Ping-pong), each full reveal cycle uses a different effective seed, so the branch/extrude topology changes each time rather than replaying the identical structure. Has no effect while Structure Phase is off, or with a one-shot (non-looping) Keyframe track — there's no restart point to vary between. The Seed field above is unaffected; this only changes what the engine derives from it internally.")
     }
 
     // MARK: - Binding helpers

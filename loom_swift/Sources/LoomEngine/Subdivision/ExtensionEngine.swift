@@ -4,6 +4,28 @@ public enum ExtensionEngine {
 
     private static let maxBranchesPerPolygon = 256
 
+    /// The seed actually driving this pass's structural rolls, after folding
+    /// in `varySeedPerCycle` — identical mechanism to
+    /// `GenerationalEvolutionEngine.effectiveSeed`, reusing its
+    /// `revealCycleIndex`/`combineSeed` helpers against `structurePhase`
+    /// (Extension's own reveal driver) instead of `generationPhase`. Does not
+    /// include the `varySeedPerPiece` per-polygon salt — `process(...)`
+    /// combines that separately for each polygon.
+    public static func effectiveSeed(
+        for pass:        ExtensionParams,
+        elapsedFrames:   Double,
+        targetFPS:       Double,
+        phaseOffset:     Double = 0
+    ) -> Int {
+        let baseSeed = pass.operationType == .branch ? pass.branchSeed : pass.extrusionSeed
+        guard pass.varySeedPerCycle, pass.structurePhase.enabled else { return baseSeed }
+        let cycle = GenerationalEvolutionEngine.revealCycleIndex(for: pass.structurePhase,
+                                                                 elapsedFrames: elapsedFrames,
+                                                                 targetFPS: targetFPS,
+                                                                 phaseOffset: phaseOffset)
+        return GenerationalEvolutionEngine.combineSeed(baseSeed, cycle)
+    }
+
     public static func process(
         polygons:      [Polygon2D],
         paramSet:      [ExtensionParams],
@@ -33,31 +55,47 @@ public enum ExtensionEngine {
                                                            targetFPS: targetFPS,
                                                            spriteIndex: spriteIndex)
                 let maxDepth = max(1, min(8, params.branchDepth))
-                // Reveals depth levels one at a time (2026-07-12) rather than the
-                // whole tree popping in at once — same integer-plus-fractional
-                // shape `GenerationalEvolutionEngine`'s `generationPhase` uses.
-                // Disabled (default): falls back to the static `maxDepth`, i.e.
-                // every level fully built, unchanged from before this existed.
-                let structurePhase: Double
-                if params.structurePhase.enabled {
-                    let raw = DriverEvaluator.evaluate(params.structurePhase,
-                                                        globalElapsed: elapsedFrames,
-                                                        targetFPS: targetFPS,
-                                                        spriteIndex: spriteIndex)
-                    structurePhase = max(0, min(Double(maxDepth), raw))
-                } else {
-                    structurePhase = Double(maxDepth)
-                }
-                let fullDepth = Int(structurePhase)
-                let partialDepth = structurePhase - Double(fullDepth)
-
                 var additions: [Polygon2D] = []
-                for polygon in polygons where polygon.type == .openSpline {
+                for (polygonIndex, polygon) in polygons.enumerated() where polygon.type == .openSpline {
+                    // Per-polygon phase spread (Structure Phase Mode) — `.all` (default)
+                    // returns (0, 0.0), reproducing the old pass-level evaluation exactly
+                    // for oscillator/keyframe modes. `.sequential`/`.random` decorrelate
+                    // each polygon's own position in the shared cycle. Same mechanism
+                    // already used for SubdivisionParams' Per-Polygon PTW drivers.
+                    let (si, po) = PolygonTransforms.ptwPhaseParams(polygonIndex, total: polygons.count,
+                                                                    mode: params.structurePhaseMode,
+                                                                    driverPhase: params.structurePhase.phase)
+
+                    // Reveals depth levels one at a time (2026-07-12) rather than the
+                    // whole tree popping in at once — same integer-plus-fractional
+                    // shape `GenerationalEvolutionEngine`'s `generationPhase` uses.
+                    // Disabled (default): falls back to the static `maxDepth`, i.e.
+                    // every level fully built, unchanged from before this existed.
+                    let structurePhase: Double
+                    if params.structurePhase.enabled {
+                        let raw = DriverEvaluator.evaluate(params.structurePhase,
+                                                            globalElapsed: elapsedFrames,
+                                                            targetFPS: targetFPS,
+                                                            spriteIndex: si,
+                                                            phaseOffset: po)
+                        structurePhase = max(0, min(Double(maxDepth), raw))
+                    } else {
+                        structurePhase = Double(maxDepth)
+                    }
+                    let fullDepth = Int(structurePhase)
+                    let partialDepth = structurePhase - Double(fullDepth)
+
+                    let pieceSeed = effectiveSeed(for: params, elapsedFrames: elapsedFrames,
+                                                  targetFPS: targetFPS, phaseOffset: po)
+                    var effectiveParams = params
+                    effectiveParams.branchSeed = params.varySeedPerPiece
+                        ? GenerationalEvolutionEngine.combineSeed(pieceSeed, polygonIndex)
+                        : pieceSeed
                     var budget = maxBranchesPerPolygon
                     let branches = branchPolygon(
                         polygon,
                         root:              polygon,
-                        params:            params,
+                        params:            effectiveParams,
                         resolvedAngleDeg:  angle,
                         resolvedLineLength: lineLength,
                         cumulativeScale:   1.0,
@@ -76,28 +114,42 @@ public enum ExtensionEngine {
                                                          globalElapsed: elapsedFrames,
                                                          targetFPS: targetFPS,
                                                          spriteIndex: spriteIndex)
-                // Reveals generations one at a time per edge (2026-07-12), same
-                // convention as Branch above. Clamped to the engine's own hard
-                // cap of 6 generations; `extrudePolygon` further clamps per edge
-                // to that edge's own rolled `extrusionGenerationsMin/Max` count,
-                // so a shorter tower finishes revealing sooner than a taller one.
-                // Disabled (default): every edge's rolled generation count is
-                // fully built immediately, unchanged from before this existed.
-                let structurePhase: Double
-                if params.structurePhase.enabled {
-                    let raw = DriverEvaluator.evaluate(params.structurePhase,
-                                                        globalElapsed: elapsedFrames,
-                                                        targetFPS: targetFPS,
-                                                        spriteIndex: spriteIndex)
-                    structurePhase = max(0, min(6.0, raw))
-                } else {
-                    structurePhase = 6.0
-                }
                 var additions: [Polygon2D] = []
-                for polygon in polygons
+                for (polygonIndex, polygon) in polygons.enumerated()
                 where polygon.type == .spline
                    || (params.extrudeOpenCurves && polygon.type == .openSpline) {
-                    additions.append(contentsOf: extrudePolygon(polygon, params: params, distance: distance,
+                    // Per-polygon phase spread (Structure Phase Mode) — see the
+                    // matching comment in the `.branch` case above.
+                    let (si, po) = PolygonTransforms.ptwPhaseParams(polygonIndex, total: polygons.count,
+                                                                    mode: params.structurePhaseMode,
+                                                                    driverPhase: params.structurePhase.phase)
+
+                    // Reveals generations one at a time per edge (2026-07-12), same
+                    // convention as Branch above. Clamped to the engine's own hard
+                    // cap of 6 generations; `extrudePolygon` further clamps per edge
+                    // to that edge's own rolled `extrusionGenerationsMin/Max` count,
+                    // so a shorter tower finishes revealing sooner than a taller one.
+                    // Disabled (default): every edge's rolled generation count is
+                    // fully built immediately, unchanged from before this existed.
+                    let structurePhase: Double
+                    if params.structurePhase.enabled {
+                        let raw = DriverEvaluator.evaluate(params.structurePhase,
+                                                            globalElapsed: elapsedFrames,
+                                                            targetFPS: targetFPS,
+                                                            spriteIndex: si,
+                                                            phaseOffset: po)
+                        structurePhase = max(0, min(6.0, raw))
+                    } else {
+                        structurePhase = 6.0
+                    }
+
+                    let pieceSeed = effectiveSeed(for: params, elapsedFrames: elapsedFrames,
+                                                  targetFPS: targetFPS, phaseOffset: po)
+                    var effectiveParams = params
+                    effectiveParams.extrusionSeed = params.varySeedPerPiece
+                        ? GenerationalEvolutionEngine.combineSeed(pieceSeed, polygonIndex)
+                        : pieceSeed
+                    additions.append(contentsOf: extrudePolygon(polygon, params: effectiveParams, distance: distance,
                                                                  structurePhase: structurePhase))
                 }
                 result.append(contentsOf: additions)

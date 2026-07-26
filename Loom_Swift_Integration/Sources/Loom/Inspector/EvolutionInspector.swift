@@ -109,6 +109,11 @@ struct EvolutionInspector: View {
                 IntEntryField(value: bindEVInt(\.driftSeed), width: 60)
             }
             .loomHelp("Deterministic seed for the drift noise. Change to produce a different drift trajectory without altering the shape of the motion.")
+
+            InspectorField("Vary seed per polygon") {
+                Toggle("", isOn: bindEV(\.driftVarySeedPerPiece)).labelsHidden()
+            }
+            .loomHelp("Off (default): every polygon this pass drifts shares the identical noise-derived drift value, so similar shapes drift in lock step. On: each polygon gets its own decorrelated seed, so similar shapes in the same pass drift differently from each other.")
         }
     }
 
