@@ -37,7 +37,11 @@ public struct LoomEngine: @unchecked Sendable {
     // MARK: - Stored state
 
     private var scene:          SpriteScene
-    private let config:         ProjectConfig
+    private var config:         ProjectConfig
+    /// Retained so live-staging mutators (`showSprite`) can load a newly
+    /// picked sprite's polygon/morph-target files after init, the same way
+    /// `SpriteScene.init` originally did — see `LoomLiveV1Scope.md` §2.1.
+    private let projectDirectory: URL
 
     // Shared CIContext — expensive to create, safe to reuse across frames.
     // nonisolated(unsafe): CIContext is internally thread-safe for createCGImage.
@@ -88,6 +92,7 @@ public struct LoomEngine: @unchecked Sendable {
 
         self.config             = cfg
         self.scene              = scn
+        self.projectDirectory   = projectDirectory
         self.viewTransform      = ViewTransform(canvasSize: CGSize(width: canvasW, height: canvasH))
         self.backgroundImage    = LoomEngine.loadImage(path: gc.backgroundImagePath)
         self.brushImages        = LoomEngine.preblurBrushImages(scaledBrushImages, config: cfg.renderingConfig, qualityMultiple: quality)
@@ -133,6 +138,139 @@ public struct LoomEngine: @unchecked Sendable {
         scene.svgImages[filename] = image
     }
 #endif
+
+    // MARK: - Live staging (LoomLive)
+    //
+    // Minimal, name-keyed scene mutators for the Live tab (`LoomLiveV1Scope.md`
+    // §2.1). Every mutator identifies its target instance by a stable
+    // `instanceName` string, never an array index — `scene.instances` is
+    // dynamically resized by `showSprite`/`hideSprite`, which would silently
+    // invalidate any cached index (see `PerformanceArchitecture.md` §0.1).
+
+    /// Re-reads `config` from disk so sprite/renderer-set/transform-set
+    /// definitions created or edited in another tab *after* this engine was
+    /// constructed become resolvable by name — without touching `scene`, so
+    /// any currently staged instances (and their pose/visibility) are
+    /// unaffected. `config` is otherwise a frozen snapshot from `init`, since
+    /// this engine is deliberately independent of `AppController`'s own
+    /// save→reload cycle (`PerformanceArchitecture.md` §0.1); this is the
+    /// Live tab's own opt-in way to catch up on new library entries.
+    public mutating func refreshProjectConfig() throws {
+        config = try ProjectLoader.load(projectDirectory: projectDirectory)
+    }
+
+    /// Instantiate `spriteName` from `spriteSetName` as a new, independently
+    /// staged instance named `instanceName`, positioned/scaled/rotated as
+    /// given. `instanceName` must be unique among currently-staged instances;
+    /// callers (`LiveSessionController`) are responsible for generating it.
+    /// The staged copy has its `parentName` cleared — rig/hierarchy sprites
+    /// are out of scope for V1, so position/scale/rotation are always plain
+    /// absolute world-space values here.
+    public mutating func showSprite(
+        spriteSetName: String, spriteName: String, instanceName: String,
+        position: Vector2D, scale: Vector2D, rotation: Double
+    ) throws {
+        guard let set = config.spriteConfig.library.spriteSets.first(where: { $0.name == spriteSetName }),
+              let sprite = set.sprites.first(where: { $0.name == spriteName })
+        else { throw LiveStagingError.spriteNotFound(spriteSet: spriteSetName, sprite: spriteName) }
+
+        var staged = sprite
+        staged.name = instanceName
+        staged.parentName = nil
+        staged.position = position
+        staged.scale = scale
+        staged.rotation = rotation
+
+        var instance = try SpriteScene.makeInstance(
+            sprite: staged, sameSetSprites: set.sprites,
+            config: config, projectDirectory: projectDirectory
+        )
+        instance.spriteSetName = spriteSetName
+        scene.instances.append(instance)
+    }
+
+    /// Remove a staged instance entirely. Returns `false` if not found (no-op).
+    /// This is destructive (array removal), not a hidden-flag toggle — a
+    /// re-shown sprite is a fresh `showSprite` call; see `LiveSessionController`,
+    /// which owns replaying a staged sprite's pose/set/driver state on re-show.
+    @discardableResult
+    public mutating func hideSprite(instanceName: String) -> Bool {
+        guard let idx = scene.instances.firstIndex(where: { $0.def.name == instanceName }) else { return false }
+        scene.instances.remove(at: idx)
+        return true
+    }
+
+    /// Reposition/rescale/rotate an already-staged instance in place.
+    public mutating func updatePose(
+        instanceName: String, position: Vector2D, scale: Vector2D, rotation: Double
+    ) throws {
+        guard let idx = scene.instances.firstIndex(where: { $0.def.name == instanceName })
+        else { throw LiveStagingError.instanceNotFound(instanceName) }
+        scene.instances[idx].def.position = position
+        scene.instances[idx].def.scale    = scale
+        scene.instances[idx].def.rotation = rotation
+    }
+
+    /// Statically (non-driver) reassign the renderer set a staged instance
+    /// draws with — an instant, visible effect with no driver involved.
+    /// Distinct from `setDriverEnabled(.rendererSet, ...)`, which instead
+    /// toggles a live *override* on top of whatever static set is assigned
+    /// here — see `LoomLiveV1Scope.md` §2.1.
+    public mutating func updateRendererSet(instanceName: String, rendererSetName: String) throws {
+        guard let idx = scene.instances.firstIndex(where: { $0.def.name == instanceName })
+        else { throw LiveStagingError.instanceNotFound(instanceName) }
+        guard let set = config.renderingConfig.library.rendererSet(named: rendererSetName)
+        else { throw LiveStagingError.rendererSetNotFound(rendererSetName) }
+        scene.instances[idx].rendererSet = set
+        scene.instances[idx].def.rendererSetName = rendererSetName
+        let maxIdx = max(0, set.renderers.count - 1)
+        scene.instances[idx].state.activeRendererIndex = min(scene.instances[idx].state.activeRendererIndex, maxIdx)
+        // Prime (not enable) the matching NameDriver's target so a later
+        // driver toggle has a sensible value queued up.
+        if scene.instances[idx].def.animation.drivers == nil { scene.instances[idx].def.animation.drivers = .identity }
+        scene.instances[idx].def.animation.drivers!.rendererSet.mode = .constant
+        scene.instances[idx].def.animation.drivers!.rendererSet.base = rendererSetName
+    }
+
+    /// Statically (non-driver) reassign the full transform-pipeline
+    /// (subdivision) set a staged instance uses — mirrors
+    /// `SpriteScene.makeInstance`'s own resolution of a
+    /// `SubdivisionParamsSet` field-for-field.
+    public mutating func updateSubdivisionSet(instanceName: String, subdivisionSetName: String) throws {
+        guard let idx = scene.instances.firstIndex(where: { $0.def.name == instanceName })
+        else { throw LiveStagingError.instanceNotFound(instanceName) }
+        guard let set = config.subdivisionConfig.paramsSet(named: subdivisionSetName)
+        else { throw LiveStagingError.subdivisionSetNotFound(subdivisionSetName) }
+        scene.instances[idx].subdivisionParams       = set.params
+        scene.instances[idx].curveRefinementParams   = set.curveRefinement
+        scene.instances[idx].segmentExtractionParams = set.segmentExtraction
+        scene.instances[idx].extensionParams         = set.extensionPasses
+        scene.instances[idx].convolutionParams       = set.convolutionPasses
+        scene.instances[idx].evolutionParams         = set.evolutionPasses
+        scene.instances[idx].fulgurationParams       = set.fulgurationPasses
+        scene.instances[idx].dissolutionParams       = set.dissolutionPasses
+        if scene.instances[idx].def.animation.drivers == nil { scene.instances[idx].def.animation.drivers = .identity }
+        scene.instances[idx].def.animation.drivers!.subdivisionSet.mode = .constant
+        scene.instances[idx].def.animation.drivers!.subdivisionSet.base = subdivisionSetName
+    }
+
+    /// Toggle one of a staged instance's `TransformDrivers` fields on/off live.
+    public mutating func setDriverEnabled(instanceName: String, driver: LiveDriverKey, enabled: Bool) throws {
+        guard let idx = scene.instances.firstIndex(where: { $0.def.name == instanceName })
+        else { throw LiveStagingError.instanceNotFound(instanceName) }
+        if scene.instances[idx].def.animation.drivers == nil { scene.instances[idx].def.animation.drivers = .identity }
+        switch driver {
+        case .position:      scene.instances[idx].def.animation.drivers!.position.enabled = enabled
+        case .scale:         scene.instances[idx].def.animation.drivers!.scale.enabled = enabled
+        case .rotation:      scene.instances[idx].def.animation.drivers!.rotation.enabled = enabled
+        case .morph:         scene.instances[idx].def.animation.drivers!.morph.enabled = enabled
+        case .opacity:       scene.instances[idx].def.animation.drivers!.opacity.enabled = enabled
+        case .shape:         scene.instances[idx].def.animation.drivers!.shape.enabled = enabled
+        case .subdivisionSet: scene.instances[idx].def.animation.drivers!.subdivisionSet.enabled = enabled
+        case .rendererSet:    scene.instances[idx].def.animation.drivers!.rendererSet.enabled = enabled
+        case .cycleName:      scene.instances[idx].def.animation.drivers!.cycleName.enabled = enabled
+        }
+    }
 
     /// Current project frame on the same clock used for driver keyframe evaluation.
     public var currentFrame: Int {

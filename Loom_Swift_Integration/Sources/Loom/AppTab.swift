@@ -10,6 +10,7 @@ enum AppTab: String, CaseIterable, Hashable {
     case lights      = "Lights"
     case audio       = "Audio"
     case rendering   = "Rendering"
+    case live        = "Live"
 
     var label: String { self == .subdivision ? "Transform" : rawValue }
 
@@ -28,6 +29,7 @@ enum AppTab: String, CaseIterable, Hashable {
         case .lights:      return "lightbulb"
         case .audio:       return "waveform"
         case .rendering:   return "paintbrush"
+        case .live:        return "record.circle"
         }
     }
 
@@ -43,6 +45,8 @@ enum AppTab: String, CaseIterable, Hashable {
         case .lights:      LightsTabIcon().frame(width: 16, height: 16)
         case .audio:       SoundTabIcon().frame(width: 16, height: 16)
         case .rendering:   RenderTabIcon().frame(width: 16, height: 16)
+        // Placeholder glyph only — not a hand-designed icon like the others above.
+        case .live:        LiveTabIcon().frame(width: 16, height: 16)
         }
     }
 
@@ -362,6 +366,24 @@ struct SpriteTabIcon: View {
                 p.addCurve(to: CGPoint(x: w * 0.1346, y: h * 0.6726), control1: CGPoint(x: w * 0.4746, y: h * 0.5257), control2: CGPoint(x: w * 0.2006, y: h * 0.6420))
             }
             .stroke(style: StrokeStyle(lineWidth: 1.0, lineCap: .round, lineJoin: .round))
+        }
+    }
+}
+
+// MARK: - Live tab icon (placeholder — not a hand-designed icon, see icon() above)
+
+struct LiveTabIcon: View {
+    var body: some View {
+        GeometryReader { proxy in
+            let w = proxy.size.width
+            let h = proxy.size.height
+            ZStack {
+                Circle()
+                    .stroke(style: StrokeStyle(lineWidth: 1.0))
+                    .frame(width: w * 0.76, height: h * 0.76)
+                Circle()
+                    .frame(width: w * 0.30, height: h * 0.30)
+            }
         }
     }
 }

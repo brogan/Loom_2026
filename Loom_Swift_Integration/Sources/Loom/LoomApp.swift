@@ -6,11 +6,13 @@ struct LoomIntegrationApp: App {
 
     @NSApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
     @StateObject private var controller = AppController()
+    @StateObject private var liveController = LiveSessionController()
 
     var body: some Scene {
         WindowGroup {
             ContentView()
                 .environmentObject(controller)
+                .environmentObject(liveController)
                 .frame(minWidth: 900, minHeight: 600)
                 .focusedObject(controller)
         }

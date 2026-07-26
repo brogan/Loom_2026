@@ -7,6 +7,7 @@ import LoomEngine
 struct InspectorPanel: View {
 
     @EnvironmentObject private var controller: AppController
+    @EnvironmentObject private var liveController: LiveSessionController
 
     var body: some View {
         // SubdivisionInspector manages its own two independently-scrollable panes
@@ -111,6 +112,10 @@ struct InspectorPanel: View {
             } else {
                 placeholderText("Select a renderer set.")
             }
+        case .live:
+            LiveInspector()
+                .environmentObject(controller)
+                .environmentObject(liveController)
         }
     }
 

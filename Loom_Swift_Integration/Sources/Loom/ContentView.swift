@@ -7,6 +7,7 @@ private enum SpriteViewMode { case wireframe, parallax, preview }
 struct ContentView: View {
 
     @EnvironmentObject private var controller: AppController
+    @EnvironmentObject private var liveController: LiveSessionController
     @State private var currentFrame:      Int  = 0
     @State private var seekFrame:         Int? = nil
     @State private var spriteViewMode: SpriteViewMode = .wireframe
@@ -194,6 +195,7 @@ struct ContentView: View {
             InspectorPanel()
                 .environmentObject(controller)
                 .environmentObject(controller.audioController)
+                .environmentObject(liveController)
                 .frame(width: 320)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -225,6 +227,10 @@ struct ContentView: View {
                 .environmentObject(controller.audioController)
         case .rendering:
             RenderingTabView()
+        case .live:
+            LiveTabView()
+                .environmentObject(controller)
+                .environmentObject(liveController)
         }
     }
 
@@ -302,6 +308,15 @@ struct ContentView: View {
                 .environmentObject(controller)
                 .environmentObject(controller.audioController)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
+        case .live:
+            LiveCanvasView()
+                .environmentObject(liveController)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .onAppear {
+                    if let url = controller.projectURL {
+                        liveController.ensureEngine(projectURL: url)
+                    }
+                }
         default:
             liveCanvas
         }

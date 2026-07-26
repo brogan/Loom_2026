@@ -177,6 +177,56 @@ public final class Engine: @unchecked Sendable {
     public func updateLightingConfig(_ lc: LightingConfig) {
         loomEngine.updateLightingConfig(lc)
     }
+
+    // MARK: - Live staging (LoomLive)
+
+    /// Re-reads `config` from disk without touching any staged instances —
+    /// see `LoomEngine.refreshProjectConfig`.
+    public func refreshProjectConfig() throws {
+        try loomEngine.refreshProjectConfig()
+    }
+
+    /// Instantiate `spriteName` from `spriteSetName` as a new staged instance
+    /// named `instanceName` — see `LoomEngine.showSprite`.
+    public func showSprite(
+        spriteSetName: String, spriteName: String, instanceName: String,
+        position: Vector2D, scale: Vector2D, rotation: Double
+    ) throws {
+        try loomEngine.showSprite(
+            spriteSetName: spriteSetName, spriteName: spriteName, instanceName: instanceName,
+            position: position, scale: scale, rotation: rotation
+        )
+    }
+
+    /// Remove a staged instance entirely — see `LoomEngine.hideSprite`.
+    @discardableResult
+    public func hideSprite(instanceName: String) -> Bool {
+        loomEngine.hideSprite(instanceName: instanceName)
+    }
+
+    /// Reposition/rescale/rotate an already-staged instance — see `LoomEngine.updatePose`.
+    public func updatePose(
+        instanceName: String, position: Vector2D, scale: Vector2D, rotation: Double
+    ) throws {
+        try loomEngine.updatePose(
+            instanceName: instanceName, position: position, scale: scale, rotation: rotation
+        )
+    }
+
+    /// Statically reassign a staged instance's renderer set — see `LoomEngine.updateRendererSet`.
+    public func updateRendererSet(instanceName: String, rendererSetName: String) throws {
+        try loomEngine.updateRendererSet(instanceName: instanceName, rendererSetName: rendererSetName)
+    }
+
+    /// Statically reassign a staged instance's transform (subdivision) set — see `LoomEngine.updateSubdivisionSet`.
+    public func updateSubdivisionSet(instanceName: String, subdivisionSetName: String) throws {
+        try loomEngine.updateSubdivisionSet(instanceName: instanceName, subdivisionSetName: subdivisionSetName)
+    }
+
+    /// Toggle one of a staged instance's drivers on/off — see `LoomEngine.setDriverEnabled`.
+    public func setDriverEnabled(instanceName: String, driver: LiveDriverKey, enabled: Bool) throws {
+        try loomEngine.setDriverEnabled(instanceName: instanceName, driver: driver, enabled: enabled)
+    }
 }
 
 #if canImport(AppKit)

@@ -264,7 +264,11 @@ public struct SpriteScene: @unchecked Sendable {
         return result
     }
 
-    private static func makeInstance(
+    /// Internal (not `private`) so `LoomEngine.showSprite` can reuse the exact
+    /// same resolution logic to instantiate a sprite staged live in the Live
+    /// tab, rather than reimplementing sprite instantiation — see
+    /// `LoomLiveV1Scope.md` §2.1.
+    static func makeInstance(
         sprite:          SpriteDef,
         sameSetSprites:  [SpriteDef] = [],
         config:          ProjectConfig,
