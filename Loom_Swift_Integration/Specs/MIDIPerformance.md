@@ -165,6 +165,26 @@ can:
 - Adjust global scale, rotation, or camera zoom in real-time
 - Toggle specific subdivision generations on/off
 
+MIDI mapping (§4.3) is one way to drive these — every macro and every rehearsal-surface
+slider (§4.5) is playable directly by mouse/trackpad/tablet with no MIDI device attached
+at all, since not every session has a MIDI controller within reach and direct manipulation
+is often the more precise input for a fine adjustment. The control surface should offer a
+richer vocabulary than plain sliders where the parameter calls for it:
+
+- **Sliders** for a single bounded continuous value (frequency, amplitude, opacity)
+- **XY pads** for two correlated parameters at once (e.g. scale × rotation, or two macro
+  targets that are usually adjusted together) — a single drag gesture instead of two
+  simultaneous slider drags
+- **Toggle grids** for on/off state across many items at once (which subdivision
+  generations are active, which sprites are shown) — see the rehearsal surface's sprite
+  show/hide (§4.5)
+- **Radial knobs** where a physical-control metaphor reads more intuitively than a linear
+  slider (e.g. a "sensitivity" dial, hue rotation)
+
+Whichever widget is used, the underlying event is the same shape — a named
+parameter/value pair, timestamped — so the choice of control widget is a UI decision only
+and does not change what gets captured to the session log (`SessionWorkflow.md` §3.2).
+
 ### 4.3 Mapping editor
 
 A simple two-column list: left column = MIDI source (CC #74, note E3 velocity, etc.),
@@ -176,6 +196,45 @@ MIDI message as the source for a selected mapping. Mappings are saved with the p
 If a pre-recorded MIDI file is loaded, display a scrolling piano roll in the performance
 tab, with the playhead tracking the current frame. This gives the animator visual
 anticipation of upcoming musical events.
+
+### 4.5 Sprite/driver/renderer rehearsal surface
+
+A more granular layer beneath the macro controls in 4.2: a working surface where the
+collaborator selects sprites from the project's sprite sets and stages them directly,
+independent of which context (`PerformanceArchitecture.md` §2) is currently active.
+
+- **Left panel**: the project's sprite sets and sprites, mirroring Loom's own Sprites-tab
+  list. Selecting a sprite stages it at canvas centre with basic position/scale/rotation
+  controls — enough to place it usefully without needing the full inspector.
+- **Right panel**: three sub-panels — sprite drivers, transform (subdivision) sets, and
+  renderer sets defined in the project (see the Library System, `PerformanceArchitecture.md`
+  §3). Any of these can be applied to a staged sprite at any time, live: a renderer set can
+  be swapped for another mid-performance (a hard cut in the visual character of that one
+  sprite, distinct from a whole-context switch), a different transform set can be attached,
+  a driver can be toggled on or off.
+- **Staged sprites** can be shown or hidden at any time, and several can be staged and
+  manipulated simultaneously — this is the mechanism for building up a visual moment sprite
+  by sprite, live, rather than only recalling a pre-built context wholesale.
+- **Live parameter sliders**: for any active driver with continuous parameters (oscillator
+  frequency, amplitude, jitter range, seed), an on-screen slider drives the value directly
+  as the animation plays, so the collaborator can hear/see the effect of a change land in
+  real time rather than editing a field and re-checking the result afterward. These sliders
+  live in a floating panel (or docked at the lower-left of the sprite list) so they stay
+  reachable without covering the main render surface.
+
+This surface is a finer-grained sibling to context switching (§2.2 of
+`PerformanceArchitecture.md`): a context switch recalls a whole prepared state; the
+rehearsal surface lets the collaborator inflect *within* a context, or build a new one
+interactively before naming and saving it as a context (see `PerformanceArchitecture.md`
+§2.5). Every action here — a sprite shown, a renderer swapped, a slider moved — is a visual
+action event (`SessionWorkflow.md` §3.2) and is what gets captured for later editing and
+export.
+
+**Architectural note**: unlike Loom's own editing model, where any parameter change is
+saved to disk and the engine is rebuilt from scratch (~0.35s debounce, restarts at frame 0),
+the sliders above require a fast, in-place mutation path into a *running* engine so a drag
+reads as live control rather than a reload. This is real engineering work specific to
+LoomLive's runtime, not just new UI — see `PerformanceArchitecture.md` §0.1.
 
 ---
 
@@ -228,6 +287,10 @@ anticipation of upcoming musical events.
 4. **Relationship to audio analysis**: Both systems can coexist. Audio analysis gives BPM
    and beat detection from a final mix; MIDI gives per-instrument articulation. A future
    integration could allow MIDI to "correct" audio-derived BPM during live performance.
+   Separately, `SessionWorkflow.md` §3.5 lets a reference audio recording be attached to a
+   session purely as a sync/reference signal (a waveform to align to in the lane-based
+   editor, §4.5) — that use doesn't require any analysis at all, and is independent of
+   whether audio-derived driving signals are ever implemented.
 
 5. **IAC (Inter-Application Communication) bus**: macOS's IAC driver lets any app on the
    machine send MIDI to Loom. This enables DAW-synced playback (Ableton → Loom via IAC)
@@ -236,3 +299,8 @@ anticipation of upcoming musical events.
 6. **Real-time parameter recording**: Should the animator's macro-slider movements during
    a live session be record-able as keyframe data? This would let a live performance be
    "captured" and reproduced exactly — essentially a motion-capture of the visual performance.
+   **Resolved in `SessionWorkflow.md` §3**: yes — captured as a visual action event log, not
+   baked keyframe/frame data, and recomputed deterministically at export time. See
+   `SessionWorkflow.md` §3.2 for the event schema (now extended in that section to cover the
+   rehearsal surface's sprite/driver/renderer/slider events from §4.5 above) and §4.3 for
+   export rendering from the log.

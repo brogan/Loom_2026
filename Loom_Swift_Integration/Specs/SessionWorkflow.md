@@ -156,6 +156,38 @@ A JSON event log of all visual collaborator actions, timestamped to the session 
 This log is human-readable and editable — a session can be refined by editing the visual
 action track (adjusting the timing of a context switch by a few frames) without re-performing.
 
+The rehearsal surface described in `MIDIPerformance.md` §4.5 (staging individual sprites,
+live driver/transform-set/renderer-set assignment, parameter sliders) generates the same
+kind of events, at finer grain than context switches:
+
+```json
+{ "t": 14.050, "type": "spriteShow", "sprite": "leaf_04" },
+{ "t": 14.900, "type": "spriteHide", "sprite": "leaf_01" },
+{ "t": 15.200, "type": "rendererSetAssign", "sprite": "leaf_04", "rendererSet": "glow_stroke" },
+{ "t": 15.900, "type": "transformSetAssign", "sprite": "leaf_04", "transformSet": "dense_gen2" },
+{ "t": 16.400, "type": "driverParameterAdjust", "sprite": "leaf_04", "driver": "rotationDriver",
+  "field": "freqHz", "value": 1.35 }
+```
+
+Live drawing (`PerformanceArchitecture.md` §5) — freehand or grid-placed sprites, and the
+drawing layers they're organised into — logs the same way: a layer is a named target that
+subsequent placements reference, and reordering/opacity changes are ordinary parameter
+events:
+
+```json
+{ "t": 20.000, "type": "layerCreate", "layer": "drawn_02" },
+{ "t": 20.400, "type": "spritePlaced", "layer": "drawn_02", "sprite": "grid_cell_sprite",
+  "gridRow": 3, "gridCol": 7, "position": [0.12, -0.05], "scale": 1.0, "rotation": 0 },
+{ "t": 22.100, "type": "layerOpacityAdjust", "layer": "drawn_02", "value": 0.6 },
+{ "t": 23.500, "type": "layerReorder", "layer": "drawn_02", "toIndex": 0 },
+{ "t": 30.000, "type": "layerDelete", "layer": "drawn_02" }
+```
+
+These compose with the coarser context-switch events above: a session's visual action
+track can freely mix whole-context switches, individual sprite-level rehearsal actions,
+and live-drawing/layer events, since all of them are just timestamped events replayed the
+same way at export (§4.3).
+
 ### 3.3 Rendered state track
 
 The visual output at each frame, stored as:
@@ -176,6 +208,18 @@ tracks to be replayed in lockstep even if the MIDI tempo changes.
 If an external MIDI clock is used (from a DAW or drum machine), the session clock is derived
 from it. If not, the session clock is the system clock. The clock source is recorded in the
 session header so replay uses the same reference.
+
+### 3.5 Audio track
+
+A session can also carry a reference audio recording — the musician's live mix, a scratch
+recording from a room mic, or a click/sync tone — captured alongside the MIDI and visual
+action tracks on the same session clock (§3.4). This is distinct from the MIDI track: MIDI
+is a symbolic event stream (notes, CCs); audio is what actually sounded, and is useful for
+matching video output to a live recording that a DAW or video editor cannot reconstruct
+from MIDI alone (room ambience, additional instruments, vocals, a full mix rather than one
+performer's part). It is optional — many sessions have a clean MIDI-only source and nothing
+to attach — but when present it becomes the primary sync reference for external tools
+(§4.5) and for the lane-based editor's waveform view.
 
 ---
 
@@ -231,6 +275,44 @@ The assembly is not final until export. After assembling, both parties can:
 - Adjust transition timing in the visual action track by direct editing
 - Change the rendering configuration of a context without re-performing (the visual action
   track stays the same; the context's visual character changes)
+
+### 4.5 Lane-based session/assembly editor
+
+Both a single recorded session (§3) and an assembly of several (§4.1) are edited in a
+DAW-style timeline: horizontal lanes stacked vertically, each holding segments positioned
+and sized in time, a shared playhead, and zoomable/scrollable time. This is structurally
+the same interaction model as Loom's own `TimelinePanel` (lanes, keyframes, playhead,
+zoom) — familiar territory, adapted here to session segments and event blocks instead of
+driver keyframes.
+
+Lanes:
+- **MIDI lane**: the recorded MIDI track (§3.1), shown as a compact piano-roll strip.
+- **Visual action lane(s)**: the visual action track (§3.2) — context switches, rehearsal-
+  surface events, and drawing-layer events — shown as labelled markers/segments along the
+  lane. A dense session may split this into sub-lanes purely for readability (e.g. one for
+  context switches, one for sprite-level rehearsal actions); the underlying event log
+  remains one track regardless of how many lanes display it.
+- **Audio lane**: a waveform view of the audio track (§3.5), when present — the natural
+  visual reference for aligning a context switch or macro adjustment to a specific musical
+  moment (a snare hit, a vocal entrance) with far more precision than eyeballing MIDI note
+  timing alone gives.
+- **Rendered preview lane** (optional): a thumbnail filmstrip from the rendered-state
+  cache (§3.3), for a quick visual sense of what's on screen at a given point without
+  scrubbing the full preview.
+
+Editing here means dragging segment boundaries (trim), sliding a segment in time (slip),
+and adjusting individual event timestamps within the visual action track (nudging when a
+context switch lands) — the operations already described in §4.1/§4.4, now given a concrete
+visual surface rather than described only as direct log editing. Assembly segments (§4.1)
+are themselves blocks on this same timeline, one level up: each references a span of a
+specific session's tracks, and the same trim/slip/crossfade operations apply to them.
+
+**Sync to external tools**: exporting (§4.3) alongside the audio track when present — or at
+minimum with accurate session-clock-derived timecode — lets the rendered video be dropped
+into a DAW with a video track, or into dedicated video-editing software, and aligned to the
+original audio precisely, even if final mixing/mastering happens outside LoomLive entirely.
+LoomLive does not need to be the final audio-video assembly tool; it needs to produce output
+whose timing is trustworthy enough that external tools can sync to it without guesswork.
 
 ---
 

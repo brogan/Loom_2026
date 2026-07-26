@@ -33,11 +33,41 @@ procedural parameters, the visual score is followed or departed from, the sessio
 of prepared contexts. The `.loom_projects` format is the contract between the two applications.
 No features need to be shared in the UI; only the data model and engine need to be consistent.
 
+Concretely, LoomLive loads a Loom project's full asset surface, not a reduced subset:
+geometry (polygon, curve, oval, and point sets), transform sets (the Transform tab's
+subdivision parameter sets — Involution/Extension/Convolution/Evolution/Fulguration/
+Dissolution passes), sprites and sprite sets (including each sprite's own position/scale/
+rotation drivers — see the Driver libraries addition to §3.1), and renderer sets (including
+each renderer's own drivers — fill/stroke colour, point size, opacity, blur). For each of
+these categories, *all* associated sets defined in the project are available, not just
+ones referenced by a specific scene — this is what makes the rehearsal surface (§2.5)
+possible: any sprite can be paired with any transform set or renderer set the project
+defines, live, not only the pairing it shipped with.
+
 **What this implies for Loom itself**: Loom benefits from this separation — it does not need
 to become a performance instrument. The features it should develop for this ecosystem are:
 1. Context authoring (see Section 2 of this spec)
 2. Library tagging and export
 3. Open curve procedural tools (see `OpenCurves.md`) — relevant to both studio and live use
+
+### 0.1 Why the studio's editing model cannot be reused as-is
+
+This separation is not only about interface character — it is forced by how Loom's editor
+actually works today. Every inspector edit in Loom (including a numeric field like an
+oscillator's frequency) is committed through the project-config mutation path, debounced
+~0.35s, saved to disk, and then the entire engine is rebuilt from that saved project
+directory — the rebuilt engine restarts at frame 0. This is entirely appropriate for a
+composition studio: edits are deliberate, infrequent relative to render time, and
+reproducibility from a saved file is the whole point.
+
+It is the wrong model for a live instrument. A slider meant to be dragged while watching the
+visual result land cannot tolerate a reload-and-restart on every change (see the rehearsal
+surface's live parameter sliders, `MIDIPerformance.md` §4.5). `LoomLive` needs its own fast,
+in-place mutation path into a *running* engine's driver/state values — a genuinely new
+runtime capability, not achievable by exposing more of Loom's existing UI. This is one of the
+concrete reasons the two applications must diverge below the UI layer too, even while sharing
+`LoomEngine`'s data model and evaluation code. Budget this as real engineering work, not as a
+UI-only addition.
 
 ---
 
@@ -133,6 +163,15 @@ the *repertoire* of prepared states the collaborator can move between. They are 
 A context might itself contain multiple timeline scenes (e.g., a 4-bar loop that evolves
 internally), and switching between contexts switches which of those loops is playing.
 
+### 2.5 The rehearsal surface
+
+`MIDIPerformance.md` §4.5 describes a concrete sprite/driver/renderer-set surface that
+operates beneath the context abstraction above: a working view where sprites are staged
+individually, each with its own driver, transform-set, and renderer-set choices, live. This
+is the practical mechanism for both *authoring* a context — assemble sprites and settings
+interactively, then name and save the result as a context — and for *inflecting within* an
+active context during performance without switching away from it entirely.
+
 ---
 
 ## 3. The Library System
@@ -147,6 +186,10 @@ and deploy:
 - **Subdivision libraries**: named parameter sets or parameter-set sequences, tagged by
   visual character ("rhythmic", "sparse", "dense", "turbulent", "still")
 - **Renderer libraries**: named rendering configurations and palettes
+- **Driver libraries**: named, reusable animation drivers (oscillator, noise, jitter,
+  keyframe parameter sets) that can be attached to any staged sprite on the rehearsal
+  surface (§2.5, `MIDIPerformance.md` §4.5) independent of which sprite originally defined
+  them
 - **Context libraries**: complete contexts from previous projects that can be imported
   and adapted
 
@@ -228,6 +271,46 @@ The key design requirement is that geometry operations be fast and direct — th
 must prioritise speed of access over completeness of controls. A floating "quick geometry"
 panel that exposes the 5–6 most useful operations (add polygon, scale, duplicate, link to
 subdivision set) is preferable to routing through the full inspector.
+
+### 5.1 Grid drawing (UM-style)
+
+Alongside freehand drawing, LoomLive should support a second, more structured placement
+mode modelled on the sibling app UM's grid tool (`/Users/broganbunt/UMApp`) — a faster,
+more deliberate alternative to freehand for building up repeated or regular arrangements
+of sprites live, rather than tracing organic curves.
+
+UM's model is a toggle-cell paint grid, not point placement or a guide overlay: a fixed
+rows × columns array of cells, each carrying `isDrawn` plus whatever style/shape is
+currently active (`UMGridDocument`/`UMGridCell`). Painting is drag-to-toggle (Draw/Erase),
+with a flood-fill tool and a shift-click straight-line shortcut. Transformation is
+two-tiered: whole-grid Flip Horizontal/Vertical operations (with a Move-vs-Stamp toggle
+for whether a transform moves existing content or leaves a copy behind), and a
+per-selection numeric transform panel (Offset X/Y, linked or independent Scale X/Y,
+Rotation) driven by sliders and number fields rather than an on-canvas drag gizmo — only
+the offset is directly draggable, via a dedicated Nudge tool.
+
+For LoomLive, each grid cell places a sprite (drawing from the loaded project's sprite
+sets, §0) rather than a raw shape reference — so painting a cell is "stage this sprite
+here," and the existing transform panel becomes the live position/scale/rotation control
+called for in the rehearsal surface (§2.5, `MIDIPerformance.md` §4.5). Because UM's own
+shape geometry is already Loom-native polygon JSON, no geometry translation is needed; only
+the grid-cell placement/transform records themselves (`UMGridCell`, `UMOffset`) are
+UM-specific and need a LoomLive-native equivalent mapped onto sprite placement fields.
+
+### 5.2 Drawing layers
+
+Freehand and grid-drawn sprites are organised into drawing layers, created and deleted
+freely during a session — a lighter-weight, faster-moving sibling to Loom's own Layers tab,
+which is an authoring-time tool built around more deliberate, one-at-a-time layer setup.
+
+The underlying model is the same either way: `LoomEngine`'s existing `LoomLayer` type
+already carries `opacity`, `blendMode`, and `isVisible`, with rendering order given by a
+layer's position in the project's layer list — LoomLive reuses this directly rather than
+inventing a parallel compositing model. What LoomLive adds is speed: a new drawing layer
+should be a single action (not a multi-field setup), deletable just as fast, with opacity
+and reordering exposed as live controls (§4.2) rather than inspector fields. Whichever
+drawing layer is currently active receives new freehand or grid-drawn sprites; reordering
+layers changes on-screen rendering order immediately, live.
 
 ---
 
@@ -347,3 +430,10 @@ is a compositional choice about the *relationship* between the two voices.
    one system, or does performance mode require a genuinely separate representation? The
    question matters for export: a recorded performance should probably be exportable as a
    conventional timeline-based animation.
+   **Addressed in `SessionWorkflow.md` §4.5**: not a reconciliation into one system, but a
+   second, purpose-built representation — a DAW-style lanes-and-segments editor for
+   recorded sessions and assemblies (MIDI lane, visual-action lane(s), audio lane, optional
+   rendered-preview lane), built on an interaction model analogous to Loom's own
+   `TimelinePanel` without being the same timeline. It exists specifically to make recorded
+   material editable and exportable — including sync to external audio/video tools via the
+   audio lane — which the section-based visual score itself was never meant to do.
