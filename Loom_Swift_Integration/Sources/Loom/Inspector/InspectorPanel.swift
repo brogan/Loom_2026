@@ -2649,6 +2649,7 @@ private enum QuickSetupDefaultMode: String, CaseIterable {
     case none        = "None"
     case involution  = "Involution"
     case extend      = "Extension"
+    case convolution = "Convolution"
     case evolution   = "Evolution"
     case fulguration = "Fulguration"
     case dissolution = "Dissolution"
@@ -2717,7 +2718,7 @@ private struct QuickSetupSection: View {
                 .font(.system(size: 11))
                 .frame(maxWidth: .infinity)
             }
-            .loomHelp("Which lifecycle mode's default pass to seed into a newly-created transform set. Involution adds subdivision (closed polygons) or curve refinement (open curves); Extension adds edge extrusion (closed) or branching (open); Evolution adds momentum drift (closed polygons) or Graft with open-curve targets enabled (open curves); Fulguration adds a frame-cycle visibility/transform pass (either source type); Dissolution adds entropy/collapse. 'None' creates the set empty. Has no effect if the named transform set below already exists.")
+            .loomHelp("Which lifecycle mode's default pass to seed into a newly-created transform set. Involution adds subdivision (closed polygons) or curve refinement (open curves); Extension adds edge extrusion (closed) or branching (open); Convolution adds a Torsion warp pass (either source type); Evolution adds momentum drift (closed polygons) or Graft with open-curve targets enabled (open curves); Fulguration adds a frame-cycle visibility/transform pass (either source type); Dissolution adds entropy/collapse. 'None' creates the set empty. Has no effect if the named transform set below already exists.")
             InspectorField("Transform set") {
                 comboField($qsSubdivSetName, options: subdivisionSetOptions)
             }
@@ -2979,6 +2980,11 @@ private struct QuickSetupSection: View {
                         name: "\(geoName)_ext_1",
                         operationType: isOpenCurve ? .branch : .extrude
                     )]
+                case .convolution:
+                    // A coordinate-space warp applied to an already-resolved point
+                    // list — Torsion (the default operationType) works identically
+                    // on open curves and closed polygons, no isOpenCurve branch needed.
+                    newSet.convolutionPasses = [ConvolutionParams(name: "\(geoName)_conv_1")]
                 case .evolution:
                     if isOpenCurve {
                         // Momentum Drift (the default operationType) has no visible
@@ -3225,7 +3231,7 @@ private struct QuickSetupSection: View {
         return sourceSupportsSubdivision ? recommendedSubdivSetName : Self.noSubdivisionName
     }
     /// Lifecycle modes offered in the Quick Pipeline Setup "Mode" picker —
-    /// all six apply to both source types. Evolution used to be excluded for
+    /// all seven apply to both source types. Evolution used to be excluded for
     /// open curves (its momentum-drift component only mutates SubdivisionParams,
     /// which SubdivisionEngine bypasses for .openSpline), but Evolution's Graft
     /// sub-feature (`includeOpenCurves`) now supports open-curve bases directly
