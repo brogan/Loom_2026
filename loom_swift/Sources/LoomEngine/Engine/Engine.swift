@@ -227,6 +227,23 @@ public final class Engine: @unchecked Sendable {
     public func setDriverEnabled(instanceName: String, driver: LiveDriverKey, enabled: Bool) throws {
         try loomEngine.setDriverEnabled(instanceName: instanceName, driver: driver, enabled: enabled)
     }
+
+    /// Updates a scalar driver's generalized Rate/Range controls — see `LoomEngine.updateDoubleDriverRateRange`.
+    public func updateDoubleDriverRateRange(
+        instanceName: String, driver: LiveDriverKey, rate: Double? = nil, range: Double? = nil
+    ) throws {
+        try loomEngine.updateDoubleDriverRateRange(instanceName: instanceName, driver: driver, rate: rate, range: range)
+    }
+
+    /// Updates a vector driver's generalized Rate/Range controls — see `LoomEngine.updateVectorDriverRateRange`.
+    public func updateVectorDriverRateRange(
+        instanceName: String, driver: LiveDriverKey,
+        rateX: Double? = nil, rateY: Double? = nil, rangeX: Double? = nil, rangeY: Double? = nil
+    ) throws {
+        try loomEngine.updateVectorDriverRateRange(
+            instanceName: instanceName, driver: driver, rateX: rateX, rateY: rateY, rangeX: rangeX, rangeY: rangeY
+        )
+    }
 }
 
 #if canImport(AppKit)

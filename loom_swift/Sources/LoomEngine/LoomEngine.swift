@@ -272,6 +272,50 @@ public struct LoomEngine: @unchecked Sendable {
         }
     }
 
+    /// Updates the generalized "Rate"/"Range" controls for one of a staged
+    /// instance's scalar (DoubleDriver-backed) drivers — rotation, morph,
+    /// opacity, shape. "Rate" maps to `freqHz` in oscillator mode or `period`
+    /// in noise mode; "range" maps to `amplitude` (oscillator/noise) or
+    /// `range` (jitter). Fields that don't apply to the driver's current mode
+    /// are silently ignored — position/scale are `VectorDriver`-backed, see
+    /// `updateVectorDriverRateRange`; name drivers have no rate/range concept.
+    public mutating func updateDoubleDriverRateRange(
+        instanceName: String, driver: LiveDriverKey, rate: Double? = nil, range: Double? = nil
+    ) throws {
+        guard let idx = scene.instances.firstIndex(where: { $0.def.name == instanceName })
+        else { throw LiveStagingError.instanceNotFound(instanceName) }
+        guard scene.instances[idx].def.animation.drivers != nil else { return }
+        switch driver {
+        case .rotation: scene.instances[idx].def.animation.drivers!.rotation.applyRateRange(rate: rate, range: range)
+        case .morph:    scene.instances[idx].def.animation.drivers!.morph.applyRateRange(rate: rate, range: range)
+        case .opacity:  scene.instances[idx].def.animation.drivers!.opacity.applyRateRange(rate: rate, range: range)
+        case .shape:    scene.instances[idx].def.animation.drivers!.shape.applyRateRange(rate: rate, range: range)
+        default: break
+        }
+    }
+
+    /// Updates the generalized "Rate"/"Range" controls for one of a staged
+    /// instance's vector (`VectorDriver`-backed) drivers — position, scale.
+    /// Noise mode's `period` is a single shared value (not per-axis), so only
+    /// `rateX` is consulted for it; `rateY` is ignored in that mode.
+    public mutating func updateVectorDriverRateRange(
+        instanceName: String, driver: LiveDriverKey,
+        rateX: Double? = nil, rateY: Double? = nil, rangeX: Double? = nil, rangeY: Double? = nil
+    ) throws {
+        guard let idx = scene.instances.firstIndex(where: { $0.def.name == instanceName })
+        else { throw LiveStagingError.instanceNotFound(instanceName) }
+        guard scene.instances[idx].def.animation.drivers != nil else { return }
+        switch driver {
+        case .position:
+            scene.instances[idx].def.animation.drivers!.position.applyRateRange(
+                rateX: rateX, rateY: rateY, rangeX: rangeX, rangeY: rangeY)
+        case .scale:
+            scene.instances[idx].def.animation.drivers!.scale.applyRateRange(
+                rateX: rateX, rateY: rateY, rangeX: rangeX, rangeY: rangeY)
+        default: break
+        }
+    }
+
     /// Current project frame on the same clock used for driver keyframe evaluation.
     public var currentFrame: Int {
         max(0, Int(elapsedFrames.rounded(.down)))
