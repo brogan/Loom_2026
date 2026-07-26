@@ -73,6 +73,19 @@ audio inputs that principle was originally specified alongside.
 That may be the entire first version of the app: stage sprites, switch what's driving/rendering
 them live, capture what happened, tweak the timing, render it out.
 
+### 2.5 No distinct project format
+
+`SessionWorkflow.md` §2.1 describes sessions as "stored as named files within a LoomLive
+project" — implying LoomLive needs its own project container, separate from a Loom project. V1
+needs none of that: it opens an existing Loom project directory directly (the same kind of
+folder Loom itself already reads and writes — `polygonSets/`, the subdivision/rendering/sprite
+configs, and so on), works against whatever sprite/transform/renderer sets are already defined
+there, and adds exactly one new thing to it: a folder for captured event logs (e.g. `sessions/`,
+alongside the project's existing `brushes/`, `palettes/`, `renders/`-style subdirectories), each
+log a single flat JSON file. No new container format, no project-import step, no relationship to
+define between a "LoomLive project" and a "Loom project" — for V1 there's only one project, and
+LoomLive just opens it.
+
 ## 3. Explicitly deferred
 
 Everything else in the three companion specs is out of scope for V1 — not rejected, deferred
@@ -101,6 +114,8 @@ until the core hypothesis in §1 has actually been tested:
 - **Review/replay/overdub/session markers and multi-session assembly**
   (`SessionWorkflow.md` §2.2–§2.4, §4) — V1 is one continuous rehearsal captured, edited, and
   rendered; not multiple takes stitched together.
+- **A distinct LoomLive project container** (`SessionWorkflow.md` §2.1's framing of sessions
+  living "within a LoomLive project") — V1 has no such container; see §2.5.
 
 ## 4. What this resolves from the review pass
 
@@ -113,6 +128,14 @@ sense of "track" is even potentially live for V1 — and even that word isn't st
 since V1 has exactly one log, not several parallel ones that need naming and distinguishing.
 Worth resolving the collision properly before the DAW Model phase is ever scheduled, but it isn't
 blocking anything right now.
+
+It also closes one of the review's "Gaps" findings directly: no container model existed for what
+a "LoomLive project" actually is, relative to an imported Loom project and the cross-project
+Library. V1 sidesteps the question rather than answering it in the abstract — there is no
+separate container, only an existing Loom project plus one new folder of event logs (§2.5). The
+real version of that question — how a Library spanning multiple Loom projects relates to a
+LoomLive project container — stays open, but only becomes relevant once the Library itself is in
+scope.
 
 ## 5. What "works well" means
 
