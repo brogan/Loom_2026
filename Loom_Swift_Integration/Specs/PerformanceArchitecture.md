@@ -161,7 +161,10 @@ The existing timeline-scene system addresses temporal structure within a single 
 the *repertoire* of prepared states the collaborator can move between. They are orthogonal.
 
 A context might itself contain multiple timeline scenes (e.g., a 4-bar loop that evolves
-internally), and switching between contexts switches which of those loops is playing.
+internally), and switching between contexts switches which of those loops is playing. This
+loop-within-a-context is, made explicit and first-class, exactly what §8.2 calls a **clip**:
+a context is the patch (which sprites, drivers, transform sets, and renderer sets exist to
+be used); a clip is a bounded loop of what happens with them over time.
 
 ### 2.5 The rehearsal surface
 
@@ -402,7 +405,130 @@ is a compositional choice about the *relationship* between the two voices.
 
 ---
 
-## 8. Open Questions
+## 8. The DAW Model: Clips, Tracks, and Effects Racks
+
+### 8.1 Why the DAW analogy matters
+
+This is not only a structural convenience — it is a fit to the actual audience. The people
+most likely to use LoomLive are musicians, DJs, and electronic performers who already have
+a deep, working mental model of tracks, clips, scenes, and effects racks from years of DAW
+use (Ableton Live, Bitwig, Logic, Traktor). Building on that vocabulary rather than
+inventing a parallel one lowers the barrier to entry substantially: a new user should be
+able to look at LoomLive's session view and immediately understand what a track is, what a
+clip does, and how to launch one, because it looks and behaves like software they already
+know. Departures from the DAW model should be deliberate and well-motivated, not accidental.
+
+### 8.2 Clips: Session View and Arrangement View
+
+A **clip** is a self-contained, loopable unit of visual behaviour — a fixed duration (e.g.
+4 bars, 8 bars, or a frame-count equivalent) over which sprites are shown/hidden, drivers
+adjusted, and transform sets/renderer sets assigned: the kind of visual-action event
+sequence already described in `SessionWorkflow.md` §3.2. A clip differs from a context
+(§2) the way a DAW clip differs from an instrument patch: a context defines *what
+configuration is available* — which sprites, drivers, transform sets, and renderer sets
+exist to be used; a clip is *what happens with them over time*, played through that
+configuration.
+
+Clips exist in two complementary views, directly modelled on Ableton Live and Bitwig:
+
+- **Session View**: a grid where each **track** (§8.4) is a column and each **scene** is a
+  row; a clip lives at the intersection of a track and a scene. Clicking a clip launches it
+  on its track — immediately or quantized to the next musically meaningful boundary (bar,
+  beat; configurable globally or per clip) — replacing whatever was previously playing on
+  that track. Clicking a scene launches every populated clip in that row at once, a fast
+  way to recall a whole prepared arrangement across every track simultaneously. This is the
+  live-performance surface: non-linear, improvisational, built for reacting in the moment.
+- **Arrangement View**: the DAW-style lane timeline already specified in
+  `SessionWorkflow.md` §4.5. Clips can be dragged from the Session View onto a track's lane
+  here, laid out linearly in time, trimmed and slipped like any other segment. This is
+  where a performance — live or rehearsed — is assembled into a fixed, exportable sequence.
+
+The relationship between the two views matches DAW convention exactly: Session View is for
+playing and discovering; Arrangement View is for composing the final, fixed structure —
+and material moves freely between them. A clip launched live in Session View during a
+recorded session is captured as a `clipLaunch` visual-action event (`SessionWorkflow.md`
+§3.2); if the resulting run is good, it can be committed as a literal segment on the
+Arrangement lane rather than re-triggered from the log entry.
+
+### 8.3 Cycle vs one-shot playback identity
+
+Every clip has a playback identity, set once as a clip property rather than chosen at
+launch time (matching Ableton's Loop toggle): **cycle** clips repeat continuously until
+stopped or replaced by another clip on the same track; **one-shot** clips play through once
+and then resolve to a defined end state. The toggle itself is simple; what happens around
+it is where the real design work sits.
+
+**Launch and playthrough.** Both identities can still launch quantized to a bar/beat
+boundary (§8.2) — quantization governs *when a clip starts*, not how it behaves once
+running. A one-shot clip, once triggered, plays through its own duration unquantized; only
+its start is snapped to the beat.
+
+**What happens when a one-shot finishes** needs an explicit, chosen behaviour, not a
+default that just falls out of the implementation:
+- **Stop** — the track goes empty until something else is launched on it.
+- **Hold** — the track freezes on the clip's final frame/state, visually present but
+  static, until replaced.
+- **Resume** — the track reverts to whatever clip (if any) was playing before the one-shot
+  interrupted it.
+- **Follow** — a designated next clip launches automatically, optionally after a delay or
+  chosen at random from a small set. This is Ableton's Follow Actions model and is worth
+  adopting close to verbatim: it's exactly the mechanism for chaining one-shot moments into
+  a sequence without the collaborator triggering every single one by hand.
+
+**Retriggering.** If a one-shot clip is triggered again while still playing, does it
+restart from its own beginning, ignore the new trigger until it finishes, or crossfade into
+a fresh run? This matters more here than in a DAW, because several of Loom's procedural
+passes (Evolution, Dissolution) carry accumulating internal state — restarting cleanly means
+resetting that pass's state at the retrigger point, not just re-seeking a timeline position,
+which is a genuine implementation detail and not only a UI question.
+
+**Duration doesn't have to be authored — it can be native to the process.** A DAW one-shot
+is always a fixed-length sample; a Loom one-shot doesn't have to be. Since several
+procedural passes have a well-defined natural conclusion (Dissolution's collapse reaching
+zero polygons, Evolution's generation count reaching its cap), a one-shot clip could equally
+be defined as "play until this pass concludes" rather than "play for N frames" — closer to
+triggering an envelope than triggering a fixed audio sample. Both should be supported; which
+one a given clip uses is an authoring choice, not an either/or architectural decision.
+
+**This significantly reframes Open Question 6** (clip looping vs. irreversible procedural
+state, §9): a one-shot clip sidesteps that problem rather than needing to solve it —
+Evolution and Dissolution are natural one-shot material, played through once (or chained via
+Follow Actions) rather than forced to loop. Cycle clips remain best suited to naturally
+loop-safe passes (Convolution's oscillator-driven Torsion/Shear/Bend, for instance). The
+collaborator choosing the right identity for the right content, rather than the system
+finding a clever way to loop everything, is probably the actual answer.
+
+### 8.4 Tracks
+
+A **track** is a persistent vertical channel — the thing that holds a sequence of clips
+over time, in either view. The natural mapping onto Loom's existing model is one track per
+drawing layer (§5.2): a track *is* a `LoomLayer`, with its own opacity, blend mode, and
+position in render order, and the clips on it determine what's drawn into that layer at any
+given moment. A project might have a "background" track, a "lead figure" track, and a
+"texture/noise" track, each independently clip-driven — the same separation of concerns a
+DAW gets from putting drums, bass, and pads on separate tracks.
+
+### 8.5 Effects racks: transform sets and renderer drivers as procedural modifier chains
+
+A DAW track carries an ordered effects chain — EQ, then compression, then reverb — each
+stage independently toggleable and reorderable. Loom's transform sets are already
+structured this way and need no redesign to fit the analogy: a transform set is an ordered
+list of passes (Involution, Extension, Convolution, Evolution, Fulguration, Dissolution —
+see `GeometricLifecycle.md`), each independently enabled and positioned. LoomLive should
+expose a transform set as a literal rack: one row per pass, a bypass toggle, and
+drag-to-reorder — the same interaction a musician already uses to reorder effects in
+Ableton or Bitwig.
+
+Renderer-level drivers (fill/stroke colour, point size, opacity, blur) form a second,
+parallel modifier layer — closer to a DAW's per-track parameter automation than to an
+insert effect, since they modulate continuously rather than process discretely, but worth
+surfacing with the same rack-style presentation for consistency: each driver a labelled
+slot, live-toggleable, with its parameters reachable via the real-time controls of
+`MIDIPerformance.md` §4.2/§4.5.
+
+---
+
+## 9. Open Questions
 
 1. **Context isolation vs shared state.** If two contexts share a polygon set, does
    modifying it in one context modify it in the other? The answer should probably be: shared
@@ -437,3 +563,24 @@ is a compositional choice about the *relationship* between the two voices.
    `TimelinePanel` without being the same timeline. It exists specifically to make recorded
    material editable and exportable — including sync to external audio/video tools via the
    audio lane — which the section-based visual score itself was never meant to do.
+
+6. **Clip looping vs. irreversible procedural state.** A DAW clip loops cleanly because
+   MIDI/audio content is stateless between repeats — bar 5 sounds the same on loop 1 and
+   loop 10. Several of Loom's own procedural passes are not loop-safe in the same way:
+   Evolution's generational growth and Dissolution's decay accumulate state and are
+   designed to look different each time they run, not to repeat identically. What does
+   "looping a clip" (§8.2) mean when its transform set is built from Evolution or
+   Dissolution? Candidate answers — reset the pass's state at the loop point (clean, but
+   can produce a visible pop), let it continue accumulating across loop boundaries
+   (musically loop-accurate in time but visually non-repeating), or restrict cleanly
+   loopable clips to transform sets built from naturally loop-safe passes (Convolution's
+   oscillator-driven Torsion/Shear/Bend already loops without incident, for instance) —
+   need to be evaluated against how the visual collaborator actually wants to use clips,
+   not decided in the abstract.
+   **Substantially reframed by §8.3**: the cycle/one-shot playback toggle means this
+   question mostly dissolves rather than needs solving — Evolution/Dissolution-based clips
+   are natural one-shot material (play through once, or chain via Follow Actions), while
+   only naturally loop-safe passes get set up as cycle clips. What remains open is narrower:
+   retrigger behaviour for a one-shot mid-playthrough, and whether "reset at loop point" is
+   ever worth supporting for a collaborator who deliberately wants a cycle clip built from a
+   stateful pass despite the visible seam.

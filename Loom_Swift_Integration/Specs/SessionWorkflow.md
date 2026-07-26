@@ -188,6 +188,23 @@ track can freely mix whole-context switches, individual sprite-level rehearsal a
 and live-drawing/layer events, since all of them are just timestamped events replayed the
 same way at export (§4.3).
 
+Launching a clip from the Session View grid (`PerformanceArchitecture.md` §8.2) is logged
+the same way, one event per launch/stop rather than one event per thing the clip itself
+does internally (the clip's own contents are a separate, reusable event sequence referenced
+by name, not re-logged inline every time it's triggered). A `clipStop` is only needed for a
+**cycle** clip (`PerformanceArchitecture.md` §8.3), which otherwise repeats indefinitely; a
+**one-shot** clip is self-terminating — its own duration (or its underlying pass reaching a
+natural conclusion) is when it ends, so replay needs no paired stop event, only whatever
+end-behaviour (stop/hold/resume/follow) is defined on the clip itself:
+
+```json
+{ "t": 32.000, "type": "clipLaunch", "track": "background", "clip": "arc_loop_4bar",
+  "quantize": "bar" },
+{ "t": 48.000, "type": "clipStop", "track": "background" },
+{ "t": 50.000, "type": "clipLaunch", "track": "lead_figure", "clip": "dissolve_burst",
+  "quantize": "beat" }
+```
+
 ### 3.3 Rendered state track
 
 The visual output at each frame, stored as:
@@ -242,6 +259,13 @@ Assembly: "morning_piece_final"
 ```
 
 Segments can be trimmed, slipped (shifted slightly in time to fix timing), and crossfaded.
+
+A segment need not come only from a recorded session take — a **clip**
+(`PerformanceArchitecture.md` §8.2) can be dragged directly from the Session View onto an
+assembly track's lane the same way, becoming an ordinary segment once placed. This is how
+material moves from the live, non-linear Session View into the fixed, linear Arrangement:
+a clip that worked well can be committed to a specific span of the timeline without needing
+to have been captured inside a full session recording first.
 
 ### 4.2 Independent track assembly
 

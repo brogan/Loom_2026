@@ -191,6 +191,15 @@ A simple two-column list: left column = MIDI source (CC #74, note E3 velocity, e
 right column = Loom target (parameter path). A "learn" mode captures the next incoming
 MIDI message as the source for a selected mapping. Mappings are saved with the project.
 
+This should work identically whether the MIDI source is a software instrument, a DAW's
+MIDI output over IAC, or a physical hardware controller — fader banks, knob banks, and
+generic MIDI control surfaces used by musicians and DJs (Behringer X-Touch, Novation
+Launch Control, and similar class-compliant devices) all just look like a stream of CC
+messages, and "learn" mode maps them exactly like any other source. No vendor-specific
+integration is required for this baseline case — only for the deeper, model-aware
+control-surface protocols some hardware supports (Ableton's Control Surface scripts, for
+example), which is a larger undertaking deferred to a later phase (§6, Open Question 7).
+
 ### 4.4 Score display (optional, future)
 
 If a pre-recorded MIDI file is loaded, display a scrolling piano roll in the performance
@@ -235,6 +244,19 @@ saved to disk and the engine is rebuilt from scratch (~0.35s debounce, restarts 
 the sliders above require a fast, in-place mutation path into a *running* engine so a drag
 reads as live control rather than a reload. This is real engineering work specific to
 LoomLive's runtime, not just new UI — see `PerformanceArchitecture.md` §0.1.
+
+### 4.6 Clip-launch grid controllers
+
+Grid-style MIDI controllers built for clip launching — Ableton Push, Novation Launchpad,
+Akai APC, and similar — map naturally onto the Session View grid described in
+`PerformanceArchitecture.md` §8.2: physical pad rows/columns correspond to track/scene
+positions, a pad press launches the clip at that position, and pad LED colour/brightness
+reflects clip state (empty, stopped, queued to launch, currently playing) exactly as it
+would in the DAW these devices were built for. Supporting the common grid-controller
+message convention (note-on/off per pad, LED colour set via note velocity or a
+vendor-specific SysEx palette) covers the popular hardware without a bespoke integration
+per device; richer per-device feedback (exact LED colour palettes, pad aftertouch) can be
+added per controller as needed, but isn't required for basic clip launching to work.
 
 ---
 
@@ -304,3 +326,12 @@ LoomLive's runtime, not just new UI — see `PerformanceArchitecture.md` §0.1.
    `SessionWorkflow.md` §3.2 for the event schema (now extended in that section to cover the
    rehearsal surface's sprite/driver/renderer/slider events from §4.5 above) and §4.3 for
    export rendering from the log.
+
+7. **Deep control-surface protocol support.** Generic CC/note learn (§4.3) covers any
+   class-compliant hardware, and the grid-controller convention (§4.6) covers clip
+   launching on popular pad controllers. Going further — bidirectional, model-aware
+   integration like Ableton's Control Surface scripts, where the software drives the
+   hardware's own display/LEDs to always mirror its exact current state rather than just
+   reacting to input — is a much larger, per-device undertaking. Worth deferring until
+   generic support is validated in real use; not worth committing to for any specific
+   device now.
