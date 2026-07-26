@@ -61,6 +61,8 @@ extension ColorDriver.Mode: LoomPickerOption {
         case .jitter:     return "Jitter"
         case .noise:      return "Noise"
         case .oscillator: return "Oscillator"
+        case .sequential: return "Sequential"
+        case .random:     return "Random"
         }
     }
     var pickerHelp: String {
@@ -70,6 +72,8 @@ extension ColorDriver.Mode: LoomPickerOption {
         case .jitter:     return "Per-frame random colour between Color A and Color B"
         case .noise:      return "Smooth random colour drift between Color A and Color B"
         case .oscillator: return "Oscillates colour between Color A and Color B at a set frequency"
+        case .sequential: return "Steps through a colour palette in order, holding each for Period frames"
+        case .random:     return "Picks a colour from a palette, optionally weighted, holding for Period frames"
         }
     }
 }

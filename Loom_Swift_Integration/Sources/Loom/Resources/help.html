@@ -3749,7 +3749,7 @@
   <table>
     <thead><tr><th>Mode</th><th>Description</th></tr></thead>
     <tbody>
-      <tr><td>Points</td><td>Draws only the polygon vertices as dots. Controlled by <strong>Point Size</strong>.</td></tr>
+      <tr><td>Points</td><td>Draws only the polygon vertices as dots. Controlled by <strong>Point Size</strong>, which can be animated with the <strong>Point Size Driver</strong> — see <a href="#rendering-drivers">Renderer Drivers &amp; Blur</a>.</td></tr>
       <tr><td>Stroked</td><td>Outline only, no fill. Controlled by <strong>Stroke Colour</strong> and <strong>Stroke Width</strong>.</td></tr>
       <tr><td>Filled</td><td>Solid fill, no outline. Controlled by <strong>Fill Colour</strong>.</td></tr>
       <tr><td>Filled + Stroked</td><td>Both fill and outline drawn simultaneously.</td></tr>
@@ -3791,18 +3791,19 @@
   <table>
     <thead><tr><th>Property</th><th>Animation driver support</th></tr></thead>
     <tbody>
-      <tr><td>Fill colour</td><td>Constant, Keyframe, Jitter, Noise, Oscillator — see <a href="#rendering-color-drivers">Colour Blend Modes</a>.</td></tr>
-      <tr><td>Stroke colour</td><td>Constant, Keyframe, Jitter, Noise, Oscillator — see <a href="#rendering-color-drivers">Colour Blend Modes</a>.</td></tr>
+      <tr><td>Fill colour</td><td>Constant, Keyframe, Jitter, Noise, Oscillator, Sequential, Random — see <a href="#rendering-color-drivers">Colour Blend Modes</a>.</td></tr>
+      <tr><td>Stroke colour</td><td>Constant, Keyframe, Jitter, Noise, Oscillator, Sequential, Random — see <a href="#rendering-color-drivers">Colour Blend Modes</a>.</td></tr>
       <tr><td>Stroke width</td><td>Yes — animate width over time using any scalar driver.</td></tr>
       <tr><td>Opacity</td><td>Yes — per-renderer alpha multiplier. Fades only this renderer layer, not the whole sprite.</td></tr>
       <tr><td>Blur radius</td><td>Yes — animate Gaussian blur radius using any scalar driver. Useful for focus-pull effects, glow pulses, and organic softening over time.</td></tr>
+      <tr><td>Point size</td><td>Yes — animate the dot diameter used in Points mode with any scalar driver. The <strong>Point Size Driver</strong> section only appears when the renderer's mode is <strong>Points</strong>; it has no effect in other modes.</td></tr>
       <tr><td>Hold length</td><td>Frames to keep geometry drawn before clearing (ghost/trail effect).</td></tr>
     </tbody>
   </table>
-  <p>Each renderer driver section header in the inspector shows the same <strong>keyframe indicator</strong> and <strong>enabled checkbox</strong> as sprite drivers — see <a href="#animation-lane-controls">Driver enabled state and lane visibility</a>. A batch eye above the five driver sections collapses all unused renderer driver panels at once. Renderer driver lanes in the timeline also carry per-lane enabled checkboxes, keyframe indicators, and star solo buttons, and are included in the sprite-row batch eye.</p>
+  <p>Each renderer driver section header in the inspector shows the same <strong>keyframe indicator</strong> and <strong>enabled checkbox</strong> as sprite drivers — see <a href="#animation-lane-controls">Driver enabled state and lane visibility</a>. A batch eye above the driver sections collapses all unused renderer driver panels at once. Renderer driver lanes in the timeline also carry per-lane enabled checkboxes, keyframe indicators, and star solo buttons, and are included in the sprite-row batch eye. The Point Size Driver does not currently have its own timeline lane — its Constant/Jitter/Noise/Oscillator/Keyframe modes are set entirely from the inspector.</p>
 
-  <h4>Internal renderer changes</h4>
-  <p>Fill colour, stroke colour, and stroke width changes can operate at different scales. <strong>Poly</strong> applies changes per subdivision child polygon; <strong>Sprite</strong> applies one value to the whole sprite; <strong>Global</strong> applies one value across the render. Random palette changes do not require global animation to be enabled when a static randomised result is desired.</p>
+  <h4 id="rendering-changes">Internal renderer changes</h4>
+  <p>Fill colour, stroke colour, and stroke width changes can operate at different scales. <strong>Poly</strong> applies changes per subdivision child polygon; <strong>Sprite</strong> applies one value to the whole sprite; <strong>Point</strong> applies changes per individual point when the renderer is in Points mode; <strong>Global</strong> applies one value across the render. Random kind palette changes can optionally weight individual colours from 0–100 in the palette editor so some are picked more often than others — leave weights blank, or all equal, for a uniform random pick. Random palette changes do not require global animation to be enabled when a static randomised result is desired.</p>
 
   <h4>Sprite opacity vs renderer opacity</h4>
   <table>
@@ -3814,7 +3815,7 @@
   </table>
 
   <h3 id="rendering-color-drivers">Colour blend modes</h3>
-  <p>The <strong>Fill Colour Driver</strong> and <strong>Stroke Colour Driver</strong> sections support five modes. <strong>Constant</strong> and <strong>Keyframe</strong> work the same way as other drivers. The three new blend modes — <strong>Jitter</strong>, <strong>Noise</strong>, and <strong>Oscillator</strong> — each take two colours (<strong>Color A</strong> and <strong>Color B</strong>) and drive a blend value between them every frame.</p>
+  <p>The <strong>Fill Colour Driver</strong> and <strong>Stroke Colour Driver</strong> sections support seven modes. <strong>Constant</strong> and <strong>Keyframe</strong> work the same way as other drivers. Three blend modes — <strong>Jitter</strong>, <strong>Noise</strong>, and <strong>Oscillator</strong> — each take two colours (<strong>Color A</strong> and <strong>Color B</strong>) and drive a blend value between them every frame. Two palette modes — <strong>Sequential</strong> and <strong>Random</strong> — instead work from a list of any number of colours; see <a href="#rendering-palette-drivers">Palette modes: Sequential &amp; Random</a> below.</p>
 
   <div class="diagram">
     <svg width="460" height="72" viewBox="0 0 460 72" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -3871,6 +3872,31 @@
 
   <div class="tip"><strong>Tip:</strong> For a subtle organic breathing effect, use Noise with Amplitude 0.15 and Period 60. For a hard strobe, use Oscillator with a square wave and Freq 2 Hz. For a gentle pulse, use Oscillator with a sine wave and Freq 0.5 Hz.</div>
   <div class="note">Jitter and Noise both use the sprite's index as part of their deterministic hash, so different sprites in the same scene will produce different random colour sequences even with the same Seed. The Seed parameter lets you offset those sequences further when you want correlated or uncorrelated groups.</div>
+
+  <h4 id="rendering-palette-drivers">Palette modes: Sequential &amp; Random</h4>
+  <p>Sequential and Random work from a <strong>palette</strong> — any number of colours, not just two — using the same palette editor as the <a href="#rendering-changes">Internal renderer changes</a> system, including optional per-colour weights for Random.</p>
+
+  <table>
+    <thead><tr><th>Mode</th><th>Behaviour</th></tr></thead>
+    <tbody>
+      <tr><td>Sequential</td><td>Steps through the palette in order, holding each colour for <strong>Hold</strong> frames. <strong>Loop</strong> controls what happens after the last colour: <em>Loop</em> wraps back to the first, <em>Once</em> holds the final colour, <em>Ping-Pong</em> reverses back through the palette.</td></tr>
+      <tr><td>Random</td><td>Picks a colour from the palette every <strong>Hold</strong> frames, deterministically seeded by <strong>Seed</strong> and the sprite's index — the same sprite/seed combination always produces the same sequence. Each palette colour can carry a <strong>weight</strong> from 0–100 in the palette editor; heavier weights are picked more often. Leave weights blank, or all equal, for a uniform random pick.</td></tr>
+    </tbody>
+  </table>
+
+  <p>Both modes have an <strong>Interpolate</strong> checkbox. Off (the default), colour switches abruptly at each Hold boundary — a hard cut. On, the colour blends smoothly from the current pick toward whichever colour comes next, across the Hold window, so the transition reads as a continuous fade instead of a pop. This applies to Random too — the driver still lands on the same deterministic pick each Hold period, it just cross-fades toward it rather than jumping straight to it.</p>
+
+  <h5>Setting up a palette driver</h5>
+  <ol class="steps">
+    <li>Expand the <strong>Fill Colour Driver</strong> or <strong>Stroke Colour Driver</strong> section in the inspector.</li>
+    <li>Set <strong>Mode</strong> to <em>Sequential</em> or <em>Random</em>.</li>
+    <li>Add colours to the palette list using the <strong>+</strong> button. For Random, optionally set a per-colour weight.</li>
+    <li>Set <strong>Hold</strong> (frames each colour is held) and, for Random, a <strong>Seed</strong>.</li>
+    <li>Toggle <strong>Interpolate</strong> on for a smooth cross-fade between colours, or leave it off for a hard cut.</li>
+  </ol>
+
+  <div class="tip"><strong>Tip:</strong> Sequential with Interpolate on and a short Hold (5–10 frames) produces a smooth colour-cycling gradient effect across a palette. Random with Interpolate off and a longer Hold produces a more graphic, poster-like colour-swap effect.</div>
+  <div class="note">Unlike the blend modes above, Sequential and Random vary only by sprite (via the seeded hash) and over time — they do not vary per individual polygon or per point within one sprite. For per-point or per-polygon colour variation, use the <a href="#rendering-changes">Internal renderer changes</a> system's Point/Poly scale instead.</div>
 
   <h3>Palette</h3>
   <p>The inspector offers a <strong>Palette</strong> section for managing named colour swatches. Palettes can be saved to a JSON file and imported into other projects. This allows colour schemes to be shared across projects without manually re-entering values.</p>

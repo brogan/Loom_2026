@@ -553,6 +553,67 @@ final class RandomKindPaletteTests: XCTestCase {
     }
 }
 
+// MARK: - Weighted RAN kind tests
+
+final class WeightedRandomPaletteTests: XCTestCase {
+
+    private let threeColors = [
+        LoomColor(r: 255, g: 0,   b: 0,   a: 255),
+        LoomColor(r: 0,   g: 255, b: 0,   a: 255),
+        LoomColor(r: 0,   g: 0,   b: 255, a: 255),
+    ]
+
+    func testWeightedSelectionSkewsTowardHeavierIndex() {
+        // Index 0 should dominate with weight [90, 5, 5].
+        let change  = FillColorChange(enabled: true, kind: .random, motion: .up,
+                                      cycle: .constant, scale: .poly, palette: threeColors,
+                                      pauseMax: 0, weights: [90, 5, 5])
+        let changes = RendererChanges(fillColor: change)
+        var state   = RendererAnimationState.initial(for: changes)
+        var rng     = SeededRNG(seed: 7)
+
+        var counts = [0, 0, 0]
+        for _ in 0..<2000 {
+            state = RenderStateEngine.advance(state: state, changes: changes, using: &rng)
+            counts[state.fillColorState!.index] += 1
+        }
+        XCTAssertGreaterThan(counts[0], counts[1] * 3)
+        XCTAssertGreaterThan(counts[0], counts[2] * 3)
+    }
+
+    func testMismatchedWeightCountFallsBackToUniform() {
+        // Two weights for a three-color palette: treated as unweighted (uniform).
+        let change  = FillColorChange(enabled: true, kind: .random, motion: .up,
+                                      cycle: .constant, scale: .poly, palette: threeColors,
+                                      pauseMax: 0, weights: [90, 5])
+        let changes = RendererChanges(fillColor: change)
+        var state   = RendererAnimationState.initial(for: changes)
+        var rng     = SeededRNG(seed: 11)
+
+        for _ in 0..<50 {
+            state = RenderStateEngine.advance(state: state, changes: changes, using: &rng)
+            let idx = state.fillColorState!.index
+            XCTAssertGreaterThanOrEqual(idx, 0)
+            XCTAssertLessThan(idx, threeColors.count)
+        }
+    }
+
+    func testEmptyWeightsPreservesLegacyUniformBehavior() {
+        let change  = StrokeColorChange(enabled: true, kind: .random, motion: .up,
+                                        cycle: .constant, scale: .poly, palette: threeColors, pauseMax: 0)
+        let changes = RendererChanges(strokeColor: change)
+        var state   = RendererAnimationState.initial(for: changes)
+        var rng     = SeededRNG(seed: 3)
+
+        for _ in 0..<50 {
+            state = RenderStateEngine.advance(state: state, changes: changes, using: &rng)
+            let idx = state.strokeColorState!.index
+            XCTAssertGreaterThanOrEqual(idx, 0)
+            XCTAssertLessThan(idx, threeColors.count)
+        }
+    }
+}
+
 // MARK: - Test_052 integration — render changes round-trip via resolve
 
 final class RendererChanges052ResolveTests: XCTestCase {

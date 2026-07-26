@@ -16,6 +16,7 @@ struct RenderingInspector: View {
     @State private var strokeWidthDriverCollapsed = true
     @State private var opacityDriverCollapsed = true
     @State private var blurDriverCollapsed   = true
+    @State private var pointSizeDriverCollapsed = true
     @State private var brushCollapsed        = false
     @State private var meanderCollapsed      = true
     @State private var stampCollapsed        = false
@@ -278,6 +279,14 @@ struct RenderingInspector: View {
                 isCollapsed: $blurDriverCollapsed,
                 isHighlighted: selectedRendererLane(setIdx: setIdx, itemIdx: itemIdx) == .blur
             )
+            if renderer.mode == .points {
+                DoubleDriverEditor(
+                    label: "Point Size Driver",
+                    driver: bindRendererPointSizeDriver(setIdx, itemIdx, fallback: renderer.pointSize),
+                    isCollapsed: $pointSizeDriverCollapsed,
+                    isHighlighted: false
+                )
+            }
             if renderer.mode == .gradientFilled || renderer.mode == .gradientFilledStroked {
                 DoubleDriverEditor(
                     label: "Gradient Blend",
@@ -902,7 +911,10 @@ struct RenderingInspector: View {
                     scale:    bindFillChange(setIdx, itemIdx, \.scale,    fallback: fc.scale),
                     pauseMax: bindFillChange(setIdx, itemIdx, \.pauseMax, fallback: fc.pauseMax)
                 )
-                ColorPaletteEditor(palette: bindFillColorPalette(setIdx, itemIdx))
+                ColorPaletteEditor(
+                    palette: bindFillColorPalette(setIdx, itemIdx),
+                    weights: fc.kind == .random ? bindFillChange(setIdx, itemIdx, \.weights, fallback: []) : nil
+                )
             }
         }
 
@@ -922,7 +934,10 @@ struct RenderingInspector: View {
                     scale:    bindStrokeChange(setIdx, itemIdx, \.scale,    fallback: sc.scale),
                     pauseMax: bindStrokeChange(setIdx, itemIdx, \.pauseMax, fallback: sc.pauseMax)
                 )
-                ColorPaletteEditor(palette: bindStrokeColorPalette(setIdx, itemIdx))
+                ColorPaletteEditor(
+                    palette: bindStrokeColorPalette(setIdx, itemIdx),
+                    weights: sc.kind == .random ? bindStrokeChange(setIdx, itemIdx, \.weights, fallback: []) : nil
+                )
             }
         }
 
@@ -1278,6 +1293,35 @@ struct RenderingInspector: View {
         )
     }
 
+    private func bindRendererPointSizeDriver(_ setIdx: Int,
+                                             _ itemIdx: Int,
+                                             fallback: Double) -> Binding<DoubleDriver> {
+        let ctl = controller
+        return Binding(
+            get: {
+                ctl.projectConfig?.renderingConfig.library
+                    .rendererSets[safe: setIdx]?.renderers[safe: itemIdx]?
+                    .drivers?.pointSize ?? DoubleDriver.constant(fallback)
+            },
+            set: { v in
+                ctl.updateProjectConfig { cfg in
+                    guard setIdx < cfg.renderingConfig.library.rendererSets.count,
+                          itemIdx < cfg.renderingConfig.library.rendererSets[setIdx].renderers.count
+                    else { return }
+                    if cfg.renderingConfig.library.rendererSets[setIdx]
+                        .renderers[itemIdx].drivers == nil {
+                        cfg.renderingConfig.library.rendererSets[setIdx]
+                            .renderers[itemIdx].drivers = defaultRendererDrivers(
+                                for: cfg.renderingConfig.library.rendererSets[setIdx].renderers[itemIdx]
+                            )
+                    }
+                    cfg.renderingConfig.library.rendererSets[setIdx]
+                        .renderers[itemIdx].drivers!.pointSize = v
+                }
+            }
+        )
+    }
+
     private func defaultRendererDrivers(for renderer: Renderer) -> RendererDrivers {
         RendererDrivers(
             fillColor: ColorDriver.constant(renderer.fillColor),
@@ -1285,6 +1329,7 @@ struct RenderingInspector: View {
             strokeWidth: DoubleDriver.constant(renderer.strokeWidth),
             opacity: .one,
             blur: DoubleDriver.constant(renderer.blurRadius),
+            pointSize: DoubleDriver.constant(renderer.pointSize),
             gradientBlend: .zero
         )
     }

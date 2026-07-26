@@ -98,7 +98,9 @@ public enum RenderStateEngine {
 
         // RAN kind: pick any index at random, ignoring motion.
         if change.changeKind == .random {
-            let newIndex = Int.random(in: 0..<paletteCount, using: &rng)
+            let newIndex = weightedRandomIndex(weights: change.weights,
+                                               paletteCount: paletteCount,
+                                               using: &rng)
             return PaletteIndexState(index: newIndex,
                                      pauseRemaining: current.pauseRemaining,
                                      direction: current.direction)
@@ -145,6 +147,31 @@ public enum RenderStateEngine {
                                  pauseRemaining: newPause,
                                  direction: newDirection)
     }
+
+    /// Picks a palette index at random. When `weights` has one entry per
+    /// palette slot and they sum to > 0, the pick is weighted accordingly;
+    /// otherwise falls back to uniform selection (covers empty weights,
+    /// length mismatches, and all-zero weights — i.e. every legacy config).
+    private static func weightedRandomIndex<RNG: RandomNumberGenerator>(
+        weights: [Double],
+        paletteCount: Int,
+        using rng: inout RNG
+    ) -> Int {
+        guard weights.count == paletteCount else {
+            return Int.random(in: 0..<paletteCount, using: &rng)
+        }
+        let total = weights.reduce(0, +)
+        guard total > 0 else {
+            return Int.random(in: 0..<paletteCount, using: &rng)
+        }
+        let pick = Double.random(in: 0..<total, using: &rng)
+        var cumulative = 0.0
+        for (index, weight) in weights.enumerated() {
+            cumulative += max(0, weight)
+            if pick < cumulative { return index }
+        }
+        return paletteCount - 1
+    }
 }
 
 // MARK: - Change protocol
@@ -157,6 +184,13 @@ private protocol ChangeProtocol {
     var changeCycle:   ChangeCycle  { get }
     var changeScale:   ChangeScale  { get }
     var pauseMaxValue: Int          { get }
+    /// Per-palette-index selection weight for `.random` kind. Empty means
+    /// "unweighted" — callers fall back to uniform random selection.
+    var weights:       [Double]     { get }
+}
+
+extension ChangeProtocol {
+    var weights: [Double] { [] }
 }
 
 extension FillColorChange: ChangeProtocol {

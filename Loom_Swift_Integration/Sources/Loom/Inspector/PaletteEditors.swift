@@ -8,6 +8,10 @@ import LoomEngine
 struct ColorPaletteEditor: View {
     @EnvironmentObject private var controller: AppController
     @Binding var palette: [LoomColor]
+    /// Per-color 0–100 selection weight for weighted-random mode. Pass `nil`
+    /// (the default) to hide the weight column entirely — e.g. when the
+    /// palette is in Sequential mode, where weights have no effect.
+    var weights: Binding<[Double]>? = nil
 
     @State private var selectedIndex: Int? = nil
 
@@ -36,6 +40,7 @@ struct ColorPaletteEditor: View {
                 .controlSize(.mini)
             Button {
                 palette.append(LoomColor(r: 0, g: 0, b: 0, a: 255))
+                weights?.wrappedValue.append(100)
                 selectedIndex = palette.count - 1
             } label: {
                 Image(systemName: "plus").font(.system(size: 11))
@@ -60,6 +65,10 @@ struct ColorPaletteEditor: View {
                         : Color.clear)
                     .contentShape(Rectangle())
                     .onTapGesture { selectedIndex = ci }
+                if let weights {
+                    FloatEntryField(value: weightItemBinding(ci, weights), width: 44, fractionDigits: 0, fontSize: 10)
+                        .loomHelp("Selection weight (0–100) for this color when this palette's kind is Random. Weights don't need to sum to 100 — they're relative.")
+                }
                 Button {
                     removeColor(at: ci)
                 } label: {
@@ -81,15 +90,33 @@ struct ColorPaletteEditor: View {
         )
     }
 
+    private func weightItemBinding(_ i: Int, _ weights: Binding<[Double]>) -> Binding<Double> {
+        Binding(
+            get: { i < weights.wrappedValue.count ? weights.wrappedValue[i] : 100 },
+            set: { v in
+                // Grow the array with default weights if it's shorter than the palette
+                // (e.g. an older project with an unweighted palette being edited for the first time).
+                while weights.wrappedValue.count <= i { weights.wrappedValue.append(100) }
+                weights.wrappedValue[i] = max(0, min(100, v))
+            }
+        )
+    }
+
     private func duplicateSelectedColor() {
         guard let i = selectedIndex, i < palette.count else { return }
         palette.insert(palette[i], at: i + 1)
+        if let weights, i < weights.wrappedValue.count {
+            weights.wrappedValue.insert(weights.wrappedValue[i], at: i + 1)
+        }
         selectedIndex = i + 1
     }
 
     private func removeColor(at i: Int) {
         guard i < palette.count else { return }
         palette.remove(at: i)
+        if let weights, i < weights.wrappedValue.count {
+            weights.wrappedValue.remove(at: i)
+        }
         if selectedIndex == i { selectedIndex = nil }
         else if let s = selectedIndex, s > i { selectedIndex = s - 1 }
     }

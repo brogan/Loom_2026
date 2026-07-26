@@ -427,6 +427,51 @@ struct ColorDriverEditor: View {
                     LoomPicker(selection: $driver.wave, maxWidth: 110)
                 }
                 .loomHelp("Wave shape controlling the blend between Color A and Color B — Sine (smooth), Triangle, Square (hard switch), Sawtooth.")
+
+            case .sequential:
+                InspectorField("Loop") {
+                    LoomPicker(selection: $driver.loopMode, maxWidth: 100)
+                }
+                .loomHelp("What happens after the last palette colour — Loop (wrap to start), Ping-Pong (reverse), Once (hold last colour).")
+                InspectorField("Hold") {
+                    TextField("", value: $driver.period, format: .number)
+                        .textFieldStyle(.squareBorder)
+                        .font(.system(size: 12, design: .monospaced))
+                        .frame(width: 50)
+                    Text("frames").font(.system(size: 10)).foregroundStyle(.tertiary)
+                }
+                .loomHelp("Number of frames each palette colour is held before stepping to the next one.")
+                InspectorField("Interpolate") {
+                    Toggle("", isOn: $driver.interpolate)
+                        .labelsHidden()
+                        .toggleStyle(.checkbox)
+                }
+                .loomHelp("When on, colours blend smoothly across the Hold period instead of switching abruptly.")
+                ColorPaletteEditor(palette: $driver.palette)
+
+            case .random:
+                InspectorField("Hold") {
+                    TextField("", value: $driver.period, format: .number)
+                        .textFieldStyle(.squareBorder)
+                        .font(.system(size: 12, design: .monospaced))
+                        .frame(width: 50)
+                    Text("frames").font(.system(size: 10)).foregroundStyle(.tertiary)
+                }
+                .loomHelp("Number of frames a randomly-picked palette colour is held before re-rolling.")
+                InspectorField("Seed") {
+                    TextField("", value: $driver.seed, format: .number)
+                        .textFieldStyle(.squareBorder)
+                        .font(.system(size: 12, design: .monospaced))
+                        .frame(width: 50)
+                }
+                .loomHelp("Random seed for reproducible colour picks. Change to get a different sequence.")
+                InspectorField("Interpolate") {
+                    Toggle("", isOn: $driver.interpolate)
+                        .labelsHidden()
+                        .toggleStyle(.checkbox)
+                }
+                .loomHelp("When on, colours blend smoothly across the Hold period instead of switching abruptly.")
+                ColorPaletteEditor(palette: $driver.palette, weights: $driver.weights)
             }
         }
         .onChange(of: driver.keyframes.count) { old, new in

@@ -2390,6 +2390,12 @@ public struct SpriteScene: @unchecked Sendable {
                                                                    targetFPS: targetFPS,
                                                                    spriteIndex: spriteIndex))
         }
+        if drivers.pointSize.enabled {
+            resolved.pointSize = max(0, DriverEvaluator.evaluate(drivers.pointSize,
+                                                                  globalElapsed: elapsedFrames,
+                                                                  targetFPS: targetFPS,
+                                                                  spriteIndex: spriteIndex))
+        }
         if drivers.gradientBlend.enabled,
            let gradA = resolved.gradientConfig,
            let gradB = resolved.gradientConfigB {

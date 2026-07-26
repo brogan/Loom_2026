@@ -40,6 +40,10 @@ public struct FillColorChange: Equatable, Codable, Sendable {
     public var scale:    ChangeScale
     public var palette:  [LoomColor]
     public var pauseMax: Int
+    /// Per-color selection weight for `.random` kind, 0–100, index-aligned with
+    /// `palette`. Empty, or a length mismatch with `palette`, means "unweighted" —
+    /// falls back to uniform random selection.
+    public var weights:  [Double]
 
     public init(
         enabled:  Bool         = false,
@@ -48,12 +52,30 @@ public struct FillColorChange: Equatable, Codable, Sendable {
         cycle:    ChangeCycle  = .constant,
         scale:    ChangeScale  = .poly,
         palette:  [LoomColor]  = [],
-        pauseMax: Int          = 0
+        pauseMax: Int          = 0,
+        weights:  [Double]     = []
     ) {
         self.enabled  = enabled; self.kind    = kind
         self.motion   = motion;  self.cycle   = cycle
         self.scale    = scale;   self.palette = palette
         self.pauseMax = pauseMax
+        self.weights  = weights
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case enabled, kind, motion, cycle, scale, palette, pauseMax, weights
+    }
+
+    public init(from decoder: Decoder) throws {
+        let c     = try decoder.container(keyedBy: CodingKeys.self)
+        enabled   = try c.decodeIfPresent(Bool.self,         forKey: .enabled)   ?? false
+        kind      = try c.decodeIfPresent(ChangeKind.self,    forKey: .kind)      ?? .random
+        motion    = try c.decodeIfPresent(ChangeMotion.self,  forKey: .motion)    ?? .pingPong
+        cycle     = try c.decodeIfPresent(ChangeCycle.self,   forKey: .cycle)     ?? .constant
+        scale     = try c.decodeIfPresent(ChangeScale.self,   forKey: .scale)     ?? .poly
+        palette   = try c.decodeIfPresent([LoomColor].self,   forKey: .palette)   ?? []
+        pauseMax  = try c.decodeIfPresent(Int.self,           forKey: .pauseMax)  ?? 0
+        weights   = try c.decodeIfPresent([Double].self,      forKey: .weights)   ?? []
     }
 }
 
@@ -66,6 +88,10 @@ public struct StrokeColorChange: Equatable, Codable, Sendable {
     public var scale:    ChangeScale
     public var palette:  [LoomColor]
     public var pauseMax: Int
+    /// Per-color selection weight for `.random` kind, 0–100, index-aligned with
+    /// `palette`. Empty, or a length mismatch with `palette`, means "unweighted" —
+    /// falls back to uniform random selection.
+    public var weights:  [Double]
 
     public init(
         enabled:  Bool         = false,
@@ -74,12 +100,30 @@ public struct StrokeColorChange: Equatable, Codable, Sendable {
         cycle:    ChangeCycle  = .constant,
         scale:    ChangeScale  = .poly,
         palette:  [LoomColor]  = [],
-        pauseMax: Int          = 0
+        pauseMax: Int          = 0,
+        weights:  [Double]     = []
     ) {
         self.enabled  = enabled; self.kind    = kind
         self.motion   = motion;  self.cycle   = cycle
         self.scale    = scale;   self.palette = palette
         self.pauseMax = pauseMax
+        self.weights  = weights
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case enabled, kind, motion, cycle, scale, palette, pauseMax, weights
+    }
+
+    public init(from decoder: Decoder) throws {
+        let c     = try decoder.container(keyedBy: CodingKeys.self)
+        enabled   = try c.decodeIfPresent(Bool.self,         forKey: .enabled)   ?? false
+        kind      = try c.decodeIfPresent(ChangeKind.self,    forKey: .kind)      ?? .sequential
+        motion    = try c.decodeIfPresent(ChangeMotion.self,  forKey: .motion)    ?? .up
+        cycle     = try c.decodeIfPresent(ChangeCycle.self,   forKey: .cycle)     ?? .constant
+        scale     = try c.decodeIfPresent(ChangeScale.self,   forKey: .scale)     ?? .poly
+        palette   = try c.decodeIfPresent([LoomColor].self,   forKey: .palette)   ?? []
+        pauseMax  = try c.decodeIfPresent(Int.self,           forKey: .pauseMax)  ?? 0
+        weights   = try c.decodeIfPresent([Double].self,      forKey: .weights)   ?? []
     }
 }
 
@@ -144,6 +188,8 @@ public struct RendererDrivers: Equatable, Codable, Sendable {
     public var opacity: DoubleDriver = .one
     /// Per-renderer Gaussian blur radius in logical pixels. 0 = off.
     public var blur: DoubleDriver = .zero
+    /// Point diameter driver, evaluated in `.points` render mode only.
+    public var pointSize: DoubleDriver = .one
 
     /// Blend factor between `gradientConfig` (0) and `gradientConfigB` (1).
     /// Only evaluated when `gradientConfigB` is non-nil and mode is gradient.
@@ -155,6 +201,7 @@ public struct RendererDrivers: Equatable, Codable, Sendable {
         strokeWidth: DoubleDriver = .one,
         opacity: DoubleDriver = .one,
         blur: DoubleDriver = .zero,
+        pointSize: DoubleDriver = .one,
         gradientBlend: DoubleDriver = .zero
     ) {
         self.fillColor = fillColor
@@ -162,11 +209,12 @@ public struct RendererDrivers: Equatable, Codable, Sendable {
         self.strokeWidth = strokeWidth
         self.opacity = opacity
         self.blur = blur
+        self.pointSize = pointSize
         self.gradientBlend = gradientBlend
     }
 
     private enum CodingKeys: String, CodingKey {
-        case fillColor, strokeColor, strokeWidth, opacity, blur, gradientBlend
+        case fillColor, strokeColor, strokeWidth, opacity, blur, pointSize, gradientBlend
     }
 
     public init(from decoder: Decoder) throws {
@@ -176,6 +224,7 @@ public struct RendererDrivers: Equatable, Codable, Sendable {
         strokeWidth = try c.decodeIfPresent(DoubleDriver.self, forKey: .strokeWidth) ?? .one
         opacity = try c.decodeIfPresent(DoubleDriver.self, forKey: .opacity) ?? .one
         blur = try c.decodeIfPresent(DoubleDriver.self, forKey: .blur) ?? .zero
+        pointSize = try c.decodeIfPresent(DoubleDriver.self, forKey: .pointSize) ?? .one
         gradientBlend = try c.decodeIfPresent(DoubleDriver.self, forKey: .gradientBlend) ?? .zero
     }
 }

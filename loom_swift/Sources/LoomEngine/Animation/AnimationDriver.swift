@@ -224,7 +224,7 @@ public struct VectorDriver: Codable, Equatable, Sendable {
 
 public struct ColorDriver: Codable, Equatable, Sendable {
     public enum Mode: String, Codable, CaseIterable, Equatable, Sendable {
-        case constant, keyframe, jitter, noise, oscillator
+        case constant, keyframe, jitter, noise, oscillator, sequential, random
     }
 
     public var mode: Mode = .constant
@@ -236,17 +236,30 @@ public struct ColorDriver: Codable, Equatable, Sendable {
     public var range:     Double     = 0.5
     /// Noise: peak blend excursion from 0.5. 0.5 = full [0,1] swing.
     public var amplitude: Double     = 0.5
-    /// Noise: global frames between random sample points.
+    /// Noise: global frames between random sample points. Sequential / Random:
+    /// number of frames each palette entry is held before advancing/re-rolling.
     public var period:    Int        = 30
     /// Oscillator: cycles per second.
     public var freqHz:    Double     = 1.0
     /// Oscillator: 0–1 phase offset.
     public var phase:     Double     = 0
     public var wave:      WaveShape  = .sine
-    /// Jitter / noise: deterministic seed.
+    /// Jitter / noise / random: deterministic seed.
     public var seed:      Int        = 0
+    /// Keyframe: end-of-sequence behavior. Sequential: wrap behavior when
+    /// stepping past the last palette entry (loop/once/ping-pong).
     public var loopMode:  LoopMode   = .loop
     public var keyframes: [ColorKeyframe] = []
+    /// Sequential / Random: pool of colors stepped or picked from.
+    public var palette:   [LoomColor] = []
+    /// Random: per-color selection weight, 0–100, index-aligned with `palette`.
+    /// Empty, or a length mismatch with `palette`, means "unweighted" — falls
+    /// back to uniform selection.
+    public var weights:   [Double] = []
+    /// Sequential / Random: when true, colors blend smoothly across the Hold
+    /// (`period`) window toward the next step's color instead of switching
+    /// abruptly at the boundary.
+    public var interpolate: Bool     = false
     /// When false the driver returns its base colour; the engine skips evaluation.
     public var enabled:   Bool       = false
 
@@ -263,12 +276,17 @@ public struct ColorDriver: Codable, Equatable, Sendable {
         seed:      Int             = 0,
         loopMode:  LoopMode        = .loop,
         keyframes: [ColorKeyframe] = [],
+        palette:   [LoomColor]     = [],
+        weights:   [Double]        = [],
+        interpolate: Bool          = false,
         enabled:   Bool            = false
     ) {
         self.mode = mode; self.base = base; self.colorB = colorB
         self.range = range; self.amplitude = amplitude; self.period = period
         self.freqHz = freqHz; self.phase = phase; self.wave = wave
         self.seed = seed; self.loopMode = loopMode; self.keyframes = keyframes
+        self.palette = palette; self.weights = weights
+        self.interpolate = interpolate
         self.enabled = enabled
     }
 
@@ -277,7 +295,8 @@ public struct ColorDriver: Codable, Equatable, Sendable {
     }
 
     private enum CodingKeys: String, CodingKey {
-        case mode, base, colorB, range, amplitude, period, freqHz, phase, wave, seed, loopMode, keyframes, enabled
+        case mode, base, colorB, range, amplitude, period, freqHz, phase, wave, seed, loopMode, keyframes,
+             palette, weights, interpolate, enabled
     }
 
     public init(from decoder: Decoder) throws {
@@ -294,6 +313,9 @@ public struct ColorDriver: Codable, Equatable, Sendable {
         seed      = try c.decodeIfPresent(Int.self,             forKey: .seed)      ?? 0
         loopMode  = try c.decodeIfPresent(LoopMode.self,        forKey: .loopMode)  ?? .loop
         keyframes = try c.decodeIfPresent([ColorKeyframe].self, forKey: .keyframes) ?? []
+        palette   = try c.decodeIfPresent([LoomColor].self,     forKey: .palette)   ?? []
+        weights   = try c.decodeIfPresent([Double].self,        forKey: .weights)   ?? []
+        interpolate = try c.decodeIfPresent(Bool.self,          forKey: .interpolate) ?? false
         if let stored = try c.decodeIfPresent(Bool.self, forKey: .enabled) {
             enabled = stored
         } else {
@@ -505,7 +527,50 @@ public enum DriverEvaluator {
             let tArg = globalElapsed * driver.freqHz / fps + driver.phase
             let blend = clamp01((wave(driver.wave, t: tArg) + 1) / 2)
             return lerpColor(driver.base, driver.colorB, t: blend)
+        case .sequential:
+            guard !driver.palette.isEmpty else { return driver.base }
+            let period    = max(1, driver.period)
+            let rawStep   = globalElapsed / Double(period)
+            let stepFloor = Int(rawStep.rounded(.down))
+            let current = sequentialColor(atStep: stepFloor, palette: driver.palette, loopMode: driver.loopMode)
+            guard driver.interpolate else { return current }
+            let next = sequentialColor(atStep: stepFloor + 1, palette: driver.palette, loopMode: driver.loopMode)
+            return lerpColor(current, next, t: rawStep - Double(stepFloor))
+        case .random:
+            guard !driver.palette.isEmpty else { return driver.base }
+            let period    = max(1, driver.period)
+            let rawStep   = globalElapsed / Double(period)
+            let stepFloor = Int(rawStep.rounded(.down))
+            let current = randomColor(atStep: stepFloor, driver: driver, spriteIndex: spriteIndex)
+            guard driver.interpolate else { return current }
+            let next = randomColor(atStep: stepFloor + 1, driver: driver, spriteIndex: spriteIndex)
+            return lerpColor(current, next, t: rawStep - Double(stepFloor))
         }
+    }
+
+    /// Resolves the palette color for `.sequential` mode at a given discrete step.
+    private static func sequentialColor(atStep step: Int, palette: [LoomColor], loopMode: LoopMode) -> LoomColor {
+        let count = palette.count
+        let index: Int
+        switch loopMode {
+        case .loop:
+            // Cycle through all `count` distinct entries — unlike keyframe
+            // looping (which repeats over `total` = the last keyframe's own
+            // position), a palette has no "wrap duplicates index 0" entry,
+            // so the period must be `count`, not `count - 1`.
+            index = ((step % count) + count) % count
+        case .once, .pingPong:
+            let normalized = normalizeElapsed(Double(step), total: count - 1, loop: loopMode)
+            index = max(0, min(count - 1, Int(normalized.rounded())))
+        }
+        return palette[index]
+    }
+
+    /// Resolves the palette color for `.random` mode at a given discrete step.
+    private static func randomColor(atStep step: Int, driver: ColorDriver, spriteIndex: Int) -> LoomColor {
+        let h = hash(seed: driver.seed, spriteIndex: spriteIndex, frame: step)
+        let index = weightedIndex(h: h, weights: driver.weights, count: driver.palette.count)
+        return driver.palette[index]
     }
 
     private static func clamp01(_ v: Double) -> Double { max(0, min(1, v)) }
@@ -561,6 +626,28 @@ public enum DriverEvaluator {
         h &*= 0xc4ceb9fe1a85ec53
         h ^= h >> 33
         return Double(h >> 11) / Double(1 << 53)
+    }
+
+    // MARK: - Weighted deterministic pick
+
+    /// Maps a uniform `h` in `[0,1)` to a palette index. When `weights` has one
+    /// entry per palette slot and they sum to > 0, the pick is weighted
+    /// accordingly; otherwise falls back to a uniform pick over `count`.
+    private static func weightedIndex(h: Double, weights: [Double], count: Int) -> Int {
+        guard weights.count == count else {
+            return max(0, min(count - 1, Int(h * Double(count))))
+        }
+        let total = weights.reduce(0, +)
+        guard total > 0 else {
+            return max(0, min(count - 1, Int(h * Double(count))))
+        }
+        let pick = h * total
+        var cumulative = 0.0
+        for (index, weight) in weights.enumerated() {
+            cumulative += max(0, weight)
+            if pick < cumulative { return index }
+        }
+        return count - 1
     }
 
     // MARK: - Shape (step evaluation)
