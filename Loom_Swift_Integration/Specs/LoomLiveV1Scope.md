@@ -6,6 +6,13 @@ three describe the long-term vision for LoomLive; this document narrows that vis
 buildable slice, in direct response to the scope concerns raised in a review pass of the three
 (see §4 below).
 
+**Where V1 lives**: as an additional tab inside Loom itself, positioned after the Rendering
+tab — not a separate app. See `PerformanceArchitecture.md` §0 for the reasoning: the original
+case for a separate app rested on a technical claim (live engine mutation being a big,
+unproven capability) that turned out to be overstated; what's left is a UX consideration
+worth being deliberate about, not a hard requirement to build somewhere else. This is a
+decision for V1, not necessarily for the whole long-term vision — see §3.
+
 ---
 
 ## 1. The core hypothesis
@@ -14,10 +21,12 @@ Everything else in the three companion specs — Clips, Tracks, Session View, th
 Visual Score, MIDI mapping, live geometry drawing — is built on one architectural bet: that
 `LoomEngine` can be driven live, with a running engine mutated in place rather than saved and
 reloaded, closely enough to feel like an instrument rather than a form. `PerformanceArchitecture.md`
-§0.1 already names this as real engineering, not UI polish, because it's precisely what Loom's
-own editing model cannot do.
+§0.1 confirms the *mechanism* for this already exists and is small — `Engine.updateLightingConfig`-
+style methods, extended to cover renderer-set/transform-set/driver mutation — but existing and
+small isn't the same as validated: nobody has yet built the full rehearsal surface on top of it
+and used it for a real session.
 
-V1 exists to test that bet in isolation, before committing to anything built on top of it. The
+V1 exists to test that in practice, before committing to anything built on top of it. The
 crucial, load-bearing capability is: **live switching between sprites, transform sets, and
 renderer sets, with no save-to-disk and no engine reload in the loop.** If this works well — feels
 responsive, doesn't glitch, holds up over a real rehearsal session — everything else in the
@@ -42,6 +51,14 @@ entirely out of scope (see §3 below):
 No MIDI input, no MIDI mapping editor, no hardware controllers. Control is direct GUI
 manipulation only. The architecture shouldn't preclude MIDI later, but nothing about V1 depends
 on it existing.
+
+The tab holds its own `Engine` instance, constructed once from the project already open in
+Loom — independent of `AppController`'s own engine, so an ordinary inspector edit made in
+another tab (which still goes through the normal save→reload cycle) can't silently discard
+the tab's live mutations by replacing the engine out from under it (`PerformanceArchitecture.md`
+§0.1). The tab needs a clear, hard-to-miss visual indicator that it's in its own live mode,
+since a renderer swap made here won't show up back in the Rendering tab — expected behaviour,
+not a bug, but worth making legible.
 
 ### 2.2 Capture
 
@@ -70,21 +87,21 @@ changes) — matching the deterministic "recompute from the log, don't play back
 principle already established in `SessionWorkflow.md` §3.3/§4.3, just without any of the MIDI or
 audio inputs that principle was originally specified alongside.
 
-That may be the entire first version of the app: stage sprites, switch what's driving/rendering
-them live, capture what happened, tweak the timing, render it out.
+That may be the entire first version of the Live tab: stage sprites, switch what's
+driving/rendering them live, capture what happened, tweak the timing, render it out.
 
 ### 2.5 No distinct project format
 
 `SessionWorkflow.md` §2.1 describes sessions as "stored as named files within a LoomLive
 project" — implying LoomLive needs its own project container, separate from a Loom project. V1
-needs none of that: it opens an existing Loom project directory directly (the same kind of
-folder Loom itself already reads and writes — `polygonSets/`, the subdivision/rendering/sprite
-configs, and so on), works against whatever sprite/transform/renderer sets are already defined
-there, and adds exactly one new thing to it: a folder for captured event logs (e.g. `sessions/`,
-alongside the project's existing `brushes/`, `palettes/`, `renders/`-style subdirectories), each
-log a single flat JSON file. No new container format, no project-import step, no relationship to
-define between a "LoomLive project" and a "Loom project" — for V1 there's only one project, and
-LoomLive just opens it.
+needs none of that, and now needs even less of it than a separate app would have: since the Live
+tab lives inside Loom itself (§0 above), there's no import step at all — it's not "a Loom project
+becomes importable into LoomLive," it's literally the same project already open in the same app.
+The tab works against whatever sprite/transform/renderer sets are already defined there, and adds
+exactly one new thing to the project directory: a folder for captured event logs (e.g.
+`sessions/`, alongside the project's existing `brushes/`, `palettes/`, `renders/`-style
+subdirectories), each log a single flat JSON file. No new container format, no relationship to
+define between a "LoomLive project" and a "Loom project" — there's only one project.
 
 ## 3. Explicitly deferred
 
@@ -116,6 +133,10 @@ until the core hypothesis in §1 has actually been tested:
   rendered; not multiple takes stitched together.
 - **A distinct LoomLive project container** (`SessionWorkflow.md` §2.1's framing of sessions
   living "within a LoomLive project") — V1 has no such container; see §2.5.
+- **Standing up LoomLive as a separate application** (`PerformanceArchitecture.md` §0.2) —
+  deferred, not rejected. Revisit if the fuller vision (MIDI hardware, the DAW model, a
+  full-screen gig-ready mode) later makes a tab feel structurally cramped; nothing about
+  building V1 as a tab forecloses that option.
 
 ## 4. What this resolves from the review pass
 

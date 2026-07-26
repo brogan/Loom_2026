@@ -239,11 +239,13 @@ interactively before naming and saving it as a context (see `PerformanceArchitec
 action event (`SessionWorkflow.md` §3.2) and is what gets captured for later editing and
 export.
 
-**Architectural note**: unlike Loom's own editing model, where any parameter change is
-saved to disk and the engine is rebuilt from scratch (~0.35s debounce, restarts at frame 0),
-the sliders above require a fast, in-place mutation path into a *running* engine so a drag
-reads as live control rather than a reload. This is real engineering work specific to
-LoomLive's runtime, not just new UI — see `PerformanceArchitecture.md` §0.1.
+**Architectural note**: unlike Loom's own *inspector*, where any parameter change is saved to
+disk and the engine is rebuilt from scratch (~0.35s debounce, restarts at frame 0), the
+sliders above need to call directly into a running `Engine`'s own live-mutation methods
+(`updateLightingConfig`-style — see `PerformanceArchitecture.md` §0.1) rather than through
+`AppController.updateProjectConfig`. This is a small, additive addition to `LoomEngine`, not
+a new runtime architecture — but it does mean the Live surface needs its own `Engine`
+instance, independent of the one Loom's inspector edits (§0.1).
 
 ### 4.6 Clip-launch grid controllers
 

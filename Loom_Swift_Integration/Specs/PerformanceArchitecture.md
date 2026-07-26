@@ -5,17 +5,78 @@
 
 ---
 
-## 0. Application Separation
+## 0. Where LoomLive Lives
 
-The live performance system described in this spec and `MIDIPerformance.md` should **not**
-be built inside Loom. Loom is a composition studio — its design centre is deliberate,
-frame-precise, project-oriented work. A live performance instrument has a different centre:
-immediacy, minimal interface, non-linear time, real-time responsiveness. Forcing both into
-one application would compromise both.
+**Revised.** Earlier drafts of this section argued LoomLive must be a wholly separate
+application from Loom. That argument rested on a technical claim — live, in-place engine
+mutation being "a genuinely new runtime capability, not achievable by exposing more of
+Loom's existing UI" — which turned out to be wrong, or at least badly overstated. See §0.1
+for what's actually true. With that removed, what's left is a softer UX argument that doesn't
+force the same conclusion.
 
-**The right model: `LoomEngine` as shared library**
+**For now: an additional tab inside Loom itself**, positioned after the Rendering tab (the
+original proposal this whole effort started from). This is cheaper to build than standing up
+a second app, needs no cross-app exchange format or project-import step (the tab just
+operates on whichever project is already open), and gets the core hypothesis
+(`LoomLiveV1Scope.md` §1) tested faster.
 
-`LoomEngine` is already a separate Swift package. Both applications build on it:
+This is a decision for now, not for the whole vision. If MIDI hardware controllers, the DAW
+model (§8), or a genuinely full-screen gig-ready performance mode later grow to a point where
+a tab feels structurally cramped, revisit spinning it out into its own app at that point —
+§0.2 keeps the separate-app model on file for exactly that. Don't treat "it's a tab" as
+settled architecture for the whole vision, only for what's actually being built now.
+
+### 0.1 What actually needed correcting
+
+The claim was that Loom's editing model can't support live mutation at all. What's actually
+true is narrower: **Loom's *inspector* is wired through a save-and-reload cycle** — every
+edit goes through `AppController.updateProjectConfig`, a ~0.35s debounce, a disk write, and
+then the entire `Engine` is torn down and rebuilt from that saved file, restarting animation
+at frame 0. That's a deliberate, appropriate choice for a composition studio: edits are
+infrequent relative to render time, and reproducibility from a saved file is the point.
+
+But `LoomEngine` itself already supports cheap, in-place mutation of a *running* instance —
+it just isn't exposed through the inspector's editing path. `Engine.updateLightingConfig(_:)`
+and `Engine.updateLayers(_:)` (`loom_swift/Sources/LoomEngine/LoomEngine.swift:118,124`)
+already push a new value straight into a live scene with no disk round-trip, used today by
+the Lighting inspector for instant feedback. The same shape of method covers exactly what a
+Live tab needs — staging (showing) and hiding a sprite, swapping its renderer set, attaching a
+different transform set, toggling a driver — each a handful of lines, because `SpriteInstance`
+already stores a sprite's geometry and its transform-pipeline parameters as separate,
+independently-mutable fields, re-evaluated fresh every frame rather than baked once at
+construction.
+
+These mutators should identify their target sprite **by name, not by array index or any other
+position-based reference**. Sprites can be shown and hidden at any time, so an index into
+`scene.instances` is only valid until the next hide silently shifts everything after it —
+name-based lookup (a linear scan for `def.name == target`, cheap given how few sprites a live
+session realistically stages) avoids that whole bug class instead of working around it later.
+`SessionWorkflow.md` §3.2 records the same requirement from the recording side: every visual
+action event targets a sprite by name too, for exactly this reason, and reuses these same
+mutators at replay time (§3.3).
+
+So a Live tab doesn't need `AppController.updateProjectConfig` at all — it holds its own
+`Engine` instance and calls mutators like these directly. This is small, real, additive
+engineering, not the open-ended "genuinely new runtime capability" earlier drafts described.
+
+**One thing this does require**: the Live tab's `Engine` must be a separate instance from
+`AppController`'s own, constructed once from the same project directory. If it shared that
+instance, an ordinary inspector edit made anywhere else in the app would trigger the usual
+save→reload cycle, which replaces the whole `Engine` object — silently discarding whatever
+live mutations the tab had made. Owning a separate instance pointed at the same project
+directory sidesteps this cleanly.
+
+**What's left of the original argument** is the UX one: a "nothing here is saved, everything
+bypasses the normal editing flow" tab living in the same window as "everything here
+autosaves deterministically" is a real mental-model seam, even though it's no longer a
+technical wall. Worth a clear, hard-to-miss visual indicator that the Live tab is in its own
+mode, so a renderer swap made there not showing up back in the Rendering tab reads as
+expected behaviour, not a bug.
+
+### 0.2 If this is ever spun out into a separate app
+
+Kept for later, not current architecture. The model: `LoomEngine` as a shared Swift package
+underneath two applications —
 
 ```
 LoomEngine (Swift package)
@@ -25,49 +86,23 @@ Loom (studio)       LoomLive (performance instrument)
 
 `Loom` is where vocabulary is built: geometry is drawn and refined, subdivision parameter
 sets are designed, palettes and renderers are crafted, contexts are prepared and tagged.
-
 `LoomLive` is where vocabulary is performed: contexts are switched, MIDI drives the
-procedural parameters, the visual score is followed or departed from, the session is recorded.
+procedural parameters, the visual score is followed or departed from, the session is
+recorded. A Loom project directory becomes importable into LoomLive as a library of prepared
+contexts — the `.loom_projects` format as the contract between the two applications, with no
+UI shared, only the data model and engine kept consistent. Concretely, LoomLive would load a
+Loom project's full asset surface, not a reduced subset: geometry (polygon, curve, oval, and
+point sets), transform sets (the Transform tab's subdivision parameter sets —
+Involution/Extension/Convolution/Evolution/Fulguration/Dissolution passes), sprites and
+sprite sets (including each sprite's own position/scale/rotation drivers — see the Driver
+libraries addition to §3.1), and renderer sets (including each renderer's own drivers —
+fill/stroke colour, point size, opacity, blur), with *all* associated sets available per
+category, not just ones a specific scene references — this is what makes the rehearsal
+surface (§2.5) possible regardless of which side of the app boundary it ends up on.
 
-**Exchange format**: a Loom project directory becomes importable into LoomLive as a library
-of prepared contexts. The `.loom_projects` format is the contract between the two applications.
-No features need to be shared in the UI; only the data model and engine need to be consistent.
-
-Concretely, LoomLive loads a Loom project's full asset surface, not a reduced subset:
-geometry (polygon, curve, oval, and point sets), transform sets (the Transform tab's
-subdivision parameter sets — Involution/Extension/Convolution/Evolution/Fulguration/
-Dissolution passes), sprites and sprite sets (including each sprite's own position/scale/
-rotation drivers — see the Driver libraries addition to §3.1), and renderer sets (including
-each renderer's own drivers — fill/stroke colour, point size, opacity, blur). For each of
-these categories, *all* associated sets defined in the project are available, not just
-ones referenced by a specific scene — this is what makes the rehearsal surface (§2.5)
-possible: any sprite can be paired with any transform set or renderer set the project
-defines, live, not only the pairing it shipped with.
-
-**What this implies for Loom itself**: Loom benefits from this separation — it does not need
-to become a performance instrument. The features it should develop for this ecosystem are:
-1. Context authoring (see Section 2 of this spec)
-2. Library tagging and export
-3. Open curve procedural tools (see `OpenCurves.md`) — relevant to both studio and live use
-
-### 0.1 Why the studio's editing model cannot be reused as-is
-
-This separation is not only about interface character — it is forced by how Loom's editor
-actually works today. Every inspector edit in Loom (including a numeric field like an
-oscillator's frequency) is committed through the project-config mutation path, debounced
-~0.35s, saved to disk, and then the entire engine is rebuilt from that saved project
-directory — the rebuilt engine restarts at frame 0. This is entirely appropriate for a
-composition studio: edits are deliberate, infrequent relative to render time, and
-reproducibility from a saved file is the whole point.
-
-It is the wrong model for a live instrument. A slider meant to be dragged while watching the
-visual result land cannot tolerate a reload-and-restart on every change (see the rehearsal
-surface's live parameter sliders, `MIDIPerformance.md` §4.5). `LoomLive` needs its own fast,
-in-place mutation path into a *running* engine's driver/state values — a genuinely new
-runtime capability, not achievable by exposing more of Loom's existing UI. This is one of the
-concrete reasons the two applications must diverge below the UI layer too, even while sharing
-`LoomEngine`'s data model and evaluation code. Budget this as real engineering work, not as a
-UI-only addition.
+If this path is taken, Loom's own useful contribution to the ecosystem stays the same:
+context authoring (§2), library tagging and export (§3), and open curve procedural tools
+(`OpenCurves.md`) relevant to both studio and live use.
 
 ---
 

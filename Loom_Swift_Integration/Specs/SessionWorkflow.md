@@ -161,13 +161,43 @@ live driver/transform-set/renderer-set assignment, parameter sliders) generates 
 kind of events, at finer grain than context switches:
 
 ```json
-{ "t": 14.050, "type": "spriteShow", "sprite": "leaf_04" },
+{ "t": 14.050, "type": "spriteShow", "sprite": "leaf_04",
+  "position": [0.0, 0.0], "scale": [1.0, 1.0], "rotation": 0 },
 { "t": 14.900, "type": "spriteHide", "sprite": "leaf_01" },
 { "t": 15.200, "type": "rendererSetAssign", "sprite": "leaf_04", "rendererSet": "glow_stroke" },
 { "t": 15.900, "type": "transformSetAssign", "sprite": "leaf_04", "transformSet": "dense_gen2" },
+{ "t": 16.200, "type": "driverEnabledToggle", "sprite": "leaf_04", "driver": "rotationDriver",
+  "enabled": true },
 { "t": 16.400, "type": "driverParameterAdjust", "sprite": "leaf_04", "driver": "rotationDriver",
   "field": "freqHz", "value": 1.35 }
 ```
+
+Every event that targets a sprite does so **by name, not by any kind of array position or
+index** — the same name the sprite has in the project's sprite sets. This is deliberate, not
+incidental: the rehearsal surface can show and hide sprites at any time, so any position-based
+identity (an index into a live list of currently-staged sprites, say) would be invalidated the
+moment an earlier sprite is hidden and the list shifts. Engine-level mutators resolve a name to
+its current position internally (a cheap lookup, given how few sprites a session realistically
+stages), so the log itself never has to know or care what that position is.
+
+In memory, this is naturally an enum with associated values per event kind (`spriteShow`,
+`spriteHide`, `rendererSetAssign`, `transformSetAssign`, `driverEnabledToggle`,
+`driverParameterAdjust`, …) rather than one struct with a pile of optional fields for every
+possible kind — each case only carries the fields that kind actually needs. Encoding to the
+flat `{"type": "...", ...}` JSON shape shown above needs a manual `Codable` implementation
+keyed on that `type` string, the same pattern already used throughout `LoomEngine` for every
+other mode-tagged config type (`DoubleDriver`, `ColorDriver`, and so on) — not a new idiom for
+this codebase, just this format applied to a new type.
+
+Two practical constraints worth deciding early rather than discovering later:
+- **Granularity of continuous adjustments.** A live slider drag could otherwise emit hundreds
+  of near-identical `driverParameterAdjust` events per second. Throttle to a capped rate (e.g.
+  10/sec) or log only on release/settle — either is fine, but an unthrottled log both bloats
+  the file and makes the timing-edit view (§4.5) unreadable.
+- **Crash/quit safety.** Write the log incrementally (append-only) as events happen, rather
+  than only at an explicit "stop recording" action — cheap given the format is already flat
+  JSON, and it means a crash mid-session loses at most the last unwritten event, not the whole
+  take.
 
 Live drawing (`PerformanceArchitecture.md` §5) — freehand or grid-placed sprites, and the
 drawing layers they're organised into — logs the same way: a layer is a named target that
@@ -215,6 +245,15 @@ This is the largest component and exists primarily to support fast review playba
 For export rendering, the rendered state is recomputed from the MIDI track and visual action
 track rather than played back from this record — the record is a preview cache, not the
 canonical source.
+
+Concretely, that recomputation is not a separate mechanism from live interaction — it reuses
+the exact same engine-level mutators a Live tab calls directly (`showSprite`/`hideSprite`/
+`updateRendererSet`/`updateTransformSet`/`setDriverEnabled` and friends, see
+`PerformanceArchitecture.md` §0.1). Replay sorts the visual action track by timestamp and, for
+each output frame, applies every not-yet-applied event whose `t` has passed by calling the
+corresponding mutator, then renders the frame — one mutation API, two callers (live UI input,
+and a replay loop stepping through the log). No parallel "apply an event to project state"
+system needs designing on top of what already exists for live use.
 
 ### 3.4 Session clock
 
