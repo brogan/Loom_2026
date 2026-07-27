@@ -103,6 +103,49 @@ exactly one new thing to the project directory: a folder for captured event logs
 subdirectories), each log a single flat JSON file. No new container format, no relationship to
 define between a "LoomLive project" and a "Loom project" — there's only one project.
 
+### 2.6 BPM-linked driver rate (optional, simple — not MIDI)
+
+A cheap way to test, before committing to the full MIDI-driven vision
+(`MIDIPerformance.md`, deferred to the separate adjunct app described in
+`PerformanceArchitecture.md` §0.2, not something to build inside Loom's own
+Live tab), whether linking a driver's rhythm to musical structure is
+compelling at all. No MIDI, no audio input, no beat
+detection: the user enters a BPM and a time signature (beats per bar), and
+can optionally set any driver's Rate to a **musical multiplier** instead of
+a raw Hz/period value — "1 cycle per bar," "4 cycles per bar" (once per
+beat in 4/4), "1 cycle per 4 bars," and so on, the same note-length
+vocabulary a DAW's LFO rate picker already uses. The multiplier converts to
+`freqHz` by plain arithmetic (`musicalMultiplier × (BPM / 60) × beatsPerBar`)
+and is pushed through the same Rate control already built — no new engine
+capability needed for the rate itself.
+
+Aligning the driver's cycle to the music, not just its rate, is the one
+piece that needs something new: a **tap button** the user presses in time
+with a bar's first beat, recording the engine's current frame as that bar's
+reference point. Rate alone doesn't align a cycle's *phase* to that
+moment — the driver also needs its `phase` field set so the oscillator
+sits at the start of its cycle exactly on the tapped frame, and nothing in
+the Live tab's Rate/Range mechanism touches `phase` today. This needs one
+small sibling to the existing generic keypath mutators
+(`LoomEngine.setDriverPhase`, same shape as `updateDoubleDriverRateRange`)
+— not a UI reinterpretation, a real (if modest) addition. Re-tappable at
+any time during a session, recomputing the reference frame from the latest
+tap; there is no continuous drift correction between taps.
+
+**Honest limitation, not a defect to fix**: this is a manual tap against a
+manually entered BPM, with no audio analysis or external clock — it will
+drift relative to the actual music over a long enough stretch, especially
+if the entered BPM isn't exact or the source has natural timing variance. It
+answers "does this feel worth pursuing," not "is this production-grade
+sync" — if the answer is yes, that is the case for building the fuller,
+MIDI-driven version in the adjunct app, not for hardening this one.
+
+Session-log implications, for replay fidelity: BPM/time-signature changes,
+each tap-sync moment, and a driver's musical-multiplier assignment should
+all be recorded as events too (`bpmSet`, `tapSync`,
+`driverMusicalRateAssign`-style additions to `SessionWorkflow.md` §3.2's
+schema), the same way every other Live-tab interaction already is.
+
 ## 3. Explicitly deferred
 
 Everything else in the three companion specs is out of scope for V1 — not rejected, deferred

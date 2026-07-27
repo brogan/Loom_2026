@@ -84,6 +84,18 @@ public struct DoubleDriver: Codable, Equatable, Sendable {
     /// When false the driver returns its neutral identity value; the engine skips evaluation.
     /// Default false for new drivers. Legacy projects infer true when non-trivial.
     public var enabled:   Bool      = false
+    /// Non-nil switches this driver to BPM-linked rate (`GlobalMusicSync.md`):
+    /// `freqHz`/`period` are recomputed from the project's `MusicSyncConfig` and
+    /// this multiplier ("cycles per bar") rather than edited directly. Nil = manual
+    /// (today's behaviour, `freqHz`/`period` are user-set and untouched).
+    public var musicalMultiplier: Double? = nil
+    /// Oscillator mode only, active only when `musicalMultiplier != nil`: an
+    /// additive offset (0–1) from the beat-locked baseline phase, so a driver
+    /// can be deliberately placed off the beat rather than always landing
+    /// exactly on it. Recomputed `phase = baseline + musicalPhaseOffset` on
+    /// every BPM/reference-frame change — this field, not `phase` itself, is
+    /// what the user edits and what persists.
+    public var musicalPhaseOffset: Double = 0
 
     public init(
         mode:      Mode         = .constant,
@@ -97,13 +109,17 @@ public struct DoubleDriver: Codable, Equatable, Sendable {
         seed:      Int          = 0,
         loopMode:  LoopMode     = .loop,
         keyframes: [DoubleKeyframe] = [],
-        enabled:   Bool         = false
+        enabled:   Bool         = false,
+        musicalMultiplier: Double? = nil,
+        musicalPhaseOffset: Double = 0
     ) {
         self.mode = mode; self.base = base; self.range = range
         self.amplitude = amplitude; self.period = period
         self.freqHz = freqHz; self.phase = phase; self.wave = wave
         self.seed = seed; self.loopMode = loopMode; self.keyframes = keyframes
         self.enabled = enabled
+        self.musicalMultiplier = musicalMultiplier
+        self.musicalPhaseOffset = musicalPhaseOffset
     }
 
     public static let zero     = DoubleDriver(mode: .constant, base: 0)
@@ -115,6 +131,7 @@ public struct DoubleDriver: Codable, Equatable, Sendable {
 
     private enum CodingKeys: String, CodingKey {
         case mode, base, range, amplitude, period, freqHz, phase, wave, seed, loopMode, keyframes, enabled
+        case musicalMultiplier, musicalPhaseOffset
     }
 
     public init(from decoder: Decoder) throws {
@@ -136,6 +153,8 @@ public struct DoubleDriver: Codable, Equatable, Sendable {
         } else {
             enabled = (mode != .constant) || !keyframes.isEmpty
         }
+        musicalMultiplier  = try c.decodeIfPresent(Double.self, forKey: .musicalMultiplier)
+        musicalPhaseOffset = try c.decodeIfPresent(Double.self, forKey: .musicalPhaseOffset) ?? 0
     }
 }
 
@@ -165,6 +184,16 @@ public struct VectorDriver: Codable, Equatable, Sendable {
     /// When false the driver returns its neutral identity value; the engine skips evaluation.
     /// Default false for new drivers. Legacy projects infer true when non-trivial.
     public var enabled:   Bool      = false
+    /// Non-nil switches this driver to BPM-linked rate (`GlobalMusicSync.md`),
+    /// applying the same computed `freqHz` to both X and Y (a vector driver's
+    /// independent per-axis rate is a manual-mode-only feature — music mode
+    /// gives one shared musical rate). Nil = manual.
+    public var musicalMultiplier: Double? = nil
+    /// Oscillator mode only, active only when `musicalMultiplier != nil`: a
+    /// single additive offset (0–1) applied to both X and Y baseline phases —
+    /// see `DoubleDriver.musicalPhaseOffset` for why this is a separate field
+    /// from `phase` rather than a reuse of it.
+    public var musicalPhaseOffset: Double = 0
 
     public init(
         mode:      Mode           = .constant,
@@ -178,13 +207,17 @@ public struct VectorDriver: Codable, Equatable, Sendable {
         seed:      Int            = 0,
         loopMode:  LoopMode       = .loop,
         keyframes: [VectorKeyframe] = [],
-        enabled:   Bool           = false
+        enabled:   Bool           = false,
+        musicalMultiplier: Double? = nil,
+        musicalPhaseOffset: Double = 0
     ) {
         self.mode = mode; self.base = base; self.range = range
         self.amplitude = amplitude; self.period = period
         self.freqHz = freqHz; self.phase = phase; self.wave = wave
         self.seed = seed; self.loopMode = loopMode; self.keyframes = keyframes
         self.enabled = enabled
+        self.musicalMultiplier = musicalMultiplier
+        self.musicalPhaseOffset = musicalPhaseOffset
     }
 
     public static let zero     = VectorDriver(mode: .constant, base: .zero)
@@ -196,6 +229,7 @@ public struct VectorDriver: Codable, Equatable, Sendable {
 
     private enum CodingKeys: String, CodingKey {
         case mode, base, range, amplitude, period, freqHz, phase, wave, seed, loopMode, keyframes, enabled
+        case musicalMultiplier, musicalPhaseOffset
     }
 
     public init(from decoder: Decoder) throws {
@@ -217,6 +251,8 @@ public struct VectorDriver: Codable, Equatable, Sendable {
         } else {
             enabled = (mode != .constant) || !keyframes.isEmpty
         }
+        musicalMultiplier  = try c.decodeIfPresent(Double.self, forKey: .musicalMultiplier)
+        musicalPhaseOffset = try c.decodeIfPresent(Double.self, forKey: .musicalPhaseOffset) ?? 0
     }
 }
 
@@ -262,6 +298,14 @@ public struct ColorDriver: Codable, Equatable, Sendable {
     public var interpolate: Bool     = false
     /// When false the driver returns its base colour; the engine skips evaluation.
     public var enabled:   Bool       = false
+    /// Non-nil switches this driver's oscillator rate to BPM-linked
+    /// (`GlobalMusicSync.md`); nil = manual. Only meaningful in `.oscillator`
+    /// mode — other modes have no cyclical rate to lock.
+    public var musicalMultiplier: Double? = nil
+    /// Oscillator mode only, active only when `musicalMultiplier != nil`: see
+    /// `DoubleDriver.musicalPhaseOffset` — same additive-offset-from-baseline
+    /// design, kept separate from `phase` so recompute stays idempotent.
+    public var musicalPhaseOffset: Double = 0
 
     public init(
         mode:      Mode            = .constant,
@@ -279,7 +323,9 @@ public struct ColorDriver: Codable, Equatable, Sendable {
         palette:   [LoomColor]     = [],
         weights:   [Double]        = [],
         interpolate: Bool          = false,
-        enabled:   Bool            = false
+        enabled:   Bool            = false,
+        musicalMultiplier: Double? = nil,
+        musicalPhaseOffset: Double = 0
     ) {
         self.mode = mode; self.base = base; self.colorB = colorB
         self.range = range; self.amplitude = amplitude; self.period = period
@@ -288,6 +334,8 @@ public struct ColorDriver: Codable, Equatable, Sendable {
         self.palette = palette; self.weights = weights
         self.interpolate = interpolate
         self.enabled = enabled
+        self.musicalMultiplier = musicalMultiplier
+        self.musicalPhaseOffset = musicalPhaseOffset
     }
 
     public static func constant(_ color: LoomColor) -> ColorDriver {
@@ -296,7 +344,7 @@ public struct ColorDriver: Codable, Equatable, Sendable {
 
     private enum CodingKeys: String, CodingKey {
         case mode, base, colorB, range, amplitude, period, freqHz, phase, wave, seed, loopMode, keyframes,
-             palette, weights, interpolate, enabled
+             palette, weights, interpolate, enabled, musicalMultiplier, musicalPhaseOffset
     }
 
     public init(from decoder: Decoder) throws {
@@ -321,6 +369,8 @@ public struct ColorDriver: Codable, Equatable, Sendable {
         } else {
             enabled = (mode != .constant) || !keyframes.isEmpty
         }
+        musicalMultiplier  = try c.decodeIfPresent(Double.self, forKey: .musicalMultiplier)
+        musicalPhaseOffset = try c.decodeIfPresent(Double.self, forKey: .musicalPhaseOffset) ?? 0
     }
 }
 

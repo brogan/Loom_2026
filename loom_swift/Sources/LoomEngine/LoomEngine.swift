@@ -254,67 +254,93 @@ public struct LoomEngine: @unchecked Sendable {
         scene.instances[idx].def.animation.drivers!.subdivisionSet.base = subdivisionSetName
     }
 
-    /// Toggle one of a staged instance's `TransformDrivers` fields on/off live.
-    public mutating func setDriverEnabled(instanceName: String, driver: LiveDriverKey, enabled: Bool) throws {
-        guard let idx = scene.instances.firstIndex(where: { $0.def.name == instanceName })
-        else { throw LiveStagingError.instanceNotFound(instanceName) }
-        if scene.instances[idx].def.animation.drivers == nil { scene.instances[idx].def.animation.drivers = .identity }
-        switch driver {
-        case .position:      scene.instances[idx].def.animation.drivers!.position.enabled = enabled
-        case .scale:         scene.instances[idx].def.animation.drivers!.scale.enabled = enabled
-        case .rotation:      scene.instances[idx].def.animation.drivers!.rotation.enabled = enabled
-        case .morph:         scene.instances[idx].def.animation.drivers!.morph.enabled = enabled
-        case .opacity:       scene.instances[idx].def.animation.drivers!.opacity.enabled = enabled
-        case .shape:         scene.instances[idx].def.animation.drivers!.shape.enabled = enabled
-        case .subdivisionSet: scene.instances[idx].def.animation.drivers!.subdivisionSet.enabled = enabled
-        case .rendererSet:    scene.instances[idx].def.animation.drivers!.rendererSet.enabled = enabled
-        case .cycleName:      scene.instances[idx].def.animation.drivers!.cycleName.enabled = enabled
+    /// Ensures every optional driver-container an app-side keypath might
+    /// force-unwrap — sprite `TransformDrivers?`, each pass's
+    /// `SubdivisionParams`/`CurveRefinementParams.drivers?`, each renderer's
+    /// `RendererDrivers?` and its nested `fillColor`/`strokeColor` — is
+    /// non-nil, so the generic driver mutators below never trap. Run
+    /// unconditionally before each one; these are small, fixed-size arrays,
+    /// so the sweep is cheap, and it only touches this live staged copy,
+    /// never the project's saved config (see `LiveInspector`'s "Save to
+    /// Sprite/Set" actions for that separate path).
+    private mutating func ensureDriverContainers(at idx: Int) {
+        if scene.instances[idx].def.animation.drivers == nil {
+            scene.instances[idx].def.animation.drivers = .identity
+        }
+        for i in scene.instances[idx].subdivisionParams.indices
+        where scene.instances[idx].subdivisionParams[i].drivers == nil {
+            scene.instances[idx].subdivisionParams[i].drivers = SubdivisionDrivers()
+        }
+        for i in scene.instances[idx].curveRefinementParams.indices
+        where scene.instances[idx].curveRefinementParams[i].drivers == nil {
+            scene.instances[idx].curveRefinementParams[i].drivers = CurveRefinementDrivers()
+        }
+        for i in scene.instances[idx].rendererSet.renderers.indices {
+            if scene.instances[idx].rendererSet.renderers[i].drivers == nil {
+                scene.instances[idx].rendererSet.renderers[i].drivers = RendererDrivers()
+            }
+            if scene.instances[idx].rendererSet.renderers[i].drivers!.fillColor == nil {
+                scene.instances[idx].rendererSet.renderers[i].drivers!.fillColor = ColorDriver()
+            }
+            if scene.instances[idx].rendererSet.renderers[i].drivers!.strokeColor == nil {
+                scene.instances[idx].rendererSet.renderers[i].drivers!.strokeColor = ColorDriver()
+            }
         }
     }
 
-    /// Updates the generalized "Rate"/"Range" controls for one of a staged
-    /// instance's scalar (DoubleDriver-backed) drivers — rotation, morph,
-    /// opacity, shape. "Rate" maps to `freqHz` in oscillator mode or `period`
-    /// in noise mode; "range" maps to `amplitude` (oscillator/noise) or
-    /// `range` (jitter). Fields that don't apply to the driver's current mode
-    /// are silently ignored — position/scale are `VectorDriver`-backed, see
-    /// `updateVectorDriverRateRange`; name drivers have no rate/range concept.
+    /// Toggle any driver on/off live, anywhere it lives in a staged
+    /// instance — a sprite's own `TransformDrivers` field, a driver nested
+    /// inside a specific transform-set pass, or a renderer entry's driver —
+    /// addressed generically via `keyPath`, built by the caller
+    /// (`LiveDriverTarget` in the app layer) rather than enumerated here.
+    public mutating func setDriverEnabled<D: AnyLiveDriver>(
+        instanceName: String, keyPath: WritableKeyPath<SpriteInstance, D>, enabled: Bool
+    ) throws {
+        guard let idx = scene.instances.firstIndex(where: { $0.def.name == instanceName })
+        else { throw LiveStagingError.instanceNotFound(instanceName) }
+        ensureDriverContainers(at: idx)
+        scene.instances[idx][keyPath: keyPath].enabled = enabled
+    }
+
+    /// Updates the generalized "Rate"/"Range" controls for any
+    /// `DoubleDriver`-backed driver, addressed via `keyPath` — see
+    /// `setDriverEnabled` and `DoubleDriver.applyRateRange`.
     public mutating func updateDoubleDriverRateRange(
-        instanceName: String, driver: LiveDriverKey, rate: Double? = nil, range: Double? = nil
+        instanceName: String, keyPath: WritableKeyPath<SpriteInstance, DoubleDriver>,
+        rate: Double? = nil, range: Double? = nil, phase: Double? = nil
     ) throws {
         guard let idx = scene.instances.firstIndex(where: { $0.def.name == instanceName })
         else { throw LiveStagingError.instanceNotFound(instanceName) }
-        guard scene.instances[idx].def.animation.drivers != nil else { return }
-        switch driver {
-        case .rotation: scene.instances[idx].def.animation.drivers!.rotation.applyRateRange(rate: rate, range: range)
-        case .morph:    scene.instances[idx].def.animation.drivers!.morph.applyRateRange(rate: rate, range: range)
-        case .opacity:  scene.instances[idx].def.animation.drivers!.opacity.applyRateRange(rate: rate, range: range)
-        case .shape:    scene.instances[idx].def.animation.drivers!.shape.applyRateRange(rate: rate, range: range)
-        default: break
-        }
+        ensureDriverContainers(at: idx)
+        scene.instances[idx][keyPath: keyPath].applyRateRange(rate: rate, range: range, phase: phase)
     }
 
-    /// Updates the generalized "Rate"/"Range" controls for one of a staged
-    /// instance's vector (`VectorDriver`-backed) drivers — position, scale.
-    /// Noise mode's `period` is a single shared value (not per-axis), so only
-    /// `rateX` is consulted for it; `rateY` is ignored in that mode.
+    /// Vector counterpart of `updateDoubleDriverRateRange` — position/scale
+    /// sprite drivers, or any per-axis subdivision driver, addressed via `keyPath`.
     public mutating func updateVectorDriverRateRange(
-        instanceName: String, driver: LiveDriverKey,
-        rateX: Double? = nil, rateY: Double? = nil, rangeX: Double? = nil, rangeY: Double? = nil
+        instanceName: String, keyPath: WritableKeyPath<SpriteInstance, VectorDriver>,
+        rateX: Double? = nil, rateY: Double? = nil, rangeX: Double? = nil, rangeY: Double? = nil,
+        phaseX: Double? = nil, phaseY: Double? = nil
     ) throws {
         guard let idx = scene.instances.firstIndex(where: { $0.def.name == instanceName })
         else { throw LiveStagingError.instanceNotFound(instanceName) }
-        guard scene.instances[idx].def.animation.drivers != nil else { return }
-        switch driver {
-        case .position:
-            scene.instances[idx].def.animation.drivers!.position.applyRateRange(
-                rateX: rateX, rateY: rateY, rangeX: rangeX, rangeY: rangeY)
-        case .scale:
-            scene.instances[idx].def.animation.drivers!.scale.applyRateRange(
-                rateX: rateX, rateY: rateY, rangeX: rangeX, rangeY: rangeY)
-        default: break
-        }
+        ensureDriverContainers(at: idx)
+        scene.instances[idx][keyPath: keyPath].applyRateRange(
+            rateX: rateX, rateY: rateY, rangeX: rangeX, rangeY: rangeY, phaseX: phaseX, phaseY: phaseY)
     }
+
+    /// `ColorDriver` counterpart of `updateDoubleDriverRateRange` — a
+    /// renderer's fill/stroke color driver, addressed via `keyPath`.
+    public mutating func updateColorDriverRateRange(
+        instanceName: String, keyPath: WritableKeyPath<SpriteInstance, ColorDriver>,
+        rate: Double? = nil, range: Double? = nil, phase: Double? = nil
+    ) throws {
+        guard let idx = scene.instances.firstIndex(where: { $0.def.name == instanceName })
+        else { throw LiveStagingError.instanceNotFound(instanceName) }
+        ensureDriverContainers(at: idx)
+        scene.instances[idx][keyPath: keyPath].applyRateRange(rate: rate, range: range, phase: phase)
+    }
+
 
     /// Current project frame on the same clock used for driver keyframe evaluation.
     public var currentFrame: Int {

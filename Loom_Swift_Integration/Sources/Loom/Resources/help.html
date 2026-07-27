@@ -341,10 +341,17 @@
   <a class="nav-link nav-sub" href="#audio-waveform">Waveform Display</a>
   <a class="nav-link nav-sub" href="#audio-markers">Markers</a>
   <a class="nav-link nav-sub" href="#audio-workflow">Timing Workflow</a>
+  <a class="nav-link" href="#live">Live</a>
+  <a class="nav-link nav-sub" href="#live-staging">Staging</a>
+  <a class="nav-link nav-sub" href="#live-drivers">Driver Navigator</a>
+  <a class="nav-link nav-sub" href="#live-music-sync">Music Sync (Tap Tempo)</a>
+  <a class="nav-link nav-sub" href="#live-recording">Session Recording</a>
+  <a class="nav-link nav-sub" href="#live-render">Render Session</a>
 
   <div class="nav-section">Animation</div>
   <a class="nav-link" href="#animation">Drivers &amp; Keyframes</a>
   <a class="nav-link nav-sub" href="#animation-drivers">Driver Types</a>
+  <a class="nav-link nav-sub" href="#animation-music-sync">Music Sync — BPM-Linked Drivers</a>
   <a class="nav-link nav-sub" href="#animation-timeline">Timeline</a>
   <a class="nav-link nav-sub" href="#animation-lane-controls">Lane Controls</a>
   <a class="nav-link nav-sub" href="#animation-solo">Solo Mode</a>
@@ -476,10 +483,17 @@
   <div class="toc-entry sub"><a href="#audio-waveform">Waveform Display</a><span class="toc-fill"></span></div>
   <div class="toc-entry sub"><a href="#audio-markers">Markers</a><span class="toc-fill"></span></div>
   <div class="toc-entry sub"><a href="#audio-workflow">Timing Workflow</a><span class="toc-fill"></span></div>
+  <div class="toc-entry"><a href="#live">Live</a><span class="toc-fill"></span></div>
+  <div class="toc-entry sub"><a href="#live-staging">Staging</a><span class="toc-fill"></span></div>
+  <div class="toc-entry sub"><a href="#live-drivers">Driver Navigator</a><span class="toc-fill"></span></div>
+  <div class="toc-entry sub"><a href="#live-music-sync">Music Sync (Tap Tempo)</a><span class="toc-fill"></span></div>
+  <div class="toc-entry sub"><a href="#live-recording">Session Recording</a><span class="toc-fill"></span></div>
+  <div class="toc-entry sub"><a href="#live-render">Render Session</a><span class="toc-fill"></span></div>
 
   <div class="toc-group">Animation</div>
   <div class="toc-entry"><a href="#animation">Drivers &amp; Keyframes</a><span class="toc-fill"></span></div>
   <div class="toc-entry sub"><a href="#animation-drivers">Driver Types</a><span class="toc-fill"></span></div>
+  <div class="toc-entry sub"><a href="#animation-music-sync">Music Sync — BPM-Linked Drivers</a><span class="toc-fill"></span></div>
   <div class="toc-entry sub"><a href="#animation-timeline">Timeline</a><span class="toc-fill"></span></div>
   <div class="toc-entry sub"><a href="#animation-lane-controls">Lane Controls</a><span class="toc-fill"></span></div>
   <div class="toc-entry sub"><a href="#animation-solo">Solo Mode</a><span class="toc-fill"></span></div>
@@ -881,6 +895,19 @@
       <tr><td>Show Scrub Bar</td><td>Reveals the seek slider beneath the playback toolbar.</td></tr>
     </tbody>
   </table>
+
+  <h3 id="global-music-sync">Music Sync</h3>
+  <p>A project-wide BPM/time-signature clock that lets Oscillator- and Noise-mode drivers lock their rate to music instead of a raw Hz/period value — see <a href="#animation-music-sync">Music Sync — BPM-linked drivers</a> for how that shows up per-driver, and <a href="#animation-timeline">Timeline</a> for the bar/beat ruler row it reveals. This is a single clock shared by every scene and by every transform-pass and renderer driver — those live at the project level, not per-scene, so there is one BPM for the whole project rather than one per scene.</p>
+  <table>
+    <thead><tr><th>Field</th><th>Description</th></tr></thead>
+    <tbody>
+      <tr><td>Enabled</td><td>Turns Music Sync on. Reveals the timeline's bar/beat ruler and each eligible driver's Manual/Music toggle. Turning it back off does not reset any driver already locked to music — it freezes that driver's last-computed rate/phase rather than reverting it to a raw value.</td></tr>
+      <tr><td>BPM</td><td>Tempo used to convert a driver's musical multiplier (e.g. "1 cycle per bar") into an actual rate.</td></tr>
+      <tr><td>Beats/Bar</td><td>Time signature's beat count per bar — used for both the bar/beat ruler labels and "cycles per bar"-style multipliers.</td></tr>
+      <tr><td>Downbeat frame / Set at playhead</td><td>The frame that counts as "bar 1, beat 1." Defaults to frame 0. Type a frame number directly, or click <strong>Set at playhead</strong> to use the timeline's current scrub position — useful when the source audio has a lead-in or pickup beat before the beat grid you actually want sprites to align to.</td></tr>
+    </tbody>
+  </table>
+  <div class="note">This is a separate, simpler system from the Live tab's own tap-tempo Music Sync (see <a href="#live-music-sync">Live tab: Music Sync (Tap Tempo)</a>) — this one is authored once against a fixed frame reference for ordinary projects; the Live tab's is a real-time tap gesture for rehearsal/performance, with no fixed origin to reference.</div>
 
   <h3>Background image</h3>
   <p>Drag in or select a PNG, JPEG, TIFF, BMP, or HEIC file to set a background image. Toggle <strong>Scale to canvas</strong> to stretch it to fill the canvas, or leave it at native resolution.</p>
@@ -3903,6 +3930,64 @@
 </section>
 
 <!-- ────────────────────────────────────────────────── -->
+<section id="live">
+  <h2>Live Tab</h2>
+  <p>The Live tab is a rehearsal and performance surface, separate from the project's ordinary editing/playback engine. It stages sprites from the project's existing sprite sets onto its own independent canvas — marked with a red <strong>LIVE</strong> badge to distinguish it from the main preview — lets you adjust drivers and poses in real time, records everything you do as a session log, and can later replay that log deterministically to render a video, reproducing the recording exactly regardless of how choppy or rough the live capture felt at the time.</p>
+  <div class="note">The Live tab's engine is entirely separate from the project's main engine — staging, hiding, or posing sprites here has no effect on the project's own sprite instances, renderer/transform-set assignments, or timeline. It always starts from a blank stage built from the project's sprite/renderer/transform-set <em>libraries</em>, not from whatever the main canvas currently shows.</div>
+
+  <h3 id="live-staging">Staging</h3>
+  <p>The left panel lists every sprite set and sprite defined in the project. Click a sprite to stage an instance of it onto the Live canvas.</p>
+  <table>
+    <thead><tr><th>Control</th><th>Description</th></tr></thead>
+    <tbody>
+      <tr><td>Sprite Sets list</td><td>Browses the project's existing sprite sets/sprites read-only — staging here does not modify the project.</td></tr>
+      <tr><td>Staged list</td><td>Every currently staged instance, with a visibility checkbox and, when selected, <strong>Pos</strong>/<strong>Scale</strong>/<strong>Rot</strong> fields for posing it.</td></tr>
+    </tbody>
+  </table>
+
+  <h3 id="live-drivers">Driver Navigator</h3>
+  <p>Selecting a staged sprite fills the right inspector with a two-part driver editor:</p>
+  <ul>
+    <li><strong>Sets</strong> — assign the sprite's Renderer set and Transform (subdivision) set from the project's existing named sets.</li>
+    <li><strong>Navigator</strong> (top) — every driver currently <em>configured</em> (enabled, or in a non-default mode) across the sprite itself and every pass in its assigned transform set and renderer set, grouped by section (Sprite, each transform-pipeline stage, Renderer) and labelled with the owning pass/renderer's name — e.g. "myExtensionPass — Branch Angle". Click a row to select it.</li>
+    <li><strong>Controls</strong> (bottom) — Rate and Range sliders for whichever driver is selected above. Rate only appears for Oscillator/Noise modes (Jitter re-rolls every frame — no periodicity to tune); Range always applies. Vector-backed drivers (position, scale) show separate X/Y sliders. Dragging either slider shows the real underlying field name and value in the help bar, so you can learn what number you're producing for later hand-editing in the Sprites/Rendering tabs.</li>
+  </ul>
+  <div class="note">Saving a driver's Rate/Range change back into the project isn't available for transform-set or renderer-set drivers yet — those stay live-only edits for now. Sprite-level drivers can be written back via the <strong>Save to Sprite</strong> button beneath the controls, a normal auto-saved project edit.</div>
+
+  <h3 id="live-music-sync">Music Sync (Tap Tempo)</h3>
+  <p>A simpler, manual-tap alternative to the project-wide <a href="#global-music-sync">Music Sync</a> feature, suited to a live rehearsal where there is no fixed frame to reference in advance. No audio input or beat detection — enter BPM and time signature, then tap along with the music.</p>
+  <table>
+    <thead><tr><th>Control</th><th>Description</th></tr></thead>
+    <tbody>
+      <tr><td>BPM / Beats per Bar</td><td>Same meaning as the project-wide feature — used to convert a driver's musical multiplier into an actual rate.</td></tr>
+      <tr><td>Tap</td><td>Press in time with a bar's first beat to align musically-linked drivers' phase to that moment. Re-tappable at any time; there is no drift correction between taps and no correction for an inexact BPM entry — this is meant to test whether music-linked rate feels worth pursuing, not to provide production-grade sync.</td></tr>
+    </tbody>
+  </table>
+  <p>Each driver's Rate control (in the Driver Navigator's controls panel) gets its own <strong>Manual / Musical</strong> toggle — Musical replaces the plain Rate slider with a cycles/bar picker, computed from the shared BPM/tap state exactly like the project-wide feature's per-driver toggle.</p>
+
+  <h3 id="live-recording">Session Recording</h3>
+  <p>Recording is explicit and opt-in — simply staging sprites or adjusting drivers records nothing on its own.</p>
+  <ol class="steps">
+    <li>Optionally type a name in the <strong>Session name</strong> field — left blank, the session file falls back to a timestamp. A name that collides with an existing file gets a numeric suffix rather than overwriting it.</li>
+    <li>Click <strong>Start</strong>. Everything from this point on — staging/hiding sprites, posing, renderer/transform-set assignment, driver enable toggles, Rate/Range drags, BPM/tap changes, and musical-multiplier assignments — is appended to the session log, with a live event count shown next to the recording indicator.</li>
+    <li>Click <strong>Stop</strong> when done. The session is saved as a <code>.jsonl</code> file inside the project's <code>sessions/</code> folder.</li>
+    </ol>
+  <div class="note">Recorded frame numbers are rebased to "frames since the first thing that happened after Start was pressed" — however long the Live tab sat open before you pressed Start has no bearing on the recording, so replay always begins right at your first interaction rather than with a dead-air gap.</div>
+
+  <h3 id="live-render">Render Session</h3>
+  <p>Click <strong>Render Session…</strong> to pick a previously recorded <code>.jsonl</code> file (defaults to the project's <code>sessions/</code> folder) and open a render sheet for it.</p>
+  <table>
+    <thead><tr><th>Field</th><th>Description</th></tr></thead>
+    <tbody>
+      <tr><td>Frame rate / Codec</td><td>Same options as the ordinary <a href="#export-video">Video Export</a> sheet.</td></tr>
+      <tr><td>End frame</td><td>Defaults to the log's last recorded event plus a short tail, so the final action is not cut off abruptly. Editable — Total frames and Duration update to match.</td></tr>
+    </tbody>
+  </table>
+  <p>Rendering builds a fresh engine from a blank stage and replays the log deterministically at a fixed frame rate — applying every recorded macro event (show/hide, pose, set assignment, driver toggle, BPM/tap/multiplier change) at its exact frame, and recomputing every Rate/Range automation curve's interpolated value on every frame. This reproduces the recording accurately regardless of how the live capture's real-time performance actually felt, since the render never depends on wall-clock timing. If a recorded event references something renamed or deleted since the session was captured (a sprite, transform set, or renderer set), that one event is skipped and reported afterward in a summary rather than failing the whole render.</p>
+  <div class="note">The Live canvas's own animation pauses automatically while this sheet is open and resumes when it closes.</div>
+</section>
+
+<!-- ────────────────────────────────────────────────── -->
 <section id="animation">
   <h2>Animation</h2>
   <p>Loom animates sprite, camera, and renderer properties via <em>drivers</em> — self-contained generators that produce a value for each frame. Sprite drivers affect the entire sprite; renderer drivers affect individual renderer layers inside a renderer set. Every driver has an <strong>enabled</strong> flag; drivers are off by default and must be explicitly enabled before they affect rendered output.</p>
@@ -3920,8 +4005,22 @@
     </tbody>
   </table>
 
+  <h3 id="animation-music-sync">Music Sync — BPM-linked drivers</h3>
+  <p>When <a href="#global-music-sync">Music Sync</a> is enabled in the Global tab, every Oscillator- or Noise-mode driver — sprite, transform-pass, or renderer — gains a <strong>Manual / Music</strong> segmented control next to its rate fields. This is the authored-project counterpart to the Live tab's tap-tempo system (<a href="#live-music-sync">Live tab: Music Sync</a>), for videos being cut to a piece of music where you already know the BPM.</p>
+  <table>
+    <thead><tr><th>Control</th><th>Description</th></tr></thead>
+    <tbody>
+      <tr><td>Manual</td><td>The driver's <strong>Freq Hz</strong> (or <strong>Period</strong>, for Noise mode) is set directly, same as always.</td></tr>
+      <tr><td>Music</td><td>A <strong>Multiplier</strong> picker replaces the raw rate field — "1 cycle / bar", "2 cycles / bar", "1 cycle / 4 bars", and so on. The driver's actual rate is computed from this multiplier and the Global tab's BPM/Beats-per-bar, and recomputes automatically whenever either changes — there is nothing to re-apply by hand.</td></tr>
+      <tr><td>Phase offset (Oscillator only)</td><td>An additive 0–1 offset from the beat-locked phase, replacing the plain Phase field while Music mode is active. <code>0</code> lands the cycle exactly on the beat; <code>0.25</code> puts it a quarter-cycle later (an off-beat pulse); <code>0.5</code> gives a clean call-and-response pairing between two sprites. Phase always syncs to the beat by default, but this keeps it tweakable for deliberate syncopation rather than locking it outright.</td></tr>
+    </tbody>
+  </table>
+  <div class="note">Rate is always fully locked while Music mode is active — there is no partial/approximate tempo match. Noise-mode drivers can only lock their rate this way; noise has no phase concept at all, so no phase-offset control is shown for it.</div>
+  <div class="tip"><strong>Tip:</strong> Turning Music Sync off in the Global tab does not reset drivers already locked to Music — their rate/phase freezes at its last computed value. Turn a driver back to Manual first if you want to hand-edit it afterward.</div>
+
   <h3 id="animation-timeline">Timeline</h3>
   <p>The Timeline panel appears at the bottom of the window when a project is open. It shows keyframe lanes for the camera, sprites, and renderer drivers associated with a selected sprite's renderer set. Renderer lanes use a slightly darker background so they are visually distinct from sprite transform lanes. Each lane header shows an <strong>enabled checkbox</strong>, a <strong>keyframe indicator</strong>, and a <strong>star solo button</strong> for exclusive-focus filtering — see <a href="#animation-lane-controls">Driver enabled state and lane visibility</a> and <a href="#animation-solo">Solo mode</a>.</p>
+  <p>When <a href="#global-music-sync">Music Sync</a> is enabled, a second tick row appears beneath the frame-number ruler, labelling bar/beat positions (e.g. <code>5.1</code> for bar 5, beat 1) instead of plain frame numbers — purely additive, the frame-number row stays since keyframe placement and export settings still work in frames.</p>
 
   <div class="diagram">
     <svg width="520" height="90" viewBox="0 0 520 90" fill="none" xmlns="http://www.w3.org/2000/svg">

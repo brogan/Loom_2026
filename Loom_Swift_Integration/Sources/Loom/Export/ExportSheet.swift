@@ -155,8 +155,18 @@ struct ExportSheet: View {
                     let progress: @Sendable (Double) -> Void = { p in
                         Task { @MainActor in controller.exportProgress = p }
                     }
-                    try await VideoExporter().export(engine: engine, settings: settings,
-                                                     progress: progress)
+                    // See SessionReplaySheet.startExport()'s equivalent comment:
+                    // this Task inherits MainActor isolation from this View
+                    // method, and VideoExporter's frame loop has essentially
+                    // no suspension points, so awaiting it directly here would
+                    // block the main thread — and the whole app with it — for
+                    // the entire export. Task.detached runs the actual render
+                    // on a background thread; awaiting `.value` just suspends
+                    // this Task so the UI stays responsive meanwhile.
+                    try await Task.detached(priority: .userInitiated) {
+                        try await VideoExporter().export(engine: engine, settings: settings,
+                                                         progress: progress)
+                    }.value
                     controller.endExport()
                     isExporting = false
                     dismiss()

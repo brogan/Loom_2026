@@ -81,13 +81,21 @@ public final class VideoExporter {
     ///   - progress: Optional callback invoked after each frame is written.
     ///     Receives a value in `(0, 1]`; 1.0 indicates the final frame was written.
     ///     Called on the same actor/executor as `export`.
+    ///   - onBeforeFrame: Optional callback invoked with the absolute frame
+    ///     index (`settings.startFrame`-relative — i.e. the same frame
+    ///     numbering `engine.currentFrame` uses) immediately before that
+    ///     frame's `engine.update(deltaTime:)` call. Lets a caller mutate the
+    ///     engine mid-export — e.g. replaying a recorded session's events at
+    ///     their exact frame numbers — without this method needing to know
+    ///     anything about what's driving those mutations.
     ///
     /// - Throws: Any `AVFoundation` error from the asset writer, or
     ///   `VideoExporterError.setupFailed` if the writer cannot be initialised.
     public func export(
         engine: Engine,
         settings: Settings,
-        progress: ((Double) -> Void)? = nil
+        progress: ((Double) -> Void)? = nil,
+        onBeforeFrame: (@Sendable (Int) -> Void)? = nil
     ) async throws {
 
         let size        = engine.canvasSize
@@ -178,6 +186,10 @@ public final class VideoExporter {
         // which is indistinguishable from the original failure without this cleanup.
         do {
             for frameIndex in 0..<totalFrames {
+
+                // 0. Let a caller mutate the engine for this exact frame
+                //    (e.g. session replay) before it advances.
+                onBeforeFrame?(startFrame + frameIndex)
 
                 // 1. Advance the engine one frame.
                 engine.update(deltaTime: dt)

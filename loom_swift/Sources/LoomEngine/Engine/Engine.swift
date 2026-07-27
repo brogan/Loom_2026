@@ -223,26 +223,39 @@ public final class Engine: @unchecked Sendable {
         try loomEngine.updateSubdivisionSet(instanceName: instanceName, subdivisionSetName: subdivisionSetName)
     }
 
-    /// Toggle one of a staged instance's drivers on/off — see `LoomEngine.setDriverEnabled`.
-    public func setDriverEnabled(instanceName: String, driver: LiveDriverKey, enabled: Bool) throws {
-        try loomEngine.setDriverEnabled(instanceName: instanceName, driver: driver, enabled: enabled)
+    /// Toggle any driver on/off live, anywhere it lives in a staged instance — see `LoomEngine.setDriverEnabled`.
+    public func setDriverEnabled<D: AnyLiveDriver>(
+        instanceName: String, keyPath: WritableKeyPath<SpriteInstance, D>, enabled: Bool
+    ) throws {
+        try loomEngine.setDriverEnabled(instanceName: instanceName, keyPath: keyPath, enabled: enabled)
     }
 
     /// Updates a scalar driver's generalized Rate/Range controls — see `LoomEngine.updateDoubleDriverRateRange`.
     public func updateDoubleDriverRateRange(
-        instanceName: String, driver: LiveDriverKey, rate: Double? = nil, range: Double? = nil
+        instanceName: String, keyPath: WritableKeyPath<SpriteInstance, DoubleDriver>,
+        rate: Double? = nil, range: Double? = nil, phase: Double? = nil
     ) throws {
-        try loomEngine.updateDoubleDriverRateRange(instanceName: instanceName, driver: driver, rate: rate, range: range)
+        try loomEngine.updateDoubleDriverRateRange(instanceName: instanceName, keyPath: keyPath, rate: rate, range: range, phase: phase)
     }
 
     /// Updates a vector driver's generalized Rate/Range controls — see `LoomEngine.updateVectorDriverRateRange`.
     public func updateVectorDriverRateRange(
-        instanceName: String, driver: LiveDriverKey,
-        rateX: Double? = nil, rateY: Double? = nil, rangeX: Double? = nil, rangeY: Double? = nil
+        instanceName: String, keyPath: WritableKeyPath<SpriteInstance, VectorDriver>,
+        rateX: Double? = nil, rateY: Double? = nil, rangeX: Double? = nil, rangeY: Double? = nil,
+        phaseX: Double? = nil, phaseY: Double? = nil
     ) throws {
         try loomEngine.updateVectorDriverRateRange(
-            instanceName: instanceName, driver: driver, rateX: rateX, rateY: rateY, rangeX: rangeX, rangeY: rangeY
+            instanceName: instanceName, keyPath: keyPath, rateX: rateX, rateY: rateY, rangeX: rangeX, rangeY: rangeY,
+            phaseX: phaseX, phaseY: phaseY
         )
+    }
+
+    /// Updates a color driver's generalized Rate/Range controls — see `LoomEngine.updateColorDriverRateRange`.
+    public func updateColorDriverRateRange(
+        instanceName: String, keyPath: WritableKeyPath<SpriteInstance, ColorDriver>,
+        rate: Double? = nil, range: Double? = nil, phase: Double? = nil
+    ) throws {
+        try loomEngine.updateColorDriverRateRange(instanceName: instanceName, keyPath: keyPath, rate: rate, range: range, phase: phase)
     }
 }
 

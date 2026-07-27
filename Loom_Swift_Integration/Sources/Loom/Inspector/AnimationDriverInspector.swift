@@ -2,6 +2,64 @@ import AppKit
 import SwiftUI
 import LoomEngine
 
+// MARK: - Music Sync (Specs/GlobalMusicSync.md §5-6)
+//
+// Shared "cycles per bar" vocabulary and Manual/Music control, reused by
+// DoubleDriverEditor/VectorDriverEditor/ColorDriverEditor's oscillator (and,
+// for the multiplier alone, noise) mode fields. A free function rather than
+// a View type: each caller's `driver.musicalMultiplier` is `Double?`
+// regardless of driver kind, so one `Binding<Double?>`-based helper covers
+// all three without a new protocol/abstraction.
+
+private let musicalMultiplierOptions: [(label: String, value: Double)] = [
+    ("1 cycle / 4 bars", 0.25),
+    ("1 cycle / 2 bars", 0.5),
+    ("1 cycle / bar",    1),
+    ("2 cycles / bar",   2),
+    ("4 cycles / bar",   4),
+    ("8 cycles / bar",   8),
+]
+
+/// Manual/Music segmented toggle + (when Music) a multiplier picker.
+/// `onCommit` is called after every change so the caller can trigger
+/// `MusicSync.recomputeAll` — this view only touches the one driver's
+/// `musicalMultiplier`, it doesn't know how to reach the rest of the project.
+@MainActor
+@ViewBuilder
+private func musicRateControls(multiplier: Binding<Double?>, onCommit: @escaping () -> Void) -> some View {
+    InspectorField("Rate source") {
+        Picker("", selection: Binding(
+            get: { multiplier.wrappedValue != nil },
+            set: { isMusic in
+                multiplier.wrappedValue = isMusic ? (multiplier.wrappedValue ?? 1.0) : nil
+                onCommit()
+            }
+        )) {
+            Text("Manual").tag(false)
+            Text("Music").tag(true)
+        }
+        .pickerStyle(.segmented)
+        .frame(width: 140)
+    }
+    .loomHelp("Manual: rate set directly below. Music: rate locks to the project's BPM (Global tab \u{2192} Music Sync) via a multiplier instead of a raw value.")
+
+    if multiplier.wrappedValue != nil {
+        InspectorField("Multiplier") {
+            Picker("", selection: Binding(
+                get: { multiplier.wrappedValue ?? 1.0 },
+                set: { newValue in multiplier.wrappedValue = newValue; onCommit() }
+            )) {
+                ForEach(musicalMultiplierOptions, id: \.value) { opt in
+                    Text(opt.label).tag(opt.value)
+                }
+            }
+            .labelsHidden()
+            .frame(width: 130)
+        }
+        .loomHelp("Cycles per bar, converted to an actual rate using the project's BPM and beats/bar.")
+    }
+}
+
 // MARK: - DoubleDriverEditor
 
 /// Collapsible inspector section for a single scalar animation driver.
@@ -50,8 +108,14 @@ struct DoubleDriverEditor: View {
             .loomHelp("Centre value of the smooth noise output.")
             floatField("Amplitude",$driver.amplitude)
             .loomHelp("Maximum deviation from Base produced by the smooth noise function.")
+            if musicSyncEnabled {
+                musicRateControls(multiplier: $driver.musicalMultiplier) { recomputeMusicSync() }
+            }
             intField("Period (f)", $driver.period)
-            .loomHelp("Length in frames of one full noise cycle. Larger values = slower, smoother variation.")
+            .disabled(musicActive)
+            .loomHelp(musicActive
+                ? "Computed from the Music multiplier above — edit that instead of this directly."
+                : "Length in frames of one full noise cycle. Larger values = slower, smoother variation.")
             intField("Seed",       $driver.seed)
             .loomHelp("Random seed for reproducible smooth noise. Change to get a different noise shape.")
 
@@ -60,12 +124,24 @@ struct DoubleDriverEditor: View {
             .loomHelp("Centre value that the oscillator wave is offset from.")
             floatField("Amplitude",$driver.amplitude)
             .loomHelp("Peak deviation from Base — the wave swings between Base−Amplitude and Base+Amplitude.")
+            if musicSyncEnabled {
+                musicRateControls(multiplier: $driver.musicalMultiplier) { recomputeMusicSync() }
+            }
             floatField("Freq Hz",  $driver.freqHz)
-            .loomHelp("Oscillation frequency in cycles per second. Higher values = faster oscillation.")
-            floatField("Phase 0–1",$driver.phase)
-            .loomHelp(phaseModeBinding == nil
-                ? "Starting phase offset of the wave (0 = start at centre crossing, 0.25 = start at peak)."
-                : "Phase offset AND per-polygon spread range. All: static offset for every polygon. Sequential: total phase range from first to last polygon — 0.05–0.15 gives a tight queue where all polygons move the same direction; 1.0 gives a full standing wave with some moving opposite. Random: maximum random scatter — 0.05 = tight cluster, 1.0 = fully scattered across the cycle.")
+            .disabled(musicActive)
+            .loomHelp(musicActive
+                ? "Computed from the Music multiplier above — edit that instead of this directly."
+                : "Oscillation frequency in cycles per second. Higher values = faster oscillation.")
+            if musicActive {
+                floatField("Phase offset", $driver.musicalPhaseOffset)
+                .loomHelp("Additive offset (0–1) from the beat-locked phase — 0 lands exactly on the beat, 0.25 is a quarter-cycle later, 0.5 gives a call-and-response opposite phase.")
+                .onChange(of: driver.musicalPhaseOffset) { _, _ in recomputeMusicSync() }
+            } else {
+                floatField("Phase 0–1",$driver.phase)
+                .loomHelp(phaseModeBinding == nil
+                    ? "Starting phase offset of the wave (0 = start at centre crossing, 0.25 = start at peak)."
+                    : "Phase offset AND per-polygon spread range. All: static offset for every polygon. Sequential: total phase range from first to last polygon — 0.05–0.15 gives a tight queue where all polygons move the same direction; 1.0 gives a full standing wave with some moving opposite. Random: maximum random scatter — 0.05 = tight cluster, 1.0 = fully scattered across the cycle.")
+            }
             if let modeBinding = phaseModeBinding {
                 InspectorField("Phase mode") {
                     Picker("", selection: modeBinding) {
@@ -107,6 +183,13 @@ struct DoubleDriverEditor: View {
                 .font(.system(size: 11, design: .monospaced))
                 .frame(width: 60)
         }
+    }
+
+    private var musicSyncEnabled: Bool { controller.projectConfig?.musicSync.enabled ?? false }
+    private var musicActive: Bool { musicSyncEnabled && driver.musicalMultiplier != nil }
+
+    private func recomputeMusicSync() {
+        controller.updateProjectConfig { MusicSync.recomputeAll(in: &$0) }
     }
 }
 
@@ -157,8 +240,14 @@ struct VectorDriverEditor: View {
             .loomHelp("Centre XY value of the smooth noise output.")
             vec2Field("Amplitude", $driver.amplitude)
             .loomHelp("Maximum per-axis deviation from Base produced by the smooth noise function.")
+            if musicSyncEnabled {
+                musicRateControls(multiplier: $driver.musicalMultiplier) { recomputeMusicSync() }
+            }
             intField("Period (f)", $driver.period)
-            .loomHelp("Length in frames of one full noise cycle per axis. Larger values = slower, smoother variation.")
+            .disabled(musicActive)
+            .loomHelp(musicActive
+                ? "Computed from the Music multiplier above — edit that instead of this directly."
+                : "Length in frames of one full noise cycle per axis. Larger values = slower, smoother variation.")
             intField("Seed",       $driver.seed)
             .loomHelp("Random seed for reproducible smooth XY noise. Change to get a different noise shape.")
 
@@ -167,10 +256,22 @@ struct VectorDriverEditor: View {
             .loomHelp("Centre XY value that the oscillator waves are offset from.")
             vec2Field("Amplitude", $driver.amplitude)
             .loomHelp("Peak per-axis deviation from Base — each axis swings between Base−Amplitude and Base+Amplitude.")
+            if musicSyncEnabled {
+                musicRateControls(multiplier: $driver.musicalMultiplier) { recomputeMusicSync() }
+            }
             vec2Field("Freq Hz",   $driver.freqHz)
-            .loomHelp("Per-axis oscillation frequency in cycles per second. Set X and Y differently for elliptical paths.")
-            vec2Field("Phase 0–1", $driver.phase)
-            .loomHelp("Per-axis starting phase offset of the wave (0–1). Offset X and Y by 0.25 for a circular orbit.")
+            .disabled(musicActive)
+            .loomHelp(musicActive
+                ? "Computed from the Music multiplier above (same rate on both axes) — edit that instead of this directly."
+                : "Per-axis oscillation frequency in cycles per second. Set X and Y differently for elliptical paths.")
+            if musicActive {
+                floatField("Phase offset", $driver.musicalPhaseOffset)
+                .loomHelp("Additive offset (0–1) from the beat-locked phase, applied to both axes — 0 lands exactly on the beat.")
+                .onChange(of: driver.musicalPhaseOffset) { _, _ in recomputeMusicSync() }
+            } else {
+                vec2Field("Phase 0–1", $driver.phase)
+                .loomHelp("Per-axis starting phase offset of the wave (0–1). Offset X and Y by 0.25 for a circular orbit.")
+            }
             InspectorField("Wave") {
                 LoomPicker(selection: $driver.wave, maxWidth: 110)
             }
@@ -200,6 +301,10 @@ struct VectorDriverEditor: View {
         }
     }
 
+    private func floatField(_ lbl: String, _ b: Binding<Double>) -> some View {
+        InspectorField(lbl) { FloatEntryField(value: b, width: 75, fractionDigits: 3, fontSize: 11) }
+    }
+
     private func intField(_ lbl: String, _ b: Binding<Int>) -> some View {
         InspectorField(lbl) {
             TextField("", value: b, format: .number)
@@ -207,6 +312,13 @@ struct VectorDriverEditor: View {
                 .font(.system(size: 11, design: .monospaced))
                 .frame(width: 60)
         }
+    }
+
+    private var musicSyncEnabled: Bool { controller.projectConfig?.musicSync.enabled ?? false }
+    private var musicActive: Bool { musicSyncEnabled && driver.musicalMultiplier != nil }
+
+    private func recomputeMusicSync() {
+        controller.updateProjectConfig { MusicSync.recomputeAll(in: &$0) }
     }
 }
 
@@ -414,15 +526,29 @@ struct ColorDriverEditor: View {
                 .loomHelp("First colour in the oscillation cycle (wave trough).")
                 LoomColorField(label: "Color B", color: $driver.colorB)
                 .loomHelp("Second colour in the oscillation cycle (wave peak).")
+                if musicSyncEnabled {
+                    musicRateControls(multiplier: $driver.musicalMultiplier) { recomputeMusicSync() }
+                }
                 InspectorField("Freq (Hz)") {
                     FloatEntryField(value: $driver.freqHz, width: 55, fractionDigits: 3)
                 }
-                .loomHelp("Colour oscillation frequency in cycles per second. Higher values = faster cycling.")
-                InspectorField("Phase") {
-                    FloatEntryField(value: $driver.phase, width: 55, fractionDigits: 3)
-                    Text("0–1").font(.system(size: 10)).foregroundStyle(.tertiary)
+                .disabled(musicActive)
+                .loomHelp(musicActive
+                    ? "Computed from the Music multiplier above — edit that instead of this directly."
+                    : "Colour oscillation frequency in cycles per second. Higher values = faster cycling.")
+                if musicActive {
+                    InspectorField("Phase offset") {
+                        FloatEntryField(value: $driver.musicalPhaseOffset, width: 55, fractionDigits: 3)
+                    }
+                    .loomHelp("Additive offset (0–1) from the beat-locked phase — 0 lands exactly on the beat.")
+                    .onChange(of: driver.musicalPhaseOffset) { _, _ in recomputeMusicSync() }
+                } else {
+                    InspectorField("Phase") {
+                        FloatEntryField(value: $driver.phase, width: 55, fractionDigits: 3)
+                        Text("0–1").font(.system(size: 10)).foregroundStyle(.tertiary)
+                    }
+                    .loomHelp("Starting phase offset of the colour wave (0 = start at Color A, 0.5 = start at Color B).")
                 }
-                .loomHelp("Starting phase offset of the colour wave (0 = start at Color A, 0.5 = start at Color B).")
                 InspectorField("Wave") {
                     LoomPicker(selection: $driver.wave, maxWidth: 110)
                 }
@@ -477,6 +603,13 @@ struct ColorDriverEditor: View {
         .onChange(of: driver.keyframes.count) { old, new in
             if new > 0 && !driver.enabled { driver.enabled = true }
         }
+    }
+
+    private var musicSyncEnabled: Bool { controller.projectConfig?.musicSync.enabled ?? false }
+    private var musicActive: Bool { musicSyncEnabled && driver.musicalMultiplier != nil }
+
+    private func recomputeMusicSync() {
+        controller.updateProjectConfig { MusicSync.recomputeAll(in: &$0) }
     }
 }
 

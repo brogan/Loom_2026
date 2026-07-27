@@ -807,7 +807,7 @@ struct RenderingTabView: View {
               let cfg    = controller.projectConfig,
               setIdx < cfg.renderingConfig.library.rendererSets.count else { return }
         let existing = cfg.renderingConfig.library.rendererSets[setIdx].renderers.map(\.name)
-        let name = uniqueName(base: "renderer", existing: existing)
+        let name = defaultPassName(abbrev: "rend", existing: existing)
         controller.updateProjectConfig { c in
             c.renderingConfig.library.rendererSets[setIdx].renderers.append(Renderer(name: name))
         }

@@ -132,9 +132,14 @@ struct TimelinePanel: View {
 
     private let headerWidth:  CGFloat = 160
     private let rowHeight:    CGFloat = 22
-    private let rulerHeight:  CGFloat = 28
+    private let baseRulerHeight:  CGFloat = 28
+    /// Extra strip below the frame-number ruler for the bar/beat row —
+    /// only present when Music Sync is enabled (`Specs/GlobalMusicSync.md` §3).
+    private let beatRulerHeight:  CGFloat = 14
+    private var rulerHeight: CGFloat { baseRulerHeight + (musicSyncEnabled ? beatRulerHeight : 0) }
     private let markerStripHeight: CGFloat = 18
     private var totalRulerHeight: CGFloat { markerStripHeight + rulerHeight }
+    private var musicSyncEnabled: Bool { controller.projectConfig?.musicSync.enabled ?? false }
     private let hitTolerance: CGFloat = 8
     private let minPanelHeight:    CGFloat = 80
     private var maxPanelHeight:    CGFloat { windowHeight / 2 }
@@ -1179,6 +1184,11 @@ struct TimelinePanel: View {
         ctx.fill(Path(CGRect(x: 0, y: markerStripHeight, width: size.width, height: rulerHeight)),
                  with: .color(Color(NSColor.windowBackgroundColor)))
 
+        // Frame ticks live in a fixed-height sub-band at the top of the ruler
+        // area so the optional beat row (below) is additive rather than
+        // shifting the frame ruler itself when it appears/disappears.
+        let frameRulerBottom = markerStripHeight + baseRulerHeight
+
         let (major, minor) = tickIntervals()
         let pxPerFrame     = CGFloat(zoom)
         let firstTick      = (Int(CGFloat(hOffset) / pxPerFrame) / minor) * minor
@@ -1190,25 +1200,77 @@ struct TimelinePanel: View {
             guard x >= 0 && x <= size.width else { f += minor; continue }
             let isMajor = f % major == 0
             ctx.stroke(Path { p in
-                p.move(to: CGPoint(x: x, y: totalRulerHeight - (isMajor ? 10 : 5)))
-                p.addLine(to: CGPoint(x: x, y: totalRulerHeight))
+                p.move(to: CGPoint(x: x, y: frameRulerBottom - (isMajor ? 10 : 5)))
+                p.addLine(to: CGPoint(x: x, y: frameRulerBottom))
             }, with: .color(isMajor ? Color.secondary.opacity(0.6) : Color.secondary.opacity(0.25)),
                lineWidth: 1)
             if isMajor {
                 ctx.draw(Text("\(f)").font(.system(size: 8)).foregroundStyle(Color.secondary),
-                         at: CGPoint(x: x + 2, y: totalRulerHeight - 12), anchor: .bottomLeading)
+                         at: CGPoint(x: x + 2, y: frameRulerBottom - 12), anchor: .bottomLeading)
             }
             f += minor
         }
         ctx.stroke(Path { p in
-            p.move(to: CGPoint(x: 0, y: totalRulerHeight))
-            p.addLine(to: CGPoint(x: size.width, y: totalRulerHeight))
+            p.move(to: CGPoint(x: 0, y: frameRulerBottom))
+            p.addLine(to: CGPoint(x: size.width, y: frameRulerBottom))
         }, with: .color(Color.secondary.opacity(0.2)), lineWidth: 0.5)
         // Separator between marker strip and ruler
         ctx.stroke(Path { p in
             p.move(to: CGPoint(x: 0, y: markerStripHeight))
             p.addLine(to: CGPoint(x: size.width, y: markerStripHeight))
         }, with: .color(Color.secondary.opacity(0.15)), lineWidth: 0.5)
+
+        if musicSyncEnabled {
+            drawBeatRuler(&ctx, size: size, top: frameRulerBottom, bottom: totalRulerHeight)
+        }
+    }
+
+    /// Additive bar/beat row beneath the frame-number ruler
+    /// (`Specs/GlobalMusicSync.md` §3) — converts frame → beat → bar from
+    /// the project's BPM/beats-per-bar/reference-frame, using the same
+    /// zoom/hOffset the frame ruler above it already uses. Major ticks (bar
+    /// starts) are labeled `"bar.beat"`; minor ticks mark the beats between.
+    private func drawBeatRuler(_ ctx: inout GraphicsContext, size: CGSize, top: CGFloat, bottom: CGFloat) {
+        guard let sync = controller.projectConfig?.musicSync, sync.enabled, sync.bpm > 0 else { return }
+        let fps = max(1, controller.projectConfig?.globalConfig.targetFPS ?? 30)
+        let beatsPerBar = max(1, sync.beatsPerBar)
+        let framesPerBeat = fps * 60.0 / sync.bpm
+        let pxPerFrame = CGFloat(zoom)
+        let pxPerBeat = CGFloat(framesPerBeat) * pxPerFrame
+        // Too zoomed out for individual beat ticks to mean anything — skip
+        // rather than draw an illegible smear.
+        guard pxPerBeat > 3 else { return }
+
+        ctx.fill(Path(CGRect(x: 0, y: top, width: size.width, height: bottom - top)),
+                 with: .color(Color(NSColor.windowBackgroundColor).opacity(0.85)))
+
+        let leftFrame  = Double(hOffset) / Double(pxPerFrame)
+        let rightFrame = (Double(hOffset) + Double(size.width)) / Double(pxPerFrame)
+        let firstBeatIndex = Int(((leftFrame - Double(sync.barReferenceFrame)) / framesPerBeat).rounded(.down)) - 1
+        let lastBeatIndex  = Int(((rightFrame - Double(sync.barReferenceFrame)) / framesPerBeat).rounded(.up)) + 1
+        guard firstBeatIndex <= lastBeatIndex else { return }
+
+        for beatIndex in firstBeatIndex...lastBeatIndex {
+            let frame = Double(sync.barReferenceFrame) + Double(beatIndex) * framesPerBeat
+            let x = CGFloat(frame) * pxPerFrame - CGFloat(hOffset)
+            guard x >= -40 && x <= size.width + 40 else { continue }
+
+            // Floor-mod (not `%`) so beats before the reference frame still
+            // land in 0..<beatsPerBar instead of going negative.
+            let beatInBar  = ((beatIndex % beatsPerBar) + beatsPerBar) % beatsPerBar
+            let bar        = Int((Double(beatIndex) / Double(beatsPerBar)).rounded(.down)) + 1
+            let isBarStart = beatInBar == 0
+
+            ctx.stroke(Path { p in
+                p.move(to: CGPoint(x: x, y: bottom - (isBarStart ? 10 : 5)))
+                p.addLine(to: CGPoint(x: x, y: bottom))
+            }, with: .color(isBarStart ? Color.blue.opacity(0.6) : Color.blue.opacity(0.25)), lineWidth: 1)
+
+            if isBarStart {
+                ctx.draw(Text("\(bar).\(beatInBar + 1)").font(.system(size: 8)).foregroundStyle(Color.blue),
+                         at: CGPoint(x: x + 2, y: bottom - 12), anchor: .bottomLeading)
+            }
+        }
     }
 
     private func drawMarkerStrip(_ ctx: inout GraphicsContext, size: CGSize) {

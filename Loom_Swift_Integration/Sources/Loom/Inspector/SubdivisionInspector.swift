@@ -374,7 +374,8 @@ struct SubdivisionInspector: View {
     private func addSubdivisionParam(setIdx: Int, type: SubdivisionType) {
         guard let cfg = controller.projectConfig,
               setIdx < cfg.subdivisionConfig.paramsSets.count else { return }
-        let newParam = SubdivisionParams(subdivisionType: type)
+        var newParam = SubdivisionParams(subdivisionType: type)
+        newParam.name = defaultPassName(abbrev: "subdiv", existing: cfg.subdivisionConfig.paramsSets[setIdx].params.map(\.name))
         controller.updateProjectConfig { config in
             config.subdivisionConfig.paramsSets[setIdx].params.append(newParam)
         }
@@ -463,7 +464,8 @@ struct SubdivisionInspector: View {
     private func addCurveRefinementParam(setIdx: Int) {
         guard let cfg = controller.projectConfig,
               setIdx < cfg.subdivisionConfig.paramsSets.count else { return }
-        let newParam = CurveRefinementParams()
+        var newParam = CurveRefinementParams()
+        newParam.name = defaultPassName(abbrev: "curve", existing: cfg.subdivisionConfig.paramsSets[setIdx].curveRefinement.map(\.name))
         controller.updateProjectConfig { config in
             config.subdivisionConfig.paramsSets[setIdx].curveRefinement.append(newParam)
         }
@@ -553,7 +555,8 @@ struct SubdivisionInspector: View {
     private func addSegmentExtractionParam(setIdx: Int) {
         guard let cfg = controller.projectConfig,
               setIdx < cfg.subdivisionConfig.paramsSets.count else { return }
-        let newParam = SegmentExtractionParams()
+        var newParam = SegmentExtractionParams()
+        newParam.name = defaultPassName(abbrev: "seg", existing: cfg.subdivisionConfig.paramsSets[setIdx].segmentExtraction.map(\.name))
         controller.updateProjectConfig { config in
             config.subdivisionConfig.paramsSets[setIdx].segmentExtraction.append(newParam)
         }
@@ -641,7 +644,8 @@ struct SubdivisionInspector: View {
     private func addExtensionParam(setIdx: Int) {
         guard let cfg = controller.projectConfig,
               setIdx < cfg.subdivisionConfig.paramsSets.count else { return }
-        let newParam = ExtensionParams()
+        var newParam = ExtensionParams()
+        newParam.name = defaultPassName(abbrev: "ext", existing: cfg.subdivisionConfig.paramsSets[setIdx].extensionPasses.map(\.name))
         controller.updateProjectConfig { config in
             config.subdivisionConfig.paramsSets[setIdx].extensionPasses.append(newParam)
         }
@@ -729,7 +733,8 @@ struct SubdivisionInspector: View {
     private func addConvolutionParam(setIdx: Int) {
         guard let cfg = controller.projectConfig,
               setIdx < cfg.subdivisionConfig.paramsSets.count else { return }
-        let newParam = ConvolutionParams()
+        var newParam = ConvolutionParams()
+        newParam.name = defaultPassName(abbrev: "conv", existing: cfg.subdivisionConfig.paramsSets[setIdx].convolutionPasses.map(\.name))
         controller.updateProjectConfig { config in
             config.subdivisionConfig.paramsSets[setIdx].convolutionPasses.append(newParam)
         }
@@ -826,7 +831,8 @@ struct SubdivisionInspector: View {
     private func addEvolutionParam(setIdx: Int, type: EvolutionOperationType) {
         guard let cfg = controller.projectConfig,
               setIdx < cfg.subdivisionConfig.paramsSets.count else { return }
-        let newParam = EvolutionParams(operationType: type)
+        var newParam = EvolutionParams(operationType: type)
+        newParam.name = defaultPassName(abbrev: "evo", existing: cfg.subdivisionConfig.paramsSets[setIdx].evolutionPasses.map(\.name))
         controller.updateProjectConfig { config in
             config.subdivisionConfig.paramsSets[setIdx].evolutionPasses.append(newParam)
         }
@@ -902,7 +908,8 @@ struct SubdivisionInspector: View {
     private func addFulgurationParam(setIdx: Int) {
         guard let cfg = controller.projectConfig,
               setIdx < cfg.subdivisionConfig.paramsSets.count else { return }
-        let newParam = FulgurationParams()
+        var newParam = FulgurationParams()
+        newParam.name = defaultPassName(abbrev: "ful", existing: cfg.subdivisionConfig.paramsSets[setIdx].fulgurationPasses.map(\.name))
         controller.updateProjectConfig { config in
             config.subdivisionConfig.paramsSets[setIdx].fulgurationPasses.append(newParam)
         }
@@ -990,7 +997,8 @@ struct SubdivisionInspector: View {
     private func addDissolutionParam(setIdx: Int) {
         guard let cfg = controller.projectConfig,
               setIdx < cfg.subdivisionConfig.paramsSets.count else { return }
-        let newParam = DissolutionParams()
+        var newParam = DissolutionParams()
+        newParam.name = defaultPassName(abbrev: "dissolve", existing: cfg.subdivisionConfig.paramsSets[setIdx].dissolutionPasses.map(\.name))
         controller.updateProjectConfig { config in
             config.subdivisionConfig.paramsSets[setIdx].dissolutionPasses.append(newParam)
         }

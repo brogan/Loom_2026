@@ -1,47 +1,17 @@
 import Foundation
 
-/// The `TransformDrivers` fields a Live-tab session can toggle on/off for a
-/// staged sprite instance — see `LoomEngine.setDriverEnabled`.
-public enum LiveDriverKey: String, CaseIterable, Sendable {
-    case position, scale, rotation, morph, opacity, shape
-    case subdivisionSet, rendererSet, cycleName
-
-    /// This field's current `enabled` flag within `drivers`.
-    public func enabled(in drivers: TransformDrivers) -> Bool {
-        switch self {
-        case .position:       return drivers.position.enabled
-        case .scale:          return drivers.scale.enabled
-        case .rotation:       return drivers.rotation.enabled
-        case .morph:          return drivers.morph.enabled
-        case .opacity:        return drivers.opacity.enabled
-        case .shape:          return drivers.shape.enabled
-        case .subdivisionSet: return drivers.subdivisionSet.enabled
-        case .rendererSet:    return drivers.rendererSet.enabled
-        case .cycleName:      return drivers.cycleName.enabled
-        }
-    }
-
-    /// Whether this field differs from `TransformDrivers.identity` — i.e.
-    /// whether the project's own sprite authoring actually set this driver
-    /// up (enabled or not) rather than leaving it at its untouched default.
-    /// Used by the Live tab to show only drivers relevant to a given sprite,
-    /// rather than all 9 possible driver slots regardless of whether the
-    /// project uses them.
-    public func isConfigured(in drivers: TransformDrivers) -> Bool {
-        let identity = TransformDrivers.identity
-        switch self {
-        case .position:       return drivers.position != identity.position
-        case .scale:          return drivers.scale != identity.scale
-        case .rotation:       return drivers.rotation != identity.rotation
-        case .morph:          return drivers.morph != identity.morph
-        case .opacity:        return drivers.opacity != identity.opacity
-        case .shape:          return drivers.shape != identity.shape
-        case .subdivisionSet: return drivers.subdivisionSet != identity.subdivisionSet
-        case .rendererSet:    return drivers.rendererSet != identity.rendererSet
-        case .cycleName:      return drivers.cycleName != identity.cycleName
-        }
-    }
+/// Common shape of `DoubleDriver`/`VectorDriver`/`ColorDriver`/`NameDriver` —
+/// each independently declares its own `enabled` flag with no shared
+/// protocol; this lets the Live tab's engine mutators (`setDriverEnabled`)
+/// operate generically over any of them via a `WritableKeyPath`, rather than
+/// needing one method per driver value type.
+public protocol AnyLiveDriver: Sendable {
+    var enabled: Bool { get set }
 }
+extension DoubleDriver: AnyLiveDriver {}
+extension VectorDriver: AnyLiveDriver {}
+extension ColorDriver: AnyLiveDriver {}
+extension NameDriver: AnyLiveDriver {}
 
 // MARK: - Rate/Range application
 
@@ -51,10 +21,16 @@ public extension DoubleDriver {
     /// (noise) for rate, `amplitude` (oscillator/noise) or `range` (jitter)
     /// for range — leaving fields the current mode doesn't use untouched.
     /// Shared by `LoomEngine.updateDoubleDriverRateRange` (the live path)
-    /// and the Live tab's "save to sprite" action, which applies the
-    /// identical mapping to a project's saved `SpriteDef` so the two stay
-    /// in lockstep by construction rather than by convention.
-    mutating func applyRateRange(rate: Double? = nil, range: Double? = nil) {
+    /// and the Live tab's "save to sprite/set" actions, which apply the
+    /// identical mapping to a project's saved config so the two stay in
+    /// lockstep by construction rather than by convention.
+    ///
+    /// `phase` (0–1, oscillator's phase offset) applies unconditionally —
+    /// unlike rate/range it isn't mode-gated, since jitter/noise simply
+    /// don't read it (harmlessly stored, not evaluated). Used by BPM-linked
+    /// musical rate (`LoomLiveV1Scope.md` §2.6) to align a cycle's start to
+    /// a tapped downbeat; the plain manual Rate/Range sliders never pass it.
+    mutating func applyRateRange(rate: Double? = nil, range: Double? = nil, phase: Double? = nil) {
         if let rate {
             switch mode {
             case .oscillator: freqHz = max(0, rate)
@@ -69,6 +45,7 @@ public extension DoubleDriver {
             default: break
             }
         }
+        if let phase { self.phase = phase }
     }
 }
 
@@ -77,7 +54,8 @@ public extension VectorDriver {
     /// comment. Noise mode's `period` is a single shared value (not
     /// per-axis), so only `rateX` is consulted for it; `rateY` is ignored.
     mutating func applyRateRange(
-        rateX: Double? = nil, rateY: Double? = nil, rangeX: Double? = nil, rangeY: Double? = nil
+        rateX: Double? = nil, rateY: Double? = nil, rangeX: Double? = nil, rangeY: Double? = nil,
+        phaseX: Double? = nil, phaseY: Double? = nil
     ) {
         if rateX != nil || rateY != nil {
             switch mode {
@@ -100,6 +78,33 @@ public extension VectorDriver {
             default: break
             }
         }
+        if let phaseX { phase.x = phaseX }
+        if let phaseY { phase.y = phaseY }
+    }
+}
+
+public extension ColorDriver {
+    /// `DoubleDriver.applyRateRange`'s counterpart for `ColorDriver` — same
+    /// field names (`freqHz`/`period`/`amplitude`/`range`), same mode
+    /// mapping. Only oscillator/noise/jitter are covered; `.sequential`/
+    /// `.random` (palette-stepping modes) use `period`/`weights` for a
+    /// different purpose and aren't addressed by this generalized control.
+    mutating func applyRateRange(rate: Double? = nil, range: Double? = nil, phase: Double? = nil) {
+        if let rate {
+            switch mode {
+            case .oscillator: freqHz = max(0, rate)
+            case .noise:      period = max(1, Int(rate.rounded()))
+            default: break
+            }
+        }
+        if let range {
+            switch mode {
+            case .oscillator, .noise: amplitude = max(0, range)
+            case .jitter:             self.range = max(0, range)
+            default: break
+            }
+        }
+        if let phase { self.phase = phase }
     }
 }
 

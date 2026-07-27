@@ -46,6 +46,7 @@ struct GlobalInspector: View {
             canvasSection
             colorsSection
             playbackSection
+            musicSyncSection
             cameraSection
             noteSection
             statusSection
@@ -223,6 +224,54 @@ struct GlobalInspector: View {
                 Toggle("", isOn: $controller.showScrubBar).labelsHidden()
             }
             .loomHelp("Show or hide the timeline scrub bar below the canvas.")
+        }
+    }
+
+    /// Project-wide BPM/time-signature clock for music-linked drivers
+    /// (`Specs/GlobalMusicSync.md`) — a single clock shared by every scene
+    /// and every driver, not scoped to `GlobalConfig`, since transform-pass
+    /// and renderer drivers are shared project-wide rather than per-scene.
+    /// Any change here triggers `MusicSync.recomputeAll` in the same
+    /// `updateProjectConfig` mutation, so every music-linked driver's
+    /// `freqHz`/`phase`/`period` stays current immediately.
+    private var musicSyncSection: some View {
+        InspectorSection("Music Sync") {
+            InspectorField("Enabled") {
+                Toggle("", isOn: bindMusicSync(\.enabled)).labelsHidden()
+            }
+            .loomHelp("Turns on BPM-linked driver rate for this project: reveals the timeline's bar/beat ruler and each driver's Manual/Music rate toggle. Turning this off does not reset any driver already locked to music — it freezes their last-computed rate/phase.")
+
+            InspectorField("BPM") {
+                FloatEntryField(value: bindMusicSync(\.bpm), width: 50, fractionDigits: 1)
+            }
+            .loomHelp("Tempo used to convert a driver's musical multiplier (e.g. \"1 cycle per bar\") into an actual rate.")
+
+            InspectorField("Beats/Bar") {
+                Picker("", selection: bindMusicSync(\.beatsPerBar)) {
+                    ForEach([2, 3, 4, 5, 6, 7, 8, 9, 12], id: \.self) { Text("\($0)").tag($0) }
+                }
+                .labelsHidden()
+                .frame(width: 60)
+            }
+            .loomHelp("Time signature's beat count per bar, used for both the timeline's bar/beat ruler and \"cycles per bar\"-style musical multipliers.")
+
+            InspectorField("Downbeat frame") {
+                FloatEntryField(value: Binding(
+                    get: { Double(bindMusicSync(\.barReferenceFrame).wrappedValue) },
+                    set: { newValue in controller.updateProjectConfig {
+                        $0.musicSync.barReferenceFrame = Int(newValue)
+                        MusicSync.recomputeAll(in: &$0)
+                    } }
+                ), width: 60, fractionDigits: 0)
+                Button("Set at playhead") {
+                    controller.updateProjectConfig {
+                        $0.musicSync.barReferenceFrame = controller.currentTimelineFrame
+                        MusicSync.recomputeAll(in: &$0)
+                    }
+                }
+                .font(.system(size: 10))
+            }
+            .loomHelp("The frame that counts as \"bar 1, beat 1.\" Defaults to frame 0; move it if the music has a lead-in before the beat grid you actually want sprites to align to.")
         }
     }
 
@@ -410,5 +459,19 @@ struct GlobalInspector: View {
 
     private func bindColor(_ kp: WritableKeyPath<GlobalConfig, LoomColor>) -> Binding<LoomColor> {
         bind(kp)
+    }
+
+    /// Like `bind`, but for `ProjectConfig.musicSync` fields — every write
+    /// also triggers `MusicSync.recomputeAll` so driver rate/phase never
+    /// goes stale relative to a just-changed BPM/beats-per-bar/reference frame.
+    private func bindMusicSync<T>(_ kp: WritableKeyPath<MusicSyncConfig, T>) -> Binding<T> {
+        let ctl = controller
+        return Binding(
+            get: { ctl.projectConfig?.musicSync[keyPath: kp] ?? MusicSyncConfig()[keyPath: kp] },
+            set: { v in ctl.updateProjectConfig {
+                $0.musicSync[keyPath: kp] = v
+                MusicSync.recomputeAll(in: &$0)
+            } }
+        )
     }
 }

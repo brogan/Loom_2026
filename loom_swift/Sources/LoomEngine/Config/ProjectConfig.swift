@@ -19,6 +19,34 @@ public struct LoomScene: Identifiable, Codable, Sendable {
     }
 }
 
+/// Project-wide BPM/time-signature clock for music-linked drivers
+/// (`GlobalMusicSync.md`). Deliberately a single project-wide clock rather
+/// than per-scene: `subdivisionConfig`/`renderingConfig` (where transform-
+/// pass and renderer drivers live) are shared across all scenes, so a
+/// per-scene BPM couldn't be followed consistently by a driver shared
+/// between two differently-tempo'd scenes.
+public struct MusicSyncConfig: Equatable, Codable, Sendable {
+    public var enabled:           Bool   = false
+    public var bpm:                Double = 120
+    public var beatsPerBar:        Int    = 4
+    /// The frame that counts as "bar 1, beat 1" — defaults to project frame 0.
+    public var barReferenceFrame:  Int    = 0
+
+    public init() {}
+
+    private enum CodingKeys: String, CodingKey {
+        case enabled, bpm, beatsPerBar, barReferenceFrame
+    }
+
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        enabled           = try c.decodeIfPresent(Bool.self,   forKey: .enabled)          ?? false
+        bpm               = try c.decodeIfPresent(Double.self, forKey: .bpm)               ?? 120
+        beatsPerBar       = try c.decodeIfPresent(Int.self,    forKey: .beatsPerBar)       ?? 4
+        barReferenceFrame = try c.decodeIfPresent(Int.self,    forKey: .barReferenceFrame) ?? 0
+    }
+}
+
 /// All configuration loaded from one `.loom_projects/<ProjectName>` directory.
 ///
 /// `ProjectLoader` produces this struct by reading the nine XML files in
@@ -44,6 +72,8 @@ public struct ProjectConfig: Codable, Sendable {
     public var scenes:            [LoomScene]
     /// ID of the scene whose globalConfig/spriteConfig are currently loaded into the top-level fields.
     public var activeSceneID:     UUID?
+    /// Project-wide BPM/time-signature clock for music-linked drivers. See `MusicSyncConfig`.
+    public var musicSync:         MusicSyncConfig
 
     public init(
         globalConfig: GlobalConfig           = .default,
@@ -59,7 +89,8 @@ public struct ProjectConfig: Codable, Sendable {
         cycles: [SpriteCycle]                = [],
         lightingConfig: LightingConfig       = LightingConfig(),
         scenes: [LoomScene]                  = [],
-        activeSceneID: UUID?                 = nil
+        activeSceneID: UUID?                 = nil,
+        musicSync: MusicSyncConfig           = MusicSyncConfig()
     ) {
         self.globalConfig      = globalConfig
         self.shapeConfig       = shapeConfig
@@ -75,6 +106,7 @@ public struct ProjectConfig: Codable, Sendable {
         self.lightingConfig    = lightingConfig
         self.scenes            = scenes
         self.activeSceneID     = activeSceneID
+        self.musicSync         = musicSync
     }
 
     // MARK: - Codable
@@ -82,7 +114,7 @@ public struct ProjectConfig: Codable, Sendable {
     private enum CodingKeys: String, CodingKey {
         case globalConfig, shapeConfig, polygonConfig, curveConfig, ovalConfig
         case pointConfig, subdivisionConfig, renderingConfig, spriteConfig, layers, cycles
-        case lightingConfig, scenes, activeSceneID
+        case lightingConfig, scenes, activeSceneID, musicSync
     }
 
     public init(from decoder: Decoder) throws {
@@ -101,6 +133,7 @@ public struct ProjectConfig: Codable, Sendable {
         lightingConfig    = try c.decodeIfPresent(LightingConfig.self, forKey: .lightingConfig) ?? LightingConfig()
         scenes            = try c.decodeIfPresent([LoomScene].self,    forKey: .scenes)         ?? []
         activeSceneID     = try c.decodeIfPresent(UUID.self,           forKey: .activeSceneID)
+        musicSync         = try c.decodeIfPresent(MusicSyncConfig.self, forKey: .musicSync)     ?? MusicSyncConfig()
         // Migration: legacy project with no scenes — create Scene 1 from the top-level config.
         if scenes.isEmpty {
             let defaultScene = LoomScene(name: "Scene 1", globalConfig: globalConfig, spriteConfig: spriteConfig)

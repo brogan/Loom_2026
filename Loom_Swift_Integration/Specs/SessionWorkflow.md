@@ -158,46 +158,107 @@ action track (adjusting the timing of a context switch by a few frames) without 
 
 The rehearsal surface described in `MIDIPerformance.md` §4.5 (staging individual sprites,
 live driver/transform-set/renderer-set assignment, parameter sliders) generates the same
-kind of events, at finer grain than context switches:
+kind of events, at finer grain than context switches. This family of events is where the
+Live tab (`PerformanceArchitecture.md` §0.1, now built as a Loom tab rather than a separate
+app) actually lives, so the shape below reflects the implemented mechanism, not a projection:
 
 ```json
-{ "t": 14.050, "type": "spriteShow", "sprite": "leaf_04",
-  "position": [0.0, 0.0], "scale": [1.0, 1.0], "rotation": 0 },
-{ "t": 14.900, "type": "spriteHide", "sprite": "leaf_01" },
-{ "t": 15.200, "type": "rendererSetAssign", "sprite": "leaf_04", "rendererSet": "glow_stroke" },
-{ "t": 15.900, "type": "transformSetAssign", "sprite": "leaf_04", "transformSet": "dense_gen2" },
-{ "t": 16.200, "type": "driverEnabledToggle", "sprite": "leaf_04", "driver": "rotationDriver",
-  "enabled": true },
-{ "t": 16.400, "type": "driverParameterAdjust", "sprite": "leaf_04", "driver": "rotationDriver",
-  "field": "freqHz", "value": 1.35 }
+{ "t": 0,   "type": "spriteShow", "instanceName": "live_leaf_04_1", "spriteSetName": "Forest",
+  "spriteName": "leaf_04", "position": [0.0, 0.0], "scale": [1.0, 1.0], "rotation": 0 },
+{ "t": 26,  "type": "spriteHide", "instanceName": "live_leaf_01_1" },
+{ "t": 46,  "type": "rendererSetAssign", "instanceName": "live_leaf_04_1", "rendererSetName": "glow_stroke" },
+{ "t": 57,  "type": "transformSetAssign", "instanceName": "live_leaf_04_1", "subdivisionSetName": "dense_gen2" },
+{ "t": 66,  "type": "driverEnabledToggle", "instanceName": "live_leaf_04_1",
+  "target": { "section": "sprite", "entryName": "", "field": "rotation" }, "enabled": true },
+{ "t": 68,  "type": "driverAutomationPoint", "instanceName": "live_leaf_04_1",
+  "target": { "section": "convolution", "entryName": "conv_01", "field": "twistAmount" },
+  "quantity": "range", "axis": null, "value": 12.0, "recordedIndex": 0 },
+{ "t": 71,  "type": "driverAutomationPoint", "instanceName": "live_leaf_04_1",
+  "target": { "section": "convolution", "entryName": "conv_01", "field": "twistAmount" },
+  "quantity": "range", "axis": null, "value": 18.5, "recordedIndex": 0 }
 ```
 
-Every event that targets a sprite does so **by name, not by any kind of array position or
-index** — the same name the sprite has in the project's sprite sets. This is deliberate, not
-incidental: the rehearsal surface can show and hide sprites at any time, so any position-based
-identity (an index into a live list of currently-staged sprites, say) would be invalidated the
-moment an earlier sprite is hidden and the list shifts. Engine-level mutators resolve a name to
-its current position internally (a cheap lookup, given how few sprites a session realistically
-stages), so the log itself never has to know or care what that position is.
+**`t` is a project frame number, not a wall-clock second** — matching `DoubleKeyframe.frame`/
+`VectorKeyframe.frame` and the unit `VideoExporter` already steps in, so replay-to-render needs
+no unit conversion anywhere. This matters because Loom's own live playback clock, while
+genuinely wall-clock-driven (`LoomEngine.advance(deltaTime:)` advances by real elapsed seconds
+× `targetFPS`, and `RenderSurfaceNSView.tick()`'s `accumulatedDt` lets a backed-up render queue
+skip rendering some frames without losing track of real elapsed time), is not a guarantee that
+live preview stays smooth under a heavy scene — only that the state it eventually reaches is
+still the temporally-correct one. None of that live-preview variability matters for
+**replay-to-render**, though: export already drives the engine through `ExportFrameLoop`/
+`VideoExporter` with a fixed `deltaTime = 1/fps` per frame, fully decoupled from wall-clock time.
+Recorded frame numbers replay through that same deterministic path — applying each event when
+the frame-stepper reaches its recorded frame — so whatever roughness happened live has no
+bearing on the accuracy of the rendered output.
+
+Every event that targets a sprite does so **by instance name, not by any kind of array
+position or index** — the name generated when the sprite was staged (`live_<spriteName>_<n>`,
+unique per stage action so the same sprite can be staged more than once simultaneously), not
+merely its name in the project's sprite sets. This is deliberate, not incidental: the rehearsal
+surface can show and hide sprites at any time, so any position-based identity (an index into a
+live list of currently-staged sprites, say) would be invalidated the moment an earlier sprite
+is hidden and the list shifts. Engine-level mutators resolve a name to its current position
+internally (a cheap lookup, given how few sprites a session realistically stages), so the log
+itself never has to know or care what that position is.
+
+The same by-name principle extends one level further, into the transform-set-pass and
+renderer-entry drivers a staged sprite can also live-tune (see the rate/range rehearsal
+controls added to the Live tab). `target` names three things: which family the driver belongs
+to (`section` — `sprite`, `subdivision`, `curveRefinement`, `extension`, `convolution`,
+`evolution`, `segmentExtraction`, `dissolution`, or `renderer`), which specific pass or renderer
+within that family (`entryName`), and which field on it (`field`); `entryName` is empty/unused
+for `.sprite`, since a staged sprite has only one of itself. Array position can't stand in for
+`entryName` the way it might first seem to: transform passes live in individually ordered,
+individually editable per-kind stacks (a project's convolution passes, its extension passes,
+and so on, each its own reorderable list) subject to an overall pass ordering — inserting,
+removing, or reordering a pass shifts every position-based reference after it, silently
+misapplying (or, if the array has since shrunk, crashing on) a recorded event that still thinks
+it means "index 2." Naming is the only identity that survives that kind of editing between a
+recording session and a later replay.
+
+Names aren't guaranteed unique, though — nothing stops two passes sharing a name, or being left
+blank. So the log also records `recordedIndex` — the pass's position *at capture time* — used
+only as a tiebreaker: replay matches by name first, and only falls back to "the Nth pass with
+this name" (using `recordedIndex`'s rank among same-named passes) when the name match is
+ambiguous or empty. The practical mitigation is giving every pass a sensible non-empty default
+name the moment it's created, rather than leaving `name: ""` until a user bothers to fill it
+in: `<abbreviation>_<NN>`, one counter per family — `subdiv_01`, `curve_01`, `ext_01`,
+`conv_01`, `evo_01`, `seg_01`, `dissolve_01` for the seven transform-pipeline stages, `rend_01`
+for renderer entries — numbered by creation order within that specific stack. The user can
+always rename afterward; the point is that an untouched pass is never actually nameless, which
+is most of what keeps the tiebreaker a rare fallback rather than the common case. (Not yet
+implemented in the Subdivision/Extension/Convolution/Evolution/Rendering inspectors' "add
+pass"/"add renderer" actions — a small, well-scoped follow-up.)
 
 In memory, this is naturally an enum with associated values per event kind (`spriteShow`,
 `spriteHide`, `rendererSetAssign`, `transformSetAssign`, `driverEnabledToggle`,
-`driverParameterAdjust`, …) rather than one struct with a pile of optional fields for every
-possible kind — each case only carries the fields that kind actually needs. Encoding to the
-flat `{"type": "...", ...}` JSON shape shown above needs a manual `Codable` implementation
-keyed on that `type` string, the same pattern already used throughout `LoomEngine` for every
-other mode-tagged config type (`DoubleDriver`, `ColorDriver`, and so on) — not a new idiom for
-this codebase, just this format applied to a new type.
+`driverAutomationPoint`, …) rather than one struct with a pile of optional fields for every
+possible kind — each case only carries the fields that kind actually needs, and `target`
+mirrors `LiveDriverTarget`/`LiveDriverSection`, the Swift types the Live tab's engine mutators
+already dispatch on. Encoding to the flat `{"type": "...", ...}` JSON shape shown above needs a
+manual `Codable` implementation keyed on that `type` string, the same pattern already used
+throughout `LoomEngine` for every other mode-tagged config type (`DoubleDriver`, `ColorDriver`,
+and so on) — not a new idiom for this codebase, just this format applied to a new type.
 
-Two practical constraints worth deciding early rather than discovering later:
-- **Granularity of continuous adjustments.** A live slider drag could otherwise emit hundreds
-  of near-identical `driverParameterAdjust` events per second. Throttle to a capped rate (e.g.
-  10/sec) or log only on release/settle — either is fine, but an unthrottled log both bloats
-  the file and makes the timing-edit view (§4.5) unreadable.
-- **Crash/quit safety.** Write the log incrementally (append-only) as events happen, rather
-  than only at an explicit "stop recording" action — cheap given the format is already flat
-  JSON, and it means a crash mid-session loses at most the last unwritten event, not the whole
-  take.
+`driverAutomationPoint` is the continuous counterpart to the discrete events above — one point
+per coalesced slider commit, not one event per raw pixel of drag, reusing the same ~1-frame
+debounce ("latest value wins") already built into the Live tab's slider handling for thread
+safety. A "curve" isn't a distinct object in the log; it's just consecutive
+`driverAutomationPoint` events sharing `(instanceName, target, quantity, axis)`, grouped and
+ordered by `t` when read. `quantity` is `"rate"` or `"range"` (the same generalized controls
+the Live tab exposes); `axis` is `"x"`/`"y"` for a vector driver's independent per-axis
+sliders (position/scale) and `null` for a scalar one. Replay turns each such group into a
+`.keyframe`-mode `DoubleDriver`/`VectorDriver` with the points as `DoubleKeyframe`/
+`VectorKeyframe` entries (defaulting to linear easing between them — a raw drag is honestly
+piecewise-linear; smoother easing is something a future curve editor could add without
+touching this schema) and drives it through the same evaluator that already renders authored
+keyframe animation.
+
+One practical constraint worth deciding early rather than discovering later: **crash/quit
+safety**. Write the log incrementally (append-only) as events happen, rather than only at an
+explicit "stop recording" action — cheap given the format is already flat JSON, and it means a
+crash mid-session loses at most the last unwritten event, not the whole take.
 
 Live drawing (`PerformanceArchitecture.md` §5) — freehand or grid-placed sprites, and the
 drawing layers they're organised into — logs the same way: a layer is a named target that
