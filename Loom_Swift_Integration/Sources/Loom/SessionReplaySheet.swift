@@ -14,6 +14,12 @@ struct SessionReplaySheet: View {
 
     let projectURL: URL
     let sessionURL: URL
+    /// Non-nil when presented from `EventTimelineSheet` after editing —
+    /// used in place of re-reading `sessionURL` from disk, so review edits
+    /// that haven't been explicitly saved still render correctly.
+    /// `sessionURL` itself stays required either way, used only for the
+    /// "File:" label and default save-panel filename.
+    var presetEvents: [LiveEvent]? = nil
     @EnvironmentObject private var controller: AppController
     @Environment(\.dismiss) private var dismiss
 
@@ -177,8 +183,9 @@ struct SessionReplaySheet: View {
     private func loadSession() {
         let projectURL = self.projectURL
         let sessionURL = self.sessionURL
+        let presetEvents = self.presetEvents
         loadStartedAt = Date()
-        LoomLogger.info("[SessionReplay] loadSession starting: project=\(projectURL.path) session=\(sessionURL.path)")
+        LoomLogger.info("[SessionReplay] loadSession starting: project=\(projectURL.path) session=\(sessionURL.path) preset=\(presetEvents != nil)")
         Task {
             LoomLogger.info("[SessionReplay] loadSession outer Task running (MainActor-inherited)")
             do {
@@ -189,8 +196,14 @@ struct SessionReplaySheet: View {
                     for instance in newEngine.spriteInstances {
                         newEngine.hideSprite(instanceName: instance.def.name)
                     }
-                    LoomLogger.info("[SessionReplay] sprites hidden, loading events from \(sessionURL.lastPathComponent)")
-                    let events = try SessionReplayer.loadEvents(from: sessionURL)
+                    let events: [LiveEvent]
+                    if let presetEvents {
+                        LoomLogger.info("[SessionReplay] using \(presetEvents.count) preset (edited) event(s), skipping disk read")
+                        events = presetEvents
+                    } else {
+                        LoomLogger.info("[SessionReplay] sprites hidden, loading events from \(sessionURL.lastPathComponent)")
+                        events = try SessionReplayer.loadEvents(from: sessionURL)
+                    }
                     LoomLogger.info("[SessionReplay] loaded \(events.count) event(s), constructing SessionReplayer…")
                     let newReplayer = SessionReplayer(engine: newEngine, events: events)
                     LoomLogger.info("[SessionReplay] SessionReplayer constructed, maxEventFrame=\(newReplayer.maxEventFrame)")

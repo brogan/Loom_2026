@@ -12,6 +12,8 @@ struct LiveTabView: View {
     @State private var sessionNameDraft: String = ""
     @State private var showReplaySheet = false
     @State private var sessionToRenderURL: URL?
+    @State private var showTimelineSheet = false
+    @State private var sessionToReviewURL: URL?
 
     var body: some View {
         ScrollView {
@@ -48,6 +50,12 @@ struct LiveTabView: View {
                     .environmentObject(controller)
             }
         }
+        .sheet(isPresented: $showTimelineSheet, onDismiss: { liveController.canvasPaused = false }) {
+            if let url = sessionToReviewURL, let projectURL = controller.projectURL {
+                EventTimelineSheet(projectURL: projectURL, sessionURL: url)
+                    .environmentObject(controller)
+            }
+        }
     }
 
     /// Opens an `NSOpenPanel` defaulted to the project's `sessions/` folder
@@ -76,6 +84,26 @@ struct LiveTabView: View {
             liveController.canvasPaused = true
             showReplaySheet = true
             LoomLogger.info("[SessionReplay] showReplaySheet set to true for \(url.lastPathComponent)")
+        }
+    }
+
+    /// Same `NSOpenPanel` pattern as `presentRenderSessionPicker`, opening
+    /// `EventTimelineSheet` (review/edit) instead of jumping straight to
+    /// `SessionReplaySheet` (render-only, unchanged fast path).
+    private func presentReviewSessionPicker() {
+        let panel = NSOpenPanel()
+        panel.canChooseFiles = true
+        panel.canChooseDirectories = false
+        panel.allowsMultipleSelection = false
+        panel.allowsOtherFileTypes = true
+        if let projectURL = controller.projectURL {
+            panel.directoryURL = projectURL.appendingPathComponent("sessions")
+        }
+        panel.begin { response in
+            guard response == .OK, let url = panel.url else { return }
+            sessionToReviewURL = url
+            liveController.canvasPaused = true
+            showTimelineSheet = true
         }
     }
 
@@ -129,10 +157,15 @@ struct LiveTabView: View {
                     .padding(.horizontal, 12)
             }
 
-            Button("Render Session…") { presentRenderSessionPicker() }
-                .buttonStyle(.bordered)
-                .disabled(liveController.isRecording)
-                .padding(.horizontal, 12)
+            HStack(spacing: 6) {
+                Button("Review Session…") { presentReviewSessionPicker() }
+                    .buttonStyle(.bordered)
+                    .disabled(liveController.isRecording)
+                Button("Render Session…") { presentRenderSessionPicker() }
+                    .buttonStyle(.bordered)
+                    .disabled(liveController.isRecording)
+            }
+            .padding(.horizontal, 12)
         }
     }
 

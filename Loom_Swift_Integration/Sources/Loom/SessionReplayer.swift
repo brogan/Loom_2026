@@ -15,15 +15,6 @@ import LoomEngine
 /// touching it concurrently, so none of that machinery is needed here.
 final class SessionReplayer: @unchecked Sendable {
 
-    /// Identifies one automation curve — a driver's Rate *or* Range,
-    /// independent of axis (a vector driver's X/Y values are merged into
-    /// one curve's points, not two separate curves).
-    private struct CurveKey: Hashable {
-        let instanceName: String
-        let target: LiveDriverTarget
-        let quantity: String // "rate" or "range"
-    }
-
     private struct MusicalKey: Hashable {
         let instanceName: String
         let target: LiveDriverTarget
@@ -42,12 +33,12 @@ final class SessionReplayer: @unchecked Sendable {
 
     private var macroEvents: [LiveEvent]
     private var nextMacroIndex = 0
-    private var curves: [CurveKey: [(t: Int, x: Double, y: Double?)]]
+    private var curves: [AutomationCurveKey: [(t: Int, x: Double, y: Double?)]]
     /// Per-curve "last bracketing index" cursor — `applyFrame` is always
     /// called with non-decreasing frame numbers, so each curve's bracketing
     /// pair only ever moves forward; this avoids re-scanning every point
     /// from the start on every single exported frame.
-    private var curveCursors: [CurveKey: Int] = [:]
+    private var curveCursors: [AutomationCurveKey: Int] = [:]
 
     // Musical-rate replay state — mirrors LiveSessionController's own
     // bpm/beatsPerBar/barReferenceFrame/per-target-multiplier state, but
@@ -67,41 +58,7 @@ final class SessionReplayer: @unchecked Sendable {
             return true
         }.sorted { $0.t < $1.t }
 
-        // Group driverAutomationPoint events into curves — dropping `axis`
-        // from the key and instead combining the "x" (or axis-less scalar)
-        // and "y" points recorded at the *same* frame into one point, since
-        // LiveSessionController.recordAutomationPoint always emits both at
-        // an identical `t` for a vector target.
-        //
-        // Builds via the chained `dict[key, default:][key2, default:] = ...`
-        // subscript form deliberately, not `var byFrame = buckets[key] ?? [:];
-        // ...; buckets[key] = byFrame` — the latter looks equivalent but
-        // defeats copy-on-write: `buckets` still holds a reference to the old
-        // inner dictionary while `byFrame` mutates its own copy, so every
-        // single insertion into a growing curve re-copies everything
-        // accumulated so far (O(n²) over a session's automation points,
-        // measured in minutes for a few thousand points on one curve — not a
-        // theoretical concern, an actual reported hang). The chained form
-        // mutates in place via Swift's `_modify` accessor instead.
-        var buckets: [CurveKey: [Int: (x: Double?, y: Double?)]] = [:]
-        for event in events {
-            guard case .driverAutomationPoint(let t, let instanceName, let target, let quantity, let axis, let value) = event
-            else { continue }
-            let key = CurveKey(instanceName: instanceName, target: target, quantity: quantity)
-            if axis == "y" {
-                buckets[key, default: [:]][t, default: (x: nil, y: nil)].y = value
-            } else {
-                buckets[key, default: [:]][t, default: (x: nil, y: nil)].x = value
-            }
-        }
-        var built: [CurveKey: [(t: Int, x: Double, y: Double?)]] = [:]
-        for (key, byFrame) in buckets {
-            built[key] = byFrame.compactMap { t, entry -> (t: Int, x: Double, y: Double?)? in
-                guard let x = entry.x else { return nil }
-                return (t, x, entry.y)
-            }.sorted { $0.t < $1.t }
-        }
-        self.curves = built
+        self.curves = LiveEvent.groupedAutomationPoints(events)
     }
 
     // MARK: - Loading

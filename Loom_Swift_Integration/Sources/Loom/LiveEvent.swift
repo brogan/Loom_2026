@@ -77,6 +77,61 @@ enum LiveEvent {
     }
 }
 
+// MARK: - Automation point grouping
+//
+// Shared by `SessionReplayer` (which needs plain interpolation points) and
+// `EventSegmentDerivation` (which needs the same grouping but with each
+// point's originating event id preserved for editing) — both must agree on
+// exactly which points belong to the same curve, so the grouping itself
+// lives here once rather than being reimplemented per caller.
+
+/// Identifies one automation curve — a driver's Rate *or* Range, independent
+/// of axis (a vector driver's X/Y values are merged into one curve's points).
+struct AutomationCurveKey: Hashable {
+    let instanceName: String
+    let target: LiveDriverTarget
+    let quantity: String // "rate" or "range"
+}
+
+extension LiveEvent {
+    /// Groups `driverAutomationPoint` events into per-curve point lists,
+    /// combining the "x" (or axis-less scalar) and "y" points recorded at
+    /// the *same* frame into one point — `LiveSessionController.recordAutomationPoint`
+    /// always emits both at an identical `t` for a vector target.
+    ///
+    /// Builds via the chained `dict[key, default:][key2, default:] = ...`
+    /// subscript form deliberately, not `var byFrame = buckets[key] ?? [:];
+    /// ...; buckets[key] = byFrame` — the latter looks equivalent but
+    /// defeats copy-on-write: `buckets` still holds a reference to the old
+    /// inner dictionary while `byFrame` mutates its own copy, so every
+    /// single insertion into a growing curve re-copies everything
+    /// accumulated so far (O(n²) over a session's automation points,
+    /// measured in minutes for a few thousand points on one curve — not a
+    /// theoretical concern, an actual reported hang). The chained form
+    /// mutates in place via Swift's `_modify` accessor instead.
+    static func groupedAutomationPoints(_ events: [LiveEvent]) -> [AutomationCurveKey: [(t: Int, x: Double, y: Double?)]] {
+        var buckets: [AutomationCurveKey: [Int: (x: Double?, y: Double?)]] = [:]
+        for event in events {
+            guard case .driverAutomationPoint(let t, let instanceName, let target, let quantity, let axis, let value) = event
+            else { continue }
+            let key = AutomationCurveKey(instanceName: instanceName, target: target, quantity: quantity)
+            if axis == "y" {
+                buckets[key, default: [:]][t, default: (x: nil, y: nil)].y = value
+            } else {
+                buckets[key, default: [:]][t, default: (x: nil, y: nil)].x = value
+            }
+        }
+        var built: [AutomationCurveKey: [(t: Int, x: Double, y: Double?)]] = [:]
+        for (key, byFrame) in buckets {
+            built[key] = byFrame.compactMap { t, entry -> (t: Int, x: Double, y: Double?)? in
+                guard let x = entry.x else { return nil }
+                return (t, x, entry.y)
+            }.sorted { $0.t < $1.t }
+        }
+        return built
+    }
+}
+
 // MARK: - Codable
 //
 // Manual implementation keyed on a "type" string — the same pattern already

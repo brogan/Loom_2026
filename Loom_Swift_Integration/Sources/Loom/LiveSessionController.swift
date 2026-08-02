@@ -214,20 +214,24 @@ final class LiveSessionController: ObservableObject {
         isRecording = false
     }
 
-    private static func sanitizedSessionName(_ raw: String) -> String? {
+    /// Internal (not `private`) — `EventTimelineSheet`'s "Save Copy…" reuses
+    /// this exact collision-safe naming so an edited session never silently
+    /// overwrites the original recording, the same guarantee recording
+    /// itself already gives.
+    static func sanitizedSessionName(_ raw: String) -> String? {
         let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return nil }
         let invalid = CharacterSet(charactersIn: "/\\:?%*|\"<>")
         return trimmed.components(separatedBy: invalid).joined(separator: "_")
     }
 
-    private static func timestampedSessionName() -> String {
+    static func timestampedSessionName() -> String {
         let formatter = ISO8601DateFormatter()
         formatter.formatOptions = [.withInternetDateTime]
         return "session_" + formatter.string(from: Date()).replacingOccurrences(of: ":", with: "-")
     }
 
-    private static func uniqueSessionURL(in dir: URL, base: String) -> URL {
+    static func uniqueSessionURL(in dir: URL, base: String) -> URL {
         var candidate = dir.appendingPathComponent("\(base).jsonl")
         var i = 2
         while FileManager.default.fileExists(atPath: candidate.path) {
