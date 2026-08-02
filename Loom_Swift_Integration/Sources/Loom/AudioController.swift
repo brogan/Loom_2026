@@ -33,6 +33,20 @@ extension AudioMarker: Codable {
 private struct AudioState: Codable {
     var audioFilename: String?
     var markers: [AudioMarker] = []
+    var offsetFrames: Int = 0
+
+    private enum CodingKeys: String, CodingKey { case audioFilename, markers, offsetFrames }
+    init(audioFilename: String?, markers: [AudioMarker], offsetFrames: Int) {
+        self.audioFilename = audioFilename
+        self.markers       = markers
+        self.offsetFrames  = offsetFrames
+    }
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        audioFilename = try c.decodeIfPresent(String.self, forKey: .audioFilename)
+        markers       = try c.decodeIfPresent([AudioMarker].self, forKey: .markers) ?? []
+        offsetFrames  = try c.decodeIfPresent(Int.self, forKey: .offsetFrames) ?? 0
+    }
 }
 
 // MARK: - Controller
@@ -47,10 +61,16 @@ final class AudioController: ObservableObject {
     @Published var markers: [AudioMarker]  = []
     @Published var analysis: AudioAnalysis? = nil
     @Published var fileNotFound: Bool      = false
+    @Published private(set) var offsetFrames: Int = 0
 
     private var player: AVAudioPlayer?
-    private var timer: Timer?
     private var projectURL: URL?
+
+    /// How far real playback position may drift from the timeline-derived
+    /// target before we resync — large enough that the 60Hz render timer's
+    /// jitter against the project's fps doesn't cause audible resync stutter
+    /// on every tick, small enough to keep BPM-sync verification meaningful.
+    private static let driftThreshold: Double = 0.1
 
     // MARK: - Project lifecycle
 
@@ -60,7 +80,7 @@ final class AudioController: ObservableObject {
     }
 
     func clear() {
-        stop()
+        player?.stop()
         player        = nil
         waveformData  = []
         analysis      = nil
@@ -68,7 +88,9 @@ final class AudioController: ObservableObject {
         markers       = []
         duration      = 0
         currentTime   = 0
+        isPlaying     = false
         fileNotFound  = false
+        offsetFrames  = 0
         saveState()
     }
 
@@ -92,35 +114,63 @@ final class AudioController: ObservableObject {
 
     // MARK: - Playback
 
-    func play() {
-        guard player != nil else { return }
-        player?.play()
-        isPlaying = true
-        startTimer()
+    /// Offset (in frames) at which this audio track starts relative to the
+    /// sprite timeline's frame 0. Set by dragging the audio lane.
+    func setOffset(_ frames: Int) {
+        offsetFrames = max(0, frames)
+        saveState()
     }
 
-    func pause() {
-        player?.pause()
-        isPlaying = false
-        stopTimer()
+    /// Slaves playback to the sprite timeline's own transport: no independent
+    /// play/pause/seek. Call on every timeline frame tick and playback-state
+    /// change. `AVAudioPlayer` remains the actual sound engine, but its
+    /// position/play-state are driven here rather than self-polled.
+    func syncTransport(playbackState: PlaybackState, frame: Int, fps: Double) {
+        guard let player, fps > 0 else { return }
+
+        guard frame >= offsetFrames else {
+            if player.isPlaying { player.pause() }
+            currentTime = 0
+            isPlaying   = false
+            return
+        }
+
+        let targetTime = Double(frame - offsetFrames) / fps
+
+        guard targetTime < duration else {
+            if player.isPlaying { player.pause() }
+            currentTime = duration
+            isPlaying   = false
+            return
+        }
+
+        switch playbackState {
+        case .playing:
+            if !player.isPlaying {
+                player.currentTime = targetTime
+                player.play()
+            } else if abs(player.currentTime - targetTime) > Self.driftThreshold {
+                player.currentTime = targetTime
+            }
+            isPlaying = true
+        case .paused, .stopped:
+            if player.isPlaying { player.stop() }
+            player.currentTime = targetTime
+            isPlaying = false
+        }
+        currentTime = targetTime
     }
 
-    func stop() {
-        player?.stop()
-        player?.currentTime = 0
-        isPlaying   = false
-        currentTime = 0
-        stopTimer()
-    }
+    // MARK: - Analysis correction
 
-    func togglePlayPause() {
-        isPlaying ? pause() : play()
-    }
-
-    func seek(to time: Double) {
-        let t = max(0, min(duration, time))
-        player?.currentTime = t
-        currentTime = t
+    /// Autocorrelation tempo detection can lock onto a subdivision or
+    /// multiple of the true beat (half/double time, or a 2:3 swing/compound
+    /// relationship) rather than the tempo a DAW would report. Lets the user
+    /// correct the detected BPM by a simple ratio before using it.
+    func scaleDetectedBPM(by ratio: Double) {
+        guard var a = analysis, a.bpm > 0 else { return }
+        a.bpm *= ratio
+        analysis = a
     }
 
     // MARK: - Markers
@@ -148,8 +198,10 @@ final class AudioController: ObservableObject {
         saveState()
     }
 
-    func dropMarker(fps: Double) {
-        let frame = Int((currentTime * fps).rounded())
+    /// Drops a marker at the audio-relative frame corresponding to the given
+    /// timeline frame (i.e. `timelineFrame - offsetFrames`, clamped to 0).
+    func dropMarker(atTimelineFrame timelineFrame: Int) {
+        let frame = max(0, timelineFrame - offsetFrames)
         let secs  = Int(currentTime)
         let label = String(format: "%d:%02d", secs / 60, secs % 60)
         var m = AudioMarker(frame: frame)
@@ -209,33 +261,14 @@ final class AudioController: ObservableObject {
         }
     }
 
-    private func startTimer() {
-        timer?.invalidate()
-        timer = Timer.scheduledTimer(withTimeInterval: 1.0 / 30.0, repeats: true) { [weak self] _ in
-            guard let self else { return }
-            Task { @MainActor in
-                guard let p = self.player else { return }
-                self.currentTime = p.currentTime
-                if !p.isPlaying && self.isPlaying {
-                    self.isPlaying = false
-                    self.stopTimer()
-                }
-            }
-        }
-    }
-
-    private func stopTimer() {
-        timer?.invalidate()
-        timer = nil
-    }
-
     // MARK: - Persistence
 
     private func loadState(from url: URL) {
         let stateURL = url.appendingPathComponent("audio.json")
         if let data  = try? Data(contentsOf: stateURL),
            let state = try? JSONDecoder().decode(AudioState.self, from: data) {
-            markers = state.markers
+            markers      = state.markers
+            offsetFrames = state.offsetFrames
             if let filename = state.audioFilename {
                 audioFilename = filename
                 let audioURL = url.appendingPathComponent("audio").appendingPathComponent(filename)
@@ -275,7 +308,7 @@ final class AudioController: ObservableObject {
 
     private func saveState() {
         guard let projectURL else { return }
-        let state = AudioState(audioFilename: audioFilename, markers: markers)
+        let state = AudioState(audioFilename: audioFilename, markers: markers, offsetFrames: offsetFrames)
         guard let data = try? JSONEncoder().encode(state) else { return }
         try? data.write(to: projectURL.appendingPathComponent("audio.json"))
     }

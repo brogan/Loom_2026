@@ -14,6 +14,7 @@ struct ExportSheet: View {
     @State private var endFrame:        Int              = 0
     @State private var codec:           AVVideoCodecType = .h264
     @State private var restartFromZero: Bool             = true
+    @State private var includeAudio:    Bool             = true
     @State private var isExporting      = false
     @State private var exportError:     String?
 
@@ -87,6 +88,17 @@ struct ExportSheet: View {
 
                     Toggle("Restart from beginning", isOn: $restartFromZero)
                 }
+                if let audioName = controller.audioController.audioFilename {
+                    Section("Audio") {
+                        Toggle("Include Synced Audio", isOn: $includeAudio)
+                        LabeledContent("File") {
+                            Text(audioName).foregroundStyle(.secondary).lineLimit(1).truncationMode(.middle)
+                        }
+                        LabeledContent("Offset") {
+                            Text("frame \(controller.audioController.offsetFrames)").foregroundStyle(.secondary)
+                        }
+                    }
+                }
             }
             .formStyle(.grouped)
             .disabled(isExporting)
@@ -141,6 +153,20 @@ struct ExportSheet: View {
         let codec = self.codec; let restart = self.restartFromZero
         let engine = self.engine
 
+        // Resolve the project's synced audio file, same path convention
+        // AudioController itself uses. A missing/stale reference degrades
+        // silently to a video-only export rather than failing the export.
+        var audioURL: URL? = nil
+        var audioOffsetFrames = 0
+        if includeAudio, let audioName = controller.audioController.audioFilename,
+           let projectURL = controller.projectURL {
+            let candidate = projectURL.appendingPathComponent("audio").appendingPathComponent(audioName)
+            if FileManager.default.fileExists(atPath: candidate.path) {
+                audioURL = candidate
+                audioOffsetFrames = controller.audioController.offsetFrames
+            }
+        }
+
         panel.begin { response in
             guard response == .OK, let url = panel.url else { return }
             isExporting = true
@@ -151,7 +177,9 @@ struct ExportSheet: View {
                     if restart { try engine.reset() }
                     let settings = VideoExporter.Settings(fps: fps, startFrame: startFrame,
                                                           endFrame: endFrame, codec: codec,
-                                                          outputURL: url)
+                                                          outputURL: url,
+                                                          audioURL: audioURL,
+                                                          audioOffsetFrames: audioOffsetFrames)
                     let progress: @Sendable (Double) -> Void = { p in
                         Task { @MainActor in controller.exportProgress = p }
                     }

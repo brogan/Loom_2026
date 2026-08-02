@@ -8,7 +8,6 @@ enum AppTab: String, CaseIterable, Hashable {
     case cycles      = "Cycles"
     case layers      = "Layers"
     case lights      = "Lights"
-    case audio       = "Audio"
     case rendering   = "Rendering"
     case live        = "Live"
 
@@ -27,7 +26,6 @@ enum AppTab: String, CaseIterable, Hashable {
         case .cycles:      return "arrow.2.circlepath"
         case .layers:      return "square.3.layers.3d"
         case .lights:      return "lightbulb"
-        case .audio:       return "waveform"
         case .rendering:   return "paintbrush"
         case .live:        return "record.circle"
         }
@@ -43,7 +41,6 @@ enum AppTab: String, CaseIterable, Hashable {
         case .cycles:      CycleTabIcon().frame(width: 16, height: 16)
         case .layers:      LayersTabIcon().frame(width: 16, height: 16)
         case .lights:      LightsTabIcon().frame(width: 16, height: 16)
-        case .audio:       SoundTabIcon().frame(width: 16, height: 16)
         case .rendering:   RenderTabIcon().frame(width: 16, height: 16)
         // Placeholder glyph only — not a hand-designed icon like the others above.
         case .live:        LiveTabIcon().frame(width: 16, height: 16)

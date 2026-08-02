@@ -2,6 +2,7 @@ import AVFoundation
 import CoreGraphics
 import CoreVideo
 import Foundation
+import os
 
 // MARK: - VideoExporter
 
@@ -27,6 +28,8 @@ import Foundation
 /// correct video orientation without modifying the engine's rendering path.
 public final class VideoExporter {
 
+    private static let log = Logger(subsystem: "com.loom.engine", category: "VideoExporter")
+
     // MARK: - Settings
 
     public struct Settings {
@@ -45,18 +48,33 @@ public final class VideoExporter {
         /// Destination file URL (`.mov` container).
         public var outputURL: URL
 
+        /// Optional source audio file to mux into the exported video as a
+        /// second track. `nil` (the default) produces a silent video,
+        /// matching this type's original behaviour.
+        public var audioURL: URL?
+
+        /// The audio file's start offset, in frames, relative to the same
+        /// absolute timeline frame numbering `startFrame`/`endFrame` use
+        /// (i.e. the same convention as `AudioController.offsetFrames` in
+        /// the app layer). Ignored when `audioURL` is `nil`.
+        public var audioOffsetFrames: Int
+
         public init(
             fps: Int = 30,
             startFrame: Int = 0,
             endFrame: Int,
             codec: AVVideoCodecType = .h264,
-            outputURL: URL
+            outputURL: URL,
+            audioURL: URL? = nil,
+            audioOffsetFrames: Int = 0
         ) {
-            self.fps        = fps
-            self.startFrame = max(0, startFrame)
-            self.endFrame   = endFrame
-            self.codec      = codec
-            self.outputURL  = outputURL
+            self.fps               = fps
+            self.startFrame        = max(0, startFrame)
+            self.endFrame          = endFrame
+            self.codec             = codec
+            self.outputURL         = outputURL
+            self.audioURL          = audioURL
+            self.audioOffsetFrames = audioOffsetFrames
         }
 
         /// Number of frames to capture.
@@ -160,6 +178,19 @@ public final class VideoExporter {
             throw VideoExporterError.setupFailed("Cannot add video input to writer")
         }
         writer.add(writerInput)
+
+        // ── Optional audio track ─────────────────────────────────────────────
+        // Must be added to the writer before startWriting() — both inputs have
+        // to be attached up front, even though audio samples aren't actually
+        // appended until after the video loop finishes below.
+        var audioComponents: (
+            reader: AVAssetReader, output: AVAssetReaderTrackOutput,
+            input: AVAssetWriterInput, ptsShiftSeconds: Double
+        )?
+        if let audioURL = settings.audioURL {
+            audioComponents = try await Self.setupAudioInput(audioURL: audioURL, settings: settings, writer: writer)
+        }
+
         writer.startWriting()
         writer.startSession(atSourceTime: .zero)
 
@@ -174,6 +205,31 @@ public final class VideoExporter {
         // Pre-advance to startFrame without capturing any output.
         for _ in 0..<startFrame {
             engine.update(deltaTime: dt)
+        }
+
+        // Start the audio track's read alongside the video loop rather than
+        // after it. AVAssetWriter shares internal buffering/backpressure
+        // across all of a writer's inputs — if one input (audio) receives
+        // zero samples for the entire duration the other (video) is being
+        // fed, the writer throttles the active input's isReadyForMoreMediaData
+        // to prevent the tracks' presentation times from diverging without
+        // bound, which stalls the video loop forever (observed: hung
+        // indefinitely partway through, e.g. frame 29 of 820). Draining a
+        // few ready audio samples per video frame keeps both tracks
+        // advancing together instead of fully serializing one after the other.
+        let audioShiftTime = audioComponents.map { CMTime(seconds: $0.ptsShiftSeconds, preferredTimescale: 600) }
+        // Set once copyNextSampleBuffer first returns nil (audio content
+        // exhausted) and audio.input.markAsFinished() has been called for it —
+        // guards against calling markAsFinished twice, and lets later code
+        // skip an input that's already done.
+        var audioFinished = false
+        if let audio = audioComponents {
+            guard audio.reader.startReading() else {
+                throw VideoExporterError.setupFailed(
+                    "Could not start reading audio: \(audio.reader.error?.localizedDescription ?? "unknown error")"
+                )
+            }
+            Self.log.info("Audio setup: shiftSeconds=\(audioComponents?.ptsShiftSeconds ?? 0, privacy: .public) totalFrames=\(totalFrames, privacy: .public) fps=\(fps, privacy: .public)")
         }
 
         // Wrapped in do/catch so any mid-loop failure can call writer.cancelWriting()
@@ -262,7 +318,42 @@ public final class VideoExporter {
                     )
                 }
 
-                // 7. Report progress: value in (0, 1].
+                // 7. Opportunistically append any audio samples currently ready,
+                //    so the audio track keeps advancing alongside the video
+                //    track instead of sitting completely unfed until the video
+                //    loop finishes (see the comment above the loop for why that
+                //    stalls the writer). Non-blocking: only appends samples the
+                //    writer input is already ready for, right now.
+                //
+                //    Critical: if the audio track's real content runs out
+                //    before the video does (copyNextSampleBuffer returns nil),
+                //    audio.input MUST be marked finished right here. Leaving
+                //    it un-fed AND un-finished reproduces the exact same
+                //    writer backpressure stall this loop exists to avoid —
+                //    the writer has no way to know the silence is
+                //    intentional rather than a track that's merely behind —
+                //    and it will throttle the still-active video input
+                //    indefinitely once its buffer margin runs out (observed:
+                //    hangs deterministically at the frame where the audio
+                //    file's usable range ends, e.g. frame 813 of 820).
+                if let audio = audioComponents, let shiftTime = audioShiftTime, !audioFinished {
+                    while audio.input.isReadyForMoreMediaData {
+                        guard let sampleBuffer = audio.output.copyNextSampleBuffer() else {
+                            audio.input.markAsFinished()
+                            audioFinished = true
+                            Self.log.info("Audio exhausted mid-loop at video frameIndex=\(frameIndex, privacy: .public) of \(totalFrames, privacy: .public); marked finished")
+                            break
+                        }
+                        let retimed = try Self.retimed(sampleBuffer, by: shiftTime)
+                        guard audio.input.append(retimed), writer.status != .failed else {
+                            throw VideoExporterError.writeFailed(
+                                frameIndex: frameIndex, totalFrames: totalFrames, underlying: writer.error
+                            )
+                        }
+                    }
+                }
+
+                // 8. Report progress: value in (0, 1].
                 let p = Double(frameIndex + 1) / Double(totalFrames)
                 progress?(p)
             }
@@ -272,8 +363,63 @@ public final class VideoExporter {
             throw error
         }
 
-        // ── Finish writing ───────────────────────────────────────────────────
+        // Mark video finished *before* flushing any remaining audio below —
+        // this was the cause of a second deadlock (observed hanging at frame
+        // 813 of 820, right at the tail end of export): trailing audio
+        // samples whose presentation time falls at/after the video's last
+        // appended frame can't be accepted by the writer until it knows
+        // definitively that no more video is coming. Leaving the video input
+        // un-finished while the audio flush loop waits on
+        // isReadyForMoreMediaData is a circular wait — the writer is holding
+        // audio back to preserve correct interleaving against video data
+        // that, as far as it knows, might still arrive.
         writerInput.markAsFinished()
+
+        // ── Audio track (optional) — flush anything left unread ────────────
+        // The opportunistic drain above only appends samples that were ready
+        // during a video frame; this finishes off whatever remains (audio
+        // track longer than the video's per-frame draining kept pace with)
+        // now that nothing else is competing for the writer. Skipped
+        // entirely if the in-loop drain already exhausted and finished the
+        // audio input (the common case for a shorter-than-video track).
+        if let audio = audioComponents, let shiftTime = audioShiftTime, !audioFinished {
+            do {
+                while let sampleBuffer = audio.output.copyNextSampleBuffer() {
+                    let retimed = try Self.retimed(sampleBuffer, by: shiftTime)
+
+                    while !audio.input.isReadyForMoreMediaData {
+                        if writer.status == .failed {
+                            throw VideoExporterError.writeFailed(
+                                frameIndex: totalFrames - 1, totalFrames: totalFrames, underlying: writer.error
+                            )
+                        }
+                        await Task.yield()
+                    }
+                    guard audio.input.append(retimed), writer.status != .failed else {
+                        throw VideoExporterError.writeFailed(
+                            frameIndex: totalFrames - 1, totalFrames: totalFrames, underlying: writer.error
+                        )
+                    }
+                }
+                audio.input.markAsFinished()
+                audioFinished = true
+                if audio.reader.status == .failed {
+                    throw VideoExporterError.setupFailed(
+                        "Audio read failed: \(audio.reader.error?.localizedDescription ?? "unknown error")"
+                    )
+                }
+            } catch {
+                writer.cancelWriting()
+                try? FileManager.default.removeItem(at: settings.outputURL)
+                throw error
+            }
+        }
+
+        // ── Finish writing ───────────────────────────────────────────────────
+        // audio input is already marked finished by one of the two paths
+        // above whenever audioComponents is non-nil — never call
+        // markAsFinished a second time here.
+        Self.log.info("Export finishing: audioFinished=\(audioFinished, privacy: .public)")
 
         await withCheckedContinuation { (cont: CheckedContinuation<Void, Never>) in
             writer.finishWriting { cont.resume() }
@@ -284,6 +430,122 @@ public final class VideoExporter {
                 frameIndex: totalFrames - 1, totalFrames: totalFrames, underlying: error
             )
         }
+    }
+
+    // MARK: - Audio track setup
+
+    /// Prepares an audio track for muxing into `writer`: locates the source
+    /// file's audio track, computes the trim/shift needed to align it against
+    /// the video's frame range, and adds a paired `AVAssetWriterInput` to
+    /// `writer`. Must be called (and its returned input added) before
+    /// `writer.startWriting()`.
+    ///
+    /// Returns `nil` — not an error — when the audio file has no overlap at
+    /// all with the exported frame range (e.g. the audio's offset places it
+    /// entirely after the export's end frame), in which case the export
+    /// simply proceeds with no audio track.
+    ///
+    /// The source is decoded to linear PCM rather than passed through
+    /// unchanged: imported audio can be wav/mp3/m4a/flac/aac/caf, and `.mov`
+    /// doesn't natively support all of those as a compressed track, so
+    /// decode-then-re-encode-to-AAC is the only path that's broadly
+    /// compatible regardless of the source format.
+    private static func setupAudioInput(
+        audioURL: URL,
+        settings: Settings,
+        writer: AVAssetWriter
+    ) async throws -> (
+        reader: AVAssetReader, output: AVAssetReaderTrackOutput,
+        input: AVAssetWriterInput, ptsShiftSeconds: Double
+    )? {
+        let asset = AVURLAsset(url: audioURL)
+        guard let audioTrack = try await asset.loadTracks(withMediaType: .audio).first else {
+            throw VideoExporterError.setupFailed("Selected audio file has no audio track: \(audioURL.lastPathComponent)")
+        }
+        let assetDuration = try await asset.load(.duration).seconds
+
+        // Same timeline-frame ↔ audio-file-time relationship the app's
+        // AudioController.syncTransport uses for live playback: video PTS 0
+        // corresponds to absolute frame settings.startFrame; the audio file's
+        // own time 0 corresponds to absolute frame settings.audioOffsetFrames.
+        // ptsShiftSeconds is the constant that maps audio-file time onto
+        // output PTS: outputPTS = fileTime + ptsShiftSeconds.
+        let ptsShiftSeconds = Double(settings.audioOffsetFrames - settings.startFrame) / Double(settings.fps)
+        let audioStartSec = max(0, -ptsShiftSeconds)
+        let audioEndSec   = min(assetDuration, settings.durationSeconds - ptsShiftSeconds)
+        guard audioEndSec > audioStartSec else { return nil }
+
+        let reader = try AVAssetReader(asset: asset)
+        let readerSettings: [String: Any] = [
+            AVFormatIDKey: kAudioFormatLinearPCM,
+            AVLinearPCMBitDepthKey: 16,
+            AVLinearPCMIsBigEndianKey: false,
+            AVLinearPCMIsFloatKey: false,
+            AVLinearPCMIsNonInterleaved: false,
+        ]
+        let output = AVAssetReaderTrackOutput(track: audioTrack, outputSettings: readerSettings)
+        guard reader.canAdd(output) else {
+            throw VideoExporterError.setupFailed("Cannot read audio track from \(audioURL.lastPathComponent)")
+        }
+        reader.add(output)
+        reader.timeRange = CMTimeRange(
+            start: CMTime(seconds: audioStartSec, preferredTimescale: 600),
+            end:   CMTime(seconds: audioEndSec,   preferredTimescale: 600)
+        )
+
+        var sampleRate: Double = 44_100
+        var channels:   UInt32 = 2
+        if let description = try await audioTrack.load(.formatDescriptions).first,
+           let asbd = CMAudioFormatDescriptionGetStreamBasicDescription(description)?.pointee {
+            sampleRate = asbd.mSampleRate
+            channels   = max(1, asbd.mChannelsPerFrame)
+        }
+        let writerSettings: [String: Any] = [
+            AVFormatIDKey: kAudioFormatMPEG4AAC,
+            AVSampleRateKey: sampleRate,
+            AVNumberOfChannelsKey: Int(channels),
+            AVEncoderBitRateKey: 192_000,
+        ]
+        let input = AVAssetWriterInput(mediaType: .audio, outputSettings: writerSettings)
+        input.expectsMediaDataInRealTime = false
+        guard writer.canAdd(input) else {
+            throw VideoExporterError.setupFailed("Cannot add audio input to writer")
+        }
+        writer.add(input)
+
+        return (reader, output, input, ptsShiftSeconds)
+    }
+
+    /// Returns a copy of `sampleBuffer` with every timing entry's presentation
+    /// (and decode, if valid) timestamp shifted by `shift`.
+    private static func retimed(_ sampleBuffer: CMSampleBuffer, by shift: CMTime) throws -> CMSampleBuffer {
+        var neededCount: CMItemCount = 0
+        CMSampleBufferGetSampleTimingInfoArray(sampleBuffer, entryCount: 0, arrayToFill: nil, entriesNeededOut: &neededCount)
+        var timingInfo = [CMSampleTimingInfo](repeating: CMSampleTimingInfo(), count: neededCount)
+        let readStatus = CMSampleBufferGetSampleTimingInfoArray(
+            sampleBuffer, entryCount: neededCount, arrayToFill: &timingInfo, entriesNeededOut: nil
+        )
+        guard readStatus == noErr else {
+            throw VideoExporterError.setupFailed("Failed reading audio sample timing")
+        }
+        for i in 0..<timingInfo.count {
+            timingInfo[i].presentationTimeStamp = CMTimeAdd(timingInfo[i].presentationTimeStamp, shift)
+            if timingInfo[i].decodeTimeStamp.isValid {
+                timingInfo[i].decodeTimeStamp = CMTimeAdd(timingInfo[i].decodeTimeStamp, shift)
+            }
+        }
+        var newBuffer: CMSampleBuffer?
+        let createStatus = CMSampleBufferCreateCopyWithNewTiming(
+            allocator: kCFAllocatorDefault,
+            sampleBuffer: sampleBuffer,
+            sampleTimingEntryCount: timingInfo.count,
+            sampleTimingArray: &timingInfo,
+            sampleBufferOut: &newBuffer
+        )
+        guard createStatus == noErr, let result = newBuffer else {
+            throw VideoExporterError.setupFailed("Failed to retime audio sample")
+        }
+        return result
     }
 
     // MARK: - Codec limits

@@ -49,6 +49,7 @@ struct ContentView: View {
                           isCollapsed: $timelineCollapsed,
                           windowHeight: geo.size.height)
                 .environmentObject(controller)
+                .environmentObject(controller.audioController)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
@@ -221,10 +222,6 @@ struct ContentView: View {
         case .lights:
             LightsTabView()
                 .environmentObject(controller)
-        case .audio:
-            AudioTabView()
-                .environmentObject(controller)
-                .environmentObject(controller.audioController)
         case .rendering:
             RenderingTabView()
         case .live:
@@ -303,11 +300,6 @@ struct ContentView: View {
                     .environmentObject(controller)
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
-        case .audio:
-            AudioWaveformView()
-                .environmentObject(controller)
-                .environmentObject(controller.audioController)
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
         case .live:
             LiveCanvasView()
                 .environmentObject(liveController)
