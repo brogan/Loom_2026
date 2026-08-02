@@ -478,16 +478,19 @@
   <div class="toc-entry sub"><a href="#lights-inspector">Inspector</a><span class="toc-fill"></span></div>
   <div class="toc-entry sub"><a href="#lights-layer-scope">Layer Scoping</a><span class="toc-fill"></span></div>
   <div class="toc-entry sub"><a href="#lights-recipes">Lighting Recipes</a><span class="toc-fill"></span></div>
-  <div class="toc-entry"><a href="#audio">Audio</a><span class="toc-fill"></span></div>
+  <div class="toc-entry"><a href="#audio">Audio (Timeline Lane)</a><span class="toc-fill"></span></div>
   <div class="toc-entry sub"><a href="#audio-import">Importing</a><span class="toc-fill"></span></div>
-  <div class="toc-entry sub"><a href="#audio-waveform">Waveform Display</a><span class="toc-fill"></span></div>
+  <div class="toc-entry sub"><a href="#audio-waveform">Waveform Lane</a><span class="toc-fill"></span></div>
+  <div class="toc-entry sub"><a href="#audio-bpm">BPM Analysis</a><span class="toc-fill"></span></div>
   <div class="toc-entry sub"><a href="#audio-markers">Markers</a><span class="toc-fill"></span></div>
   <div class="toc-entry sub"><a href="#audio-workflow">Timing Workflow</a><span class="toc-fill"></span></div>
+  <div class="toc-entry sub"><a href="#audio-export">Exporting with Audio</a><span class="toc-fill"></span></div>
   <div class="toc-entry"><a href="#live">Live</a><span class="toc-fill"></span></div>
   <div class="toc-entry sub"><a href="#live-staging">Staging</a><span class="toc-fill"></span></div>
   <div class="toc-entry sub"><a href="#live-drivers">Driver Navigator</a><span class="toc-fill"></span></div>
   <div class="toc-entry sub"><a href="#live-music-sync">Music Sync (Tap Tempo)</a><span class="toc-fill"></span></div>
   <div class="toc-entry sub"><a href="#live-recording">Session Recording</a><span class="toc-fill"></span></div>
+  <div class="toc-entry sub"><a href="#live-review">Review Session</a><span class="toc-fill"></span></div>
   <div class="toc-entry sub"><a href="#live-render">Render Session</a><span class="toc-fill"></span></div>
 
   <div class="toc-group">Animation</div>
@@ -502,6 +505,7 @@
   <div class="toc-entry sub"><a href="#animation-scale-timing">Scale Timing</a><span class="toc-fill"></span></div>
   <div class="toc-entry sub"><a href="#animation-visual-kf">Visual Keyframe Editing</a><span class="toc-fill"></span></div>
   <div class="toc-entry sub"><a href="#animation-camera">Camera</a><span class="toc-fill"></span></div>
+  <div class="toc-entry sub"><a href="#animation-segments">Driver Segments — Camera &amp; Sprite</a><span class="toc-fill"></span></div>
   <div class="toc-entry sub"><a href="#animation-parallax">Depth &amp; Parallax</a><span class="toc-fill"></span></div>
   <div class="toc-entry sub"><a href="#animation-morph">Morph Targets</a><span class="toc-fill"></span></div>
   <div class="toc-entry sub"><a href="#animation-set-swap">Set Swap Drivers</a><span class="toc-fill"></span></div>
@@ -913,7 +917,7 @@
   <p>Drag in or select a PNG, JPEG, TIFF, BMP, or HEIC file to set a background image. Toggle <strong>Scale to canvas</strong> to stretch it to fill the canvas, or leave it at native resolution.</p>
 
   <h3>Camera</h3>
-  <p>The camera is a viewport transform applied after all sprite, subdivision, and renderer animation. The Global inspector exposes two static camera settings; the animated camera lanes (tracking, pan, zoom, rotation) live in the Timeline.</p>
+  <p>The camera is a viewport transform applied after all sprite, subdivision, and renderer animation. Its own dedicated inspector — <strong>Enabled</strong>, <strong>Perspective</strong>, the four animated driver lanes (tracking, pan, zoom, rotation), and <a href="#animation-segments">Segments</a> — lives one click away: select the <strong>Camera</strong> row at the top of the <a href="#sprites">Sprites tab</a>'s list, above the sprite sets. It used to be split across a minimal Global-tab section and timeline-only keyframe editing; it is now all in one place alongside the sprites it shares the timeline with.</p>
   <table>
     <thead><tr><th>Field</th><th>Description</th></tr></thead>
     <tbody>
@@ -990,7 +994,8 @@
   <div class="tip"><strong>Compared to Quick Setup.</strong> Quick Setup builds one pipeline (geometry → subdivision → shape → renderer → sprite) per run. It is the right tool when you want full control over each pipeline or when you have a single-layer geometry. Cycle Setup is the right tool when your geometry file has multiple layers representing animation frames of the same subject — it creates the minimal asset set for cycle playback with no redundant sprites to manage.</div>
 
   <h3 id="geometry-editor">Geometry Editor</h3>
-  <p>The editor opens as an overlay covering the canvas. It provides a full set of vector-drawing tools for layered JSON geometry. The editor title bar includes a <strong>Default Geometry View</strong> button to return to the normal geometry preview.</p>
+  <p>The editor opens as an overlay covering the canvas. It provides a full set of vector-drawing tools for layered JSON geometry.</p>
+  <p>A single icon toggle at the top of the right-hand Geometry inspector — the same geometry glyph used for the tab itself, shown at a larger size — switches between the normal geometry preview and the full editor: <strong>green</strong> while viewing the default preview, <strong>orange</strong> while the editor is active. Click it to enter the editor; click it again (now orange) to return to the default preview. This single toggle replaced two separate buttons (a "Edit Geometry" button in the preview inspector and a "Default Geometry View" button in the editor's own canvas toolbar) that used to do the same two jobs. The left panel's <strong>Open Editor</strong> action-bar button is still there too, as an alternate way into the editor for whichever geometry document is currently selected.</p>
 
   <div class="diagram">
     <svg width="520" height="140" viewBox="0 0 520 140" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -2909,6 +2914,19 @@
 
   <p>Each refinement pass has a <strong>Name</strong>, <strong>Enabled</strong> toggle, and an <strong>Algorithm</strong> picker. Multiple passes chain in list order, each receiving the output of the previous.</p>
 
+  <h4 id="curve-refinement-pressure">Pressure</h4>
+  <p>Since a pass inserts new anchors along each segment, it also has to decide what pressure value those new (and existing) anchors carry — the <strong>Pressure</strong> section's <strong>Mode</strong> picker controls this.</p>
+  <table>
+    <thead><tr><th>Mode</th><th>Behaviour</th></tr></thead>
+    <tbody>
+      <tr><td>Original</td><td>Resamples the polygon's actual recorded pressure (e.g. from freehand drawing — see <a href="#geometry-pressure">Pressure sensitivity</a>) across the new, denser anchor list via linear interpolation. The only mode that reflects what was actually drawn; use this to keep hand-drawn pressure variation through refinement.</td></tr>
+      <tr><td>Constant</td><td>Every anchor gets the same synthetic <strong>Value</strong>, discarding any recorded pressure — useful for a deliberately uniform stroke regardless of how it was drawn.</td></tr>
+      <tr><td>Increasing / Decreasing</td><td>Synthetic linear ramp from 0 to <strong>Value</strong> (or reverse) along the curve — a calligraphic taper effect, independent of recorded pressure.</td></tr>
+      <tr><td>Wave</td><td>Synthetic sinusoidal cycle scaled by <strong>Value</strong> along the curve.</td></tr>
+    </tbody>
+  </table>
+  <div class="note">Constant/Increasing/Decreasing/Wave are deliberately synthetic — they replace whatever pressure was recorded rather than modulating it. If a brush-rendered stroke shows no pressure variation despite varied recorded pressure and a non-zero <strong>Pressure size</strong> influence in the renderer's Brush config, check this Mode picker first — it defaults to Constant.</div>
+
   <h4>Step-by-step: adding curve refinement to a transform set</h4>
   <ol class="steps">
     <li>Open the <strong>Transform</strong> tab and select (or create) a transform set in the left panel.</li>
@@ -3692,69 +3710,58 @@
 
 <!-- ────────────────────────────────────────────────── -->
 <section id="audio">
-  <h2>Audio Tab</h2>
-  <p>The Audio tab is a timing reference tool, not a playback synchronisation engine. The animation does not run in lock-step with the audio; instead you use the audio to listen, orient yourself in the piece, drop markers at meaningful moments, and then place or adjust keyframes at those frame positions. This separation keeps the audio workflow lightweight — you can move through a sequence at your own pace and only cross-reference the animation when you are ready.</p>
+  <h2>Audio</h2>
+  <p>Audio is a dedicated, collapsible lane at the top of the sprite <a href="#animation-timeline">Timeline</a> — not a separate tab. Folding audio into the timeline means you can see the animation and hear/watch the audio at the same time, and there is no separate playback engine to keep in sync: the waveform lane plays back from exactly the same transport (Play, Stop, seek, the playhead) as everything else in the timeline. It is still a timing <em>reference</em> tool rather than a sample-accurate mix engine — you use it to orient yourself, place markers, and line sprite/driver keyframes up against what you hear, not to author a final audio mix.</p>
 
   <div class="note">Audio is stored in a project subfolder (<code>audio/</code>) alongside your geometry and sprite files, so the whole project remains self-contained and portable.</div>
 
   <h3 id="audio-import">Importing audio</h3>
-  <p>Click the download icon in the Audio tab toolbar to open the file picker. Supported formats are WAV, AIFF, MP3, M4A, CAF, FLAC, and AAC — anything AVFoundation can decode on macOS. The selected file is copied into the project's <code>audio/</code> subfolder (created automatically on first import) and the amplitude envelope is computed immediately in the background.</p>
-  <p>To swap the audio file, import again — the new file replaces the old one. To remove audio entirely, click the <strong>−</strong> button in the toolbar; this clears the waveform, stops playback, and removes the reference from the project (the copied file remains on disk in <code>audio/</code>).</p>
+  <p>Click the <strong>↓</strong> (download) icon at the right of the audio lane's header row to open the file picker. Supported formats are WAV, AIFF, MP3, M4A, CAF, FLAC, and AAC — anything AVFoundation can decode on macOS. The selected file is copied into the project's <code>audio/</code> subfolder (created automatically on first import) and the amplitude envelope is computed immediately in the background.</p>
+  <p>To swap the audio file, import again — the new file replaces the old one. To remove audio entirely, click the <strong>−</strong> button beside it; this clears the waveform and removes the reference from the project (the copied file remains on disk in <code>audio/</code>).</p>
 
-  <h3 id="audio-waveform">Waveform display</h3>
-  <p>The main panel shows a full-width amplitude envelope for the entire file. The envelope is pre-computed once at import time — Loom reads all samples, divides them into 2000 equal time buckets, takes the peak amplitude per bucket, and normalises so the loudest point fills the display. This gives a stable, consistent picture of the audio's shape regardless of the file's absolute level.</p>
-  <p>The display is fixed to the full file duration; there is no zoom or horizontal scroll. This is intentional — the envelope is a navigation aid for recognising where sounds fall in time, not an editing surface.</p>
+  <h3 id="audio-waveform">Waveform lane — collapse, expand, and offset</h3>
+  <p>Click the chevron at the left of the audio lane's header row to collapse it to a single compact strip showing just the waveform, or expand it to reveal an analysis/markers detail panel beside it. The header row always shows a small waveform icon and the imported file's name (in red, with "— not found", if the referenced file is missing from <code>audio/</code>).</p>
   <ul>
-    <li><strong>Playhead</strong> — white vertical line with a small triangle handle at the top. Moves in real time during playback.</li>
-    <li><strong>Markers</strong> — orange vertical lines with short labels. Position corresponds to a frame number.</li>
-    <li><strong>Time scale</strong> — tick marks along the bottom edge at regular intervals (interval chosen automatically from the file duration).</li>
-    <li><strong>Click to seek</strong> — click anywhere on the waveform to move the playhead to that position.</li>
+    <li><strong>Playhead</strong> — the same red playhead line used by the rest of the timeline runs straight through the audio lane; there is no separate audio playhead.</li>
+    <li><strong>Zoom/scroll</strong> — the waveform shares the timeline's own horizontal zoom and scroll, so it always lines up frame-for-frame with sprite and camera keyframes directly above or below it.</li>
+    <li><strong>Offset</strong> — drag anywhere on the collapsed waveform strip left or right to slide the whole audio file earlier or later relative to the animation. This is the primary way to line audio up precisely against sprite timing after a rough import.</li>
+  </ul>
+
+  <h3 id="audio-bpm">BPM analysis</h3>
+  <p>Expand the audio lane and, once the waveform's amplitude analysis finishes, its detected tempo appears at the top of the detail panel:</p>
+  <ul>
+    <li><strong>BPM reading</strong> and a count of detected beat/kick onsets.</li>
+    <li><strong>½× ⅔× 1.5× 2×</strong> — tempo autocorrelation can lock onto a subdivision or multiple of the true beat; use these to correct it by ear against what you hear before trusting it.</li>
+    <li><strong>Use Detected BPM</strong> — copies the (corrected) value straight into the project's <a href="#global-music-sync">Music Sync</a> BPM field.</li>
+    <li><strong>Beats / Kicks</strong> toggles — preview the detected onsets as temporary markers directly on the waveform, useful for sanity-checking the analysis before committing to it.</li>
   </ul>
 
   <h3 id="audio-markers">Markers</h3>
-  <p>Markers record a named frame position in the audio. Use them to tag dialogue cues, musical beats, sound effects, or any other moment you want to reference when placing keyframes.</p>
+  <p>Markers record a named frame position in the audio. Use them to tag dialogue cues, musical beats, sound effects, or any other moment you want to reference when placing keyframes. They are shown as orange ticks directly on the waveform, and as a list in the expanded detail panel.</p>
 
   <h4>Dropping a marker</h4>
-  <p>Press <strong>⌘M</strong>, or click the <em>Drop Marker</em> button in the left panel, to place a marker at the current playhead position. The marker's initial label is the timecode at the moment of dropping (e.g. <code>0:04</code>). Markers are kept sorted by frame at all times.</p>
+  <p>Press <strong>⌘M</strong>, or click the <strong>Drop Marker</strong> button in the expanded detail panel, to place a marker at the current playhead frame. The marker's initial label is the timecode at the moment of dropping (e.g. <code>0:04</code>). Markers are kept sorted by frame at all times.</p>
 
-  <h4>Repositioning a marker</h4>
-  <p>Hold <strong>Shift</strong> and drag on or near a marker's orange tick in the waveform view. The marker snaps to your pointer within a 12-point grab radius. While dragging, the marker turns yellow and displays a circle handle. A marker cannot be dragged past its immediate neighbour in either direction — there is always at least a one-frame gap between adjacent markers.</p>
-
-  <h4>Renaming a marker</h4>
-  <p>Double-click the marker label in the left-panel list to edit it. Press Return to confirm.</p>
+  <h4>Repositioning, renaming, and removing a marker</h4>
+  <p>Drag a marker's tick directly on the waveform to move it. In the detail panel's marker list, double-click a marker's label to rename it in place (press Return to confirm), click its pin icon to seek the playhead to it, and click the <strong>×</strong> on its row to remove it.</p>
 
   <h4>Notes</h4>
   <p>Click the <strong>pen icon</strong> in the Markers heading to show or hide a notes field on every marker row. Each notes field accepts up to three lines of free text — useful for a fragment of dialogue, a description of the corresponding action, or a reminder about which sprite or driver to key. Notes are hidden by default to keep the list compact.</p>
 
-  <h4>Jumping to a marker</h4>
-  <p>Click the <strong>orange pin icon</strong> on any marker row in the left panel to seek the audio playhead to that marker's time position.</p>
-
-  <h4>Removing a marker</h4>
-  <p>Click the <strong>×</strong> button on the right side of the marker row.</p>
-
   <h3 id="audio-workflow">Timing workflow</h3>
   <p>A typical session using audio for timing:</p>
   <ol>
-    <li>Import your audio file. Let the waveform compute (usually under a second for a short clip).</li>
-    <li>Play through the audio once using the <strong>Play</strong> button. Listen for the moments that should drive key poses or actions — dialogue starts, beats, impacts.</li>
-    <li>Play again and press <strong>⌘M</strong> at each moment you want to mark. Don't worry about precision — you can shift-drag markers on the waveform afterwards to fine-tune them.</li>
+    <li>Import your audio file into the timeline's audio lane. Let the waveform compute (usually under a second for a short clip).</li>
+    <li>Play the timeline from the start using the normal transport. Listen and watch the animation together, and note the moments that should drive key poses or actions — dialogue starts, beats, impacts.</li>
+    <li>Play again and press <strong>⌘M</strong> at each moment you want to mark. Don't worry about precision — you can drag markers on the waveform afterwards to fine-tune them.</li>
     <li>Rename each marker to describe the action it corresponds to: <em>word "and"</em>, <em>foot lands</em>, <em>door opens</em>.</li>
-    <li>Note the frame numbers shown under each marker label. Switch to the Timeline and place keyframes at those frames.</li>
-    <li>Refer back to the audio at any time by switching to the Audio tab and clicking a marker's pin to jump to its position.</li>
+    <li>Place or adjust sprite/driver keyframes at those same frames, right there in the timeline — no tab switch required, since the audio lane and the keyframe lanes share one view.</li>
   </ol>
 
   <div class="tip">The frame number shown for each marker is calculated from the audio position and the project's <strong>Target FPS</strong> (set in the Global tab). If you change the target frame rate, existing marker frame numbers will no longer correspond to the same audio position — re-drop or reposition them after any FPS change.</div>
 
-  <h4>Transport controls</h4>
-  <table>
-    <tr><th>Control</th><th>Action</th></tr>
-    <tr><td>Play / Pause</td><td>Start or pause audio playback from the current position.</td></tr>
-    <tr><td>Stop</td><td>Pause and return the playhead to the beginning.</td></tr>
-    <tr><td>Seek slider</td><td>Drag to scrub to any position.</td></tr>
-    <tr><td>Click on waveform</td><td>Seek to that time position.</td></tr>
-    <tr><td>⌘M</td><td>Drop a marker at the current playhead position.</td></tr>
-    <tr><td>Shift-drag on waveform</td><td>Reposition the nearest marker (within 12 pt).</td></tr>
-  </table>
+  <h3 id="audio-export">Exporting with audio</h3>
+  <p>The <a href="#export-video">Video Export</a> sheet shows an <strong>Audio</strong> section whenever a synced audio file is present, with an <strong>Include Synced Audio</strong> toggle (on by default) and a read-out of the file and its current offset. When enabled, the exported video's audio track is muxed in at that same offset — what you hear while scrubbing the timeline is what ends up in the rendered file.</p>
 </section>
 
 <!-- ────────────────────────────────────────────────── -->
@@ -3974,8 +3981,41 @@
     </ol>
   <div class="note">Recorded frame numbers are rebased to "frames since the first thing that happened after Start was pressed" — however long the Live tab sat open before you pressed Start has no bearing on the recording, so replay always begins right at your first interaction rather than with a dead-air gap.</div>
 
+  <h3 id="live-review">Review Session</h3>
+  <p>A recorded session is a log of individual actions (a sprite shown, a renderer set assigned, a driver toggled on) rather than an authored timeline — but reviewing and adjusting it is much easier as one, since related actions naturally form spans: a sprite is visible from its <em>show</em> to its <em>hide</em>; a renderer or transform set stays assigned until the next assignment supersedes it. Click <strong>Review Session…</strong> to pick a recorded <code>.jsonl</code> file (defaults to the project's <code>sessions/</code> folder) and open it as an editable <strong>event timeline</strong> — a second, separate timeline from the project's own sprite <a href="#animation-timeline">Timeline</a>, built specifically for this event log.</p>
+
+  <h4>Lanes</h4>
+  <p>Each staged instance from the session gets its own group of rows, in the order it first appears in the log:</p>
+  <table>
+    <thead><tr><th>Row</th><th>Shows</th></tr></thead>
+    <tbody>
+      <tr><td>Visible</td><td>One band per show→hide cycle for that instance. A band with no right edge means the instance was still visible when the log ended.</td></tr>
+      <tr><td>Renderer / Transform</td><td>One band per assigned set, holding until the next assignment (or the instance being hidden) supersedes it.</td></tr>
+      <tr><td><em>(driver name)</em> enabled</td><td>One row per driver that was toggled during the session, shaped the same way as Visible — a band per on→off cycle.</td></tr>
+      <tr><td>Pose</td><td>A diamond marker per recorded pose adjustment.</td></tr>
+      <tr><td><em>(driver)</em> rate / range</td><td>A connected line of diamonds — one per recorded slider drag — for each driver's Rate or Range automation.</td></tr>
+      <tr><td>Global</td><td>Tick marks for BPM/time-signature changes and downbeat taps, shown once at the top rather than per instance.</td></tr>
+    </tbody>
+  </table>
+
+  <h4>Editing</h4>
+  <table>
+    <thead><tr><th>Action</th><th>How</th></tr></thead>
+    <tbody>
+      <tr><td>Select</td><td>Click a band or a marker diamond.</td></tr>
+      <tr><td>Move a band</td><td>Drag its middle — both ends shift together, preserving its length.</td></tr>
+      <tr><td>Resize a band</td><td>Drag either edge independently. Resizing a Renderer/Transform band's right edge actually retimes the <em>next</em> band's boundary, since that's the event that ends this one.</td></tr>
+      <tr><td>Retime a marker</td><td>Drag a Pose or automation diamond left or right.</td></tr>
+      <tr><td>Delete</td><td>Select an item and press <kbd>Delete</kbd>, use the <strong>Delete Selected</strong> button, or right-click it and choose <strong>Delete</strong>. Deleting a band removes both of its underlying events (e.g. the show and its hide) but does not cascade to anything else happening in that span — other rows for the same instance are untouched.</td></tr>
+    </tbody>
+  </table>
+  <div class="note">Zoom the event timeline independently with the slider at its top — it has its own zoom level, separate from the project's sprite Timeline.</div>
+
+  <h4>Saving and rendering</h4>
+  <p><strong>Save Copy…</strong> writes your edits to a new <code>.jsonl</code> file in <code>sessions/</code>, named after the original with a collision-safe suffix — the original recording is never overwritten. <strong>Render…</strong> opens the same render sheet described below, pre-loaded with your in-panel edits directly — you can render an edited pass without saving a copy first, and save a copy afterward only if you want to keep it.</p>
+
   <h3 id="live-render">Render Session</h3>
-  <p>Click <strong>Render Session…</strong> to pick a previously recorded <code>.jsonl</code> file (defaults to the project's <code>sessions/</code> folder) and open a render sheet for it.</p>
+  <p>Click <strong>Render Session…</strong> to pick a previously recorded <code>.jsonl</code> file (defaults to the project's <code>sessions/</code> folder) and open a render sheet for it directly, skipping the review panel — the quickest path when you just want to render a take as recorded. (The same sheet also opens from the <a href="#live-review">Review Session</a> panel's <strong>Render…</strong> button, in which case it renders your edited events instead of re-reading the file from disk.)</p>
   <table>
     <thead><tr><th>Field</th><th>Description</th></tr></thead>
     <tbody>
@@ -4346,6 +4386,38 @@
       </tr>
     </tbody>
   </table>
+
+  <h3 id="animation-segments">Driver Segments — Camera &amp; Sprite</h3>
+  <p>A <strong>segment</strong> is a named, time-bounded override for a driver. For the frame range <code>[start, end)</code> it covers, its own driver value applies instead of the lane's base one; outside that range — or on a lane with no segments at all — the base driver keeps applying exactly as it always has. Segments are purely additive: a project with none behaves identically to before segments existed.</p>
+  <p><strong>Camera</strong> has one kind of segment, bundling all four camera lanes (tracking, pan, zoom, rotation) together — they're evaluated as a single viewport transform, so a segment overrides them as a set. <strong>Sprites</strong> have per-lane segments instead, on the five continuous driver lanes only: <strong>Position</strong>, <strong>Scale</strong>, <strong>Rotation</strong>, <strong>Morph</strong>, and <strong>Opacity</strong>. The other four sprite lanes — Shape, Subdiv, Rend.Set, and the Cycle driver — are step/switch drivers already, so a plain keyframe is enough to change them at a point in time; they don't need a segment mechanism of their own.</p>
+
+  <h4>Working with segments in the inspector</h4>
+  <p>Both the Camera inspector (select the <strong>Camera</strong> row in the Sprites tab's list) and a sprite's inspector (each of its five segment-capable lanes, under <a href="#sprites">Sprites tab</a> &gt; driver sections) have a <strong>Segments</strong> list with the same controls:</p>
+  <ul>
+    <li><strong>Add Segment</strong> — creates a new segment starting at the playhead's current frame, with a short default length.</li>
+    <li><strong>Start / End</strong> — numeric frame fields directly on each segment row.</li>
+    <li><strong>Rename</strong> — double-click a segment's name to edit it in place.</li>
+    <li><strong>Duplicate</strong> (the stacked-squares icon) — copies the segment immediately after itself on the same lane, named "<em>original</em> copy".</li>
+    <li><strong>Delete</strong> (the <strong>✕</strong> icon) — removes the segment.</li>
+    <li>Click anywhere else on a segment's row (or the <strong>›</strong> chevron) to open <strong>its own driver</strong> — the same oscillator/keyframe/noise/jitter editor as the base lane, but scoped to that segment. A <strong>‹ Back</strong> link at the top returns to the segment list.</li>
+  </ul>
+
+  <h4>Working with segments directly on the timeline</h4>
+  <p>Segments also appear as coloured bands directly on the timeline canvas — on the camera's summary row, and on any sprite's Position/Scale/Rotation/Morph/Opacity lane row once the sprite is expanded — and can be created and edited there without opening the inspector at all:</p>
+  <table>
+    <thead><tr><th>Action</th><th>How</th></tr></thead>
+    <tbody>
+      <tr><td>Create a segment</td><td>Click-drag across empty space on a segment-capable lane row. A plain tap (no drag) on empty space still adds an ordinary keyframe, exactly as it did before segments existed — only an actual drag is interpreted as "draw a new segment."</td></tr>
+      <tr><td>Select a segment</td><td>Click its band. The corresponding sprite (or the camera) becomes the active inspector selection, switching tabs if needed, with that segment's own Segments list open.</td></tr>
+      <tr><td>Move a segment</td><td>Drag the middle of its band left or right.</td></tr>
+      <tr><td>Resize a segment</td><td>Drag either edge of its band independently.</td></tr>
+      <tr><td>Rename a segment</td><td>Double-click its name where it's drawn inside the band — a small popover opens with a text field.</td></tr>
+      <tr><td>Delete a segment</td><td>Select it and press <kbd>Delete</kbd>, use the timeline's trash-icon button, or right-click the band and choose <strong>Delete Segment</strong>.</td></tr>
+      <tr><td>Duplicate a segment</td><td>Right-click the band and choose <strong>Duplicate Segment</strong>.</td></tr>
+      <tr><td>Undo</td><td><kbd>⌘Z</kbd> reverses any of the above, the same as any other timeline edit.</td></tr>
+    </tbody>
+  </table>
+  <div class="tip"><strong>Tip:</strong> The inspector and the timeline are two views of the same data — a segment created by dragging on the timeline shows up in the inspector's Segments list immediately, and vice versa. Use whichever is more convenient for the task: the timeline for placing a segment relative to what's happening visually at that moment, the inspector for precise numeric Start/End values.</div>
 
   <h3 id="animation-parallax">Depth &amp; Parallax with camera animation</h3>
   <p>When sprites have non-zero <strong>Depth</strong> values and <strong>Perspective strength</strong> is non-zero, the engine re-evaluates the camera transform through each sprite's depth factor before rendering it. The four camera lanes behave as described above, but their screen-space effect differs per depth layer. See <a href="#sprites-depth">Depth &amp; Parallax</a> for the factor formula and reference table.</p>
