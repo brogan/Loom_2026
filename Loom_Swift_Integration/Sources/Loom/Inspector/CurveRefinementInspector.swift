@@ -173,11 +173,13 @@ struct CurveRefinementInspector: View {
                 .labelsHidden()
                 .frame(maxWidth: 130)
             }
-            .loomHelp("How pressure varies along the refined curve. Constant: uniform value. Increasing/Decreasing: linear ramp. Wave: sinusoidal cycle.")
-            InspectorField("Value") {
-                FloatEntryField(value: bindCR(\.pressureValue), width: 60)
+            .loomHelp("How pressure varies along the refined curve. Original: resamples the actual recorded pressure (e.g. from freehand drawing) across the new, denser anchor list — the only mode that reflects what was actually drawn. Constant: uniform synthetic value. Increasing/Decreasing: linear ramp. Wave: sinusoidal cycle.")
+            if bindCR(\.pressureMode).wrappedValue != .original {
+                InspectorField("Value") {
+                    FloatEntryField(value: bindCR(\.pressureValue), width: 60)
+                }
+                .loomHelp("Base pressure value (0–1). Used as the peak or constant level depending on mode.")
             }
-            .loomHelp("Base pressure value (0–1). Used as the peak or constant level depending on mode.")
         }
     }
 

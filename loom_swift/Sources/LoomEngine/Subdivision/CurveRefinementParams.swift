@@ -26,6 +26,10 @@ public enum CurveRefinementCPMode: String, Codable, CaseIterable, Equatable, Sen
 // MARK: - CurvePressureMode
 
 public enum CurvePressureMode: String, Codable, CaseIterable, Equatable, Sendable {
+    /// Resamples the polygon's actual recorded pressure (e.g. from freehand
+    /// drawing) across the refined, denser anchor list via linear
+    /// interpolation — the only mode that reflects what was actually drawn.
+    case original   = "Original"
     case constant   = "Constant"
     case increasing = "Increasing"
     case decreasing = "Decreasing"

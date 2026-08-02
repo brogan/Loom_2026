@@ -63,6 +63,11 @@ public enum CurveRefinementEngine {
             var position:       Vector2D
             var isInserted:     Bool
             var insertionIndex: Int   // global index among inserted points
+            /// Position along the *original* curve, in original-anchor units
+            /// (segment index + local t) — e.g. `2.0` is exactly the 3rd
+            /// original anchor, `2.5` is halfway through original segment 2.
+            /// Used to resample `originalPressures` for `.original` mode.
+            var globalT:        Double
         }
 
         var infos = [AnchorInfo]()
@@ -73,7 +78,7 @@ public enum CurveRefinementEngine {
             let seg = Array(polygon.points[(segIdx * 4)..<(segIdx * 4 + 4)])
 
             // Original start anchor (never displaced)
-            infos.append(AnchorInfo(position: seg[0], isInserted: false, insertionIndex: -1))
+            infos.append(AnchorInfo(position: seg[0], isInserted: false, insertionIndex: -1, globalT: Double(segIdx)))
 
             // Inserted anchors sampled from the original Bézier
             let tVals = insertionTValues(
@@ -87,7 +92,8 @@ public enum CurveRefinementEngine {
                 infos.append(AnchorInfo(
                     position:       BezierMath.point(seg: seg, t: t),
                     isInserted:     true,
-                    insertionIndex: insertionIndex
+                    insertionIndex: insertionIndex,
+                    globalT:        Double(segIdx) + t
                 ))
                 insertionIndex += 1
             }
@@ -95,7 +101,7 @@ public enum CurveRefinementEngine {
 
         // Final endpoint (last anchor of last segment, never displaced)
         let lastSeg = Array(polygon.points[((segCount - 1) * 4)..<((segCount - 1) * 4 + 4)])
-        infos.append(AnchorInfo(position: lastSeg[3], isInserted: false, insertionIndex: -1))
+        infos.append(AnchorInfo(position: lastSeg[3], isInserted: false, insertionIndex: -1, globalT: Double(segCount)))
 
         // Phase 2 — displace inserted anchors perpendicularly
         var positions = infos.map { $0.position }
@@ -120,14 +126,18 @@ public enum CurveRefinementEngine {
             cpNormalOffset: params.cpNormalOffset
         )
 
-        // Phase 4 — build pressure profile
-        let newSegCount = positions.count - 1
-        let pressures   = buildPressures(
-            count:        newSegCount,
-            mode:         params.pressureMode,
-            value:        params.pressureValue,
-            originalPressures: polygon.pressures,
-            insertionsPerSeg:  params.insertionCount
+        // Phase 4 — build pressure profile. One value per new anchor (not per
+        // new segment) — `positions.count`, matching the "one pressure per
+        // anchor" convention `polygon.pressures` already uses (confirmed by
+        // `BrushEdge.extractEdges` reading `pressures[i]`/`pressures[i+1]` as
+        // a segment's start/end anchor). Previously this produced only
+        // `positions.count - 1` values, silently dropping the final anchor's
+        // pressure to `BrushEdge`'s 1.0 fallback regardless of mode.
+        let pressures = buildPressures(
+            anchorGlobalTs: infos.map { $0.globalT },
+            mode:           params.pressureMode,
+            value:          params.pressureValue,
+            originalPressures: polygon.pressures
         )
 
         return Polygon2D(points: outputPoints, type: .openSpline, pressures: pressures)
@@ -267,22 +277,47 @@ public enum CurveRefinementEngine {
     // MARK: - Pressure
 
     private static func buildPressures(
-        count:             Int,
+        anchorGlobalTs:    [Double],
         mode:              CurvePressureMode,
         value:             Double,
-        originalPressures: [Double],
-        insertionsPerSeg:  Int
+        originalPressures: [Double]
     ) -> [Double] {
+        let count = anchorGlobalTs.count
         guard count > 0 else { return [] }
         return (0..<count).map { i in
-            let t = count > 1 ? Double(i) / Double(count - 1) : 0.5
             switch mode {
-            case .constant:   return max(0, min(1, value))
-            case .increasing: return max(0, min(1, t * value))
-            case .decreasing: return max(0, min(1, (1.0 - t) * value))
-            case .wave:       return max(0, min(1, (0.5 + 0.5 * sin(t * 2 * .pi)) * value))
+            case .original:
+                return resamplePressure(originalPressures, at: anchorGlobalTs[i])
+            case .constant:
+                return max(0, min(1, value))
+            case .increasing:
+                let t = count > 1 ? Double(i) / Double(count - 1) : 0.5
+                return max(0, min(1, t * value))
+            case .decreasing:
+                let t = count > 1 ? Double(i) / Double(count - 1) : 0.5
+                return max(0, min(1, (1.0 - t) * value))
+            case .wave:
+                let t = count > 1 ? Double(i) / Double(count - 1) : 0.5
+                return max(0, min(1, (0.5 + 0.5 * sin(t * 2 * .pi)) * value))
             }
         }
+    }
+
+    /// Linearly interpolates `originalPressures` (one value per original
+    /// anchor) at a fractional original-anchor position — e.g. `2.5` blends
+    /// halfway between `originalPressures[2]` and `[3]`. This is what lets
+    /// `.original` mode reflect actually-drawn pressure at inserted anchors,
+    /// not just the ones that already existed before refinement.
+    private static func resamplePressure(_ originalPressures: [Double], at globalT: Double) -> Double {
+        guard !originalPressures.isEmpty else { return 1.0 }
+        guard originalPressures.count > 1 else { return originalPressures[0] }
+        let clamped = max(0.0, min(Double(originalPressures.count - 1), globalT))
+        let lower   = Int(floor(clamped))
+        let upper   = min(originalPressures.count - 1, lower + 1)
+        let localT  = clamped - Double(lower)
+        let p0 = originalPressures[lower]
+        let p1 = originalPressures[upper]
+        return p0 + (p1 - p0) * localT
     }
 
     // MARK: - Hash seed helper
