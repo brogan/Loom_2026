@@ -10,7 +10,10 @@ struct SpritesInspector: View {
               let (setIdx, spriteIdx) = spriteLocation(named: spriteName),
               let sprite = controller.projectConfig?.spriteConfig.library
                   .spriteSets[safe: setIdx]?.sprites[safe: spriteIdx]
-        else { return AnyView(EmptyView()) }
+        else {
+            LoomLogger.info("[Segments] SpritesInspector.body guard FAILED — returning EmptyView (selectedSpriteID=\(controller.selectedSpriteID ?? "nil"))")
+            return AnyView(EmptyView())
+        }
 
         return AnyView(VStack(alignment: .leading, spacing: 0) {
             generalSection(sprite: sprite, setIdx: setIdx, spriteIdx: spriteIdx)
@@ -786,6 +789,453 @@ struct SpritesInspector: View {
     }
 }
 
+// MARK: - Driver segment sections
+//
+// Wraps a base VectorDriverEditor/DoubleDriverEditor with a per-lane
+// "Segments" list (named, time-bounded overrides — DriverLaneSegment).
+// Deliberately two thin concrete views rather than one generic wrapper,
+// matching how VectorDriverEditor/DoubleDriverEditor themselves are kept
+// separate rather than unified. Does not touch VectorDriverEditor/
+// DoubleDriverEditor themselves, since those are shared by camera/renderer
+// inspectors that shouldn't gain segment UI they don't need. Mirrors
+// CameraDriverInspector's segmentsSection/selectedSegmentDetail pattern,
+// scoped to one (sprite, lane) instead of the single global camera.
+
+private struct VectorDriverSegmentSection: View {
+    let label: String
+    let laneRawValue: Int
+    @Binding var baseDriver: VectorDriver
+    @Binding var allSegments: [DriverLaneSegment]
+    @Binding var isCollapsed: Bool
+    var isHighlighted: Bool = false
+
+    @EnvironmentObject private var controller: AppController
+    @State private var renamingSegmentID: UUID?  = nil
+    @State private var renameText:        String = ""
+    @State private var segDriverCollapsed = false
+
+    private var laneSegments: [DriverLaneSegment] {
+        allSegments.filter { $0.laneRawValue == laneRawValue }
+    }
+    private var selectedIndex: Int? {
+        guard let id = controller.selectedSpriteSegmentID else { return nil }
+        return allSegments.firstIndex { $0.id == id && $0.laneRawValue == laneRawValue }
+    }
+
+    var body: some View {
+        if let idx = selectedIndex {
+            selectedSegmentDetail(idx)
+        } else {
+            VectorDriverEditor(label: label, driver: $baseDriver, isCollapsed: $isCollapsed, isHighlighted: isHighlighted)
+            segmentsSection
+        }
+    }
+
+    @ViewBuilder
+    private var segmentsSection: some View {
+        InspectorSection("\(label) Segments") {
+            if laneSegments.isEmpty {
+                Text("No segments — \(label) uses the driver above for the whole timeline.")
+                    .font(.system(size: 10))
+                    .foregroundStyle(.tertiary)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 6)
+            } else {
+                ForEach(laneSegments) { segment in
+                    segmentRow(segment)
+                    Divider().padding(.leading, 12)
+                }
+            }
+            Button {
+                addSegment()
+            } label: {
+                Label("Add Segment", systemImage: "plus")
+                    .font(.system(size: 11))
+            }
+            .buttonStyle(.bordered)
+            .controlSize(.small)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 6)
+        }
+    }
+
+    private func segmentRow(_ segment: DriverLaneSegment) -> some View {
+        let isSelected = controller.selectedSpriteSegmentID == segment.id
+        // A real foreground Button wrapping the whole row, not a background
+        // one — logging proved a Button hidden in .background() with
+        // Color.clear as its label doesn't reliably receive clicks on
+        // macOS/SwiftUI. This mirrors the already-working back/duplicate/
+        // delete buttons elsewhere in this same row (all real foreground
+        // buttons); nested Buttons/TextFields inside a Button's label still
+        // route clicks to the more specific inner control on macOS.
+        return Button {
+            controller.selectedSpriteSegmentID = segment.id
+        } label: {
+            VStack(alignment: .leading, spacing: 3) {
+                HStack(spacing: 6) {
+                    if renamingSegmentID == segment.id {
+                        TextField("Name", text: $renameText)
+                            .textFieldStyle(.plain)
+                            .font(.system(size: 12))
+                            .onSubmit { commitRename(segment.id) }
+                    } else {
+                        Text(segment.name.isEmpty ? "Segment" : segment.name)
+                            .font(.system(size: 12, weight: isSelected ? .semibold : .regular))
+                            .lineLimit(1)
+                            .onTapGesture(count: 2) {
+                                renameText        = segment.name
+                                renamingSegmentID = segment.id
+                            }
+                    }
+                    Spacer()
+                    Button { duplicateSegment(segment) } label: {
+                        Image(systemName: "plus.square.on.square").font(.system(size: 10)).iconHitArea(18)
+                    }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(.secondary)
+                    .modifier(LoomHoverHelp("Duplicate segment"))
+                    Button { deleteSegment(segment) } label: {
+                        Image(systemName: "xmark").font(.system(size: 9)).iconHitArea(18)
+                    }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(.secondary)
+                    .modifier(LoomHoverHelp("Delete segment"))
+                    Image(systemName: "chevron.right")
+                        .font(.system(size: 9, weight: .semibold))
+                        .foregroundStyle(Color.accentColor)
+                        .modifier(LoomHoverHelp("Click to edit this segment's own driver (oscillator, jitter, noise, or keyframes)"))
+                }
+                HStack(spacing: 4) {
+                    Text("Start").font(.system(size: 9)).foregroundStyle(.tertiary)
+                    TextField("", value: frameBinding(segment.id, \.startFrame), format: .number)
+                        .textFieldStyle(.squareBorder).font(.system(size: 10, design: .monospaced)).frame(width: 46)
+                    Text("End").font(.system(size: 9)).foregroundStyle(.tertiary)
+                    TextField("", value: frameBinding(segment.id, \.endFrame), format: .number)
+                        .textFieldStyle(.squareBorder).font(.system(size: 10, design: .monospaced)).frame(width: 46)
+                }
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 6)
+            .background(isSelected ? Color.accentColor.opacity(0.12) : Color.clear)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+    }
+
+    @ViewBuilder
+    private func selectedSegmentDetail(_ idx: Int) -> some View {
+        HStack(spacing: 4) {
+            Button {
+                controller.selectedSpriteSegmentID = nil
+            } label: {
+                Label(label, systemImage: "chevron.left")
+                    .font(.system(size: 11))
+            }
+            .buttonStyle(.plain)
+            .foregroundStyle(Color.accentColor)
+            Spacer()
+            Text(allSegments[idx].name.isEmpty ? "Segment" : allSegments[idx].name)
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundStyle(.secondary)
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 6)
+        Divider()
+
+        VectorDriverEditor(label: label, driver: segmentValueBinding(idx), isCollapsed: $segDriverCollapsed)
+    }
+
+    // MARK: - Actions
+
+    private func addSegment() {
+        let frame = controller.currentTimelineFrame
+        let newSegment = DriverLaneSegment(
+            name: "Segment \(laneSegments.count + 1)",
+            laneRawValue: laneRawValue,
+            startFrame: frame,
+            endFrame: frame + 120,
+            value: .vector(baseDriver)
+        )
+        allSegments.append(newSegment)
+        controller.selectedSpriteSegmentID = newSegment.id
+    }
+
+    private func duplicateSegment(_ segment: DriverLaneSegment) {
+        var copy = segment
+        copy.id = UUID()
+        let length = max(1, segment.endFrame - segment.startFrame)
+        copy.startFrame = segment.endFrame
+        copy.endFrame   = segment.endFrame + length
+        copy.name       = segment.name.isEmpty ? "Segment" : "\(segment.name) copy"
+        allSegments.append(copy)
+        controller.selectedSpriteSegmentID = copy.id
+    }
+
+    private func deleteSegment(_ segment: DriverLaneSegment) {
+        allSegments.removeAll { $0.id == segment.id }
+        if controller.selectedSpriteSegmentID == segment.id {
+            controller.selectedSpriteSegmentID = nil
+        }
+    }
+
+    private func commitRename(_ id: UUID) {
+        if let idx = allSegments.firstIndex(where: { $0.id == id }) {
+            allSegments[idx].name = renameText
+        }
+        renamingSegmentID = nil
+    }
+
+    // MARK: - Binding helpers
+
+    private func frameBinding(_ id: UUID, _ kp: WritableKeyPath<DriverLaneSegment, Int>) -> Binding<Int> {
+        Binding(
+            get: { allSegments.first(where: { $0.id == id })?[keyPath: kp] ?? 0 },
+            set: { v in
+                guard let idx = allSegments.firstIndex(where: { $0.id == id }) else { return }
+                // No cross-field (start-vs-end) clamp here — TextField(value:format:)
+                // commits per keystroke, and clamping against the other bound live
+                // would snap the field back mid-typing (this exact bug was found
+                // and fixed in CameraDriverInspector's endFrameBinding). An inverted
+                // range is harmless: the engine's active-segment check is simply
+                // never true for it, not a crash.
+                allSegments[idx][keyPath: kp] = max(0, v)
+            }
+        )
+    }
+
+    private func segmentValueBinding(_ idx: Int) -> Binding<VectorDriver> {
+        Binding(
+            get: {
+                guard idx < allSegments.count, case .vector(let v) = allSegments[idx].value else { return .zero }
+                return v
+            },
+            set: { newVal in
+                guard idx < allSegments.count else { return }
+                allSegments[idx].value = .vector(newVal)
+            }
+        )
+    }
+}
+
+private struct DoubleDriverSegmentSection: View {
+    let label: String
+    let laneRawValue: Int
+    @Binding var baseDriver: DoubleDriver
+    @Binding var allSegments: [DriverLaneSegment]
+    @Binding var isCollapsed: Bool
+    var isHighlighted: Bool = false
+
+    @EnvironmentObject private var controller: AppController
+    @State private var renamingSegmentID: UUID?  = nil
+    @State private var renameText:        String = ""
+    @State private var segDriverCollapsed = false
+
+    private var laneSegments: [DriverLaneSegment] {
+        allSegments.filter { $0.laneRawValue == laneRawValue }
+    }
+    private var selectedIndex: Int? {
+        guard let id = controller.selectedSpriteSegmentID else { return nil }
+        return allSegments.firstIndex { $0.id == id && $0.laneRawValue == laneRawValue }
+    }
+
+    var body: some View {
+        if label == "Rotation" {
+            let _ = LoomLogger.info("[Segments] DoubleDriverSegmentSection(\(label)).body: selectedSpriteSegmentID=\(controller.selectedSpriteSegmentID?.uuidString ?? "nil") selectedIndex=\(selectedIndex.map(String.init) ?? "nil") laneSegments.count=\(laneSegments.count) isCollapsed(base)=\(isCollapsed)")
+        }
+        if let idx = selectedIndex {
+            selectedSegmentDetail(idx)
+        } else {
+            DoubleDriverEditor(label: label, driver: $baseDriver, isCollapsed: $isCollapsed, isHighlighted: isHighlighted)
+            segmentsSection
+        }
+    }
+
+    @ViewBuilder
+    private var segmentsSection: some View {
+        InspectorSection("\(label) Segments") {
+            if laneSegments.isEmpty {
+                Text("No segments — \(label) uses the driver above for the whole timeline.")
+                    .font(.system(size: 10))
+                    .foregroundStyle(.tertiary)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 6)
+            } else {
+                ForEach(laneSegments) { segment in
+                    segmentRow(segment)
+                    Divider().padding(.leading, 12)
+                }
+            }
+            Button {
+                addSegment()
+            } label: {
+                Label("Add Segment", systemImage: "plus")
+                    .font(.system(size: 11))
+            }
+            .buttonStyle(.bordered)
+            .controlSize(.small)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 6)
+        }
+    }
+
+    private func segmentRow(_ segment: DriverLaneSegment) -> some View {
+        let isSelected = controller.selectedSpriteSegmentID == segment.id
+        // A real foreground Button wrapping the whole row, not a background
+        // one — logging proved a Button hidden in .background() with
+        // Color.clear as its label doesn't reliably receive clicks on
+        // macOS/SwiftUI. This mirrors the already-working back/duplicate/
+        // delete buttons elsewhere in this same row (all real foreground
+        // buttons); nested Buttons/TextFields inside a Button's label still
+        // route clicks to the more specific inner control on macOS.
+        return Button {
+            LoomLogger.info("[Segments] DoubleDriverSegmentSection(\(label)) row Button tapped, segment.id=\(segment.id)")
+            controller.selectedSpriteSegmentID = segment.id
+        } label: {
+            VStack(alignment: .leading, spacing: 3) {
+                HStack(spacing: 6) {
+                    if renamingSegmentID == segment.id {
+                        TextField("Name", text: $renameText)
+                            .textFieldStyle(.plain)
+                            .font(.system(size: 12))
+                            .onSubmit { commitRename(segment.id) }
+                    } else {
+                        Text(segment.name.isEmpty ? "Segment" : segment.name)
+                            .font(.system(size: 12, weight: isSelected ? .semibold : .regular))
+                            .lineLimit(1)
+                            .onTapGesture(count: 2) {
+                                renameText        = segment.name
+                                renamingSegmentID = segment.id
+                            }
+                    }
+                    Spacer()
+                    Button { duplicateSegment(segment) } label: {
+                        Image(systemName: "plus.square.on.square").font(.system(size: 10)).iconHitArea(18)
+                    }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(.secondary)
+                    .modifier(LoomHoverHelp("Duplicate segment"))
+                    Button { deleteSegment(segment) } label: {
+                        Image(systemName: "xmark").font(.system(size: 9)).iconHitArea(18)
+                    }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(.secondary)
+                    .modifier(LoomHoverHelp("Delete segment"))
+                    Image(systemName: "chevron.right")
+                        .font(.system(size: 9, weight: .semibold))
+                        .foregroundStyle(Color.accentColor)
+                        .modifier(LoomHoverHelp("Click to edit this segment's own driver (oscillator, jitter, noise, or keyframes)"))
+                }
+                HStack(spacing: 4) {
+                    Text("Start").font(.system(size: 9)).foregroundStyle(.tertiary)
+                    TextField("", value: frameBinding(segment.id, \.startFrame), format: .number)
+                        .textFieldStyle(.squareBorder).font(.system(size: 10, design: .monospaced)).frame(width: 46)
+                    Text("End").font(.system(size: 9)).foregroundStyle(.tertiary)
+                    TextField("", value: frameBinding(segment.id, \.endFrame), format: .number)
+                        .textFieldStyle(.squareBorder).font(.system(size: 10, design: .monospaced)).frame(width: 46)
+                }
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 6)
+            .background(isSelected ? Color.accentColor.opacity(0.12) : Color.clear)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+    }
+
+    @ViewBuilder
+    private func selectedSegmentDetail(_ idx: Int) -> some View {
+        HStack(spacing: 4) {
+            Button {
+                LoomLogger.info("[Segments] DoubleDriverSegmentSection(\(label)) back button tapped")
+                controller.selectedSpriteSegmentID = nil
+            } label: {
+                Label(label, systemImage: "chevron.left")
+                    .font(.system(size: 11))
+            }
+            .buttonStyle(.plain)
+            .foregroundStyle(Color.accentColor)
+            Spacer()
+            Text(allSegments[idx].name.isEmpty ? "Segment" : allSegments[idx].name)
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundStyle(.secondary)
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 6)
+        Divider()
+
+        let _ = LoomLogger.info("[Segments] DoubleDriverSegmentSection(\(label)) rendering selectedSegmentDetail(idx=\(idx)), segDriverCollapsed=\(segDriverCollapsed)")
+        DoubleDriverEditor(label: label, driver: segmentValueBinding(idx), isCollapsed: $segDriverCollapsed)
+    }
+
+    // MARK: - Actions
+
+    private func addSegment() {
+        LoomLogger.info("[Segments] DoubleDriverSegmentSection(\(label)).addSegment() called, laneSegments.count before=\(laneSegments.count)")
+        let frame = controller.currentTimelineFrame
+        let newSegment = DriverLaneSegment(
+            name: "Segment \(laneSegments.count + 1)",
+            laneRawValue: laneRawValue,
+            startFrame: frame,
+            endFrame: frame + 120,
+            value: .double(baseDriver)
+        )
+        allSegments.append(newSegment)
+        LoomLogger.info("[Segments] DoubleDriverSegmentSection(\(label)) appended segment id=\(newSegment.id), allSegments.count after=\(allSegments.count)")
+        controller.selectedSpriteSegmentID = newSegment.id
+        LoomLogger.info("[Segments] DoubleDriverSegmentSection(\(label)) set selectedSpriteSegmentID=\(newSegment.id)")
+    }
+
+    private func duplicateSegment(_ segment: DriverLaneSegment) {
+        var copy = segment
+        copy.id = UUID()
+        let length = max(1, segment.endFrame - segment.startFrame)
+        copy.startFrame = segment.endFrame
+        copy.endFrame   = segment.endFrame + length
+        copy.name       = segment.name.isEmpty ? "Segment" : "\(segment.name) copy"
+        allSegments.append(copy)
+        controller.selectedSpriteSegmentID = copy.id
+    }
+
+    private func deleteSegment(_ segment: DriverLaneSegment) {
+        allSegments.removeAll { $0.id == segment.id }
+        if controller.selectedSpriteSegmentID == segment.id {
+            controller.selectedSpriteSegmentID = nil
+        }
+    }
+
+    private func commitRename(_ id: UUID) {
+        if let idx = allSegments.firstIndex(where: { $0.id == id }) {
+            allSegments[idx].name = renameText
+        }
+        renamingSegmentID = nil
+    }
+
+    // MARK: - Binding helpers
+
+    private func frameBinding(_ id: UUID, _ kp: WritableKeyPath<DriverLaneSegment, Int>) -> Binding<Int> {
+        Binding(
+            get: { allSegments.first(where: { $0.id == id })?[keyPath: kp] ?? 0 },
+            set: { v in
+                guard let idx = allSegments.firstIndex(where: { $0.id == id }) else { return }
+                allSegments[idx][keyPath: kp] = max(0, v)
+            }
+        )
+    }
+
+    private func segmentValueBinding(_ idx: Int) -> Binding<DoubleDriver> {
+        Binding(
+            get: {
+                guard idx < allSegments.count, case .double(let d) = allSegments[idx].value else { return .zero }
+                return d
+            },
+            set: { newVal in
+                guard idx < allSegments.count else { return }
+                allSegments[idx].value = .double(newVal)
+            }
+        )
+    }
+}
+
 // MARK: - DriverSectionsView
 
 private struct DriverSectionsView: View {
@@ -809,13 +1259,17 @@ private struct DriverSectionsView: View {
         let db = driversBinding()
         VStack(alignment: .leading, spacing: 0) {
             batchEyeButton
-            VectorDriverEditor(label: "Position", driver: db.position, isCollapsed: $posCollapsed,
+            VectorDriverSegmentSection(label: "Position", laneRawValue: 0, baseDriver: db.position,
+                               allSegments: db.segments, isCollapsed: $posCollapsed,
                                isHighlighted: selectedLane == .position)
-            VectorDriverEditor(label: "Scale",    driver: db.scale,    isCollapsed: $sclCollapsed,
+            VectorDriverSegmentSection(label: "Scale", laneRawValue: 1, baseDriver: db.scale,
+                               allSegments: db.segments, isCollapsed: $sclCollapsed,
                                isHighlighted: selectedLane == .scale)
-            DoubleDriverEditor(label: "Rotation", driver: db.rotation, isCollapsed: $rotCollapsed,
+            DoubleDriverSegmentSection(label: "Rotation", laneRawValue: 2, baseDriver: db.rotation,
+                               allSegments: db.segments, isCollapsed: $rotCollapsed,
                                isHighlighted: selectedLane == .rotation)
-            DoubleDriverEditor(label: "Opacity",  driver: db.opacity,  isCollapsed: $opacCollapsed,
+            DoubleDriverSegmentSection(label: "Opacity", laneRawValue: 4, baseDriver: db.opacity,
+                               allSegments: db.segments, isCollapsed: $opacCollapsed,
                                isHighlighted: selectedLane == .opacity)
             NameDriverEditor(
                 label: "Transform Set Driver",
@@ -838,14 +1292,21 @@ private struct DriverSectionsView: View {
                 isHighlighted: selectedLane == .cycleName,
                 options: controller.projectConfig?.cycles.map(\.name) ?? []
             )
-            DoubleDriverEditor(label: "Morph",    driver: db.morph,    isCollapsed: $mphCollapsed,
+            DoubleDriverSegmentSection(label: "Morph", laneRawValue: 3, baseDriver: db.morph,
+                               allSegments: db.segments, isCollapsed: $mphCollapsed,
                                isHighlighted: selectedLane == .morph)
             morphTargetsSection
             DoubleDriverEditor(label: "Shape",    driver: db.shape,    isCollapsed: $shpCollapsed,
                                isHighlighted: selectedLane == .shape)
             shapeVariantsSection
         }
-        .onAppear { syncCollapsed() }
+        .onAppear {
+            LoomLogger.info("[Segments] DriverSectionsView.onAppear (setIdx=\(setIdx) spriteIdx=\(spriteIdx)) — about to syncCollapsed()")
+            syncCollapsed()
+        }
+        .onDisappear {
+            LoomLogger.info("[Segments] DriverSectionsView.onDisappear (setIdx=\(setIdx) spriteIdx=\(spriteIdx))")
+        }
     }
 
     private var selectedLane: TimelineLane? {
@@ -985,10 +1446,14 @@ private struct DriverSectionsView: View {
     // MARK: - Collapse sync
 
     private func syncCollapsed() {
-        guard let d = currentDrivers else { return }
+        guard let d = currentDrivers else {
+            LoomLogger.info("[Segments] syncCollapsed: currentDrivers is nil, skipping")
+            return
+        }
         posCollapsed  = !d.position.enabled      && d.position.keyframes.isEmpty
         sclCollapsed  = !d.scale.enabled         && d.scale.keyframes.isEmpty
         rotCollapsed  = !d.rotation.enabled      && d.rotation.keyframes.isEmpty
+        LoomLogger.info("[Segments] syncCollapsed: rotation.enabled=\(d.rotation.enabled) rotation.keyframes.isEmpty=\(d.rotation.keyframes.isEmpty) -> rotCollapsed=\(rotCollapsed), segments.count=\(d.segments.count)")
         mphCollapsed  = !d.morph.enabled         && d.morph.keyframes.isEmpty
         opacCollapsed = !d.opacity.enabled       && d.opacity.keyframes.isEmpty
         shpCollapsed  = !d.shape.enabled         && d.shape.keyframes.isEmpty

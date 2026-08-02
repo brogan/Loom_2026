@@ -1,6 +1,7 @@
 import AppKit
 import SwiftUI
 import LoomEngine
+import UniformTypeIdentifiers
 
 // MARK: - File-private aliases / types
 
@@ -12,6 +13,16 @@ private struct RowInfo {
     var rendererLane: RendererTimelineLane? = nil
     var rendererSetIdx: Int? = nil
     var rendererItemIdx: Int? = nil
+    /// The Y-origin of this row on the canvas, captured at the point
+    /// rowInfo(at:) found its match — needed by segment hit-testing/drawing
+    /// to compute a row's pixel range, since a plain point-based hit-test
+    /// otherwise has no way to recover the row's geometry.
+    var rowY: CGFloat = 0
+}
+
+private enum SegmentRenameTarget {
+    case camera(id: UUID)
+    case sprite(spriteListIdx: Int, id: UUID)
 }
 
 private struct TimelineNode {
@@ -84,12 +95,15 @@ private struct RendererKFDragState {
     var previewFrame: Int
 }
 
-private enum DragKind { case none, seek, pan, rubberBand, keyframe, rendererKeyframe, camera, startMarker, endMarker, markerStrip, namedMarker(Int) }
+private enum DragKind { case none, seek, pan, rubberBand, keyframe, rendererKeyframe, camera, startMarker, endMarker, markerStrip, namedMarker(Int), audioOffset, cameraSegmentMove(UUID), cameraSegmentResize(UUID, SegmentEdge), cameraSegmentCreate, spriteSegmentMove(spriteListIdx: Int, lane: TimelineLane, id: UUID), spriteSegmentResize(spriteListIdx: Int, lane: TimelineLane, id: UUID, edge: SegmentEdge), spriteSegmentCreate(spriteListIdx: Int, lane: TimelineLane) }
+
+private enum SegmentEdge { case start, end }
 
 // MARK: - TimelinePanel
 
 struct TimelinePanel: View {
     @EnvironmentObject private var controller: AppController
+    @EnvironmentObject private var audio: AudioController
     let currentFrame: Int
     @Binding var seekFrame: Int?
     @Binding var isCollapsed: Bool
@@ -118,6 +132,12 @@ struct TimelinePanel: View {
     @State private var cameraExpanded:        Bool          = false
     @State private var selectedCameraKFHit:   CameraKFSelection? = nil
     @State private var cameraDragState:       (lane: CameraLane, kfIdx: Int, previewFrame: Int)? = nil
+    @State private var cameraSegmentDragAnchor: (id: UUID, startFrame: Int, endFrame: Int)? = nil
+    @State private var cameraSegmentDragPreview: (startFrame: Int, endFrame: Int)? = nil
+    @State private var cameraSegmentCreateAnchorFrame: Int? = nil
+    @State private var spriteSegmentDragAnchor: (spriteListIdx: Int, lane: TimelineLane, id: UUID, startFrame: Int, endFrame: Int)? = nil
+    @State private var spriteSegmentDragPreview: (startFrame: Int, endFrame: Int)? = nil
+    @State private var spriteSegmentCreateAnchor: (spriteListIdx: Int, lane: TimelineLane, frame: Int)? = nil
     @State private var hiddenLanes:           Set<String>   = []
     @State private var kfScalePercent:        String        = "100"
     @State private var scrollMonitor:         Any?          = nil
@@ -128,7 +148,19 @@ struct TimelinePanel: View {
     @State private var lastMarkerTap:         (x: CGFloat, time: Date)? = nil
     @State private var rulerContextFrame:     Int           = 0
     @State private var hoveredMarkerIndex:   Int?          = nil
+    @State private var hoveredCameraSegmentID: UUID?       = nil
+    @State private var hoveredSpriteSegmentInfo: (spriteListIdx: Int, lane: TimelineLane, id: UUID)? = nil
+    @State private var lastCameraSegmentTap: (id: UUID, time: Date)? = nil
+    @State private var lastSpriteSegmentTap: (id: UUID, time: Date)? = nil
+    @State private var renamingSegmentKind: SegmentRenameTarget? = nil
+    @State private var pendingSegmentRenameText: String = ""
+    @State private var pendingSegmentRenameAnchor: CGPoint = .zero
     @State private var soloKey:              String?       = nil
+    @State private var audioLaneExpanded:    Bool          = false
+    @State private var previewAudioOffsetFrames: Int?      = nil
+    @State private var audioRenamingMarkerID: UUID?        = nil
+    @State private var audioRenameText:      String        = ""
+    @State private var audioShowNotes:       Bool           = false
 
     private let headerWidth:  CGFloat = 160
     private let rowHeight:    CGFloat = 22
@@ -146,13 +178,27 @@ struct TimelinePanel: View {
     private let resizeHandleHeight: CGFloat = 26
     private let bottomPadding:     CGFloat = 16
 
+    /// Collapsed audio lane height — double the standard row height, per design.
+    private let audioLaneCollapsedHeight: CGFloat = 44
+    /// Extra height for the expanded lane's BPM stats / marker toggles / marker list.
+    private let audioLaneExpandedContentHeight: CGFloat = 230
+    private var audioBlockVisible: Bool { soloKey == nil || soloKey == cameraSoloKey }
+    /// Single authoritative source for how much vertical space the audio lane
+    /// occupies — every other block's Y-offset derives from this rather than
+    /// each re-deriving its own "start after the ruler" math.
+    private var audioLaneHeight: CGFloat {
+        guard audioBlockVisible else { return 0 }
+        return audioLaneExpanded ? audioLaneCollapsedHeight + audioLaneExpandedContentHeight : audioLaneCollapsedHeight
+    }
+    private var cameraBlockStartY: CGFloat { totalRulerHeight + audioLaneHeight }
+
     private var cameraRowCount: Int {
         guard cameraBlockVisible else { return 0 }
         return cameraExpanded ? 1 + visibleCameraLanes().count : 1
     }
-    private var spriteStartY: CGFloat { totalRulerHeight + CGFloat(cameraRowCount) * rowHeight }
+    private var spriteStartY: CGFloat { cameraBlockStartY + CGFloat(cameraRowCount) * rowHeight }
     private var timelineContentHeight: CGFloat {
-        totalRulerHeight + CGFloat(cameraRowCount + spriteTimelineRowCount) * rowHeight
+        cameraBlockStartY + CGFloat(cameraRowCount + spriteTimelineRowCount) * rowHeight
     }
 
     var body: some View {
@@ -206,7 +252,15 @@ struct TimelinePanel: View {
             timelineUndoStack.removeAll()
             timelineRedoStack.removeAll()
         }
+        .onChange(of: currentFrame) { _, frame in
+            audio.syncTransport(playbackState: controller.playbackState, frame: frame, fps: fps)
+        }
+        .onChange(of: controller.playbackState) { _, state in
+            audio.syncTransport(playbackState: state, frame: currentFrame, fps: fps)
+        }
     }
+
+    private var fps: Double { controller.projectConfig?.globalConfig.targetFPS ?? 30 }
 
     private var timelineCommandButtons: some View {
         Group {
@@ -222,9 +276,18 @@ struct TimelinePanel: View {
             Button("Timeline Redo") { redoTimelineChange() }
                 .keyboardShortcut("z", modifiers: [.command, .shift])
                 .disabled(timelineRedoStack.isEmpty)
-            Button("Timeline Delete") { deleteSelectedKeyframes() }
-                .keyboardShortcut(.delete, modifiers: [])
-                .disabled(activeSelectionItems.isEmpty)
+            Button("Timeline Delete") {
+                if let segID = controller.selectedCameraSegmentID {
+                    deleteCameraSegment(segID)
+                } else if let segID = controller.selectedSpriteSegmentID,
+                          let idx = spriteListIndex(forName: controller.selectedSpriteID) {
+                    deleteSpriteSegment(spriteListIdx: idx, id: segID)
+                } else {
+                    deleteSelectedKeyframes()
+                }
+            }
+            .keyboardShortcut(.delete, modifiers: [])
+            .disabled(activeSelectionItems.isEmpty && controller.selectedCameraSegmentID == nil && controller.selectedSpriteSegmentID == nil)
             Button("Timeline Select All") { selectAllKeyframes() }
                 .keyboardShortcut("a", modifiers: .command)
         }
@@ -342,9 +405,20 @@ struct TimelinePanel: View {
                         .modifier(LoomHoverHelp("Apply timing scale to selected keyframes"))
                     }
                 }
-                if !activeSelectionItems.isEmpty {
+                if !activeSelectionItems.isEmpty || controller.selectedCameraSegmentID != nil || controller.selectedSpriteSegmentID != nil {
                     Button {
-                        deleteSelectedKeyframes()
+                        // Previously missed the camera-segment branch entirely
+                        // (this button called deleteSelectedKeyframes() only) —
+                        // fixed here alongside adding the sprite-segment case,
+                        // matching the other two Delete UIs' three-way shape.
+                        if let segID = controller.selectedCameraSegmentID {
+                            deleteCameraSegment(segID)
+                        } else if let segID = controller.selectedSpriteSegmentID,
+                                  let idx = spriteListIndex(forName: controller.selectedSpriteID) {
+                            deleteSpriteSegment(spriteListIdx: idx, id: segID)
+                        } else {
+                            deleteSelectedKeyframes()
+                        }
                     } label: {
                         Image(systemName: "trash").font(.system(size: 11))
                     }
@@ -354,6 +428,14 @@ struct TimelinePanel: View {
             }
             .frame(height: totalRulerHeight)
             .padding(.horizontal, 6)
+
+            if audioBlockVisible {
+                audioLaneHeader
+                if audioLaneExpanded {
+                    audioLaneExpandedDetail
+                        .frame(height: audioLaneExpandedContentHeight)
+                }
+            }
 
             if cameraBlockVisible {
             // Camera block
@@ -552,6 +634,365 @@ struct TimelinePanel: View {
         .clipped()
     }
 
+    // MARK: - Audio lane
+
+    private var audioLaneHeader: some View {
+        HStack(spacing: 4) {
+            Button {
+                audioLaneExpanded.toggle()
+            } label: {
+                Image(systemName: audioLaneExpanded ? "chevron.down" : "chevron.right")
+                    .font(.system(size: 9)).frame(width: 10)
+            }
+            .buttonStyle(.plain)
+            Image(systemName: "waveform")
+                .font(.system(size: 9)).foregroundStyle(.purple)
+            Text("Audio").font(.system(size: 11, weight: .medium))
+            if let name = audio.audioFilename {
+                Text(audio.fileNotFound ? "\(name) — not found" : name)
+                    .font(.system(size: 9))
+                    .foregroundStyle(audio.fileNotFound ? Color.red : Color.secondary)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+            }
+            Spacer(minLength: 2)
+            Button { importAudioFile() } label: {
+                Image(systemName: "square.and.arrow.down")
+                    .font(.system(size: 10))
+                    .iconHitArea(16)
+            }
+            .buttonStyle(.plain)
+            .modifier(LoomHoverHelp("Import audio file"))
+            if audio.audioFilename != nil {
+                Button { audio.clear() } label: {
+                    Image(systemName: "minus")
+                        .font(.system(size: 10))
+                        .iconHitArea(16)
+                }
+                .buttonStyle(.plain)
+                .modifier(LoomHoverHelp("Remove audio"))
+            }
+        }
+        .padding(.trailing, 6)
+        .padding(.leading, 4)
+        .frame(height: audioLaneCollapsedHeight)
+        .contentShape(Rectangle())
+    }
+
+    @ViewBuilder
+    private var audioLaneExpandedDetail: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            if audio.audioFilename == nil {
+                Text("Import an audio file to see analysis.")
+                    .font(.system(size: 10))
+                    .foregroundStyle(.tertiary)
+                    .padding(10)
+            } else if let a = audio.analysis {
+                audioAnalysisSection(a)
+                Divider()
+                audioMarkersSection
+            } else {
+                VStack(spacing: 6) {
+                    ProgressView().scaleEffect(0.7)
+                    Text("Analysing…").font(.system(size: 10)).foregroundStyle(.secondary)
+                }
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 10)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    @ViewBuilder
+    private func audioAnalysisSection(_ a: AudioAnalysis) -> some View {
+        let beatsOn = audio.hasAnalysisMarkers(prefix: "b")
+        let kicksOn = audio.hasAnalysisMarkers(prefix: "k")
+        // This column is only ~150px usable width (the timeline's fixed
+        // header-column width, sized for short per-lane labels) — every row
+        // here must be its own line with compact custom-styled controls;
+        // system .bordered buttons don't shrink enough to fit side by side.
+        VStack(alignment: .leading, spacing: 3) {
+            if a.bpm > 0 {
+                Text("BPM \(String(format: "%.1f", a.bpm))")
+                    .font(.system(size: 11, weight: .semibold))
+            } else {
+                Text("BPM —").font(.system(size: 11)).foregroundStyle(.secondary)
+            }
+            Text("\(a.beatOnsets.count) beats · \(a.lowFreqOnsets.count) kicks")
+                .font(.system(size: 9)).foregroundStyle(.secondary)
+
+            // Tempo autocorrelation can lock onto a subdivision or multiple of
+            // the true beat — quick ratio buttons to correct it by ear against
+            // the timeline/audio before committing it via "Use Detected BPM".
+            HStack(spacing: 3) {
+                bpmRatioButton("½×", ratio: 0.5, disabled: a.bpm <= 0)
+                bpmRatioButton("⅔×", ratio: 2.0 / 3.0, disabled: a.bpm <= 0)
+                bpmRatioButton("1.5×", ratio: 1.5, disabled: a.bpm <= 0)
+                bpmRatioButton("2×", ratio: 2.0, disabled: a.bpm <= 0)
+            }
+            .modifier(LoomHoverHelp("Detected tempo can lock onto a subdivision of the true beat — correct it here before using it"))
+
+            compactButton("Use Detected BPM", disabled: a.bpm <= 0) {
+                controller.updateProjectConfig { cfg in
+                    cfg.musicSync.bpm = a.bpm
+                    MusicSync.recomputeAll(in: &cfg)
+                }
+            }
+            .modifier(LoomHoverHelp("Copy the detected BPM into Music Sync"))
+
+            HStack(spacing: 3) {
+                compactButton("Beats", selected: beatsOn, disabled: a.beatOnsets.isEmpty) {
+                    audio.toggleAnalysisMarkers(times: a.beatOnsets, fps: fps, prefix: "b")
+                }
+                .tint(Color.cyan)
+                compactButton("Kicks", selected: kicksOn, disabled: a.lowFreqOnsets.isEmpty) {
+                    audio.toggleAnalysisMarkers(times: a.lowFreqOnsets, fps: fps, prefix: "k")
+                }
+                .tint(Color.green)
+            }
+
+            compactButton("Drop Marker") {
+                audio.dropMarker(atTimelineFrame: currentFrame)
+            }
+            .keyboardShortcut("m", modifiers: .command)
+        }
+        .padding(.horizontal, 10)
+        .padding(.top, 6)
+        .padding(.bottom, 4)
+    }
+
+    /// Compact single-line button for the narrow (~150px) audio lane detail
+    /// column — plain system `.bordered` buttons don't shrink small enough
+    /// for multi-per-row layouts at this width.
+    private func compactButton(_ label: String, selected: Bool = false, disabled: Bool = false, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Text(label)
+                .font(.system(size: 9, weight: selected ? .semibold : .regular))
+                .lineLimit(1)
+                .minimumScaleFactor(0.85)
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 3)
+        }
+        .buttonStyle(.plain)
+        .foregroundStyle(disabled ? Color.secondary.opacity(0.4) : (selected ? Color.accentColor : Color.primary))
+        .background(
+            RoundedRectangle(cornerRadius: 4)
+                .fill(selected ? Color.accentColor.opacity(0.15) : Color.secondary.opacity(0.12))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 4)
+                .stroke(Color.secondary.opacity(0.25), lineWidth: 0.5)
+        )
+        .disabled(disabled)
+    }
+
+    private func bpmRatioButton(_ label: String, ratio: Double, disabled: Bool) -> some View {
+        compactButton(label, disabled: disabled) { audio.scaleDetectedBPM(by: ratio) }
+    }
+
+    private var audioMarkersSection: some View {
+        VStack(spacing: 0) {
+            HStack(spacing: 6) {
+                Text("Markers").font(.system(size: 10, weight: .semibold)).foregroundStyle(.secondary)
+                Spacer()
+                if !audio.markers.isEmpty {
+                    Text("\(audio.markers.count)").font(.system(size: 9, design: .monospaced)).foregroundStyle(.tertiary)
+                }
+                Button { audioShowNotes.toggle() } label: {
+                    Image(systemName: "pencil")
+                        .font(.system(size: 9))
+                        .rotationEffect(.degrees(-15))
+                        .iconHitArea(16)
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(audioShowNotes ? Color.accentColor : Color.secondary)
+                .modifier(LoomHoverHelp(audioShowNotes ? "Hide notes" : "Show notes"))
+            }
+            .padding(.horizontal, 10)
+            .padding(.vertical, 3)
+            Divider()
+
+            if audio.markers.isEmpty {
+                Text("No markers — use ⌘M to drop one")
+                    .font(.system(size: 10))
+                    .foregroundStyle(.tertiary)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 6)
+            } else {
+                ScrollView {
+                    LazyVStack(spacing: 0) {
+                        ForEach(audio.markers) { marker in
+                            audioMarkerRow(marker)
+                            Divider().padding(.leading, 30)
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    private func audioMarkerRow(_ marker: AudioMarker) -> some View {
+        VStack(alignment: .leading, spacing: 0) {
+            HStack(spacing: 6) {
+                Button {
+                    seekFrame = marker.frame + audio.offsetFrames
+                } label: {
+                    Image(systemName: "mappin")
+                        .font(.system(size: 9))
+                        .foregroundStyle(Color.accentColor)
+                        .iconHitArea(16)
+                }
+                .buttonStyle(.plain)
+
+                VStack(alignment: .leading, spacing: 1) {
+                    if audioRenamingMarkerID == marker.id {
+                        TextField("Label", text: $audioRenameText)
+                            .textFieldStyle(.plain)
+                            .font(.system(size: 10))
+                            .onSubmit {
+                                audio.updateMarkerLabel(id: marker.id, label: audioRenameText)
+                                audioRenamingMarkerID = nil
+                            }
+                    } else {
+                        Text(marker.label.isEmpty ? "Marker" : marker.label)
+                            .font(.system(size: 10))
+                            .lineLimit(1)
+                            .onTapGesture(count: 2) {
+                                audioRenameText = marker.label
+                                audioRenamingMarkerID = marker.id
+                            }
+                    }
+                    Text("f\(marker.frame)")
+                        .font(.system(size: 8, design: .monospaced))
+                        .foregroundStyle(.secondary)
+                }
+                Spacer()
+                Button {
+                    audio.removeMarker(id: marker.id)
+                } label: {
+                    Image(systemName: "xmark").font(.system(size: 8)).iconHitArea(16)
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(.secondary)
+            }
+            if audioShowNotes {
+                TextField("Notes…", text: audioNoteBinding(for: marker.id), axis: .vertical)
+                    .textFieldStyle(.plain)
+                    .font(.system(size: 9))
+                    .foregroundStyle(.primary.opacity(0.75))
+                    .lineLimit(1...3)
+                    .padding(.leading, 24)
+                    .padding(.trailing, 20)
+                    .padding(.top, 2)
+                    .padding(.bottom, 3)
+            }
+        }
+        .padding(.horizontal, 8)
+        .padding(.vertical, 4)
+        .contentShape(Rectangle())
+    }
+
+    private func audioNoteBinding(for id: UUID) -> Binding<String> {
+        Binding(
+            get: { audio.markers.first(where: { $0.id == id })?.notes ?? "" },
+            set: { audio.updateMarkerNotes(id: id, notes: $0) }
+        )
+    }
+
+    private func importAudioFile() {
+        guard let projectURL = controller.projectURL else { return }
+        let panel = NSOpenPanel()
+        panel.title = "Import Audio"
+        panel.allowsMultipleSelection = false
+        panel.allowedContentTypes = supportedAudioTypes()
+        panel.directoryURL = projectURL.appendingPathComponent("audio")
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        audio.importAudio(from: url)
+    }
+
+    private func supportedAudioTypes() -> [UTType] {
+        ["wav", "aiff", "aif", "mp3", "m4a", "caf", "flac", "aac"]
+            .compactMap { UTType(filenameExtension: $0) }
+    }
+
+    private func drawAudioLane(_ ctx: inout GraphicsContext, size: CGSize) {
+        guard audioBlockVisible else { return }
+        let laneTop = totalRulerHeight
+        let midY    = laneTop + audioLaneCollapsedHeight / 2
+
+        guard audio.audioFilename != nil else {
+            ctx.draw(Text("No audio — click ↓ to import").font(.system(size: 10)).foregroundStyle(.tertiary),
+                      at: CGPoint(x: 12, y: midY), anchor: .leading)
+            return
+        }
+        if audio.fileNotFound {
+            ctx.draw(Text("Audio file not found").font(.system(size: 10)).foregroundStyle(Color.red.opacity(0.75)),
+                      at: CGPoint(x: 12, y: midY), anchor: .leading)
+            return
+        }
+
+        let samples = audio.waveformData
+        guard !samples.isEmpty, audio.duration > 0, fps > 0 else {
+            ctx.draw(Text("Computing waveform…").font(.system(size: 10)).foregroundStyle(.tertiary),
+                      at: CGPoint(x: 12, y: midY), anchor: .leading)
+            return
+        }
+
+        let offsetFrames    = Double(previewAudioOffsetFrames ?? audio.offsetFrames)
+        let pxPerFrame      = CGFloat(zoom)
+        let bucketCount     = samples.count
+        let framesPerBucket = audio.duration * fps / Double(bucketCount)
+        guard framesPerBucket > 0 else { return }
+
+        func x(for bucket: Int) -> CGFloat {
+            let frame = Double(bucket) * framesPerBucket + offsetFrames
+            return CGFloat(frame) * pxPerFrame - CGFloat(hOffset)
+        }
+
+        let visStartBucket = max(0, Int((Double(hOffset) / Double(pxPerFrame) - offsetFrames) / framesPerBucket) - 1)
+        let visEndBucket    = min(bucketCount, Int((Double(hOffset) + Double(size.width)) / Double(pxPerFrame) / framesPerBucket + 2))
+        guard visEndBucket > visStartBucket, visStartBucket < bucketCount else { return }
+        let vis = Array(visStartBucket..<visEndBucket)
+        guard !vis.isEmpty else { return }
+
+        let halfH = audioLaneCollapsedHeight * 0.42
+
+        var fillPath = Path()
+        fillPath.move(to: CGPoint(x: x(for: vis[0]), y: midY))
+        for b in vis {
+            fillPath.addLine(to: CGPoint(x: x(for: b), y: midY - CGFloat(samples[b]) * halfH))
+        }
+        fillPath.addLine(to: CGPoint(x: x(for: vis[vis.count - 1]), y: midY))
+        for b in vis.reversed() {
+            fillPath.addLine(to: CGPoint(x: x(for: b), y: midY + CGFloat(samples[b]) * halfH))
+        }
+        fillPath.closeSubpath()
+        ctx.fill(fillPath, with: .color(Color.accentColor.opacity(0.28)))
+
+        var outline = Path()
+        outline.move(to: CGPoint(x: x(for: vis[0]), y: midY - CGFloat(samples[vis[0]]) * halfH))
+        for b in vis.dropFirst() {
+            outline.addLine(to: CGPoint(x: x(for: b), y: midY - CGFloat(samples[b]) * halfH))
+        }
+        ctx.stroke(outline, with: .color(Color.accentColor.opacity(0.55)), lineWidth: 1)
+    }
+
+    private func drawAudioMarkers(_ ctx: inout GraphicsContext, size: CGSize) {
+        guard audioBlockVisible, audio.audioFilename != nil, !audio.fileNotFound else { return }
+        let laneTop    = totalRulerHeight
+        let laneBottom = laneTop + audioLaneCollapsedHeight
+        let offsetFrames = previewAudioOffsetFrames ?? audio.offsetFrames
+        let pxPerFrame  = CGFloat(zoom)
+        for marker in audio.markers {
+            let x = CGFloat(marker.frame + offsetFrames) * pxPerFrame - CGFloat(hOffset)
+            guard x >= -2, x <= size.width + 2 else { continue }
+            var tick = Path()
+            tick.move(to: CGPoint(x: x, y: laneTop))
+            tick.addLine(to: CGPoint(x: x, y: laneBottom))
+            ctx.stroke(tick, with: .color(Color.orange.opacity(0.75)), lineWidth: 1.2)
+        }
+    }
+
     private func spriteHeaderRow(_ node: TimelineNode) -> some View {
         let sprite     = node.sprite
         let expanded   = expandedSprites.contains(sprite.name)
@@ -747,6 +1188,8 @@ struct TimelinePanel: View {
                 self.drawMarkerStrip(&ctx, size: sz)
                 self.drawBackground(&ctx, size: sz)
                 self.drawGrid(&ctx, size: sz)
+                self.drawAudioLane(&ctx, size: sz)
+                self.drawAudioMarkers(&ctx, size: sz)
                 self.drawRuler(&ctx, size: sz)
                 self.drawStartEndRegion(&ctx, size: sz)
                 self.drawKeyframes(&ctx, size: sz)
@@ -789,6 +1232,34 @@ struct TimelinePanel: View {
                         .padding(12)
                     }
             }
+
+            // Popover anchor for renaming a camera/sprite segment (double-click on its band)
+            if renamingSegmentKind != nil {
+                Color.clear
+                    .frame(width: 1, height: 1)
+                    .position(x: max(4, min(size.width - 4, pendingSegmentRenameAnchor.x)),
+                              y: pendingSegmentRenameAnchor.y)
+                    .popover(isPresented: Binding(
+                        get: { renamingSegmentKind != nil },
+                        set: { if !$0 { renamingSegmentKind = nil } }
+                    ), arrowEdge: .top) {
+                        VStack(spacing: 8) {
+                            Text("Rename segment")
+                                .font(.system(size: 11, weight: .semibold))
+                            TextField("Segment name", text: $pendingSegmentRenameText)
+                                .textFieldStyle(.squareBorder)
+                                .frame(width: 160)
+                                .onSubmit { confirmSegmentRename() }
+                            HStack(spacing: 8) {
+                                Button("Cancel") { renamingSegmentKind = nil }
+                                Button("Rename") { confirmSegmentRename() }
+                                    .buttonStyle(.borderedProminent)
+                            }
+                            .font(.system(size: 11))
+                        }
+                        .padding(12)
+                    }
+            }
         }
         .onContinuousHover { phase in
             if case .active(let loc) = phase {
@@ -802,8 +1273,16 @@ struct TimelinePanel: View {
                 } else {
                     hoveredMarkerIndex = nil
                 }
+                hoveredCameraSegmentID = cameraSegmentHitTest(at: loc)?.segment.id
+                if let segHit = spriteSegmentHitTest(at: loc) {
+                    hoveredSpriteSegmentInfo = (segHit.spriteListIdx, segHit.lane, segHit.segment.id)
+                } else {
+                    hoveredSpriteSegmentInfo = nil
+                }
             } else {
                 hoveredMarkerIndex = nil
+                hoveredCameraSegmentID = nil
+                hoveredSpriteSegmentInfo = nil
             }
         }
         .contextMenu {
@@ -813,6 +1292,27 @@ struct TimelinePanel: View {
                 let m = ms[idx]
                 Button("Delete Marker \"\(m.name.isEmpty ? "Frame \(m.frame)" : m.name)\"") {
                     deleteMarker(at: idx)
+                }
+                Divider()
+            }
+            if let segID = hoveredCameraSegmentID,
+               let segment = controller.projectConfig?.globalConfig.camera.segments.first(where: { $0.id == segID }) {
+                Button("Duplicate Segment \"\(segment.name.isEmpty ? "Segment" : segment.name)\"") {
+                    duplicateCameraSegment(segment)
+                }
+                Button("Delete Segment \"\(segment.name.isEmpty ? "Segment" : segment.name)\"") {
+                    deleteCameraSegment(segID)
+                }
+                Divider()
+            }
+            if let info = hoveredSpriteSegmentInfo,
+               let drivers = timelineNodes[safe: info.spriteListIdx]?.sprite.animation.drivers,
+               let segment = drivers.segments.first(where: { $0.id == info.id }) {
+                Button("Duplicate Segment \"\(segment.name.isEmpty ? "Segment" : segment.name)\"") {
+                    duplicateSpriteSegment(spriteListIdx: info.spriteListIdx, segment)
+                }
+                Button("Delete Segment \"\(segment.name.isEmpty ? "Segment" : segment.name)\"") {
+                    deleteSpriteSegment(spriteListIdx: info.spriteListIdx, id: info.id)
                 }
                 Divider()
             }
@@ -862,8 +1362,19 @@ struct TimelinePanel: View {
                     wasPlayingBeforeScrub = controller.playbackState == .playing
                     controller.pause()
                 }
+            } else if isAudioLaneArea(v.startLocation) {
+                dragKind = .audioOffset
+                previewAudioOffsetFrames = audio.offsetFrames
             } else if isCameraArea(v.startLocation) {
-                if let camHit = cameraHitTest(at: v.startLocation) {
+                if let segHit = cameraSegmentHitTest(at: v.startLocation) {
+                    clearTimelineSelection()
+                    selectCameraSegment(segHit.segment.id)
+                    cameraSegmentDragAnchor = (segHit.segment.id, segHit.segment.startFrame, segHit.segment.endFrame)
+                    dragKind = segHit.edge.map { .cameraSegmentResize(segHit.segment.id, $0) } ?? .cameraSegmentMove(segHit.segment.id)
+                } else if v.startLocation.y < cameraBlockStartY + rowHeight {
+                    dragKind = .cameraSegmentCreate
+                    cameraSegmentCreateAnchorFrame = frameAt(x: v.startLocation.x)
+                } else if let camHit = cameraHitTest(at: v.startLocation) {
                     dragKind                    = .camera
                     selectCameraKeyframe(camHit, additive: shiftModifierActive)
                     selectedCameraKFHit         = camHit
@@ -874,6 +1385,14 @@ struct TimelinePanel: View {
                 } else {
                     dragKind = .pan
                 }
+            } else if let segHit = spriteSegmentHitTest(at: v.startLocation) {
+                clearTimelineSelection()
+                selectSpriteSegment(spriteListIdx: segHit.spriteListIdx, id: segHit.segment.id)
+                spriteSegmentDragAnchor = (segHit.spriteListIdx, segHit.lane, segHit.segment.id,
+                                            segHit.segment.startFrame, segHit.segment.endFrame)
+                dragKind = segHit.edge.map {
+                    .spriteSegmentResize(spriteListIdx: segHit.spriteListIdx, lane: segHit.lane, id: segHit.segment.id, edge: $0)
+                } ?? .spriteSegmentMove(spriteListIdx: segHit.spriteListIdx, lane: segHit.lane, id: segHit.segment.id)
             } else if let hit = hitTest(at: v.startLocation) {
                 dragKind            = .keyframe
                 selectSpriteKeyframe(hit, additive: shiftModifierActive)
@@ -889,12 +1408,22 @@ struct TimelinePanel: View {
                 let onLaneRow = row?.lane != nil || row?.rendererLane != nil
                 // Command+drag = rubber-band select (anywhere on the timeline).
                 // Command+Shift+drag = additive rubber-band.
-                // Plain drag on a lane row or Option+drag = pan.
+                // Plain drag on a lane row or Option+drag = pan — except a
+                // plain drag on one of the 5 segment-capable sprite lanes'
+                // empty space, which creates a new segment instead (mirrors
+                // camera's empty-summary-row-drag = create). A plain tap on
+                // that same space still adds a keyframe as before: dragKind
+                // only becomes .spriteSegmentCreate here for a real drag,
+                // and onDragEnded's .spriteSegmentCreate case falls back to
+                // the existing addKeyframe path when isTap is true.
                 if commandModifierActive {
                     dragKind = .rubberBand
                     rubberBandStart = v.startLocation
                     rubberBandEnd = v.location
                     rubberBandAdditive = shiftModifierActive
+                } else if !optionModifierActive, let row, let lane = row.lane, lane.rawValue <= 4 {
+                    dragKind = .spriteSegmentCreate(spriteListIdx: row.spriteListIdx, lane: lane)
+                    spriteSegmentCreateAnchor = (row.spriteListIdx, lane, frameAt(x: v.startLocation.x))
                 } else if optionModifierActive || onLaneRow {
                     dragKind = .pan
                 } else {
@@ -939,6 +1468,54 @@ struct TimelinePanel: View {
             prevDragTranslation = v.translation.width
         case .rubberBand:
             rubberBandEnd = v.location
+        case .audioOffset:
+            // v.translation is cumulative since drag start, so re-derive from the
+            // still-uncommitted audio.offsetFrames each tick rather than compounding
+            // the preview value against itself.
+            let deltaFrames = Int((v.translation.width / CGFloat(zoom)).rounded())
+            previewAudioOffsetFrames = max(0, audio.offsetFrames + deltaFrames)
+        case .cameraSegmentMove(let id):
+            // Derived fresh from the anchor captured at drag start each tick
+            // (v.translation is cumulative) rather than from the evolving
+            // preview value, for the same reason as .audioOffset above.
+            guard let anchor = cameraSegmentDragAnchor, anchor.id == id else { break }
+            let delta = Int((v.translation.width / CGFloat(zoom)).rounded())
+            let newStart = max(0, anchor.startFrame + delta)
+            cameraSegmentDragPreview = (newStart, newStart + (anchor.endFrame - anchor.startFrame))
+        case .cameraSegmentResize(let id, let edge):
+            guard let anchor = cameraSegmentDragAnchor, anchor.id == id else { break }
+            let delta = Int((v.translation.width / CGFloat(zoom)).rounded())
+            switch edge {
+            case .start:
+                cameraSegmentDragPreview = (max(0, min(anchor.endFrame - 1, anchor.startFrame + delta)), anchor.endFrame)
+            case .end:
+                cameraSegmentDragPreview = (anchor.startFrame, max(anchor.startFrame + 1, anchor.endFrame + delta))
+            }
+        case .cameraSegmentCreate:
+            guard let anchorFrame = cameraSegmentCreateAnchorFrame else { break }
+            let dragFrame = frameAt(x: v.location.x)
+            cameraSegmentDragPreview = (min(anchorFrame, dragFrame), max(anchorFrame, dragFrame))
+        case .spriteSegmentMove(let spriteListIdx, let lane, let id):
+            guard let anchor = spriteSegmentDragAnchor,
+                  anchor.spriteListIdx == spriteListIdx, anchor.lane == lane, anchor.id == id else { break }
+            let delta = Int((v.translation.width / CGFloat(zoom)).rounded())
+            let newStart = max(0, anchor.startFrame + delta)
+            spriteSegmentDragPreview = (newStart, newStart + (anchor.endFrame - anchor.startFrame))
+        case .spriteSegmentResize(let spriteListIdx, let lane, let id, let edge):
+            guard let anchor = spriteSegmentDragAnchor,
+                  anchor.spriteListIdx == spriteListIdx, anchor.lane == lane, anchor.id == id else { break }
+            let delta = Int((v.translation.width / CGFloat(zoom)).rounded())
+            switch edge {
+            case .start:
+                spriteSegmentDragPreview = (max(0, min(anchor.endFrame - 1, anchor.startFrame + delta)), anchor.endFrame)
+            case .end:
+                spriteSegmentDragPreview = (anchor.startFrame, max(anchor.startFrame + 1, anchor.endFrame + delta))
+            }
+        case .spriteSegmentCreate(let spriteListIdx, let lane):
+            guard let anchor = spriteSegmentCreateAnchor,
+                  anchor.spriteListIdx == spriteListIdx, anchor.lane == lane else { break }
+            let dragFrame = frameAt(x: v.location.x)
+            spriteSegmentDragPreview = (min(anchor.frame, dragFrame), max(anchor.frame, dragFrame))
         case .none: break
         }
     }
@@ -995,6 +1572,10 @@ struct TimelinePanel: View {
         case .startMarker, .endMarker, .namedMarker:
             break  // value already committed during drag
 
+        case .audioOffset:
+            if !isTap, let f = previewAudioOffsetFrames { audio.setOffset(f) }
+            previewAudioOffsetFrames = nil
+
         case .markerStrip:
             // Double-click detection
             let isTap = abs(v.translation.width) < 5 && abs(v.translation.height) < 5
@@ -1015,11 +1596,118 @@ struct TimelinePanel: View {
                 }
             }
 
+        case .cameraSegmentMove, .cameraSegmentResize:
+            if !isTap, let preview = cameraSegmentDragPreview { commitCameraSegmentDrag(preview) }
+            if isTap, case .cameraSegmentMove(let id) = dragKind {
+                handleCameraSegmentTap(id: id, at: v.location)
+            }
+            cameraSegmentDragAnchor = nil
+            cameraSegmentDragPreview = nil
+
+        case .cameraSegmentCreate:
+            if !isTap, let preview = cameraSegmentDragPreview, preview.endFrame > preview.startFrame {
+                commitCameraSegmentCreate(preview)
+            }
+            cameraSegmentCreateAnchorFrame = nil
+            cameraSegmentDragPreview = nil
+
+        case .spriteSegmentMove, .spriteSegmentResize:
+            if !isTap, let preview = spriteSegmentDragPreview { commitSpriteSegmentDrag(preview) }
+            if isTap, case .spriteSegmentMove(let spriteListIdx, _, let id) = dragKind {
+                handleSpriteSegmentTap(spriteListIdx: spriteListIdx, id: id, at: v.location)
+            }
+            spriteSegmentDragAnchor = nil
+            spriteSegmentDragPreview = nil
+
+        case .spriteSegmentCreate(let spriteListIdx, let lane):
+            if !isTap, let preview = spriteSegmentDragPreview, preview.endFrame > preview.startFrame {
+                commitSpriteSegmentCreate(spriteListIdx: spriteListIdx, lane: lane, preview)
+            } else if isTap {
+                // Plain tap on empty segment-capable-lane space still adds a
+                // keyframe, matching pre-segment behaviour on this same row —
+                // dragKind only became .spriteSegmentCreate for a real drag.
+                let f = max(0, Int(((v.startLocation.x + CGFloat(hOffset)) / CGFloat(zoom)).rounded()))
+                addKeyframe(spriteListIdx: spriteListIdx, lane: lane, frame: f)
+            }
+            spriteSegmentCreateAnchor = nil
+            spriteSegmentDragPreview = nil
+
         case .none: break
         }
 
         isDragInitialized   = false
         prevDragTranslation = 0
+    }
+
+    private func commitCameraSegmentDrag(_ preview: (startFrame: Int, endFrame: Int)) {
+        guard let anchor = cameraSegmentDragAnchor else { return }
+        recordTimelineUndoSnapshot()
+        controller.updateProjectConfig { cfg in
+            guard let idx = cfg.globalConfig.camera.segments.firstIndex(where: { $0.id == anchor.id }) else { return }
+            cfg.globalConfig.camera.segments[idx].startFrame = preview.startFrame
+            cfg.globalConfig.camera.segments[idx].endFrame   = preview.endFrame
+        }
+    }
+
+    private func commitCameraSegmentCreate(_ preview: (startFrame: Int, endFrame: Int)) {
+        let count = controller.projectConfig?.globalConfig.camera.segments.count ?? 0
+        let segment = CameraSegment(
+            name: "Segment \(count + 1)",
+            startFrame: preview.startFrame,
+            endFrame: preview.endFrame
+        )
+        recordTimelineUndoSnapshot()
+        controller.updateProjectConfig { cfg in
+            cfg.globalConfig.camera.segments.append(segment)
+        }
+        selectCameraSegment(segment.id)
+    }
+
+    private func commitSpriteSegmentDrag(_ preview: (startFrame: Int, endFrame: Int)) {
+        guard let anchor = spriteSegmentDragAnchor,
+              let loc = spriteLocation(listIdx: anchor.spriteListIdx) else { return }
+        recordTimelineUndoSnapshot()
+        controller.updateProjectConfig { cfg in
+            withDrivers(in: &cfg, si: loc.setIdx, pi: loc.spriteIdx) { drivers in
+                guard let idx = drivers.segments.firstIndex(where: { $0.id == anchor.id }) else { return }
+                drivers.segments[idx].startFrame = preview.startFrame
+                drivers.segments[idx].endFrame   = preview.endFrame
+            }
+        }
+    }
+
+    private func commitSpriteSegmentCreate(spriteListIdx: Int, lane: TimelineLane, _ preview: (startFrame: Int, endFrame: Int)) {
+        guard let loc = spriteLocation(listIdx: spriteListIdx),
+              let drivers = timelineNodes[safe: spriteListIdx]?.sprite.animation.drivers else { return }
+        let existingCount = drivers.segments.filter { $0.laneRawValue == lane.rawValue }.count
+        let segment = DriverLaneSegment(
+            name: "Segment \(existingCount + 1)",
+            laneRawValue: lane.rawValue,
+            startFrame: preview.startFrame,
+            endFrame: preview.endFrame,
+            value: baseDriverSegmentValue(drivers: drivers, lane: lane)
+        )
+        recordTimelineUndoSnapshot()
+        controller.updateProjectConfig { cfg in
+            withDrivers(in: &cfg, si: loc.setIdx, pi: loc.spriteIdx) { d in
+                d.segments.append(segment)
+            }
+        }
+        selectSpriteSegment(spriteListIdx: spriteListIdx, id: segment.id)
+    }
+
+    /// A new segment starts out matching whatever the base driver currently
+    /// is, mirroring SpritesInspector's own addSegment() — less surprising
+    /// than always resetting to a bare constant/zero.
+    private func baseDriverSegmentValue(drivers: TransformDrivers, lane: TimelineLane) -> DriverSegmentValue {
+        switch lane {
+        case .position: return .vector(drivers.position)
+        case .scale:    return .vector(drivers.scale)
+        case .rotation: return .double(drivers.rotation)
+        case .morph:    return .double(drivers.morph)
+        case .opacity:  return .double(drivers.opacity)
+        default:        return .double(.zero)
+        }
     }
 
     // MARK: - Selection sync
@@ -1060,12 +1748,17 @@ struct TimelinePanel: View {
     // MARK: - Drawing
 
     private func drawBackground(_ ctx: inout GraphicsContext, size: CGSize) {
+        // Audio lane
+        if audioBlockVisible {
+            ctx.fill(Path(CGRect(x: 0, y: totalRulerHeight, width: size.width, height: audioLaneHeight)),
+                     with: .color(Color(NSColor.windowBackgroundColor).opacity(0.4)))
+        }
         // Camera block
         if cameraBlockVisible {
-            ctx.fill(Path(CGRect(x: 0, y: totalRulerHeight, width: size.width, height: rowHeight)),
+            ctx.fill(Path(CGRect(x: 0, y: cameraBlockStartY, width: size.width, height: rowHeight)),
                      with: .color(Color(NSColor.windowBackgroundColor).opacity(0.55)))
             if cameraExpanded {
-                var camY = totalRulerHeight + rowHeight
+                var camY = cameraBlockStartY + rowHeight
                 for j in 0..<visibleCameraLanes().count {
                     ctx.fill(Path(CGRect(x: 0, y: camY, width: size.width, height: rowHeight)),
                              with: .color(j.isMultiple(of: 2)
@@ -1162,8 +1855,11 @@ struct TimelinePanel: View {
             hPath.addLine(to: CGPoint(x: size.width, y: y))
         }
 
+        if audioBlockVisible {
+            sep(cameraBlockStartY)
+        }
         if cameraBlockVisible {
-            var camSepY = totalRulerHeight + rowHeight
+            var camSepY = cameraBlockStartY + rowHeight
             sep(camSepY)
             if cameraExpanded {
                 for _ in 0..<visibleCameraLanes().count { camSepY += rowHeight; sep(camSepY) }
@@ -1356,6 +2052,8 @@ struct TimelinePanel: View {
 
     private func drawKeyframes(_ ctx: inout GraphicsContext, size: CGSize) {
         let pxPerFrame = CGFloat(zoom)
+        drawCameraSegments(&ctx, size: size)
+        drawSpriteSegments(&ctx, size: size)
         drawCameraKeyframes(&ctx, size: size)
         var rowY = spriteStartY
 
@@ -1508,6 +2206,7 @@ struct TimelinePanel: View {
         controller.selectedTimelineKF = nil
         controller.selectedRendererTimelineKF = nil
         controller.selectedCameraKF = nil
+        controller.selectedCameraSegmentID = nil
     }
 
     private func selectSpriteKeyframe(_ hit: KFHit, additive: Bool) {
@@ -1528,6 +2227,30 @@ struct TimelinePanel: View {
         selectedKF = nil
         selectedCameraKFHit = nil
         selectedRendererKF = hit
+    }
+
+    /// Selects a camera segment and surfaces CameraDriverInspector for it —
+    /// unlike selectCameraKeyframe (which stays on whatever tab is active),
+    /// this follows syncSelection/syncRendererSelection's precedent of
+    /// switching to the tab that actually shows the relevant inspector,
+    /// since the whole point of clicking a segment is to edit its drivers.
+    private func selectCameraSegment(_ id: UUID) {
+        controller.selectedCameraSegmentID = id
+        controller.isCameraSelected = true
+        controller.requestTabSelection(.sprites)
+    }
+
+    /// Selects a sprite driver-lane segment — combines the reset pattern
+    /// SpritesTabView's own selection handlers already use with
+    /// syncSelection's tab-switch shape. Unlike camera (one instance),
+    /// selecting a sprite segment must also make its owning sprite the
+    /// active inspector selection, not just switch tabs.
+    private func selectSpriteSegment(spriteListIdx: Int, id: UUID) {
+        controller.selectedSpriteID        = timelineNodes[safe: spriteListIdx]?.sprite.name
+        controller.selectedSpriteSegmentID = id
+        controller.isCameraSelected        = false
+        controller.selectedCameraSegmentID = nil
+        controller.requestTabSelection(.sprites)
     }
 
     private func selectCameraKeyframe(_ hit: CameraKFSelection, additive: Bool) {
@@ -1685,13 +2408,13 @@ struct TimelinePanel: View {
             let sprite = node.sprite
             let i = timelineListIndex(for: node)
             if point.y >= rowY && point.y < rowY + rowHeight {
-                return RowInfo(spriteListIdx: i, lane: nil)
+                return RowInfo(spriteListIdx: i, lane: nil, rowY: rowY)
             }
             rowY += rowHeight
             if expandedSprites.contains(sprite.name) {
                 for lane in visibleSpriteLanes(for: node) {
                     if point.y >= rowY && point.y < rowY + rowHeight {
-                        return RowInfo(spriteListIdx: i, lane: lane)
+                        return RowInfo(spriteListIdx: i, lane: lane, rowY: rowY)
                     }
                     rowY += rowHeight
                 }
@@ -1702,7 +2425,8 @@ struct TimelinePanel: View {
                             lane: nil,
                             rendererLane: row.lane,
                             rendererSetIdx: row.rendererSetIdx,
-                            rendererItemIdx: row.rendererItemIdx
+                            rendererItemIdx: row.rendererItemIdx,
+                            rowY: rowY
                         )
                     }
                     rowY += rowHeight
@@ -1783,7 +2507,7 @@ struct TimelinePanel: View {
         var result: [(TimelineSelectionItem, CGPoint)] = []
         if cameraBlockVisible && cameraExpanded {
             let cam = controller.projectConfig?.globalConfig.camera ?? .disabled
-            var rowY = totalRulerHeight + rowHeight
+            var rowY = cameraBlockStartY + rowHeight
             for lane in visibleCameraLanes() {
                 let midY = rowY + rowHeight / 2
                 for (ki, frame) in lane.keyframeFrames(from: cam).enumerated() {
@@ -2656,10 +3380,81 @@ struct TimelinePanel: View {
             return true
         }
         if !cmd && (event.keyCode == 51 || event.keyCode == 117) {
-            deleteSelectedKeyframes()
+            if let segID = controller.selectedCameraSegmentID {
+                deleteCameraSegment(segID)
+            } else if let segID = controller.selectedSpriteSegmentID,
+                      let idx = spriteListIndex(forName: controller.selectedSpriteID) {
+                deleteSpriteSegment(spriteListIdx: idx, id: segID)
+            } else {
+                deleteSelectedKeyframes()
+            }
             return true
         }
         return false
+    }
+
+    private func spriteListIndex(forName name: String?) -> Int? {
+        guard let name else { return nil }
+        return timelineNodes.firstIndex { $0.sprite.name == name }
+    }
+
+    /// selectedCameraSegmentID is a separate selection axis from
+    /// TimelineSelectionItem/activeSelectionItems (no shared plumbing),
+    /// hence its own independent delete path rather than folding it into
+    /// deleteSelectedKeyframes.
+    private func deleteCameraSegment(_ id: UUID) {
+        recordTimelineUndoSnapshot()
+        controller.updateProjectConfig { cfg in
+            cfg.globalConfig.camera.segments.removeAll { $0.id == id }
+        }
+        controller.selectedCameraSegmentID = nil
+    }
+
+    private func duplicateCameraSegment(_ segment: CameraSegment) {
+        var copy = segment
+        copy.id = UUID()
+        let length = max(1, segment.endFrame - segment.startFrame)
+        copy.startFrame = segment.endFrame
+        copy.endFrame   = segment.endFrame + length
+        copy.name       = segment.name.isEmpty ? "Segment" : "\(segment.name) copy"
+        recordTimelineUndoSnapshot()
+        controller.updateProjectConfig { cfg in
+            cfg.globalConfig.camera.segments.append(copy)
+        }
+        selectCameraSegment(copy.id)
+    }
+
+    /// selectedSpriteSegmentID is likewise a separate selection axis from
+    /// TimelineSelectionItem/activeSelectionItems — its own delete path,
+    /// same reasoning as deleteCameraSegment.
+    private func deleteSpriteSegment(spriteListIdx: Int, id: UUID) {
+        guard let loc = spriteLocation(listIdx: spriteListIdx) else { return }
+        recordTimelineUndoSnapshot()
+        controller.updateProjectConfig { cfg in
+            withDrivers(in: &cfg, si: loc.setIdx, pi: loc.spriteIdx) { drivers in
+                drivers.segments.removeAll { $0.id == id }
+            }
+        }
+        if controller.selectedSpriteSegmentID == id {
+            controller.selectedSpriteSegmentID = nil
+        }
+    }
+
+    private func duplicateSpriteSegment(spriteListIdx: Int, _ segment: DriverLaneSegment) {
+        guard let loc = spriteLocation(listIdx: spriteListIdx) else { return }
+        var copy = segment
+        copy.id = UUID()
+        let length = max(1, segment.endFrame - segment.startFrame)
+        copy.startFrame = segment.endFrame
+        copy.endFrame   = segment.endFrame + length
+        copy.name       = segment.name.isEmpty ? "Segment" : "\(segment.name) copy"
+        recordTimelineUndoSnapshot()
+        controller.updateProjectConfig { cfg in
+            withDrivers(in: &cfg, si: loc.setIdx, pi: loc.spriteIdx) { drivers in
+                drivers.segments.append(copy)
+            }
+        }
+        selectSpriteSegment(spriteListIdx: spriteListIdx, id: copy.id)
     }
 
     // MARK: - Interpolation helpers
@@ -2714,15 +3509,70 @@ struct TimelinePanel: View {
     // MARK: - Camera helpers
 
     private func isCameraArea(_ point: CGPoint) -> Bool {
-        point.y >= totalRulerHeight && point.y < totalRulerHeight + CGFloat(cameraRowCount) * rowHeight
+        point.y >= cameraBlockStartY && point.y < cameraBlockStartY + CGFloat(cameraRowCount) * rowHeight
+    }
+
+    private func isAudioLaneArea(_ point: CGPoint) -> Bool {
+        audioBlockVisible && point.y >= totalRulerHeight && point.y < cameraBlockStartY
     }
 
     private func cameraLaneAt(_ point: CGPoint) -> CameraLane? {
         guard cameraExpanded else { return nil }
-        var rowY = totalRulerHeight + rowHeight
+        var rowY = cameraBlockStartY + rowHeight
         for lane in visibleCameraLanes() {
             if point.y >= rowY && point.y < rowY + rowHeight { return lane }
             rowY += rowHeight
+        }
+        return nil
+    }
+
+    private func frameAt(x: CGFloat) -> Int {
+        max(0, Int(((x + CGFloat(hOffset)) / CGFloat(zoom)).rounded()))
+    }
+
+    /// Hit-tests CameraConfig.segments' bands on the camera summary row
+    /// (drawn by drawCameraSegments). Edges are checked first with a tight
+    /// unscaled tolerance so a body-drag (move) can't accidentally grab an
+    /// edge when segments sit close together; body hits report as a move.
+    private func cameraSegmentHitTest(at point: CGPoint) -> (segment: CameraSegment, edge: SegmentEdge?)? {
+        guard point.y >= cameraBlockStartY, point.y < cameraBlockStartY + rowHeight,
+              let cam = controller.projectConfig?.globalConfig.camera,
+              !cam.segments.isEmpty else { return nil }
+        let pxPerFrame: CGFloat = CGFloat(zoom)
+        let edgeTolerance: CGFloat = 6
+
+        for segment in cam.segments {
+            let startX = CGFloat(segment.startFrame) * pxPerFrame - CGFloat(hOffset)
+            let endX   = CGFloat(segment.endFrame)   * pxPerFrame - CGFloat(hOffset)
+            guard point.x >= startX - edgeTolerance, point.x <= endX + edgeTolerance else { continue }
+            if abs(point.x - startX) <= edgeTolerance { return (segment, .start) }
+            if abs(point.x - endX) <= edgeTolerance { return (segment, .end) }
+            if point.x > startX, point.x < endX { return (segment, nil) }
+        }
+        return nil
+    }
+
+    /// Hit-tests DriverLaneSegment bands on a sprite's driver lane rows
+    /// (position/scale/rotation/morph/opacity — laneRawValue 0-4). Resolves
+    /// row identity via rowInfo(at:) (now carrying rowY) rather than its own
+    /// Y-walk, then does the same edge-first tolerance math as
+    /// cameraSegmentHitTest against that row's known range.
+    private func spriteSegmentHitTest(at point: CGPoint) -> (spriteListIdx: Int, lane: TimelineLane, segment: DriverLaneSegment, edge: SegmentEdge?)? {
+        guard let row = rowInfo(at: point), let lane = row.lane, lane.rawValue <= 4,
+              let drivers = timelineNodes[safe: row.spriteListIdx]?.sprite.animation.drivers
+        else { return nil }
+        let segments = drivers.segments.filter { $0.laneRawValue == lane.rawValue }
+        guard !segments.isEmpty else { return nil }
+        let pxPerFrame: CGFloat = CGFloat(zoom)
+        let edgeTolerance: CGFloat = 6
+
+        for segment in segments {
+            let startX = CGFloat(segment.startFrame) * pxPerFrame - CGFloat(hOffset)
+            let endX   = CGFloat(segment.endFrame)   * pxPerFrame - CGFloat(hOffset)
+            guard point.x >= startX - edgeTolerance, point.x <= endX + edgeTolerance else { continue }
+            if abs(point.x - startX) <= edgeTolerance { return (row.spriteListIdx, lane, segment, .start) }
+            if abs(point.x - endX) <= edgeTolerance { return (row.spriteListIdx, lane, segment, .end) }
+            if point.x > startX, point.x < endX { return (row.spriteListIdx, lane, segment, nil) }
         }
         return nil
     }
@@ -2842,6 +3692,58 @@ struct TimelinePanel: View {
         pendingMarkerName = ""
     }
 
+    private func handleCameraSegmentTap(id: UUID, at location: CGPoint) {
+        let now = Date()
+        if let last = lastCameraSegmentTap, last.id == id, now.timeIntervalSince(last.time) < 0.40 {
+            if let segment = controller.projectConfig?.globalConfig.camera.segments.first(where: { $0.id == id }) {
+                pendingSegmentRenameText = segment.name
+                pendingSegmentRenameAnchor = location
+                renamingSegmentKind = .camera(id: id)
+            }
+            lastCameraSegmentTap = nil
+        } else {
+            lastCameraSegmentTap = (id, now)
+        }
+    }
+
+    private func handleSpriteSegmentTap(spriteListIdx: Int, id: UUID, at location: CGPoint) {
+        let now = Date()
+        if let last = lastSpriteSegmentTap, last.id == id, now.timeIntervalSince(last.time) < 0.40 {
+            if let drivers = timelineNodes[safe: spriteListIdx]?.sprite.animation.drivers,
+               let segment = drivers.segments.first(where: { $0.id == id }) {
+                pendingSegmentRenameText = segment.name
+                pendingSegmentRenameAnchor = location
+                renamingSegmentKind = .sprite(spriteListIdx: spriteListIdx, id: id)
+            }
+            lastSpriteSegmentTap = nil
+        } else {
+            lastSpriteSegmentTap = (id, now)
+        }
+    }
+
+    private func confirmSegmentRename() {
+        guard let target = renamingSegmentKind else { return }
+        recordTimelineUndoSnapshot()
+        switch target {
+        case .camera(let id):
+            controller.updateProjectConfig { cfg in
+                guard let idx = cfg.globalConfig.camera.segments.firstIndex(where: { $0.id == id }) else { return }
+                cfg.globalConfig.camera.segments[idx].name = pendingSegmentRenameText
+            }
+        case .sprite(let spriteListIdx, let id):
+            if let loc = spriteLocation(listIdx: spriteListIdx) {
+                controller.updateProjectConfig { cfg in
+                    withDrivers(in: &cfg, si: loc.setIdx, pi: loc.spriteIdx) { drivers in
+                        guard let idx = drivers.segments.firstIndex(where: { $0.id == id }) else { return }
+                        drivers.segments[idx].name = pendingSegmentRenameText
+                    }
+                }
+            }
+        }
+        renamingSegmentKind = nil
+        pendingSegmentRenameText = ""
+    }
+
     private func deleteMarker(at index: Int) {
         controller.updateProjectConfig { cfg in
             guard index < cfg.globalConfig.timelineMarkers.count else { return }
@@ -2880,13 +3782,150 @@ struct TimelinePanel: View {
         seekFrame = max(0, min(controller.maxScrubFrames, newFrame))
     }
 
+    /// Read-only visual reference for CameraConfig.segments — named,
+    /// time-bounded overrides of the camera's drivers (authored via
+    /// CameraDriverInspector's Segments section, not from here). Purely a
+    /// band overlay on the camera summary row; no drag/resize/hit-testing.
+    private func drawCameraSegments(_ ctx: inout GraphicsContext, size: CGSize) {
+        guard cameraBlockVisible else { return }
+        let cam = controller.projectConfig?.globalConfig.camera
+        let pxPerFrame  = CGFloat(zoom)
+        let bandTop     = cameraBlockStartY + 2
+        let bandHeight  = rowHeight - 4
+
+        for (i, segment) in (cam?.segments ?? []).enumerated() {
+            // While this segment is being moved/resized, draw the live
+            // preview range instead of its committed one.
+            let isDragging = cameraSegmentDragAnchor?.id == segment.id
+            let (startFrame, endFrame) = isDragging
+                ? (cameraSegmentDragPreview?.startFrame ?? segment.startFrame,
+                   cameraSegmentDragPreview?.endFrame   ?? segment.endFrame)
+                : (segment.startFrame, segment.endFrame)
+
+            let startX = CGFloat(startFrame) * pxPerFrame - CGFloat(hOffset)
+            let endX   = CGFloat(endFrame)   * pxPerFrame - CGFloat(hOffset)
+            let left   = max(0, startX)
+            let right  = min(size.width, endX)
+            guard right > left else { continue }
+
+            let color = cameraSegmentColor(i)
+            let rect  = CGRect(x: left, y: bandTop, width: right - left, height: bandHeight)
+            let path  = Path(roundedRect: rect, cornerRadius: 3)
+            ctx.fill(path, with: .color(color.opacity(isDragging ? 0.5 : 0.35)))
+            ctx.stroke(path, with: .color(color.opacity(0.85)), lineWidth: isDragging ? 1.5 : 1)
+
+            if right - left > 30 {
+                ctx.draw(
+                    Text(segment.name.isEmpty ? "Segment" : segment.name)
+                        .font(.system(size: 9, weight: .medium))
+                        .foregroundStyle(.white),
+                    at: CGPoint(x: left + 4, y: bandTop + bandHeight / 2),
+                    anchor: .leading
+                )
+            }
+        }
+
+        // In-progress "draw a new segment" drag — dashed, uncommitted.
+        if case .cameraSegmentCreate = dragKind, let preview = cameraSegmentDragPreview {
+            let startX = CGFloat(preview.startFrame) * pxPerFrame - CGFloat(hOffset)
+            let endX   = CGFloat(preview.endFrame)   * pxPerFrame - CGFloat(hOffset)
+            let left   = max(0, startX)
+            let right  = min(size.width, endX)
+            if right > left {
+                let rect = CGRect(x: left, y: bandTop, width: right - left, height: bandHeight)
+                let path = Path(roundedRect: rect, cornerRadius: 3)
+                ctx.fill(path, with: .color(Color.white.opacity(0.15)))
+                ctx.stroke(path, with: .color(Color.white.opacity(0.8)),
+                           style: StrokeStyle(lineWidth: 1.5, dash: [4, 3]))
+            }
+        }
+    }
+
+    private func cameraSegmentColor(_ index: Int) -> Color {
+        let palette: [Color] = [.orange, .purple, .pink, .indigo, .mint, .yellow]
+        return palette[index % palette.count]
+    }
+
+    private func drawSpriteSegments(_ ctx: inout GraphicsContext, size: CGSize) {
+        let pxPerFrame = CGFloat(zoom)
+        var rowY = spriteStartY
+
+        for node in soloedTimelineNodes {
+            let si = timelineListIndex(for: node)
+            let sprite = node.sprite
+            rowY += rowHeight
+
+            guard expandedSprites.contains(sprite.name) else { continue }
+
+            for lane in visibleSpriteLanes(for: node) {
+                defer { rowY += rowHeight }
+                guard lane.rawValue <= 4 else { continue }
+
+                let bandTop    = rowY + 2
+                let bandHeight = rowHeight - 4
+                let segments   = sprite.animation.drivers?.segments.filter { $0.laneRawValue == lane.rawValue } ?? []
+
+                for segment in segments {
+                    let isDragging = spriteSegmentDragAnchor?.id == segment.id
+                    let (startFrame, endFrame) = isDragging
+                        ? (spriteSegmentDragPreview?.startFrame ?? segment.startFrame,
+                           spriteSegmentDragPreview?.endFrame   ?? segment.endFrame)
+                        : (segment.startFrame, segment.endFrame)
+
+                    let startX = CGFloat(startFrame) * pxPerFrame - CGFloat(hOffset)
+                    let endX   = CGFloat(endFrame)   * pxPerFrame - CGFloat(hOffset)
+                    let left   = max(0, startX)
+                    let right  = min(size.width, endX)
+                    guard right > left else { continue }
+
+                    let color = lane.color
+                    let rect  = CGRect(x: left, y: bandTop, width: right - left, height: bandHeight)
+                    let path  = Path(roundedRect: rect, cornerRadius: 3)
+                    ctx.fill(path, with: .color(color.opacity(isDragging ? 0.5 : 0.35)))
+                    ctx.stroke(path, with: .color(color.opacity(0.85)), lineWidth: isDragging ? 1.5 : 1)
+
+                    if right - left > 30 {
+                        ctx.draw(
+                            Text(segment.name.isEmpty ? "Segment" : segment.name)
+                                .font(.system(size: 9, weight: .medium))
+                                .foregroundStyle(.white),
+                            at: CGPoint(x: left + 4, y: bandTop + bandHeight / 2),
+                            anchor: .leading
+                        )
+                    }
+                }
+
+                // In-progress "draw a new segment" drag on this row.
+                if case .spriteSegmentCreate(let createSi, let createLane) = dragKind,
+                   createSi == si, createLane == lane,
+                   let preview = spriteSegmentDragPreview {
+                    let startX = CGFloat(preview.startFrame) * pxPerFrame - CGFloat(hOffset)
+                    let endX   = CGFloat(preview.endFrame)   * pxPerFrame - CGFloat(hOffset)
+                    let left   = max(0, startX)
+                    let right  = min(size.width, endX)
+                    if right > left {
+                        let rect = CGRect(x: left, y: bandTop, width: right - left, height: bandHeight)
+                        let path = Path(roundedRect: rect, cornerRadius: 3)
+                        ctx.fill(path, with: .color(Color.white.opacity(0.15)))
+                        ctx.stroke(path, with: .color(Color.white.opacity(0.8)),
+                                   style: StrokeStyle(lineWidth: 1.5, dash: [4, 3]))
+                    }
+                }
+            }
+
+            for _ in visibleRendererRows(for: node) {
+                rowY += rowHeight
+            }
+        }
+    }
+
     private func drawCameraKeyframes(_ ctx: inout GraphicsContext, size: CGSize) {
         guard cameraBlockVisible,
               let cam = controller.projectConfig?.globalConfig.camera else { return }
         let pxPerFrame = CGFloat(zoom)
 
         // Summary row: union of all lane frames
-        let summaryMidY = totalRulerHeight + rowHeight / 2
+        let summaryMidY = cameraBlockStartY + rowHeight / 2
         let allFrames   = Array(Set(CameraLane.allCases.flatMap { $0.keyframeFrames(from: cam) })).sorted()
         for frame in allFrames {
             let x = CGFloat(frame) * pxPerFrame - CGFloat(hOffset)
@@ -2896,7 +3935,7 @@ struct TimelinePanel: View {
         }
 
         guard cameraExpanded else { return }
-        var rowY = totalRulerHeight + rowHeight
+        var rowY = cameraBlockStartY + rowHeight
         for lane in visibleCameraLanes() {
             let midY = rowY + rowHeight / 2
             for (ki, frame) in lane.keyframeFrames(from: cam).enumerated() {

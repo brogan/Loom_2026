@@ -47,7 +47,6 @@ struct GlobalInspector: View {
             colorsSection
             playbackSection
             musicSyncSection
-            cameraSection
             noteSection
             statusSection
             Divider()
@@ -272,20 +271,6 @@ struct GlobalInspector: View {
                 .font(.system(size: 10))
             }
             .loomHelp("The frame that counts as \"bar 1, beat 1.\" Defaults to frame 0; move it if the music has a lead-in before the beat grid you actually want sprites to align to.")
-        }
-    }
-
-    private var cameraSection: some View {
-        InspectorSection("Camera") {
-            InspectorField("Enabled") {
-                Toggle("", isOn: bind(\.camera.enabled)).labelsHidden()
-            }
-            .loomHelp("Activates perspective projection. When off, all sprites are rendered in flat 2D regardless of their Depth value.")
-            InspectorField("Perspective") {
-                FloatEntryField(value: bind(\.camera.perspectiveStrength), width: 65, fractionDigits: 4)
-                Text("0=flat").font(.system(size: 10)).foregroundStyle(.tertiary)
-            }
-            .loomHelp("Strength of the perspective effect. 0 = flat orthographic; larger values increase depth distortion for sprites away from the focal plane.")
         }
     }
 

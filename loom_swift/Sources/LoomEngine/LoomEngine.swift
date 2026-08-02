@@ -640,18 +640,29 @@ public struct LoomEngine: @unchecked Sendable {
         let cam = config.globalConfig.camera
         guard cam.enabled else { return viewTransform }
 
+        // A segment whose [startFrame, endFrame) covers the current frame
+        // overrides the base drivers below for that window; outside any
+        // segment (or with none defined) the base drivers apply, exactly as
+        // before segments existed. First match wins on overlap.
+        let currentFrame = Int(elapsedFrames)
+        let active = cam.segments.first { currentFrame >= $0.startFrame && currentFrame < $0.endFrame }
+        let trackingDriver = active?.tracking ?? cam.tracking
+        let panDriver      = active?.pan      ?? cam.pan
+        let zoomDriver     = active?.zoom     ?? cam.zoom
+        let rotationDriver = active?.rotation ?? cam.rotation
+
         let fps   = max(1.0, config.globalConfig.targetFPS)
-        let track = cam.tracking.enabled
-            ? DriverEvaluator.evaluate(cam.tracking, globalElapsed: elapsedFrames, targetFPS: fps, spriteIndex: 0)
+        let track = trackingDriver.enabled
+            ? DriverEvaluator.evaluate(trackingDriver, globalElapsed: elapsedFrames, targetFPS: fps, spriteIndex: 0)
             : Vector2D.zero
-        let pan   = cam.pan.enabled
-            ? DriverEvaluator.evaluate(cam.pan,      globalElapsed: elapsedFrames, targetFPS: fps, spriteIndex: 0)
+        let pan   = panDriver.enabled
+            ? DriverEvaluator.evaluate(panDriver,      globalElapsed: elapsedFrames, targetFPS: fps, spriteIndex: 0)
             : Vector2D.zero
-        let z     = cam.zoom.enabled
-            ? DriverEvaluator.evaluate(cam.zoom,     globalElapsed: elapsedFrames, targetFPS: fps, spriteIndex: 0)
+        let z     = zoomDriver.enabled
+            ? DriverEvaluator.evaluate(zoomDriver,     globalElapsed: elapsedFrames, targetFPS: fps, spriteIndex: 0)
             : 1.0
-        let rot   = cam.rotation.enabled
-            ? DriverEvaluator.evaluate(cam.rotation, globalElapsed: elapsedFrames, targetFPS: fps, spriteIndex: 0)
+        let rot   = rotationDriver.enabled
+            ? DriverEvaluator.evaluate(rotationDriver, globalElapsed: elapsedFrames, targetFPS: fps, spriteIndex: 0)
             : 0.0
         let tracked = rotated(track, degrees: rot)
 

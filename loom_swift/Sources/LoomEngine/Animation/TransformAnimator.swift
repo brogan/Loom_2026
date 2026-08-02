@@ -65,24 +65,36 @@ public enum TransformAnimator {
         targetFPS:      Double,
         spriteIndex:    Int
     ) -> SpriteTransform {
-        let pos = drivers.position.enabled
-            ? DriverEvaluator.evaluate(drivers.position, globalElapsed: globalElapsed,
+        // A segment whose [startFrame, endFrame) covers the current frame
+        // overrides the corresponding base driver below for that window;
+        // outside any segment (or with none defined) the base driver applies
+        // exactly as before segments existed. Mirrors LoomEngine.cameraTransform's
+        // segment resolution, per-lane rather than bundled.
+        let currentFrame = Int(globalElapsed)
+        let positionDriver = drivers.activeVectorDriver(laneRawValue: 0, base: drivers.position, at: currentFrame)
+        let scaleDriver    = drivers.activeVectorDriver(laneRawValue: 1, base: drivers.scale,    at: currentFrame)
+        let rotationDriver = drivers.activeDoubleDriver(laneRawValue: 2, base: drivers.rotation, at: currentFrame)
+        let morphDriver    = drivers.activeDoubleDriver(laneRawValue: 3, base: drivers.morph,    at: currentFrame)
+        let opacityDriver  = drivers.activeDoubleDriver(laneRawValue: 4, base: drivers.opacity,  at: currentFrame)
+
+        let pos = positionDriver.enabled
+            ? DriverEvaluator.evaluate(positionDriver, globalElapsed: globalElapsed,
                                        targetFPS: targetFPS, spriteIndex: spriteIndex)
             : .zero
-        let scl = drivers.scale.enabled
-            ? DriverEvaluator.evaluate(drivers.scale, globalElapsed: globalElapsed,
+        let scl = scaleDriver.enabled
+            ? DriverEvaluator.evaluate(scaleDriver, globalElapsed: globalElapsed,
                                        targetFPS: targetFPS, spriteIndex: spriteIndex)
             : Vector2D(x: 1, y: 1)
-        let rot = drivers.rotation.enabled
-            ? DriverEvaluator.evaluate(drivers.rotation, globalElapsed: globalElapsed,
+        let rot = rotationDriver.enabled
+            ? DriverEvaluator.evaluate(rotationDriver, globalElapsed: globalElapsed,
                                        targetFPS: targetFPS, spriteIndex: spriteIndex)
             : 0.0
-        let morph = drivers.morph.enabled
-            ? DriverEvaluator.evaluate(drivers.morph, globalElapsed: globalElapsed,
+        let morph = morphDriver.enabled
+            ? DriverEvaluator.evaluate(morphDriver, globalElapsed: globalElapsed,
                                        targetFPS: targetFPS, spriteIndex: spriteIndex)
             : 0.0
-        let opacity = drivers.opacity.enabled
-            ? DriverEvaluator.evaluate(drivers.opacity, globalElapsed: globalElapsed,
+        let opacity = opacityDriver.enabled
+            ? DriverEvaluator.evaluate(opacityDriver, globalElapsed: globalElapsed,
                                        targetFPS: targetFPS, spriteIndex: spriteIndex)
             : 1.0
         return SpriteTransform(

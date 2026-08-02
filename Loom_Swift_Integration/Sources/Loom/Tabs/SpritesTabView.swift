@@ -80,6 +80,8 @@ struct SpritesTabView: View {
     var body: some View {
         VStack(spacing: 0) {
             filterBar
+            cameraRow
+            Divider()
             spriteList
             Divider()
             toolbar
@@ -241,11 +243,30 @@ struct SpritesTabView: View {
         }
     }
 
+    // MARK: - Camera row
+
+    private var cameraRow: some View {
+        HStack(spacing: 5) {
+            Image(systemName: "camera")
+                .font(.system(size: 11))
+                .foregroundStyle(.teal)
+                .frame(width: 14)
+            Text("Camera")
+                .font(.system(size: 12, weight: .medium))
+            Spacer(minLength: 2)
+        }
+        .padding(.horizontal, 8)
+        .frame(maxWidth: .infinity, minHeight: 24, maxHeight: 24, alignment: .leading)
+        .background(controller.isCameraSelected ? Color.accentColor.opacity(0.18) : Color.clear)
+        .contentShape(Rectangle())
+        .onTapGesture { handleCameraSelected() }
+    }
+
     // MARK: - Set row
 
     private func setRow(set: SpriteSet, setIdx: Int) -> some View {
         let isFiltering    = !filterText.trimmingCharacters(in: .whitespaces).isEmpty
-        let isSelected     = selectedSetIndex == setIdx && controller.selectedSpriteID == nil
+        let isSelected     = selectedSetIndex == setIdx && controller.selectedSpriteID == nil && !controller.isCameraSelected
         let isExpanded     = isFiltering || expandedSets.contains(set.name)
         let isBeforeTarget = !isFiltering && dropTarget == .beforeSet(setIdx)
         let isOntoTarget   = !isFiltering && dropTarget == .ontoSet(setIdx)
@@ -333,7 +354,7 @@ struct SpritesTabView: View {
 
     private func spriteRow(sprite: SpriteDef, setIdx: Int, itemIdx: Int) -> some View {
         let isFiltering    = !filterText.trimmingCharacters(in: .whitespaces).isEmpty
-        let isSelected     = controller.selectedSpriteID == sprite.name
+        let isSelected     = controller.selectedSpriteID == sprite.name && !controller.isCameraSelected
         let isBeforeTarget = !isFiltering && dropTarget == .beforeSprite(setIdx: setIdx, spriteIdx: itemIdx)
 
         return HStack(spacing: 5) {
@@ -384,7 +405,7 @@ struct SpritesTabView: View {
         let setIdx     = node.setIdx
         let spriteIdx  = node.spriteIdx
         let isFiltering    = !filterText.trimmingCharacters(in: .whitespaces).isEmpty
-        let isSelected     = controller.selectedSpriteID == sprite.name
+        let isSelected     = controller.selectedSpriteID == sprite.name && !controller.isCameraSelected
         let isBeforeTarget = !isFiltering && dropTarget == .beforeSprite(setIdx: setIdx, spriteIdx: spriteIdx)
         let indent         = CGFloat(node.depth) * 14 + 22
 
@@ -721,18 +742,31 @@ struct SpritesTabView: View {
 
     // MARK: - Interaction
 
+    private func handleCameraSelected() {
+        controller.isCameraSelected = true
+        selectedSetIndex            = nil
+        controller.selectedSpriteID = nil
+        controller.selectedSpriteSegmentID = nil
+    }
+
     private func handleSetSelected(setIdx: Int, setName: String) {
-        if selectedSetIndex == setIdx, controller.selectedSpriteID == nil {
+        if selectedSetIndex == setIdx, controller.selectedSpriteID == nil, !controller.isCameraSelected {
             toggleExpansion(setName); return
         }
-        selectedSetIndex            = setIdx
-        controller.selectedSpriteID = nil
+        selectedSetIndex                  = setIdx
+        controller.selectedSpriteID       = nil
+        controller.isCameraSelected       = false
+        controller.selectedCameraSegmentID = nil
+        controller.selectedSpriteSegmentID = nil
         expandedSets.insert(setName)
     }
 
     private func handleSpriteSelected(setIdx: Int, itemIdx: Int, sprite: SpriteDef) {
-        selectedSetIndex            = setIdx
-        controller.selectedSpriteID = sprite.name
+        selectedSetIndex                  = setIdx
+        controller.selectedSpriteID       = sprite.name
+        controller.isCameraSelected       = false
+        controller.selectedCameraSegmentID = nil
+        controller.selectedSpriteSegmentID = nil
         if let sn = setName(at: setIdx) { expandedSets.insert(sn) }
     }
 

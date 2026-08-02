@@ -1,5 +1,52 @@
 import Foundation
 
+// MARK: - DriverLaneSegment
+//
+// A named, time-bounded override of one of TransformDrivers' lanes. Where a
+// segment's [startFrame, endFrame) range covers the current frame, its own
+// driver value is used for that lane instead of the base field; outside any
+// segment (or with none defined) the base field applies exactly as before
+// segments existed — this mirrors CameraSegment's fallback semantics, but
+// per-lane rather than bundling all lanes into one segment, since sprite
+// drivers (unlike camera's 4 tightly-coupled fields) are already evaluated
+// independently of one another and plausibly need independently-timed
+// overrides (e.g. Position keyframed 0-100, Rotation oscillating 100-500).
+//
+// `laneRawValue` matches the app-side `TimelineLane.rawValue` (0=position,
+// 1=scale, 2=rotation, 3=morph, 4=opacity for v1) — stored as a plain Int
+// rather than a shared enum type since `TimelineLane` lives in the app
+// target, not this engine package; the engine only needs to know which
+// numbered lane a segment overrides, not the UI's lane names.
+public enum DriverSegmentValue: Codable, Equatable, Sendable {
+    case vector(VectorDriver)
+    case double(DoubleDriver)
+}
+
+public struct DriverLaneSegment: Codable, Equatable, Sendable, Identifiable {
+    public var id:   UUID   = UUID()
+    public var name: String = ""
+    public var laneRawValue: Int
+    public var startFrame: Int
+    public var endFrame:   Int
+    public var value: DriverSegmentValue
+
+    public init(
+        id:           UUID   = UUID(),
+        name:         String = "",
+        laneRawValue: Int,
+        startFrame:   Int,
+        endFrame:     Int,
+        value:        DriverSegmentValue
+    ) {
+        self.id           = id
+        self.name         = name
+        self.laneRawValue = laneRawValue
+        self.startFrame   = startFrame
+        self.endFrame     = endFrame
+        self.value        = value
+    }
+}
+
 // MARK: - TransformDrivers
 //
 // Per-property animation drivers for one sprite.  When a sprite's
@@ -36,6 +83,9 @@ public struct TransformDrivers: Codable, Equatable, Sendable {
     /// Overrides which SpriteCycle runs on this sprite each frame.
     /// Disabled (default) leaves the static cycleName assignment in effect.
     public var cycleName:      NameDriver   = .disabled
+    /// Named, time-bounded per-lane overrides — see `DriverLaneSegment`.
+    /// Empty by default, reproducing pre-segment behaviour exactly.
+    public var segments: [DriverLaneSegment] = []
 
     public init(
         position:      VectorDriver = VectorDriver(mode: .constant, base: .zero,                 loopMode: .once),
@@ -46,7 +96,8 @@ public struct TransformDrivers: Codable, Equatable, Sendable {
         shape:         DoubleDriver = DoubleDriver(mode: .constant, base: 0, loopMode: .once),
         subdivisionSet: NameDriver  = .disabled,
         rendererSet:    NameDriver  = .disabled,
-        cycleName:      NameDriver  = .disabled
+        cycleName:      NameDriver  = .disabled,
+        segments:       [DriverLaneSegment] = []
     ) {
         self.position      = position
         self.scale         = scale
@@ -57,6 +108,7 @@ public struct TransformDrivers: Codable, Equatable, Sendable {
         self.subdivisionSet = subdivisionSet
         self.rendererSet    = rendererSet
         self.cycleName      = cycleName
+        self.segments       = segments
     }
 
     /// All drivers at constant identity — no animation.
@@ -75,6 +127,25 @@ public struct TransformDrivers: Codable, Equatable, Sendable {
         subdivisionSet  = try c.decodeIfPresent(NameDriver.self,   forKey: .subdivisionSet) ?? .disabled
         rendererSet     = try c.decodeIfPresent(NameDriver.self,   forKey: .rendererSet)    ?? .disabled
         cycleName       = try c.decodeIfPresent(NameDriver.self,   forKey: .cycleName)      ?? .disabled
+        segments        = try c.decodeIfPresent([DriverLaneSegment].self, forKey: .segments) ?? []
+    }
+
+    // MARK: - Segment resolution
+
+    /// The lane's active driver at `frame`: the first segment for
+    /// `laneRawValue` whose range covers it, or `base` if none does.
+    public func activeVectorDriver(laneRawValue: Int, base: VectorDriver, at frame: Int) -> VectorDriver {
+        guard let segment = segments.first(where: {
+            $0.laneRawValue == laneRawValue && frame >= $0.startFrame && frame < $0.endFrame
+        }), case .vector(let v) = segment.value else { return base }
+        return v
+    }
+
+    public func activeDoubleDriver(laneRawValue: Int, base: DoubleDriver, at frame: Int) -> DoubleDriver {
+        guard let segment = segments.first(where: {
+            $0.laneRawValue == laneRawValue && frame >= $0.startFrame && frame < $0.endFrame
+        }), case .double(let d) = segment.value else { return base }
+        return d
     }
 }
 

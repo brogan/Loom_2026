@@ -296,6 +296,19 @@ final class AppController: ObservableObject, @unchecked Sendable {
     @Published var selectedFulgurationParamIndex:       Int?   = nil   // fulguration param within selected set
     @Published var selectedDissolutionParamIndex:       Int?   = nil   // dissolution param within selected set
     @Published var selectedSpriteID:              String? = nil
+    /// Whether the "Camera" row is selected in the Sprites tab's list —
+    /// distinct from `selectedCameraKF` (a single selected keyframe on a
+    /// camera lane in the timeline, unrelated to this whole-camera selection).
+    @Published var isCameraSelected:              Bool    = false
+    /// Which camera segment (if any) is currently being edited in
+    /// CameraDriverInspector's Segments section. Independent of
+    /// `selectedCameraKF` (a single selected keyframe on the timeline).
+    @Published var selectedCameraSegmentID:       UUID?   = nil
+    /// Which sprite driver-lane segment (if any) is currently being edited
+    /// in SpritesInspector's per-lane Segments sections. A segment's own
+    /// `laneRawValue` identifies which lane it belongs to, so no separate
+    /// "selected lane" state is needed alongside this.
+    @Published var selectedSpriteSegmentID:       UUID?   = nil
     @Published var selectedTimelineKF:            TimelineKFSelection? = nil
     @Published var selectedRendererTimelineKF:    RendererTimelineKFSelection? = nil
     @Published var selectedCameraKF:              CameraKFSelection?   = nil
@@ -380,7 +393,7 @@ final class AppController: ObservableObject, @unchecked Sendable {
     private var isAutoRelinking:       Bool  = false
     private var lastAutoRelinkCheck:   Date  = .distantPast
     private var reloadDebounce:     DispatchWorkItem?
-    private var configCommitItem:   DispatchWorkItem?
+    private var configCommitTask:   Task<Void, Never>?
     private let configSaveQueue = DispatchQueue(label: "loom.config.save", qos: .utility)
     private var animationCompleted: Bool = false
     private var geometryTransformGestureBase: EditableGeometrySnapshot?
@@ -657,8 +670,8 @@ final class AppController: ObservableObject, @unchecked Sendable {
     /// Immediately flush any pending debounced save to disk. Does not reload the engine.
     func saveNow() {
         guard let url = projectURL, let config = projectConfig else { return }
-        configCommitItem?.cancel()
-        configCommitItem = nil
+        configCommitTask?.cancel()
+        configCommitTask = nil
         configSaveQueue.async {
             try? ProjectLoader.save(config, to: url)
         }
@@ -694,23 +707,30 @@ final class AppController: ObservableObject, @unchecked Sendable {
     }
 
     /// Debounced so rapid slider events coalesce into one save+reload cycle.
+    ///
+    /// Uses structured concurrency (`Task`, hopping via `Task.detached` for the
+    /// file I/O) rather than a `DispatchWorkItem` that nests a `DispatchQueue.main.async`
+    /// closure touching `self` — that pattern crashed under Swift 6's stricter
+    /// executor checks (`dispatch_assert_queue_fail` inside the work item, on the
+    /// background `loom.config.save` queue) because the inner closure's implicit
+    /// MainActor isolation was being verified before the hop had actually occurred.
     private func scheduleConfigCommit(_ config: ProjectConfig) {
-        configCommitItem?.cancel()
+        configCommitTask?.cancel()
         reloadDebounce?.cancel()
         guard let url = projectURL else { return }
         let wasPlaying = playbackState == .playing
-        let item = DispatchWorkItem { [weak self] in
-            try? ProjectLoader.save(config, to: url)
-            DispatchQueue.main.async { [weak self] in
-                guard let self else { return }
-                self.loadError          = nil
-                self.animationCompleted = false
-                self.loadEngine(from: url)
-                self.playbackState = wasPlaying ? .playing : .stopped
-            }
+        configCommitTask = Task { @MainActor [weak self] in
+            try? await Task.sleep(nanoseconds: 350_000_000)
+            guard !Task.isCancelled else { return }
+            await Task.detached(priority: .utility) {
+                try? ProjectLoader.save(config, to: url)
+            }.value
+            guard let self, !Task.isCancelled else { return }
+            self.loadError          = nil
+            self.animationCompleted = false
+            self.loadEngine(from: url)
+            self.playbackState = wasPlaying ? .playing : .stopped
         }
-        configCommitItem = item
-        configSaveQueue.asyncAfter(deadline: .now() + 0.35, execute: item)
     }
 
     // MARK: - Geometry editor shell
@@ -7239,7 +7259,7 @@ final class AppController: ObservableObject, @unchecked Sendable {
 
     /// Reload the engine from disk (for callers that already have the config persisted).
     private func scheduleEngineReload() {
-        configCommitItem?.cancel()
+        configCommitTask?.cancel()
         reloadDebounce?.cancel()
         let wasPlaying = playbackState == .playing
         let work = DispatchWorkItem { [weak self] in

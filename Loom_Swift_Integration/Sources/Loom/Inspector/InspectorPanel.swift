@@ -83,7 +83,10 @@ struct InspectorPanel: View {
             // this branch only runs for the placeholder (no selection yet).
             placeholderText("Select a sprite or subdivision set to edit params.")
         case .sprites:
-            if controller.selectedSpriteID != nil {
+            if controller.isCameraSelected {
+                CameraDriverInspector()
+                    .environmentObject(controller)
+            } else if controller.selectedSpriteID != nil {
                 SpritesInspector()
                     .environmentObject(controller)
             } else {
