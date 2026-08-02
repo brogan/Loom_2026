@@ -64,14 +64,18 @@ struct InspectorPanel: View {
             GlobalInspector()
                 .environmentObject(controller)
         case .geometry:
-            if controller.isGeometryEditorActive {
-                GeometryEditorShellInspector()
+            VStack(alignment: .leading, spacing: 0) {
+                GeometryEditorModeToggle()
                     .environmentObject(controller)
-            } else if controller.selectedGeometryKey != nil {
-                GeometryInspector()
-                    .environmentObject(controller)
-            } else {
-                placeholderText("Select a geometry set.")
+                if controller.isGeometryEditorActive {
+                    GeometryEditorShellInspector()
+                        .environmentObject(controller)
+                } else if controller.selectedGeometryKey != nil {
+                    GeometryInspector()
+                        .environmentObject(controller)
+                } else {
+                    placeholderText("Select a geometry set.")
+                }
             }
         case .subdivision:
             // isSubdivisionSplitView (checked in body) already covers the
@@ -325,6 +329,43 @@ struct InspectorPickList<T>: View {
 
 // MARK: - Geometry inspector
 
+/// Single icon toggle for the whole Geometry inspector: green in default
+/// (viewing) mode, orange while the geometry editor is active. Replaces the
+/// separate "Edit Geometry" / "Default Geometry View" buttons that used to
+/// live in the inspector and the editor's canvas toolbar respectively.
+private struct GeometryEditorModeToggle: View {
+    @EnvironmentObject private var controller: AppController
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            HStack(spacing: 8) {
+                Text("Geometry Editor")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(.secondary)
+                Spacer(minLength: 8)
+                Button {
+                    if controller.isGeometryEditorActive {
+                        controller.requestExitGeometryEditor()
+                    } else {
+                        controller.enterGeometryEditor()
+                    }
+                } label: {
+                    GeometryTabIcon()
+                        .frame(width: 22, height: 22)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(controller.isGeometryEditorActive ? Color.orange : Color.green)
+                .help(controller.isGeometryEditorActive ? "Exit to default geometry view" : "Edit geometry")
+                .modifier(InstantGeometryTooltip(controller.isGeometryEditorActive ? "Exit to default geometry view" : "Edit geometry"))
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 8)
+            Divider()
+        }
+    }
+}
+
 private struct GeometryInspector: View {
     @EnvironmentObject private var controller: AppController
 
@@ -335,12 +376,6 @@ private struct GeometryInspector: View {
             let name   = parts.count == 2 ? String(parts[1]) : key
 
             InspectorSection("Geometry") {
-                Button("Edit Geometry") {
-                    controller.enterGeometryEditor()
-                }
-                .font(.system(size: 12))
-                .frame(maxWidth: .infinity)
-                .padding(.bottom, 2)
                 InspectorRow(label: "Folder", value: folder)
                 InspectorRow(label: "Name",   value: name)
             }
@@ -578,7 +613,7 @@ private struct GeometryEditorShellInspector: View {
     var body: some View {
         let morphLocked = controller.isCurrentGeometryMorphTargetLocked
         VStack(alignment: .leading, spacing: 0) {
-            InspectorSection("Geometry Editor") {
+            InspectorSection("Details") {
                 geometryNameAndSaveRow
                 InspectorRow(label: "Mode", value: geometryModeLabel)
                 InspectorRow(label: "Tool", value: controller.geometryEditorTool.rawValue)

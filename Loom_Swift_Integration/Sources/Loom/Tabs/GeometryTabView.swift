@@ -1158,12 +1158,6 @@ private struct GeometryEditorMainShell: View {
                 }
                 .help(morphLocked ? "Morph target locked: only vertex positions can be edited. Click to unlock." : "Click to designate as morph target (locks topology)")
                 .buttonStyle(.plain)
-
-                Button("Default Geometry View") {
-                    controller.requestExitGeometryEditor()
-                }
-                .font(.system(size: 12))
-                .lineLimit(1)
             }
             .padding(.horizontal, 14)
             .padding(.vertical, 6)
