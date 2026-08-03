@@ -29,6 +29,33 @@ enum LiveEvent {
     /// A driver's Rate was switched to (non-nil multiplier, cycles/bar) or
     /// away from (nil) BPM-linked musical mode.
     case driverMusicalRateAssign(t: Int, instanceName: String, target: LiveDriverTarget, multiplier: Double?)
+    /// Live mode's own audio track was imported, or its offset changed.
+    /// `offsetFrames` is an absolute engine-clock frame like `t` (not a
+    /// duration), so it needs the same rebasing `t` gets when recorded —
+    /// see `LiveSessionController.recordEvent`'s `.audioSet`-specific case.
+    case audioSet(t: Int, filename: String, offsetFrames: Int)
+    /// Recorded automatically as the first event of every session — `t` is
+    /// always 0 (it *is* the rebasing origin), `engineFrameAtStart` is the
+    /// Live engine's own raw, never-reset clock value at that moment. The
+    /// Live engine ticks continuously from whenever the tab was opened, not
+    /// from when Start was pressed, so any project-authored-but-not-
+    /// session-tracked animation (camera keyframes/drivers, background,
+    /// anything not captured as its own `LiveEvent`) has typically already
+    /// played past its opening moments by the time recording begins —
+    /// replay needs this to seek a fresh engine to the same point before
+    /// applying the session's own frame-0-relative events, or it shows that
+    /// content from *its* beginning instead of wherever it actually was
+    /// when the take started. See `SessionReplaySheet.loadSession`.
+    case sessionStart(t: Int, engineFrameAtStart: Int)
+    /// Recorded when `Stop` is pressed — `t` is the actual end of the take,
+    /// which can be well past the last *recorded* event if nothing changed
+    /// for a while before stopping (idle time produces no events of its
+    /// own, so without this marker there's nothing to distinguish "the take
+    /// ended right after the last action" from "the take continued for a
+    /// while afterward with nothing happening"). Replay prefers this over
+    /// "last event + a short tail" when choosing a default render length —
+    /// see `SessionReplaySheet.loadSession`.
+    case sessionEnd(t: Int)
 
     var t: Int {
         switch self {
@@ -42,6 +69,9 @@ enum LiveEvent {
         case .bpmSet(let t, _, _):                           return t
         case .tapSync(let t, _):                             return t
         case .driverMusicalRateAssign(let t, _, _, _):       return t
+        case .audioSet(let t, _, _):                         return t
+        case .sessionStart(let t, _):                        return t
+        case .sessionEnd(let t):                             return t
         }
     }
 
@@ -73,6 +103,12 @@ enum LiveEvent {
             return .tapSync(t: newT, referenceFrame: referenceFrame)
         case .driverMusicalRateAssign(_, let instanceName, let target, let multiplier):
             return .driverMusicalRateAssign(t: newT, instanceName: instanceName, target: target, multiplier: multiplier)
+        case .audioSet(_, let filename, let offsetFrames):
+            return .audioSet(t: newT, filename: filename, offsetFrames: offsetFrames)
+        case .sessionStart(_, let engineFrameAtStart):
+            return .sessionStart(t: newT, engineFrameAtStart: engineFrameAtStart)
+        case .sessionEnd:
+            return .sessionEnd(t: newT)
         }
     }
 }
@@ -143,7 +179,7 @@ extension LiveEvent: Codable {
     private enum CodingKeys: String, CodingKey {
         case t, type, instanceName, spriteSetName, spriteName, position, scale, rotation,
              rendererSetName, subdivisionSetName, target, enabled, quantity, axis, value,
-             bpm, beatsPerBar, referenceFrame, multiplier
+             bpm, beatsPerBar, referenceFrame, multiplier, filename, offsetFrames, engineFrameAtStart
     }
 
     init(from decoder: Decoder) throws {
@@ -214,6 +250,16 @@ extension LiveEvent: Codable {
                 target: try c.decode(LiveDriverTarget.self, forKey: .target),
                 multiplier: try c.decodeIfPresent(Double.self, forKey: .multiplier)
             )
+        case "audioSet":
+            self = .audioSet(
+                t: t,
+                filename: try c.decode(String.self, forKey: .filename),
+                offsetFrames: try c.decode(Int.self, forKey: .offsetFrames)
+            )
+        case "sessionStart":
+            self = .sessionStart(t: t, engineFrameAtStart: try c.decode(Int.self, forKey: .engineFrameAtStart))
+        case "sessionEnd":
+            self = .sessionEnd(t: t)
         default:
             throw DecodingError.dataCorruptedError(
                 forKey: .type, in: c, debugDescription: "Unknown LiveEvent type '\(type)'"
@@ -274,6 +320,15 @@ extension LiveEvent: Codable {
             try c.encode(instanceName, forKey: .instanceName)
             try c.encode(target, forKey: .target)
             try c.encodeIfPresent(multiplier, forKey: .multiplier)
+        case .audioSet(_, let filename, let offsetFrames):
+            try c.encode("audioSet", forKey: .type)
+            try c.encode(filename, forKey: .filename)
+            try c.encode(offsetFrames, forKey: .offsetFrames)
+        case .sessionStart(_, let engineFrameAtStart):
+            try c.encode("sessionStart", forKey: .type)
+            try c.encode(engineFrameAtStart, forKey: .engineFrameAtStart)
+        case .sessionEnd:
+            try c.encode("sessionEnd", forKey: .type)
         }
     }
 }

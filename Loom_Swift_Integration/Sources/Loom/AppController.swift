@@ -7479,14 +7479,23 @@ final class AppController: ObservableObject, @unchecked Sendable {
         playbackState      = .stopped
     }
 
+    /// Only called for a non-looping completion — a loop restart is now
+    /// handled entirely inside `RenderSurfaceNSView.tick()` (via
+    /// `shouldLoopOnComplete`/`resetAndRenderFirstFrame`'s completion), as
+    /// one atomic reset-then-resume sequence rather than round-tripping
+    /// through `playbackState` here. That round trip used to be how looping
+    /// worked (`play()` below still does it, for a *manual* replay of a
+    /// completed animation) — but for an *automatic* loop restart, the two
+    /// `playbackState` writes happened close enough together that SwiftUI
+    /// could coalesce them into a single view update showing only the final
+    /// `.playing` value, silently skipping the engine reset in between and
+    /// permanently wedging playback (and, with it, anything depending on the
+    /// frame clock actually going back below the animation's length —
+    /// audio sync, and any Clamp-mode driver).
     func animationDidComplete() {
         animationCompleted = true
-        if loopPlayback {
-            play()
-        } else {
-            // Use .paused so the timer stops but the canvas is preserved for the user to see.
-            playbackState = .paused
-        }
+        // Use .paused so the timer stops but the canvas is preserved for the user to see.
+        playbackState = .paused
     }
 
     // MARK: - Export coordination

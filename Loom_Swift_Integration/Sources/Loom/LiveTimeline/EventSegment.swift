@@ -11,6 +11,16 @@ import LoomEngine
 struct EventTimelineModel {
     var instanceLanes: [InstanceLane]
     var globalMarkers: [GlobalMarker]
+    var audioReference: AudioReference?
+}
+
+/// Live mode's own audio track, as recorded in the session — derived from
+/// the *last* `.audioSet` event in the log (the same "last one wins for the
+/// whole session" model already used for BPM), not a time-varying span.
+struct AudioReference {
+    var eventID: UUID
+    var filename: String
+    var offsetFrames: Int
 }
 
 struct InstanceLane: Identifiable {
@@ -300,8 +310,16 @@ enum EventSegmentDerivation {
             }
         }
 
+        // MARK: Audio reference — last audioSet in the log wins
+        var audioReference: AudioReference?
+        for item in sorted {
+            if case .audioSet(_, let filename, let offsetFrames) = item.event {
+                audioReference = AudioReference(eventID: item.id, filename: filename, offsetFrames: offsetFrames)
+            }
+        }
+
         let lanes = laneOrder.compactMap { lanesByInstance[$0] }
-        return EventTimelineModel(instanceLanes: lanes, globalMarkers: globalMarkers)
+        return EventTimelineModel(instanceLanes: lanes, globalMarkers: globalMarkers, audioReference: audioReference)
     }
 
     // MARK: - Helpers
@@ -324,7 +342,7 @@ enum EventSegmentDerivation {
         case .driverEnabledToggle:      return .driverEnabledToggle
         case .driverAutomationPoint:    return .driverAutomationPoint
         case .driverMusicalRateAssign:  return .driverMusicalRateAssign
-        case .bpmSet, .tapSync:         return nil
+        case .bpmSet, .tapSync, .audioSet, .sessionStart, .sessionEnd: return nil
         }
     }
 
@@ -338,7 +356,7 @@ enum EventSegmentDerivation {
         case .driverEnabledToggle(_, let n, _, _): return n
         case .driverAutomationPoint(_, let n, _, _, _, _): return n
         case .driverMusicalRateAssign(_, let n, _, _): return n
-        case .bpmSet, .tapSync: return nil
+        case .bpmSet, .tapSync, .audioSet, .sessionStart, .sessionEnd: return nil
         }
     }
 

@@ -59,6 +59,14 @@ public final class VideoExporter {
         /// the app layer). Ignored when `audioURL` is `nil`.
         public var audioOffsetFrames: Int
 
+        /// Whether `audioURL` should repeat once its own length is exhausted
+        /// — mirrors `AudioController.syncTransport(loop:)`. Live sessions
+        /// play their audio on a loop for as long as the take runs (often
+        /// well past one file-length), so muxing needs to replicate that
+        /// repetition; the main timeline's audio plays once, unlooped.
+        /// Ignored when `audioURL` is `nil`.
+        public var audioLoop: Bool
+
         public init(
             fps: Int = 30,
             startFrame: Int = 0,
@@ -66,7 +74,8 @@ public final class VideoExporter {
             codec: AVVideoCodecType = .h264,
             outputURL: URL,
             audioURL: URL? = nil,
-            audioOffsetFrames: Int = 0
+            audioOffsetFrames: Int = 0,
+            audioLoop: Bool = false
         ) {
             self.fps               = fps
             self.startFrame        = max(0, startFrame)
@@ -75,6 +84,7 @@ public final class VideoExporter {
             self.outputURL         = outputURL
             self.audioURL          = audioURL
             self.audioOffsetFrames = audioOffsetFrames
+            self.audioLoop         = audioLoop
         }
 
         /// Number of frames to capture.
@@ -458,24 +468,75 @@ public final class VideoExporter {
         reader: AVAssetReader, output: AVAssetReaderTrackOutput,
         input: AVAssetWriterInput, ptsShiftSeconds: Double
     )? {
-        let asset = AVURLAsset(url: audioURL)
-        guard let audioTrack = try await asset.loadTracks(withMediaType: .audio).first else {
+        let sourceAsset = AVURLAsset(url: audioURL)
+        guard let sourceTrack = try await sourceAsset.loadTracks(withMediaType: .audio).first else {
             throw VideoExporterError.setupFailed("Selected audio file has no audio track: \(audioURL.lastPathComponent)")
         }
-        let assetDuration = try await asset.load(.duration).seconds
+        let assetDuration = try await sourceAsset.load(.duration).seconds
 
-        // Same timeline-frame ↔ audio-file-time relationship the app's
-        // AudioController.syncTransport uses for live playback: video PTS 0
-        // corresponds to absolute frame settings.startFrame; the audio file's
-        // own time 0 corresponds to absolute frame settings.audioOffsetFrames.
-        // ptsShiftSeconds is the constant that maps audio-file time onto
-        // output PTS: outputPTS = fileTime + ptsShiftSeconds.
-        let ptsShiftSeconds = Double(settings.audioOffsetFrames - settings.startFrame) / Double(settings.fps)
-        let audioStartSec = max(0, -ptsShiftSeconds)
-        let audioEndSec   = min(assetDuration, settings.durationSeconds - ptsShiftSeconds)
-        guard audioEndSec > audioStartSec else { return nil }
+        let readAsset: AVAsset
+        let readTrack: AVAssetTrack
+        let readTimeRange: CMTimeRange
+        let ptsShiftSeconds: Double
 
-        let reader = try AVAssetReader(asset: asset)
+        if settings.audioLoop {
+            // Live sessions loop their audio for as long as the take runs —
+            // often well past one file-length (`AudioController.syncTransport
+            // (loop:)`). A straight PTS shift of the raw file (the non-loop
+            // branch below) only ever plays it once, so any export longer
+            // than one file-length would go silent partway through, or
+            // entirely if the offset alone already exceeds the file's
+            // length (as happens once the Live tab has been open a while
+            // before Start is pressed). Build a composition that repeats
+            // the source clip back-to-back starting at the same
+            // frame-derived offset instead, so the muxed track matches what
+            // was actually heard live.
+            guard assetDuration > 0 else { return nil }
+            let silenceLeadSec = max(0, Double(settings.audioOffsetFrames - settings.startFrame) / Double(settings.fps))
+            guard silenceLeadSec < settings.durationSeconds else { return nil }
+            let activeSec = settings.durationSeconds - silenceLeadSec
+
+            let composition = AVMutableComposition()
+            guard let compTrack = composition.addMutableTrack(withMediaType: .audio, preferredTrackID: kCMPersistentTrackID_Invalid) else {
+                throw VideoExporterError.setupFailed("Could not build looping audio track")
+            }
+            var covered: Double = 0
+            while covered < activeSec {
+                let insertDuration = min(assetDuration, activeSec - covered)
+                let sourceRange = CMTimeRange(start: .zero, duration: CMTime(seconds: insertDuration, preferredTimescale: 600))
+                let insertAt = CMTime(seconds: silenceLeadSec + covered, preferredTimescale: 600)
+                try compTrack.insertTimeRange(sourceRange, of: sourceTrack, at: insertAt)
+                covered += insertDuration
+            }
+            // The composition's own timeline was built directly in
+            // export-relative seconds (silence before `silenceLeadSec`,
+            // repeated audio after), so it already matches output PTS with
+            // no further shift needed.
+            readAsset        = composition
+            readTrack         = compTrack
+            readTimeRange     = CMTimeRange(start: .zero, end: CMTime(seconds: settings.durationSeconds, preferredTimescale: 600))
+            ptsShiftSeconds   = 0
+        } else {
+            // Same timeline-frame ↔ audio-file-time relationship the app's
+            // AudioController.syncTransport uses for live playback: video PTS 0
+            // corresponds to absolute frame settings.startFrame; the audio file's
+            // own time 0 corresponds to absolute frame settings.audioOffsetFrames.
+            // ptsShiftSeconds is the constant that maps audio-file time onto
+            // output PTS: outputPTS = fileTime + ptsShiftSeconds.
+            let shift         = Double(settings.audioOffsetFrames - settings.startFrame) / Double(settings.fps)
+            let audioStartSec = max(0, -shift)
+            let audioEndSec   = min(assetDuration, settings.durationSeconds - shift)
+            guard audioEndSec > audioStartSec else { return nil }
+            readAsset       = sourceAsset
+            readTrack       = sourceTrack
+            readTimeRange   = CMTimeRange(
+                start: CMTime(seconds: audioStartSec, preferredTimescale: 600),
+                end:   CMTime(seconds: audioEndSec,   preferredTimescale: 600)
+            )
+            ptsShiftSeconds = shift
+        }
+
+        let reader = try AVAssetReader(asset: readAsset)
         let readerSettings: [String: Any] = [
             AVFormatIDKey: kAudioFormatLinearPCM,
             AVLinearPCMBitDepthKey: 16,
@@ -483,19 +544,16 @@ public final class VideoExporter {
             AVLinearPCMIsFloatKey: false,
             AVLinearPCMIsNonInterleaved: false,
         ]
-        let output = AVAssetReaderTrackOutput(track: audioTrack, outputSettings: readerSettings)
+        let output = AVAssetReaderTrackOutput(track: readTrack, outputSettings: readerSettings)
         guard reader.canAdd(output) else {
             throw VideoExporterError.setupFailed("Cannot read audio track from \(audioURL.lastPathComponent)")
         }
         reader.add(output)
-        reader.timeRange = CMTimeRange(
-            start: CMTime(seconds: audioStartSec, preferredTimescale: 600),
-            end:   CMTime(seconds: audioEndSec,   preferredTimescale: 600)
-        )
+        reader.timeRange = readTimeRange
 
         var sampleRate: Double = 44_100
         var channels:   UInt32 = 2
-        if let description = try await audioTrack.load(.formatDescriptions).first,
+        if let description = try await sourceTrack.load(.formatDescriptions).first,
            let asbd = CMAudioFormatDescriptionGetStreamBasicDescription(description)?.pointee {
             sampleRate = asbd.mSampleRate
             channels   = max(1, asbd.mChannelsPerFrame)

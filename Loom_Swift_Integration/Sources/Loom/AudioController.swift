@@ -62,9 +62,22 @@ final class AudioController: ObservableObject {
     @Published var analysis: AudioAnalysis? = nil
     @Published var fileNotFound: Bool      = false
     @Published private(set) var offsetFrames: Int = 0
+    /// Silences playback without pausing/stopping the transport — distinct
+    /// from `pauseNow()`, which stops the clock. Muting still advances
+    /// `syncTransport`'s position tracking; only the audible output changes.
+    @Published var isMuted: Bool = false {
+        didSet { player?.volume = isMuted ? 0 : 1 }
+    }
 
     private var player: AVAudioPlayer?
     private var projectURL: URL?
+    /// Where this instance's asset copy and reference file live, relative to
+    /// `projectURL` — lets a second instance (Live mode's own audio) coexist
+    /// with the main timeline's without colliding, by pointing at a
+    /// different subdirectory/filename. Defaults match the main app's
+    /// original, single-instance behavior.
+    private var audioSubdirectory: String = "audio"
+    private var stateFilename:     String = "audio.json"
 
     /// How far real playback position may drift from the timeline-derived
     /// target before we resync — large enough that the 60Hz render timer's
@@ -74,9 +87,25 @@ final class AudioController: ObservableObject {
 
     // MARK: - Project lifecycle
 
-    func projectOpened(_ url: URL) {
+    func projectOpened(_ url: URL, subdirectory: String = "audio", stateFilename: String = "audio.json") {
         projectURL = url
+        self.audioSubdirectory = subdirectory
+        self.stateFilename     = stateFilename
         loadState(from: url)
+    }
+
+    /// Pauses playback immediately, independent of the timeline-driven
+    /// `syncTransport` mechanism — used when this controller's context (the
+    /// main timeline vs. Live mode) loses focus to the other, so the app's
+    /// two independent audio engines (main timeline and Live) are never
+    /// both audible at once. Without this, whichever one was already
+    /// playing just keeps running on its own real-time clock — nothing
+    /// else stops it, since `syncTransport` simply isn't called anymore
+    /// once its context's timeline stops ticking (the main canvas while on
+    /// the Live tab, or vice versa).
+    func pauseNow() {
+        player?.pause()
+        isPlaying = false
     }
 
     func clear() {
@@ -98,7 +127,7 @@ final class AudioController: ObservableObject {
 
     func importAudio(from sourceURL: URL) {
         guard let projectURL else { return }
-        let audioDir = projectURL.appendingPathComponent("audio", isDirectory: true)
+        let audioDir = projectURL.appendingPathComponent(audioSubdirectory, isDirectory: true)
         try? FileManager.default.createDirectory(at: audioDir, withIntermediateDirectories: true)
         let dest = audioDir.appendingPathComponent(sourceURL.lastPathComponent)
         if !FileManager.default.fileExists(atPath: dest.path) {
@@ -125,7 +154,7 @@ final class AudioController: ObservableObject {
     /// play/pause/seek. Call on every timeline frame tick and playback-state
     /// change. `AVAudioPlayer` remains the actual sound engine, but its
     /// position/play-state are driven here rather than self-polled.
-    func syncTransport(playbackState: PlaybackState, frame: Int, fps: Double) {
+    func syncTransport(playbackState: PlaybackState, frame: Int, fps: Double, loop: Bool = false) {
         guard let player, fps > 0 else { return }
 
         guard frame >= offsetFrames else {
@@ -135,7 +164,11 @@ final class AudioController: ObservableObject {
             return
         }
 
-        let targetTime = Double(frame - offsetFrames) / fps
+        var targetTime = Double(frame - offsetFrames) / fps
+
+        if loop, duration > 0, targetTime >= duration {
+            targetTime = targetTime.truncatingRemainder(dividingBy: duration)
+        }
 
         guard targetTime < duration else {
             if player.isPlaying { player.pause() }
@@ -242,6 +275,7 @@ final class AudioController: ObservableObject {
     private func loadPlayer(from url: URL) {
         guard let p = try? AVAudioPlayer(contentsOf: url) else { return }
         p.prepareToPlay()
+        p.volume    = isMuted ? 0 : 1
         player      = p
         duration    = p.duration
         currentTime = 0
@@ -264,14 +298,14 @@ final class AudioController: ObservableObject {
     // MARK: - Persistence
 
     private func loadState(from url: URL) {
-        let stateURL = url.appendingPathComponent("audio.json")
+        let stateURL = url.appendingPathComponent(stateFilename)
         if let data  = try? Data(contentsOf: stateURL),
            let state = try? JSONDecoder().decode(AudioState.self, from: data) {
             markers      = state.markers
             offsetFrames = state.offsetFrames
             if let filename = state.audioFilename {
                 audioFilename = filename
-                let audioURL = url.appendingPathComponent("audio").appendingPathComponent(filename)
+                let audioURL = url.appendingPathComponent(audioSubdirectory).appendingPathComponent(filename)
                 if FileManager.default.fileExists(atPath: audioURL.path) {
                     loadPlayer(from: audioURL)
                     computeWaveform(from: audioURL)
@@ -282,8 +316,8 @@ final class AudioController: ObservableObject {
             }
             return
         }
-        // No audio.json: scan the audio/ directory and pick the first supported file.
-        let audioDir = url.appendingPathComponent("audio", isDirectory: true)
+        // No state file yet: scan the audio subdirectory and pick the first supported file.
+        let audioDir = url.appendingPathComponent(audioSubdirectory, isDirectory: true)
         autoDetectAudio(in: audioDir)
     }
 
@@ -310,7 +344,12 @@ final class AudioController: ObservableObject {
         guard let projectURL else { return }
         let state = AudioState(audioFilename: audioFilename, markers: markers, offsetFrames: offsetFrames)
         guard let data = try? JSONEncoder().encode(state) else { return }
-        try? data.write(to: projectURL.appendingPathComponent("audio.json"))
+        let stateURL = projectURL.appendingPathComponent(stateFilename)
+        // stateFilename may include a subdirectory (Live's "sessions/live_audio.json")
+        // that doesn't necessarily exist yet — unlike the main app's "audio.json",
+        // which sits directly at the project root.
+        try? FileManager.default.createDirectory(at: stateURL.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try? data.write(to: stateURL)
     }
 
     // MARK: - Audio analysis (background)
@@ -415,7 +454,9 @@ final class AudioController: ObservableObject {
 
     // MARK: - Waveform computation (background)
 
-    private static func buildWaveform(url: URL, buckets: Int = 2000) async -> [Float] {
+    /// Internal (not `private`) — the Review Session panel's audio lane
+    /// reuses this directly to render a recorded session's waveform.
+    static func buildWaveform(url: URL, buckets: Int = 2000) async -> [Float] {
         guard let file = try? AVAudioFile(forReading: url) else { return [] }
         let format      = file.processingFormat
         let totalFrames = Int(file.length)

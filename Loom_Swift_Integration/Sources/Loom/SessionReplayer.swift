@@ -24,6 +24,14 @@ final class SessionReplayer: @unchecked Sendable {
     /// The last frame any event in the log occurs at — the natural basis
     /// for a replay export's default end frame.
     let maxEventFrame: Int
+    /// The Live engine's own raw clock frame at the moment recording began
+    /// (from the session's `.sessionStart` event, if present — absent for
+    /// any session recorded before that event kind existed). The caller
+    /// should `engine.seek(toFrame:)` here before driving playback, so
+    /// project-authored-but-not-session-tracked content (camera, etc.)
+    /// picks up from the same point it was actually at live, not its own
+    /// beginning — see `LiveEvent.sessionStart`'s doc comment.
+    let engineFrameAtStart: Int?
 
     /// Non-fatal failures encountered while applying events (e.g. a sprite
     /// or set renamed/deleted since the session was recorded) — collected
@@ -52,6 +60,10 @@ final class SessionReplayer: @unchecked Sendable {
     init(engine: Engine, events: [LiveEvent]) {
         self.engine = engine
         self.maxEventFrame = events.map(\.t).max() ?? 0
+        self.engineFrameAtStart = events.lazy.compactMap {
+            if case .sessionStart(_, let engineFrameAtStart) = $0 { return engineFrameAtStart }
+            return nil
+        }.first
 
         self.macroEvents = events.filter {
             if case .driverAutomationPoint = $0 { return false }
@@ -145,6 +157,12 @@ final class SessionReplayer: @unchecked Sendable {
             }
         case .driverAutomationPoint:
             break // handled continuously via `curves`, not as a discrete event
+        case .audioSet:
+            break // muxed in separately by the caller (SessionReplaySheet), not a per-frame visual event
+        case .sessionStart:
+            break // consumed once, up front, via `engineFrameAtStart` — not a per-frame visual event
+        case .sessionEnd:
+            break // consumed once, up front, by SessionReplaySheet's endFrame default — not a per-frame visual event
         }
     }
 

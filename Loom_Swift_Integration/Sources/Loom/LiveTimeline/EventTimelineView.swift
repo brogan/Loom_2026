@@ -1,3 +1,4 @@
+import AVFoundation
 import SwiftUI
 import LoomEngine
 
@@ -11,6 +12,7 @@ private enum EventSegmentEdge { case start, end }
 /// Enabled separately — move/resize/delete mean the same thing for all of them.
 private struct EventRow: Identifiable {
     enum Kind {
+        case audio(AudioReference)
         case global([GlobalMarker])
         case instanceHeader
         case spans(color: Color, [any EventSpan])
@@ -31,9 +33,18 @@ private struct EventRow: Identifiable {
 /// removes the underlying recorded events (see `EventTimelineEditing`),
 /// since a segment here is a derived view, not an authored object.
 struct EventTimelineView: View {
+    let projectURL: URL
+    /// Project frame rate — needed only to convert the audio waveform's
+    /// real-world duration into frame-widths for drawing; event frame
+    /// numbers themselves need no fps conversion, they're already frames.
+    let fps: Double
     @Binding var recordedEvents: [RecordedEvent]
 
     @State private var zoom: CGFloat = 4
+    @State private var waveform: [Float] = []
+    @State private var waveformDuration: Double = 0
+    @State private var loadedWaveformFilename: String? = nil
+    @State private var audioDragAnchor: (eventID: UUID, baseOffset: Int)? = nil
 
     // MARK: - Drag/selection state
     //
@@ -66,6 +77,9 @@ struct EventTimelineView: View {
 
     private var rows: [EventRow] {
         var rows: [EventRow] = []
+        if let audioReference = model.audioReference {
+            rows.append(EventRow(id: "audio", label: "Audio", kind: .audio(audioReference)))
+        }
         if !model.globalMarkers.isEmpty {
             rows.append(EventRow(id: "global", label: "Global", kind: .global(model.globalMarkers)))
         }
@@ -109,6 +123,9 @@ struct EventTimelineView: View {
                     }
                 }
             }
+        }
+        .task(id: model.audioReference?.filename) {
+            await loadWaveformIfNeeded()
         }
         .background(
             Button("Delete") { deleteSelection() }
@@ -178,6 +195,25 @@ struct EventTimelineView: View {
         return false
     }
 
+    /// Loads the waveform for the session's recorded audio reference, if
+    /// any — reuses `AudioController.buildWaveform` rather than duplicating
+    /// waveform computation. `.task(id:)` above cancels/restarts this
+    /// automatically if the referenced filename changes (e.g. undone via
+    /// editing) and skips re-running for the same filename already loaded.
+    private func loadWaveformIfNeeded() async {
+        guard let filename = model.audioReference?.filename, filename != loadedWaveformFilename else { return }
+        let url = projectURL.appendingPathComponent("sessions/audio").appendingPathComponent(filename)
+        async let waveformTask = AudioController.buildWaveform(url: url)
+        async let durationTask: Double = {
+            (try? AVAudioPlayer(contentsOf: url))?.duration ?? 0
+        }()
+        let (data, duration) = await (waveformTask, durationTask)
+        guard !Task.isCancelled else { return }
+        waveform = data
+        waveformDuration = duration
+        loadedWaveformFilename = filename
+    }
+
     private func deleteSelection() {
         guard selectedItemID != nil else { return }
         EventTimelineEditing.delete(selectedDeleteIDs, in: &recordedEvents)
@@ -243,8 +279,8 @@ struct EventTimelineView: View {
                 return Hit(itemID: p.id, deleteIDs: ids, spanEdge: nil, point: p)
             }
             return nil
-        case .global, .instanceHeader:
-            return nil
+        case .audio, .global, .instanceHeader:
+            return nil // handled separately in onDragChanged, before this generic hit-test runs
         }
     }
 
@@ -255,7 +291,16 @@ struct EventTimelineView: View {
             isDragInitialized = true
             dragDeltaFrames = 0
             dragAnchor = nil
-            if let hit = hitTest(at: v.startLocation) {
+            audioDragAnchor = nil
+            // Audio row: drag anywhere in its Y-range (not bounded to the
+            // waveform's own X-extent) to offset it — mirrors
+            // `TimelinePanel`'s `isAudioLaneArea`/`.audioOffset` behavior,
+            // where the whole lane is draggable, not just the visible clip.
+            if let idx = rowIndex(at: v.startLocation.y), case .audio(let ref) = rows[idx].kind {
+                selectedItemID = ref.eventID
+                selectedDeleteIDs = [ref.eventID]
+                audioDragAnchor = (ref.eventID, ref.offsetFrames)
+            } else if let hit = hitTest(at: v.startLocation) {
                 selectedItemID = hit.itemID
                 selectedDeleteIDs = hit.deleteIDs
                 if let (span, edge) = hit.spanEdge {
@@ -275,7 +320,7 @@ struct EventTimelineView: View {
                 selectedDeleteIDs = []
             }
         }
-        guard dragAnchor != nil else { return }
+        guard dragAnchor != nil || audioDragAnchor != nil else { return }
         dragDeltaFrames = Int((v.translation.width / zoom).rounded())
     }
 
@@ -283,11 +328,16 @@ struct EventTimelineView: View {
         defer {
             isDragInitialized = false
             dragAnchor = nil
+            audioDragAnchor = nil
             dragDeltaFrames = 0
         }
         let isTap = abs(v.translation.width) < 3 && abs(v.translation.height) < 3
-        guard !isTap, let anchor = dragAnchor, dragDeltaFrames != 0 else { return }
-        EventTimelineEditing.retimePair(anchor.primaryID, anchor.secondaryID, byDelta: dragDeltaFrames, in: &recordedEvents)
+        guard !isTap, dragDeltaFrames != 0 else { return }
+        if let anchor = dragAnchor {
+            EventTimelineEditing.retimePair(anchor.primaryID, anchor.secondaryID, byDelta: dragDeltaFrames, in: &recordedEvents)
+        } else if let audioAnchor = audioDragAnchor {
+            EventTimelineEditing.updateAudioOffset(audioAnchor.eventID, to: audioAnchor.baseOffset + dragDeltaFrames, in: &recordedEvents)
+        }
     }
 
     // MARK: - Preview (live values while dragging)
@@ -316,6 +366,8 @@ struct EventTimelineView: View {
             let rowTop = CGFloat(i) * Self.rowHeight
             let midY = rowTop + Self.rowHeight / 2
             switch row.kind {
+            case .audio(let ref):
+                drawAudioRow(&ctx, ref, top: rowTop, height: Self.rowHeight)
             case .global(let markers):
                 for m in markers { drawGlobalMarker(&ctx, m, y: midY) }
             case .instanceHeader:
@@ -392,6 +444,51 @@ struct EventTimelineView: View {
             let isSelected = selectedItemID == pt.id
             drawDiamond(&ctx, x: CGFloat(previewFrame(for: pt)) * zoom, y: midY, color: .yellow, isSelected: isSelected)
         }
+    }
+
+    /// Renders the recorded audio's waveform — same fill+outline shape as
+    /// `TimelinePanel.drawAudioLane`, positioned at the (possibly currently-
+    /// dragged) offset. Draws an empty placeholder band while the waveform
+    /// is still loading, so the row's Y-range is always there to grab.
+    private func drawAudioRow(_ ctx: inout GraphicsContext, _ ref: AudioReference, top: CGFloat, height: CGFloat) {
+        let isDragging = audioDragAnchor?.eventID == ref.eventID
+        let offsetFrames = isDragging ? (audioDragAnchor!.baseOffset + dragDeltaFrames) : ref.offsetFrames
+        let midY = top + height / 2
+
+        guard !waveform.isEmpty, waveformDuration > 0, fps > 0 else {
+            ctx.fill(Path(CGRect(x: 0, y: top + 2, width: 40, height: height - 4)),
+                      with: .color(Color.secondary.opacity(0.15)))
+            return
+        }
+
+        let durationFrames = waveformDuration * fps
+        let bucketCount = waveform.count
+        let framesPerBucket = durationFrames / Double(bucketCount)
+        guard framesPerBucket > 0 else { return }
+
+        func x(for bucket: Int) -> CGFloat {
+            CGFloat(Double(offsetFrames) + Double(bucket) * framesPerBucket) * zoom
+        }
+
+        let halfH = (height - 4) * 0.42
+        var fillPath = Path()
+        fillPath.move(to: CGPoint(x: x(for: 0), y: midY))
+        for b in 0..<bucketCount {
+            fillPath.addLine(to: CGPoint(x: x(for: b), y: midY - CGFloat(waveform[b]) * halfH))
+        }
+        fillPath.addLine(to: CGPoint(x: x(for: bucketCount - 1), y: midY))
+        for b in (0..<bucketCount).reversed() {
+            fillPath.addLine(to: CGPoint(x: x(for: b), y: midY + CGFloat(waveform[b]) * halfH))
+        }
+        fillPath.closeSubpath()
+        ctx.fill(fillPath, with: .color(Color.accentColor.opacity(isDragging ? 0.4 : 0.28)))
+
+        var outline = Path()
+        outline.move(to: CGPoint(x: x(for: 0), y: midY - CGFloat(waveform[0]) * halfH))
+        for b in 1..<bucketCount {
+            outline.addLine(to: CGPoint(x: x(for: b), y: midY - CGFloat(waveform[b]) * halfH))
+        }
+        ctx.stroke(outline, with: .color(Color.accentColor.opacity(isDragging ? 0.85 : 0.55)), lineWidth: 1)
     }
 
     private func drawGlobalMarker(_ ctx: inout GraphicsContext, _ marker: GlobalMarker, y: CGFloat) {

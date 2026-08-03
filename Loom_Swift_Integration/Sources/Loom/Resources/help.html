@@ -345,6 +345,7 @@
   <a class="nav-link nav-sub" href="#live-staging">Staging</a>
   <a class="nav-link nav-sub" href="#live-drivers">Driver Navigator</a>
   <a class="nav-link nav-sub" href="#live-music-sync">Music Sync (Tap Tempo)</a>
+  <a class="nav-link nav-sub" href="#live-audio">Live Audio</a>
   <a class="nav-link nav-sub" href="#live-recording">Session Recording</a>
   <a class="nav-link nav-sub" href="#live-render">Render Session</a>
 
@@ -489,6 +490,7 @@
   <div class="toc-entry sub"><a href="#live-staging">Staging</a><span class="toc-fill"></span></div>
   <div class="toc-entry sub"><a href="#live-drivers">Driver Navigator</a><span class="toc-fill"></span></div>
   <div class="toc-entry sub"><a href="#live-music-sync">Music Sync (Tap Tempo)</a><span class="toc-fill"></span></div>
+  <div class="toc-entry sub"><a href="#live-audio">Live Audio</a><span class="toc-fill"></span></div>
   <div class="toc-entry sub"><a href="#live-recording">Session Recording</a><span class="toc-fill"></span></div>
   <div class="toc-entry sub"><a href="#live-review">Review Session</a><span class="toc-fill"></span></div>
   <div class="toc-entry sub"><a href="#live-render">Render Session</a><span class="toc-fill"></span></div>
@@ -3971,12 +3973,26 @@
     </tbody>
   </table>
   <p>Each driver's Rate control (in the Driver Navigator's controls panel) gets its own <strong>Manual / Musical</strong> toggle — Musical replaces the plain Rate slider with a cycles/bar picker, computed from the shared BPM/tap state exactly like the project-wide feature's per-driver toggle.</p>
+  <div class="note">BPM, Beats per Bar, and any downbeat tap are session-local — they reset to 120/4 (and no tap reference) every time the project is reopened, rather than being saved with the project. Set them again before <strong>Start</strong>; whatever is dialed in at that moment is captured into the recording (see <a href="#live-recording">Session Recording</a>), so this only matters once per reopen, not once per take.</div>
+
+  <h3 id="live-audio">Live Audio</h3>
+  <p>The Live tab has its own audio track, entirely separate from the main timeline's <a href="#audio">Audio</a> lane — the two never play at once (switching tabs pauses whichever one isn't in view), and Live's copy is stored under the project's <code>sessions/</code> folder rather than <code>audio/</code>.</p>
+  <table>
+    <thead><tr><th>Control</th><th>Description</th></tr></thead>
+    <tbody>
+      <tr><td>Import (↓) / Remove (−)</td><td>Same file-picker/replace behaviour as the main timeline's audio lane. Defaults to the project's <code>audio/</code> folder if one exists.</td></tr>
+      <tr><td>Mute (speaker icon)</td><td>Silences playback without stopping it — the transport keeps running and stays in sync, only the audible output changes. Distinct from the canvas's Play/Pause button, which actually stops the clock.</td></tr>
+      <tr><td>Offset</td><td>Frame offset, same convention as the main timeline's audio offset. Live's audio loops automatically once it reaches the end of the file, for as long as the canvas keeps running.</td></tr>
+    </tbody>
+  </table>
+  <div class="note">Audio imported before <strong>Start</strong> is captured into the recording just like a sprite staged in advance — see <a href="#live-recording">Session Recording</a>.</div>
 
   <h3 id="live-recording">Session Recording</h3>
   <p>Recording is explicit and opt-in — simply staging sprites or adjusting drivers records nothing on its own.</p>
   <ol class="steps">
     <li>Optionally type a name in the <strong>Session name</strong> field — left blank, the session file falls back to a timestamp. A name that collides with an existing file gets a numeric suffix rather than overwriting it.</li>
-    <li>Click <strong>Start</strong>. Everything from this point on — staging/hiding sprites, posing, renderer/transform-set assignment, driver enable toggles, Rate/Range drags, BPM/tap changes, and musical-multiplier assignments — is appended to the session log, with a live event count shown next to the recording indicator.</li>
+    <li>Click <strong>Start</strong>. Whatever is already staged and visible, whatever audio is already imported, and the current BPM/Beats-per-bar/tap state are captured immediately as the recording's baseline — so anything set up in advance, before pressing Start, still shows up correctly on replay, not just changes made afterward.</li>
+    <li>From here on, everything you do — staging/hiding sprites, posing, renderer/transform-set assignment, driver enable toggles, Rate/Range drags, BPM/tap changes, musical-multiplier assignments, and audio import/offset changes — is appended to the session log, with a live event count shown next to the recording indicator.</li>
     <li>Click <strong>Stop</strong> when done. The session is saved as a <code>.jsonl</code> file inside the project's <code>sessions/</code> folder.</li>
     </ol>
   <div class="note">Recorded frame numbers are rebased to "frames since the first thing that happened after Start was pressed" — however long the Live tab sat open before you pressed Start has no bearing on the recording, so replay always begins right at your first interaction rather than with a dead-air gap.</div>
@@ -4020,7 +4036,8 @@
     <thead><tr><th>Field</th><th>Description</th></tr></thead>
     <tbody>
       <tr><td>Frame rate / Codec</td><td>Same options as the ordinary <a href="#export-video">Video Export</a> sheet.</td></tr>
-      <tr><td>End frame</td><td>Defaults to the log's last recorded event plus a short tail, so the final action is not cut off abruptly. Editable — Total frames and Duration update to match.</td></tr>
+      <tr><td>End frame</td><td>Defaults to the frame you actually pressed Stop at, so a take that had a quiet stretch before Stop doesn't get cut short. (Sessions recorded before this end-of-take marker existed fall back to the log's last recorded event plus a short tail.) Editable — Total frames and Duration update to match.</td></tr>
+      <tr><td>Audio</td><td>Shown when the session recorded a Live Audio track (see <a href="#live-audio">Live Audio</a>). <strong>Include Session Audio</strong> (on by default) mixes it into the export at its recorded offset, looping for the full render length exactly as it did live.</td></tr>
     </tbody>
   </table>
   <p>Rendering builds a fresh engine from a blank stage and replays the log deterministically at a fixed frame rate — applying every recorded macro event (show/hide, pose, set assignment, driver toggle, BPM/tap/multiplier change) at its exact frame, and recomputing every Rate/Range automation curve's interpolated value on every frame. This reproduces the recording accurately regardless of how the live capture's real-time performance actually felt, since the render never depends on wall-clock timing. If a recorded event references something renamed or deleted since the session was captured (a sprite, transform set, or renderer set), that one event is skipped and reported afterward in a summary rather than failing the whole render.</p>

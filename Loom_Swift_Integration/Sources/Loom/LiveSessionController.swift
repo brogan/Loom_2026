@@ -123,21 +123,39 @@ final class LiveSessionController: ObservableObject {
     @Published private(set) var engine: Engine?
     @Published private(set) var loadedProjectURL: URL?
     @Published private(set) var loadError: String?
-    /// Set while a sheet (e.g. `SessionReplaySheet`) is presented over the
-    /// Live tab. `LiveCanvasView`'s canvas otherwise animates continuously
-    /// (`playbackState: .playing`, unconditionally) via a 60fps `Timer`
-    /// added to `RunLoop.main` in `.common` mode — which keeps firing during
-    /// a sheet's modal/attach transition, issuing a `CATransaction` commit
-    /// to that same window every tick. Presenting a new sheet on a window
-    /// whose content is being aggressively, continuously redrawn like that
-    /// is a known class of AppKit deadlock (the sheet-attach animation and
-    /// the competing layer commits can lock each other out) — pausing the
-    /// render loop for the sheet's duration avoids it.
+    /// Pauses the Live canvas (and, via `syncTransport`'s `playbackState`
+    /// argument, `liveAudio` alongside it) — two callers: automatically
+    /// while a sheet (e.g. `SessionReplaySheet`) is presented over the Live
+    /// tab, and manually via `LiveCanvasView`'s pause button, since Live
+    /// otherwise has no transport controls at all and just runs
+    /// continuously. `LiveCanvasView`'s canvas otherwise animates
+    /// continuously (`playbackState: .playing` when this is false) via a
+    /// 60fps `Timer` added to `RunLoop.main` in `.common` mode — which keeps
+    /// firing during a sheet's modal/attach transition, issuing a
+    /// `CATransaction` commit to that same window every tick. Presenting a
+    /// new sheet on a window whose content is being aggressively,
+    /// continuously redrawn like that is a known class of AppKit deadlock
+    /// (the sheet-attach animation and the competing layer commits can lock
+    /// each other out) — pausing the render loop for the sheet's duration
+    /// avoids it.
     @Published var canvasPaused: Bool = false
 
     @Published private(set) var stagedSprites: [StagedSprite] = []
     @Published var selectedStagedID: StagedSprite.ID?
     @Published var selectedDriverTarget: LiveDriverTarget?
+
+    /// Live mode's own audio track — entirely separate from the main
+    /// timeline's `AudioController` (a different instance, pointed at
+    /// `sessions/audio`/`sessions/live_audio.json` instead of `audio`/
+    /// `audio.json`, so the two never collide). Tied to the Live engine's
+    /// own never-stopping clock via `LiveCanvasView`'s `onFrameTick`, not to
+    /// the main timeline, which is what made the old approach (referencing
+    /// the main timeline's audio while in Live mode) unreliable — that
+    /// timeline doesn't even tick while the Live tab is open. Not
+    /// `@Published` — SwiftUI views observe `liveAudio` directly via their
+    /// own `@EnvironmentObject`, since nesting one `ObservableObject`
+    /// inside another doesn't forward its change notifications.
+    let liveAudio = AudioController()
 
     private var nextInstanceSuffix = 1
     /// Coalesces rapid slider-drag updates: a new call cancels any not-yet-
@@ -203,12 +221,111 @@ final class LiveSessionController: ObservableObject {
         sessionFileHandle = try? FileHandle(forWritingTo: url)
         sessionLogURL = url
         isRecording = true
+
+        // Snapshot whatever's already staged and visible so the recording's
+        // baseline reflects reality, not each sprite's authored defaults —
+        // without this, a sprite configured (custom transform/renderer/pose)
+        // *before* Start was pressed would silently replay as if none of
+        // that setup had ever happened, since none of it was ever recorded.
+        // Same reasoning applies to audio imported before Start: without
+        // this, a render would silently have no audio even though it was
+        // playing throughout the whole take. And to BPM/beats-per-bar/tap
+        // sync: neither persists across a project reopen (`bpm`/
+        // `beatsPerBar` reset to 120/4 every time `ensureEngine` runs), so
+        // dialing in a tempo before Start — the natural order, same as
+        // staging a sprite or importing audio first — left `SessionReplayer`
+        // with nothing but its own 120bpm default for every musically-linked
+        // driver, silently replaying eighth notes (etc.) at the wrong speed
+        // even though the live take itself was correctly in time. Recorded
+        // unconditionally (unlike the sprite/audio snapshots, which are
+        // skipped when there's nothing to snapshot) since 120/4 is itself a
+        // meaningful, worth-recording baseline, not a "nothing configured" case.
+        guard let engine else { return }
+        let visibleStaged = stagedSprites.filter(\.isVisible)
+        let hasAudio = liveAudio.audioFilename != nil
+        RenderSurfaceNSView.sharedRenderQueue.async { [weak self] in
+            let frame = engine.currentFrame
+            DispatchQueue.main.async {
+                MainActor.assumeIsolated {
+                    guard let self else { return }
+                    self.recordEvent(.bpmSet(t: frame, bpm: self.bpm, beatsPerBar: self.beatsPerBar))
+                    if let barReferenceFrame = self.barReferenceFrame {
+                        self.recordEvent(.tapSync(t: frame, referenceFrame: barReferenceFrame))
+                    }
+                    for staged in visibleStaged { self.recordStagedSnapshot(staged, at: frame) }
+                    if hasAudio { self.recordAudioSet() }
+                }
+            }
+        }
+    }
+
+    /// Records `staged`'s full current state as a batch of events at
+    /// `frame` — pose, renderer/transform-set assignment, every known
+    /// driver's enabled state, and (for configured drivers) their current
+    /// Rate/Range or musical-multiplier — not just a bare `spriteShow`
+    /// position. Used both to snapshot whatever's already staged the moment
+    /// recording starts, and whenever a sprite is (re)shown during an
+    /// already-active recording (`setVisible`), since `replayShow` restores
+    /// this same full state on the engine side but the old recording only
+    /// ever captured the position.
+    private func recordStagedSnapshot(_ staged: StagedSprite, at frame: Int) {
+        recordEvent(.spriteShow(
+            t: frame, instanceName: staged.id, spriteSetName: staged.spriteSetName,
+            spriteName: staged.spriteDefName, position: staged.position,
+            scale: staged.scale, rotation: staged.rotation
+        ))
+        if let rendererSetName = staged.rendererSetName {
+            recordEvent(.rendererSetAssign(t: frame, instanceName: staged.id, rendererSetName: rendererSetName))
+        }
+        if let subdivisionSetName = staged.subdivisionSetName {
+            recordEvent(.transformSetAssign(t: frame, instanceName: staged.id, subdivisionSetName: subdivisionSetName))
+        }
+        for target in staged.driverTargets {
+            let enabled = staged.driverEnabled[target] ?? false
+            recordEvent(.driverEnabledToggle(t: frame, instanceName: staged.id, target: target, enabled: enabled))
+            guard let info = staged.driverControls[target] else { continue }
+            if let multiplier = info.musicalMultiplier {
+                recordEvent(.driverMusicalRateAssign(t: frame, instanceName: staged.id, target: target, multiplier: multiplier))
+            } else if info.hasRate {
+                recordEvent(.driverAutomationPoint(
+                    t: frame, instanceName: staged.id, target: target, quantity: "rate",
+                    axis: info.isVector ? "x" : nil, value: info.rateX
+                ))
+                if info.isVector {
+                    recordEvent(.driverAutomationPoint(
+                        t: frame, instanceName: staged.id, target: target, quantity: "rate", axis: "y", value: info.rateY
+                    ))
+                }
+            }
+            recordEvent(.driverAutomationPoint(
+                t: frame, instanceName: staged.id, target: target, quantity: "range",
+                axis: info.isVector ? "x" : nil, value: info.rangeX
+            ))
+            if info.isVector {
+                recordEvent(.driverAutomationPoint(
+                    t: frame, instanceName: staged.id, target: target, quantity: "range", axis: "y", value: info.rangeY
+                ))
+            }
+        }
     }
 
     /// Stops the current recording (closing the file) — a no-op if nothing
     /// was recording. `sessionEvents`/`sessionLogURL` are left as-is so the
     /// UI can still show what was just captured until the next recording starts.
+    ///
+    /// Records a `.sessionEnd` marker first, at the engine's current frame,
+    /// while `isRecording` is still true so it goes through the normal
+    /// `recordEvent` rebase/write path — this captures the true end of the
+    /// take even when idle time (nothing else happening) preceded Stop,
+    /// which otherwise leaves nothing in the log to distinguish "the take
+    /// ended right after the last action" from "it continued a while
+    /// longer with nothing happening." Replay prefers this over
+    /// "last event + a short tail" when choosing a default render length —
+    /// see `SessionReplaySheet.loadSession`.
     func stopRecording() {
+        if isRecording, let engine {
+            recordEvent(.sessionEnd(t: engine.currentFrame))
+        }
         sessionFileHandle?.closeFile()
         sessionFileHandle = nil
         isRecording = false
@@ -258,15 +375,65 @@ final class LiveSessionController: ObservableObject {
         guard isRecording else { return }
         if recordingStartFrame == nil {
             recordingStartFrame = event.t
+            // The Live engine's clock ticks continuously from whenever the
+            // tab was opened, not from Start — so any project-authored
+            // content that isn't itself tracked as a LiveEvent (camera
+            // keyframes/drivers, background) has typically already moved
+            // past its opening moments by the time recording begins.
+            // Recording where the engine's raw clock actually was lets
+            // replay seek a fresh engine to the same point before applying
+            // the session's own events, instead of showing that content
+            // from its own beginning — see `SessionReplaySheet.loadSession`.
+            appendAndWrite(.sessionStart(t: 0, engineFrameAtStart: event.t))
         }
-        let rebased = event.withT(max(0, event.t - (recordingStartFrame ?? 0)))
-        sessionEvents.append(rebased)
+        let baseline = recordingStartFrame ?? 0
+        var rebased = event.withT(max(0, event.t - baseline))
+        // `offsetFrames` is an absolute engine-clock frame like `t` (where
+        // audio position 0 plays), not a duration — `withT` above only
+        // rebases `t` itself, so this field needs the same treatment
+        // applied separately. Can go negative (audio already playing when
+        // recording started); left as-is rather than clamped, since a
+        // negative offset is a meaningful "already N frames in" state that
+        // `AudioController.syncTransport`/Review's derivation can interpret
+        // directly, not an error case.
+        if case .audioSet(let t, let filename, let offsetFrames) = rebased {
+            rebased = .audioSet(t: t, filename: filename, offsetFrames: offsetFrames - baseline)
+        }
+        appendAndWrite(rebased)
+    }
+
+    private func appendAndWrite(_ event: LiveEvent) {
+        sessionEvents.append(event)
         guard let handle = sessionFileHandle,
-              let data = try? JSONEncoder().encode(rebased),
+              let data = try? JSONEncoder().encode(event),
               let line = String(data: data, encoding: .utf8),
               let lineData = (line + "\n").data(using: .utf8)
         else { return }
         handle.write(lineData)
+    }
+
+    // MARK: - Live audio
+
+    /// Imports a file into `liveAudio` and records the resulting reference —
+    /// mirrors the `stage()`/`assignRendererSet()` shape (mutate the live
+    /// state, then record it) rather than passively observing `liveAudio`
+    /// for changes.
+    func importLiveAudio(from url: URL) {
+        liveAudio.importAudio(from: url)
+        recordAudioSet()
+    }
+
+    /// Adjusts `liveAudio`'s offset and records the change — called from
+    /// both the Live tab's own numeric field and (later) the Review panel's
+    /// drag-to-offset editing of an already-recorded session.
+    func setLiveAudioOffset(_ frames: Int) {
+        liveAudio.setOffset(frames)
+        recordAudioSet()
+    }
+
+    private func recordAudioSet() {
+        guard let filename = liveAudio.audioFilename else { return }
+        recordEvent(.audioSet(t: engine?.currentFrame ?? 0, filename: filename, offsetFrames: liveAudio.offsetFrames))
     }
 
     /// (Re)builds the Live tab's engine from `projectURL` if it isn't already
@@ -294,6 +461,7 @@ final class LiveSessionController: ObservableObject {
             bpm = 120
             beatsPerBar = 4
             barReferenceFrame = nil
+            liveAudio.projectOpened(projectURL, subdirectory: "sessions/audio", stateFilename: "sessions/live_audio.json")
         } catch {
             engine = nil
             loadedProjectURL = nil
@@ -376,14 +544,39 @@ final class LiveSessionController: ObservableObject {
             DispatchQueue.main.async { [weak self] in
                 MainActor.assumeIsolated {
                     if visible {
-                        self?.recordEvent(.spriteShow(
-                            t: frame, instanceName: id, spriteSetName: staged.spriteSetName,
-                            spriteName: staged.spriteDefName, position: staged.position,
-                            scale: staged.scale, rotation: staged.rotation
-                        ))
+                        // Full snapshot, not just position — `replayShow`
+                        // above just restored renderer/transform-set/driver
+                        // state on the engine too, and the recording needs
+                        // to capture all of that, not only the bare show.
+                        self?.recordStagedSnapshot(staged, at: frame)
                     } else {
                         self?.recordEvent(.spriteHide(t: frame, instanceName: id))
                     }
+                }
+            }
+        }
+    }
+
+    /// Removes a staged instance entirely — unlike `setVisible(_:false)`,
+    /// which just hides it while keeping its pose/driver configuration
+    /// around for a later re-show, this drops it from `stagedSprites` for
+    /// good. The only way back is re-staging from scratch. Always records a
+    /// `spriteHide` (regardless of whether it was currently visible) since,
+    /// from the session log's perspective, this is unambiguously where that
+    /// instance's visibility span ends.
+    func destage(_ id: StagedSprite.ID) {
+        guard let engine, stagedSprites.contains(where: { $0.id == id }) else { return }
+        stagedSprites.removeAll { $0.id == id }
+        if selectedStagedID == id {
+            selectedStagedID = nil
+            selectedDriverTarget = nil
+        }
+        RenderSurfaceNSView.sharedRenderQueue.async {
+            engine.hideSprite(instanceName: id)
+            let frame = engine.currentFrame
+            DispatchQueue.main.async { [weak self] in
+                MainActor.assumeIsolated {
+                    self?.recordEvent(.spriteHide(t: frame, instanceName: id))
                 }
             }
         }

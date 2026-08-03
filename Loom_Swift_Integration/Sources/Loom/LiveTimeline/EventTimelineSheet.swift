@@ -9,6 +9,7 @@ struct EventTimelineSheet: View {
 
     let projectURL: URL
     let sessionURL: URL
+    let fps: Double
     @Environment(\.dismiss) private var dismiss
 
     @State private var recordedEvents: [RecordedEvent] = []
@@ -40,7 +41,7 @@ struct EventTimelineSheet: View {
                 VStack { ProgressView("Loading session…") }
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
-                EventTimelineView(recordedEvents: $recordedEvents)
+                EventTimelineView(projectURL: projectURL, fps: fps, recordedEvents: $recordedEvents)
                     .frame(minHeight: 320)
             }
 

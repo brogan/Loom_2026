@@ -33,4 +33,17 @@ enum EventTimelineEditing {
     static func delete(_ ids: Set<UUID>, in events: inout [RecordedEvent]) {
         events.removeAll { ids.contains($0.id) }
     }
+
+    /// Updates an `.audioSet` event's `offsetFrames` — unlike every other
+    /// edit above, dragging the Review panel's audio lane changes a *value*
+    /// on the event, not its own timestamp (`t`), so this doesn't fit
+    /// `retime`/`retimePair`. Allowed to go negative (meaningful: audio was
+    /// already partway through playing when the session recording began),
+    /// matching how `recordEvent` itself can record a negative offset.
+    static func updateAudioOffset(_ id: UUID, to newOffset: Int, in events: inout [RecordedEvent]) {
+        guard let idx = events.firstIndex(where: { $0.id == id }),
+              case .audioSet(let t, let filename, _) = events[idx].event
+        else { return }
+        events[idx].event = .audioSet(t: t, filename: filename, offsetFrames: newOffset)
+    }
 }

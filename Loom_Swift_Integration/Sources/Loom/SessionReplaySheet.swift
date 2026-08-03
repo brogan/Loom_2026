@@ -25,6 +25,8 @@ struct SessionReplaySheet: View {
 
     @State private var engine: Engine?
     @State private var replayer: SessionReplayer?
+    @State private var loadedEvents: [LiveEvent] = []
+    @State private var includeSessionAudio: Bool = true
     @State private var loadError: String?
     /// Set the moment `loadSession()` starts, cleared once it finishes —
     /// paired with `Text(_:style:.timer)` below so loading always shows a
@@ -49,6 +51,27 @@ struct SessionReplaySheet: View {
 
     private var totalFrames: Int { max(1, endFrame) }
     private var durationSeconds: Double { Double(totalFrames) / Double(fps) }
+
+    /// The session's own recorded audio (Live mode's, not the main
+    /// timeline's) — last `.audioSet` event in the log wins, same "last one
+    /// wins for the whole session" model `EventSegmentDerivation` uses for
+    /// Review's audio lane, just scanning `[LiveEvent]` directly here since
+    /// there's no per-event id-tracking need for this read-only lookup.
+    private var recordedAudio: (filename: String, offsetFrames: Int)? {
+        var result: (filename: String, offsetFrames: Int)?
+        for event in loadedEvents.sorted(by: { $0.t < $1.t }) {
+            if case .audioSet(_, let filename, let offsetFrames) = event {
+                result = (filename, offsetFrames)
+            }
+        }
+        return result
+    }
+
+    private var resolvedAudioURL: URL? {
+        guard let recordedAudio else { return nil }
+        let url = projectURL.appendingPathComponent("sessions/audio").appendingPathComponent(recordedAudio.filename)
+        return FileManager.default.fileExists(atPath: url.path) ? url : nil
+    }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -111,6 +134,17 @@ struct SessionReplaySheet: View {
 
                         Picker("Codec", selection: $codec) {
                             ForEach(codecOptions, id: \.0.rawValue) { Text($1).tag($0) }
+                        }
+                    }
+                    if let recordedAudio, resolvedAudioURL != nil {
+                        Section("Audio") {
+                            Toggle("Include Session Audio", isOn: $includeSessionAudio)
+                            LabeledContent("File") {
+                                Text(recordedAudio.filename).foregroundStyle(.secondary).lineLimit(1).truncationMode(.middle)
+                            }
+                            LabeledContent("Offset") {
+                                Text("frame \(recordedAudio.offsetFrames)").foregroundStyle(.secondary)
+                            }
                         }
                     }
                 }
@@ -189,7 +223,7 @@ struct SessionReplaySheet: View {
         Task {
             LoomLogger.info("[SessionReplay] loadSession outer Task running (MainActor-inherited)")
             do {
-                let (newEngine, newReplayer) = try await Task.detached(priority: .userInitiated) {
+                let (newEngine, newReplayer, newEvents) = try await Task.detached(priority: .userInitiated) {
                     LoomLogger.info("[SessionReplay] detached task started, constructing Engine…")
                     let newEngine = try Engine(projectDirectory: projectURL)
                     LoomLogger.info("[SessionReplay] Engine constructed, hiding \(newEngine.spriteInstances.count) sprite instance(s)")
@@ -206,14 +240,34 @@ struct SessionReplaySheet: View {
                     }
                     LoomLogger.info("[SessionReplay] loaded \(events.count) event(s), constructing SessionReplayer…")
                     let newReplayer = SessionReplayer(engine: newEngine, events: events)
-                    LoomLogger.info("[SessionReplay] SessionReplayer constructed, maxEventFrame=\(newReplayer.maxEventFrame)")
-                    return (newEngine, newReplayer)
+                    LoomLogger.info("[SessionReplay] SessionReplayer constructed, maxEventFrame=\(newReplayer.maxEventFrame), engineFrameAtStart=\(newReplayer.engineFrameAtStart.map(String.init) ?? "nil")")
+                    // Seed the fresh engine's clock to where the Live
+                    // engine's own raw clock actually was when this take
+                    // began recording, so project-authored-but-not-session-
+                    // tracked content (camera keyframes/drivers, etc.)
+                    // continues from that point instead of restarting from
+                    // its own frame 0 — see `LiveEvent.sessionStart`.
+                    if let startFrame = newReplayer.engineFrameAtStart {
+                        newEngine.seek(toFrame: startFrame)
+                    }
+                    return (newEngine, newReplayer, events)
                 }.value
                 LoomLogger.info("[SessionReplay] detached load task returned, updating UI state")
                 fps = Int(newEngine.globalConfig.targetFPS)
-                endFrame = newReplayer.maxEventFrame + 60
+                // Prefer the actual Stop moment (`.sessionEnd`) over "last
+                // recorded event + a short tail" when present — idle time
+                // before Stop produces no events of its own, so without
+                // this a render silently comes out shorter than the take
+                // actually was. Older sessions predating `.sessionEnd`
+                // fall back to the old heuristic.
+                let sessionEndFrame = newEvents.lazy.compactMap { event -> Int? in
+                    if case .sessionEnd(let t) = event { return t }
+                    return nil
+                }.last
+                endFrame = sessionEndFrame ?? (newReplayer.maxEventFrame + 60)
                 engine = newEngine
                 replayer = newReplayer
+                loadedEvents = newEvents
                 LoomLogger.info("[SessionReplay] loadSession complete: fps=\(fps) endFrame=\(endFrame)")
             } catch {
                 LoomLogger.error("[SessionReplay] loadSession failed", error: error)
@@ -236,6 +290,8 @@ struct SessionReplaySheet: View {
         if let dir = controller.animationRendersDirectory() { panel.directoryURL = dir }
 
         let fps = self.fps; let endFrame = self.endFrame; let codec = self.codec
+        let audioURL = includeSessionAudio ? resolvedAudioURL : nil
+        let audioOffsetFrames = recordedAudio?.offsetFrames ?? 0
 
         panel.begin { response in
             LoomLogger.info("[SessionReplay] Save panel completed, response=\(response == .OK ? "OK" : "cancel"), url=\(panel.url?.path ?? "nil")")
@@ -249,7 +305,9 @@ struct SessionReplaySheet: View {
                 LoomLogger.info("[SessionReplay] export outer Task running (MainActor-inherited)")
                 do {
                     let settings = VideoExporter.Settings(fps: fps, startFrame: 0, endFrame: endFrame,
-                                                          codec: codec, outputURL: url)
+                                                          codec: codec, outputURL: url,
+                                                          audioURL: audioURL, audioOffsetFrames: audioOffsetFrames,
+                                                          audioLoop: true)
                     let progress: @Sendable (Double) -> Void = { p in
                         Task { @MainActor in controller.exportProgress = p }
                     }

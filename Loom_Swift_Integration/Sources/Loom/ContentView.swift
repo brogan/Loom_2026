@@ -87,8 +87,19 @@ struct ContentView: View {
             timelineCollapsed = shouldDefaultCollapseTimeline
         }
         .onChange(of: currentFrame) { _, frame in controller.currentTimelineFrame = frame }
-        .onChange(of: controller.selectedTab) { _, _ in
+        .onChange(of: controller.selectedTab) { _, newTab in
             timelineCollapsed = shouldDefaultCollapseTimeline
+            // The main timeline and Live mode each have their own,
+            // independent audio engine (see `LiveSessionController.liveAudio`'s
+            // doc comment) — neither one's playback is naturally interrupted
+            // by switching tabs (an `AVAudioPlayer`, once started, just keeps
+            // running on its own clock), so whichever context loses focus
+            // needs to be paused explicitly or both end up audible at once.
+            if newTab == .live {
+                controller.audioController.pauseNow()
+            } else {
+                liveController.liveAudio.pauseNow()
+            }
         }
     }
 
@@ -228,6 +239,7 @@ struct ContentView: View {
             LiveTabView()
                 .environmentObject(controller)
                 .environmentObject(liveController)
+                .environmentObject(liveController.liveAudio)
         }
     }
 
@@ -303,6 +315,7 @@ struct ContentView: View {
         case .live:
             LiveCanvasView()
                 .environmentObject(liveController)
+                .environmentObject(liveController.liveAudio)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .onAppear {
                     if let url = controller.projectURL {
@@ -351,7 +364,8 @@ struct ContentView: View {
                             controller.currentTimelineFrame = $0
                         },
                         onAnimationComplete: { controller.animationDidComplete() },
-                        onRenderProgress:    { renderProgress = $0 }
+                        onRenderProgress:    { renderProgress = $0 },
+                        shouldLoopOnComplete: { controller.loopPlayback }
                     )
                     .aspectRatio(aspect, contentMode: .fit)
 

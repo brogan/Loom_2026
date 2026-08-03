@@ -12,6 +12,24 @@ struct RenderSurfaceView: NSViewRepresentable, Equatable {
     var onFrameTick:          (Int) -> Void    = { _ in }
     var onAnimationComplete:  (() -> Void)?    = nil
     var onRenderProgress:     (Double?) -> Void = { _ in }
+    /// Queried when the animation reaches its end, on the same NSView-owned
+    /// context that's about to reset/resume it — lets a loop restart happen
+    /// as one atomic, completion-driven sequence instead of round-tripping
+    /// through `playbackState`'s reactive `.stopped`→`.playing` dance (which
+    /// SwiftUI can coalesce away entirely, silently skipping the engine
+    /// reset in between — see `RenderSurfaceNSView.tick()`).
+    var shouldLoopOnComplete: (() -> Bool)?    = nil
+    /// True for a rehearsal surface (the Live tab) that has no natural end of
+    /// its own — its engine's frame clock just keeps advancing for as long as
+    /// the tab is open, unrelated to whatever finite length the *project's*
+    /// own keyframes/`endFrame` happen to define. Without this, `tick()`'s
+    /// isDone check (`engine.currentFrame >= engine.maxAnimationFrames`) is
+    /// keyed off that same project-derived length, so a Live session left
+    /// running long enough would eventually "complete" and permanently stop
+    /// ticking — worse, `shouldLoopOnComplete` isn't a fix here, since its
+    /// mechanism restarts by fully reloading the engine from disk, which
+    /// would silently discard every sprite/pose staged live in memory.
+    var ignoresAnimationEnd: Bool               = false
 
     // SwiftUI uses == to decide whether to call updateNSView.
     // Closures aren't Equatable; we only diff on the properties that actually drive
@@ -24,8 +42,10 @@ struct RenderSurfaceView: NSViewRepresentable, Equatable {
 
     func makeNSView(context: Context) -> RenderSurfaceNSView {
         let view = RenderSurfaceNSView(engine: engine, onFrameTick: onFrameTick)
-        view.onAnimationComplete = onAnimationComplete
-        view.onRenderProgress    = onRenderProgress
+        view.onAnimationComplete  = onAnimationComplete
+        view.onRenderProgress     = onRenderProgress
+        view.shouldLoopOnComplete = shouldLoopOnComplete
+        view.ignoresAnimationEnd  = ignoresAnimationEnd
         applyState(playbackState, to: view, isInitial: true)
         return view
     }
@@ -34,6 +54,8 @@ struct RenderSurfaceView: NSViewRepresentable, Equatable {
         nsView.onFrameTick         = onFrameTick
         nsView.onAnimationComplete = onAnimationComplete
         nsView.onRenderProgress    = onRenderProgress
+        nsView.shouldLoopOnComplete = shouldLoopOnComplete
+        nsView.ignoresAnimationEnd  = ignoresAnimationEnd
         if nsView.engine !== engine {
             nsView.replaceEngine(engine)
             applyState(playbackState, to: nsView, isInitial: false)
@@ -95,6 +117,11 @@ final class RenderSurfaceNSView: NSView {
     var onFrameTick:          (Int) -> Void
     var onAnimationComplete:  (() -> Void)?
     var onRenderProgress:     (Double?) -> Void = { _ in }
+    var shouldLoopOnComplete: (() -> Bool)?
+    // Read from `checkAnimationDone()` on renderQueue — same unsynchronized-
+    // but-safe-in-practice pattern as `engine` above (set on main, read off
+    // it; a torn read of a single Bool is not a real-world hazard here).
+    nonisolated(unsafe) var ignoresAnimationEnd: Bool = false
     var appliedPlaybackState: PlaybackState = .stopped
     var lastSeekFrame:        Int?          = nil
 
@@ -227,7 +254,17 @@ final class RenderSurfaceNSView: NSView {
         }
     }
 
-    func resetAndRenderFirstFrame() {
+    /// `completion` fires on the main thread once the reset has actually
+    /// taken effect (engine reloaded, first post-reset frame either drawn or
+    /// abandoned as stale) — the deterministic alternative to inferring
+    /// "reset happened" from a `playbackState` value that SwiftUI may never
+    /// actually render (see `tick()`'s isDone handling, where this matters:
+    /// a loop restart must not resume ticking before the reset lands, or the
+    /// engine's un-reset, still-past-the-end clock makes `checkAnimationDone()`
+    /// true again immediately, permanently wedging playback and — since audio
+    /// sync and any Clamp-mode driver both depend on the frame clock actually
+    /// going back below the animation's length — silently freezing them too).
+    func resetAndRenderFirstFrame(completion: (@Sendable () -> Void)? = nil) {
         stopRendering()
         seekPending = false
         queuedSeekFrame = nil
@@ -244,6 +281,7 @@ final class RenderSurfaceNSView: NSView {
                 DispatchQueue.main.async { [weak self] in
                     self?.clearDisplay()   // nothing to show — clear to avoid stale image
                     self?.finishRenderProgress(token: progressToken, showCompletion: false)
+                    completion?()
                 }
                 return
             }
@@ -255,6 +293,7 @@ final class RenderSurfaceNSView: NSView {
                 }
                 self.finishRenderProgress(token: progressToken)
                 self.updateLayer(with: frame)
+                completion?()
             }
         }
     }
@@ -263,7 +302,21 @@ final class RenderSurfaceNSView: NSView {
 
     private func tick() {
         let now  = CACurrentMediaTime()
-        let dt   = min(now - lastTick, 1.0 / 10)
+        // The main timeline clamps hard (100ms) to avoid a big visual jump
+        // after being backgrounded — fine there, since nothing is being
+        // timestamped against this clock. Live's clock is different: every
+        // recorded event's `t` (and, via `sessionEnd`, a session's whole
+        // duration) is read directly off `engine.currentFrame`, so any real
+        // time this clamp silently drops makes the session's frame count
+        // under-count true elapsed wall time — exactly what made rendered
+        // takes play faster than the live session actually did. Brief
+        // main-thread stalls (a picker, a burst of staged-sprite events)
+        // are routine mid-session, so Live gets a much more generous clamp:
+        // still a backstop against a truly pathological gap (e.g. the
+        // machine sleeping), but well above anything a normal UI stall
+        // should hit.
+        let maxDt = ignoresAnimationEnd ? 2.0 : (1.0 / 10)
+        let dt   = min(now - lastTick, maxDt)
         lastTick = now
 
         // If the previous frame is still rendering, accumulate time and skip.
@@ -312,7 +365,19 @@ final class RenderSurfaceNSView: NSView {
                 self.renderPending = false
                 self.finishRenderProgress(token: progressToken)
                 self.onFrameTick(frameNum)
-                if isDone { self.stopRendering(); self.onAnimationComplete?() }
+                if isDone {
+                    self.stopRendering()
+                    if self.shouldLoopOnComplete?() == true {
+                        // Reset-then-resume as one completion-driven sequence — see
+                        // resetAndRenderFirstFrame's doc comment for why this can't
+                        // go through playbackState's reactive .stopped→.playing path.
+                        self.resetAndRenderFirstFrame { [weak self] in
+                            MainActor.assumeIsolated { self?.startRendering() }
+                        }
+                    } else {
+                        self.onAnimationComplete?()
+                    }
+                }
                 self.updateLayer(with: frame)
             }
         }
@@ -320,6 +385,7 @@ final class RenderSurfaceNSView: NSView {
 
     // Called from renderQueue; engine is exclusively owned there.
     nonisolated private func checkAnimationDone() -> Bool {
+        guard !ignoresAnimationEnd else { return false }
         let maxFrames = engine.maxAnimationFrames
         guard maxFrames > 0 else { return false }
         return engine.currentFrame >= maxFrames
